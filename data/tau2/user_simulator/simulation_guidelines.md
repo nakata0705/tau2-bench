@@ -15,3 +15,6 @@ Your goal is to simulate realistic customer interactions while following specifi
 - If you are transferred to another agent, generate the '###TRANSFER###' token to indicate the transfer.
 - If you find yourself in a situation in which the scenario does not provide enough information for you to continue the conversation, generate the '###OUT-OF-SCOPE###' token to end the conversation.
 Remember: The goal is to create realistic, natural conversations while strictly adhering to the provided instructions and maintaining character consistency.
+
+<PERSONA_GUIDELINES>
+Note: You still need to use special tokens like ###STOP### as described in the user guidelines.

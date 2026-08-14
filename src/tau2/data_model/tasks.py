@@ -590,6 +590,15 @@ class Task(BaseModel):
             default=None,
         ),
     ]
+    initial_state_overrides: Annotated[
+        Optional[dict[str, InitialState]],
+        Field(
+            description="Language-specific initial state overrides, keyed by language "
+            "(e.g. 'ja'). Applied automatically when the run is configured with "
+            "--language <lang>, so scripted opening messages are in the conversation language.",
+            default=None,
+        ),
+    ]
     evaluation_criteria: Annotated[
         Optional[EvaluationCriteria],
         Field(

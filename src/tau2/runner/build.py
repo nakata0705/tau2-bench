@@ -75,6 +75,7 @@ def build_agent(
     audio_native_config: Optional[AudioNativeConfig] = None,
     solo_mode: bool = False,
     audio_taps_dir: Optional[Path] = None,
+    language: Optional[str] = None,
 ) -> Union[HalfDuplexAgent, FullDuplexAgent]:
     """Build an agent from a registered name and an environment.
 
@@ -122,6 +123,7 @@ def build_agent(
         task=task,
         audio_native_config=audio_native_config,
         audio_taps_dir=audio_taps_dir,
+        language=language,
     )
 
 
@@ -392,6 +394,14 @@ def build_text_orchestrator(
 
     environment = build_environment(domain, solo_mode=solo_mode, env_kwargs=env_kwargs)
 
+    if config.language:
+        if user_persona_config is None:
+            user_persona_config = PersonaConfig(language=config.language)
+        elif not user_persona_config.language:
+            user_persona_config = user_persona_config.model_copy(
+                update={"language": config.language}
+            )
+
     agent = build_agent(
         config.effective_agent,
         environment,
@@ -399,6 +409,7 @@ def build_text_orchestrator(
         llm_args=config.llm_args_agent,
         task=task,
         solo_mode=solo_mode,
+        language=config.language,
     )
 
     user = build_user(

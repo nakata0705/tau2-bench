@@ -64,6 +64,7 @@ class LLMAgent(
         domain_policy: str,
         llm: str,
         llm_args: Optional[dict] = None,
+        language: Optional[str] = None,
     ):
         """
         Initialize the LLMAgent.
@@ -74,12 +75,30 @@ class LLMAgent(
             llm=llm,
             llm_args=llm_args,
         )
+        self.language = language
 
     @property
     def system_prompt(self) -> str:
-        return SYSTEM_PROMPT.format(
+        prompt = SYSTEM_PROMPT.format(
             domain_policy=self.domain_policy, agent_instruction=AGENT_INSTRUCTION
         )
+        if self.language:
+            lang = self.language
+            if lang.lower() in ("ja", "japanese", "jp", "日本語"):
+                lang_name = "Japanese (日本語)"
+            else:
+                lang_name = lang
+            lang_req = (
+                f"<language_requirement>\n"
+                f"You must conduct the entire conversation in {lang_name}. "
+                f"Write all messages to the user in {lang_name}, including the very first message you send: "
+                f"open the conversation with a natural {lang_name} greeting. "
+                f"Tool call JSON structure and function names must remain unchanged, "
+                f"but natural-language message content and tool arguments should be in {lang_name}.\n"
+                f"</language_requirement>"
+            )
+            prompt = f"{lang_req}\n\n{prompt}"
+        return prompt
 
     def get_init_state(
         self, message_history: Optional[list[Message]] = None
@@ -179,6 +198,7 @@ class LLMGTAgent(
         llm: str,
         llm_args: Optional[dict] = None,
         provide_function_args: bool = True,
+        language: Optional[str] = None,
     ):
         """
         Initialize the LLMAgent.
@@ -190,6 +210,7 @@ class LLMGTAgent(
             llm=llm,
             llm_args=llm_args,
         )
+        self.language = language
         assert self.check_valid_task(task), (
             f"Task {task.id} is not valid. Cannot run GT agent."
         )
@@ -211,11 +232,28 @@ class LLMGTAgent(
 
     @property
     def system_prompt(self) -> str:
-        return SYSTEM_PROMPT_GT.format(
+        prompt = SYSTEM_PROMPT_GT.format(
             agent_instruction=AGENT_GT_INSTRUCTION,
             domain_policy=self.domain_policy,
             resolution_steps=self.make_agent_instructions_from_actions(),
         )
+        if self.language:
+            lang = self.language
+            if lang.lower() in ("ja", "japanese", "jp", "日本語"):
+                lang_name = "Japanese (日本語)"
+            else:
+                lang_name = lang
+            lang_req = (
+                f"<language_requirement>\n"
+                f"You must conduct the entire conversation in {lang_name}. "
+                f"Write all messages to the user in {lang_name}, including the very first message you send: "
+                f"open the conversation with a natural {lang_name} greeting. "
+                f"Tool call JSON structure and function names must remain unchanged, "
+                f"but natural-language message content and tool arguments should be in {lang_name}.\n"
+                f"</language_requirement>"
+            )
+            prompt = f"{lang_req}\n\n{prompt}"
+        return prompt
 
     def get_init_state(
         self, message_history: Optional[list[Message]] = None
@@ -337,6 +375,7 @@ class LLMSoloAgent(
         task: Task,
         llm: str,
         llm_args: Optional[dict] = None,
+        language: Optional[str] = None,
     ):
         """
         Initialize the LLMAgent.
@@ -347,6 +386,7 @@ class LLMSoloAgent(
             llm=llm,
             llm_args=llm_args,
         )
+        self.language = language
         assert self.check_valid_task(task), (
             f"Task {task.id} is not valid. Cannot run GT agent."
         )
@@ -403,11 +443,28 @@ class LLMSoloAgent(
             stop_function_name=self.STOP_FUNCTION_NAME,
             stop_token=self.STOP_TOKEN,
         )
-        return SYSTEM_PROMPT_SOLO.format(
+        prompt = SYSTEM_PROMPT_SOLO.format(
             agent_instruction=agent_instruction,
             domain_policy=self.domain_policy,
             ticket=self.task.ticket,
         )
+        if self.language:
+            lang = self.language
+            if lang.lower() in ("ja", "japanese", "jp", "日本語"):
+                lang_name = "Japanese (日本語)"
+            else:
+                lang_name = lang
+            lang_req = (
+                f"<language_requirement>\n"
+                f"You must conduct the entire conversation in {lang_name}. "
+                f"Write all messages to the user in {lang_name}, including the very first message you send: "
+                f"open the conversation with a natural {lang_name} greeting. "
+                f"Tool call JSON structure and function names must remain unchanged, "
+                f"but natural-language message content and tool arguments should be in {lang_name}.\n"
+                f"</language_requirement>"
+            )
+            prompt = f"{lang_req}\n\n{prompt}"
+        return prompt
 
     def _check_if_stop_toolcall(self, message: AssistantMessage) -> AssistantMessage:
         """Check if the message is a stop message.
@@ -495,12 +552,14 @@ def create_llm_agent(tools, domain_policy, **kwargs):
         **kwargs: Additional arguments. Supports:
             - llm (str): LLM model name.
             - llm_args (dict): Additional LLM arguments.
+            - language (str): Language for the conversation.
     """
     return LLMAgent(
         tools=tools,
         domain_policy=domain_policy,
         llm=kwargs.get("llm"),
         llm_args=kwargs.get("llm_args"),
+        language=kwargs.get("language"),
     )
 
 
@@ -514,6 +573,7 @@ def create_llm_gt_agent(tools, domain_policy, **kwargs):
             - llm (str): LLM model name.
             - llm_args (dict): Additional LLM arguments.
             - task (Task): The task to solve (required for GT agent).
+            - language (str): Language for the conversation.
     """
     return LLMGTAgent(
         tools=tools,
@@ -521,6 +581,7 @@ def create_llm_gt_agent(tools, domain_policy, **kwargs):
         llm=kwargs.get("llm"),
         llm_args=kwargs.get("llm_args"),
         task=kwargs.get("task"),
+        language=kwargs.get("language"),
     )
 
 
@@ -534,6 +595,7 @@ def create_llm_solo_agent(tools, domain_policy, **kwargs):
             - llm (str): LLM model name.
             - llm_args (dict): Additional LLM arguments.
             - task (Task): The task to solve (required for solo agent).
+            - language (str): Language for the conversation.
     """
     return LLMSoloAgent(
         tools=tools,
@@ -541,4 +603,5 @@ def create_llm_solo_agent(tools, domain_policy, **kwargs):
         llm=kwargs.get("llm"),
         llm_args=kwargs.get("llm_args"),
         task=kwargs.get("task"),
+        language=kwargs.get("language"),
     )

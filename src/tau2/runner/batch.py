@@ -501,6 +501,7 @@ def make_voice_run_settings(
     user_persona_config = PersonaConfig(
         verbosity=Verbosity(complexity_config["verbosity"]),
         interrupt_tendency=InterruptTendency(complexity_config["interrupt_tendency"]),
+        language=getattr(config, "language", None),
     )
     return user_voice_settings, user_persona_config
 
@@ -1062,6 +1063,12 @@ def _load_run_tasks(config: RunConfig) -> list[Task]:
         num_tasks=config.num_tasks,
     )
 
+    # Apply language-specific initial state overrides (e.g. scripted opening
+    # messages in the --language of the run).
+    language = getattr(config, "language", None)
+    if language:
+        tasks = [_localize_task_initial_state(task, language) for task in tasks]
+
     effective_agent = config.effective_agent
     task_filter = registry.get_agent_task_filter(effective_agent)
     if task_filter is not None:
@@ -1074,6 +1081,15 @@ def _load_run_tasks(config: RunConfig) -> list[Task]:
         )
         ConsoleDisplay.console.print(console_text)
     return tasks
+
+
+def _localize_task_initial_state(task: Task, language: str) -> Task:
+    """Return a copy of the task with its initial_state replaced by the
+    language-specific override, if one exists for ``language``."""
+    overrides = task.initial_state_overrides or {}
+    if language in overrides:
+        return task.model_copy(update={"initial_state": overrides[language]})
+    return task
 
 
 def _run_save_paths(config: RunConfig) -> tuple[str, Path, Path, str]:
