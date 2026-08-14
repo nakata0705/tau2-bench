@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Optional
 
 from loguru import logger
 
@@ -156,12 +156,21 @@ class EnvironmentEvaluator(EvaluatorBase[Message]):
             reward_breakdown[RewardType.ENV_ASSERTION] = env_assertion_reward
             reward *= env_assertion_reward
 
+        # Optional domain diagnostics (multi-axis metrics) surfaced via the
+        # generic get_eval_diagnostics hook so that the scalar reward can be
+        # diagnosed component-by-component. Domains without the hook return None.
+        info: Optional[dict] = None
+        domain_diagnostics = predicted_environment.get_eval_diagnostics(task)
+        if domain_diagnostics is not None:
+            info = {"diagnostics": domain_diagnostics}
+
         return RewardInfo(
             reward=reward,
             db_check=db_check,
             env_assertions=env_assertion_checks,
             reward_basis=task.evaluation_criteria.reward_basis,
             reward_breakdown=reward_breakdown,
+            info=info,
         )
 
 

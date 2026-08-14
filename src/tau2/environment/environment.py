@@ -13,7 +13,12 @@ from tau2.data_model.message import (
     ToolMessage,
     UserMessage,
 )
-from tau2.data_model.tasks import EnvAssertion, EnvFunctionCall, InitializationData
+from tau2.data_model.tasks import (
+    EnvAssertion,
+    EnvFunctionCall,
+    InitializationData,
+    Task,
+)
 from tau2.environment.db import DB
 from tau2.environment.tool import Tool
 from tau2.environment.toolkit import ToolKitBase, ToolSignature, get_tool_signatures
@@ -271,6 +276,20 @@ class Environment:
         Compare the user database with the reference
         """
         return self.get_user_db_hash() == reference.get_hash()
+
+    def get_eval_diagnostics(self, task: Optional[Task] = None) -> Optional[dict]:
+        """Optional hook for domains to surface extra evaluation diagnostics.
+
+        Returns a JSON-serializable dict (e.g. multi-axis metrics) that the
+        evaluator attaches to the run's additional info, or None if the domain
+        provides none. By default delegates to the agent toolkit when it
+        implements ``get_eval_diagnostics``. ``task`` is forwarded so a domain
+        can tailor its diagnostics to the specific scenario's ground truth.
+        """
+        toolkit = self.tools if self.tools is not None else self.user_tools
+        if toolkit is not None and hasattr(toolkit, "get_eval_diagnostics"):
+            return toolkit.get_eval_diagnostics(task)
+        return None
 
     def get_db_hash(self) -> Optional[str]:
         """
