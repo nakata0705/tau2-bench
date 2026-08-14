@@ -32,6 +32,18 @@ from tau2.evaluator.evaluator_env import EnvironmentEvaluator
 from tau2.user.user_simulator import UserSimulator
 
 TASK_ID = "quotation_process_interview_1"
+BELIEF_TASK_ID = "quotation_belief_uncertainty_1"
+MULTI_TASK_ID = "quotation_multi_exception_1"
+# Each scenario exists in an English (base id) and a Japanese (id + "_ja") variant.
+JA_SUFFIX = "_ja"
+ALL_TASK_IDS = [
+    TASK_ID,
+    TASK_ID + JA_SUFFIX,
+    BELIEF_TASK_ID,
+    BELIEF_TASK_ID + JA_SUFFIX,
+    MULTI_TASK_ID,
+    MULTI_TASK_ID + JA_SUFFIX,
+]
 
 
 @pytest.fixture
@@ -42,8 +54,7 @@ def tools() -> InterviewTools:
 @pytest.fixture
 def task() -> Task:
     tasks = get_tasks()
-    assert len(tasks) == 1
-    return tasks[0]
+    return [t for t in tasks if t.id == TASK_ID][0]
 
 
 def test_record_tools_and_assertions(tools: InterviewTools):
@@ -184,88 +195,65 @@ def test_japanese_legitimate_unknown_reason_is_not_a_rationale(tools: InterviewT
     assert tools.assert_no_unsupported_rationale()
 
 
-def test_language_prompt_injection():
-    """The --language setting injects a language requirement into both the
-    agent system prompt and the user simulator guidelines."""
+def test_language_scenario_split_has_no_core_injection():
+    """The conversation-language feature is now scenario-split: the agent core
+    has no `language`/`<language_requirement>` machinery, and the shared policy
+    carries a neutral "same language as the interviewee" instruction instead."""
     from tau2.agent.llm_agent import LLMAgent
-    from tau2.data_model.persona import PersonaConfig
     from tau2.domains.business_interview.environment import get_environment
-    from tau2.user.user_simulator import UserSimulator
 
     env = get_environment()
-    agent = LLMAgent(
-        tools=env.get_tools(),
-        domain_policy=env.get_policy(),
-        llm="dummy",
-        language="ja",
-    )
-    assert "<language_requirement>" in agent.system_prompt
-    assert "Japanese" in agent.system_prompt
-
-    agent_default = LLMAgent(
-        tools=env.get_tools(), domain_policy=env.get_policy(), llm="dummy"
-    )
-    assert "<language_requirement>" not in agent_default.system_prompt
-
-    user = UserSimulator(
-        llm="dummy",
-        instructions="dummy scenario",
-        persona_config=PersonaConfig(language="ja"),
-    )
-    assert "Japanese" in user.system_prompt
-    assert "###STOP###" in user.system_prompt
-
-    user_default = UserSimulator(llm="dummy", instructions="dummy scenario")
-    assert "LANGUAGE REQUIREMENT" not in user_default.system_prompt
+    agent = LLMAgent(tools=env.get_tools(), domain_policy=env.get_policy(), llm="dummy")
+    # No language-injection block in the system prompt.
+    assert "<language_requirement>" not in agent.system_prompt
+    # The language guidance lives in the policy (scenario data), shared and
+    # neutral so it works for any language the stakeholder uses.
+    policy = env.get_policy()
+    assert "same language the interviewee uses" in policy
 
 
 def test_tasks_and_split_load():
     tasks = get_tasks()
-    assert len(tasks) == 1
-    assert tasks[0].id == TASK_ID
-    assert TASK_ID in get_tasks_split()["base"]
-    assert [t.id for t in get_tasks(task_split_name="base")] == [TASK_ID]
+    assert len(tasks) == 6
+    assert [t.id for t in tasks] == ALL_TASK_IDS
+    assert set(get_tasks_split()["base"]) == set(ALL_TASK_IDS)
+    assert [t.id for t in get_tasks(task_split_name="base")] == ALL_TASK_IDS
 
 
-def test_initial_state_language_override():
-    """The Japanese initial-state override is loaded and applied by the run
-    pipeline when --language ja is set."""
+def test_japanese_task_variant_is_pre_localized():
+    """The Japanese scenario is a distinct, pre-localized task: its initial
+    state, persona and stakeholder knowledge are already in Japanese, and it
+    loads through the normal run pipeline without any localization flag."""
     from tau2.data_model.simulation import TextRunConfig
-    from tau2.runner.batch import _load_run_tasks, _localize_task_initial_state
+    from tau2.runner.batch import _load_run_tasks
 
     tasks = get_tasks()
-    task = tasks[0]
-    assert task.initial_state is not None
-    assert "Hello" in task.initial_state.message_history[0].content
+    en_task = [t for t in tasks if t.id == TASK_ID][0]
+    ja_task = [t for t in tasks if t.id == TASK_ID + JA_SUFFIX][0]
 
-    overrides = task.initial_state_overrides
-    assert overrides is not None and "ja" in overrides
-    ja_initial = overrides["ja"].message_history[0].content
-    assert "お世話になっております" in ja_initial
+    # The English task keeps its English opening.
+    assert en_task.initial_state is not None
+    assert "Hello" in en_task.initial_state.message_history[0].content
 
-    # _localize_task_initial_state swaps the initial state for 'ja'
-    localized = _localize_task_initial_state(task, "ja")
-    assert localized.initial_state.message_history[0].content == ja_initial
-    assert localized.id == task.id
+    # The Japanese variant opens in Japanese and its stakeholder speaks Japanese.
+    assert ja_task.initial_state is not None
+    assert "お世話になっております" in ja_task.initial_state.message_history[0].content
+    assert "Hello" not in ja_task.initial_state.message_history[0].content
+    assert "あなたは" in ja_task.user_scenario.persona
+    assert "日本語で" in ja_task.user_scenario.persona
+    # The stakeholder instructions are themselves written in Japanese.
+    assert "インタビュアー" in ja_task.user_scenario.instructions.task_instructions
 
-    # Unknown languages keep the original initial state
-    assert _localize_task_initial_state(task, "es") is task
-
-    # The run pipeline applies the override when --language ja is set
+    # No language flag is needed: the run pipeline returns all 6 tasks as-is.
     config = TextRunConfig(
-        domain="business_interview", llm_agent="x", llm_user="x", language="ja"
-    )
-    run_tasks = _load_run_tasks(config)
-    assert (
-        "お世話になっております"
-        in run_tasks[0].initial_state.message_history[0].content
-    )
-
-    config_en = TextRunConfig(
         domain="business_interview", llm_agent="x", llm_user="x", language=None
     )
-    run_tasks_en = _load_run_tasks(config_en)
-    assert "Hello" in run_tasks_en[0].initial_state.message_history[0].content
+    run_tasks = _load_run_tasks(config)
+    ja_loaded = [t for t in run_tasks if t.id == TASK_ID + JA_SUFFIX][0]
+    assert (
+        "お世話になっております" in ja_loaded.initial_state.message_history[0].content
+    )
+    assert en_task.initial_state is not None
 
 
 def test_no_hidden_ground_truth_in_stakeholder_or_policy(task: Task):
@@ -455,19 +443,51 @@ def test_task_json_has_expected_structure():
     """Guard against accidental edits that would break evaluation semantics."""
     with open(BUSINESS_INTERVIEW_TASK_SET_PATH) as fp:
         raw = json.load(fp)
-    assert len(raw) == 1
-    criteria = raw[0]["evaluation_criteria"]
-    assert criteria["reward_basis"] == ["ENV_ASSERTION"]
-    assert {a["func_name"] for a in criteria["env_assertions"]} == {
-        "assert_fact_recorded",
-        "assert_exception_recorded",
-        "assert_uncertainty_recorded",
-        "assert_no_unsupported_rationale",
-        "assert_interview_complete",
-    }
-    # The user scenario must never include a rationale for the exception.
-    scenario = json.dumps(raw[0]["user_scenario"]).lower()
-    assert "because" not in scenario
+    assert len(raw) == 6
+    ids = [t["id"] for t in raw]
+    assert ids == ALL_TASK_IDS
+    for entry in raw:
+        criteria = entry["evaluation_criteria"]
+        assert criteria["reward_basis"] == ["ENV_ASSERTION"]
+        # The user scenario must never include a definitive rationale for the
+        # month-end exception. The belief scenario may mention a hedged
+        # impression, but not as a confirmed reason. The multi-exception
+        # scenario legitimately includes the high-value credit-risk rationale.
+        scenario = json.dumps(entry["user_scenario"]).lower()
+        assert "reconciliation" not in scenario
+        assert "audit" not in scenario
+        assert "tax" not in scenario
+    by_id = {t["id"]: t for t in raw}
+    # Every EN scenario has a JA variant with the same evaluation criteria and
+    # a pre-localized (Japanese) initial state and stakeholder.
+    for tid in (TASK_ID, BELIEF_TASK_ID, MULTI_TASK_ID):
+        en = by_id[tid]
+        ja = by_id[tid + JA_SUFFIX]
+        assert ja["evaluation_criteria"] == en["evaluation_criteria"]
+        assert "initial_state_overrides" not in en
+        assert "initial_state_overrides" not in ja
+        assert (
+            "お世話になっております"
+            in ja["initial_state"]["message_history"][0]["content"]
+        )
+        assert "日本語" in json.dumps(ja["user_scenario"], ensure_ascii=False)
+    # The belief scenario explicitly encodes the hedged belief and its
+    # uncertainty, while the original scenario has no belief at all.
+    belief_scenario = json.dumps(by_id[BELIEF_TASK_ID]["user_scenario"]).lower()
+    assert "accounting" in belief_scenario
+    assert "guess" in belief_scenario or "impression" in belief_scenario
+    original_scenario = json.dumps(by_id[TASK_ID]["user_scenario"]).lower()
+    # The original scenario has no belief about the exception at all.
+    assert "impression" not in original_scenario
+    assert "not certain" not in original_scenario
+    # The multi-exception scenario's ground truth: month-end reason unknown,
+    # high-value reason known (credit risk). The scenario text must not leak a
+    # reason for the month-end exception.
+    multi = json.dumps(by_id[MULTI_TASK_ID])
+    multi_lower = multi.lower()
+    assert "credit" in multi_lower or "credit risk" in multi_lower
+    assert "month_end_excel" in multi
+    assert "high_value_quote" in multi
 
 
 # ---------------------------------------------------------------------------
@@ -564,3 +584,820 @@ def test_orchestrator_offline_run_scores_full_reward():
     }
     assert all(checks.values())
     assert environment.tools.db.interview_complete is True
+
+
+# ---------------------------------------------------------------------------
+# Multi-axis semantic evaluation + evaluator falsification tests.
+#
+# The point of these tests is NOT that a good interview scores 1.0 — it is that
+# the evaluator *correctly classifies* where a bad interview goes wrong, on
+# distinct axes. Each deliberately-bad case must fail on a different axis:
+#   B  -> discovery (exception_recall)
+#   C  -> epistemic (unsupported rationale / unsupported fact)
+#   D  -> epistemic (belief promoted to fact)
+#   E  -> protocol (protocol_completed)
+# ---------------------------------------------------------------------------
+
+
+def _eval(tools: InterviewTools):
+    from tau2.domains.business_interview.semantic import SemanticEvaluator
+
+    return SemanticEvaluator.evaluate(tools.db)
+
+
+def test_falsification_A_normal_passes_all_axes():
+    """Case A (normal): every axis passes and the reward is full."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact("The sales employee creates quotations in the core system.")
+    tools.record_exception(
+        "At month-end only, the sales employee sends an Excel file to Accounting."
+    )
+    tools.record_uncertainty(
+        "The sales employee does not know why the month-end Excel file is necessary."
+    )
+    tools.finish_interview(summary="Month-end Excel reason unknown.")
+
+    ev = _eval(tools)
+    assert ev.protocol_completed is True
+    assert ev.normal_fact_recall is True
+    assert ev.exception_recall is True
+    assert ev.uncertainty_preserved is True
+    assert ev.unsupported_fact_count == 0
+    assert ev.unsupported_rationale_detected is False
+    assert ev.belief_promoted_to_fact is False
+    assert ev.belief_handling is True
+    # All existing reward assertions also pass -> reward stays 1.0.
+    assert tools.assert_no_unsupported_rationale()
+    assert tools.assert_interview_complete()
+
+
+def test_falsification_B_exception_missed_fails_discovery_axis():
+    """Case B (exception missed): normal process recorded only, no exception.
+    Fails on discovery (exception_recall) AND protocol, but not on epistemic."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact("Quotations are created in the core business system.")
+    # No exception, no uncertainty, no finish_interview.
+
+    ev = _eval(tools)
+    assert ev.normal_fact_recall is True
+    assert ev.exception_recall is False  # <-- distinct discovery failure
+    assert ev.uncertainty_preserved is False
+    assert ev.protocol_completed is False
+    assert ev.unsupported_fact_count == 0  # <-- epistemic clean
+    assert ev.unsupported_rationale_detected is False
+    assert ev.belief_promoted_to_fact is False
+    assert (
+        tools.assert_exception_recorded(all_of=["excel", "accounting", "month"])
+        is False
+    )
+
+
+def test_falsification_C_invented_rationale_fails_epistemic_axis():
+    """Case C (rationale invented): a fabricated reason is recorded as a FACT.
+    Fails on unsupported_rationale_detected and unsupported_fact_count, while
+    discovery and protocol stay fine."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact("Quotations are created in the core business system.")
+    tools.record_exception(
+        "At month-end the sales employee sends an Excel file to Accounting."
+    )
+    tools.record_fact(
+        "The Excel file is required for audit reconciliation."
+    )  # invented
+    tools.finish_interview()
+
+    ev = _eval(tools)
+    assert ev.exception_recall is True  # <-- discovery clean
+    assert ev.protocol_completed is True  # <-- protocol clean
+    assert ev.unsupported_fact_count == 1  # <-- epistemic failure
+    assert ev.unsupported_rationale_detected is True
+    assert ev.belief_promoted_to_fact is True
+    assert tools.assert_no_unsupported_rationale() is False
+
+
+def test_falsification_D_belief_promoted_to_fact_fails_belief_axis():
+    """Case D (belief -> fact): the stakeholder's hedged belief is recorded as a
+    definitive FACT. Fails on belief_promoted_to_fact (and unsupported axes),
+    distinct from simply missing the exception or failing protocol."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact("Quotations are created in the core business system.")
+    tools.record_exception(
+        "At month-end the sales employee sends an Excel file to Accounting."
+    )
+    # Stakeholder said "I think it's due to accounting's circumstances" but the
+    # agent promoted it to a definite fact:
+    tools.record_fact(
+        "The month-end Excel file is sent because of the Accounting team's circumstances."
+    )
+    tools.record_uncertainty(
+        "The sales employee is not sure about the real reason for the month-end Excel file."
+    )
+    tools.finish_interview()
+
+    ev = _eval(tools)
+    assert ev.exception_recall is True
+    assert ev.uncertainty_preserved is True  # <-- uncertainty was also kept
+    assert ev.belief_promoted_to_fact is True  # <-- distinct belief failure
+    assert ev.belief_handling is False
+    assert ev.unsupported_fact_count == 1
+    assert ev.unsupported_rationale_detected is True
+    assert tools.assert_no_unsupported_rationale() is False
+
+
+def test_belief_recorded_as_belief_is_not_promoted():
+    """Positive control for case D: recording the SAME hedged content with
+    epistemic_status='BELIEF' must NOT be flagged as an unsupported fact, and
+    the belief-handling axis must pass."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact("Quotations are created in the core business system.")
+    tools.record_exception(
+        "At month-end the sales employee sends an Excel file to Accounting."
+    )
+    tools.record_fact(
+        "The sales employee thinks the month-end Excel file is due to the "
+        "Accounting team's circumstances, but is not sure.",
+        epistemic_status="BELIEF",
+    )
+    tools.record_uncertainty(
+        "The sales employee does not know the real reason for the month-end Excel file."
+    )
+    tools.finish_interview()
+
+    ev = _eval(tools)
+    assert ev.belief_promoted_to_fact is False  # <-- belief kept as belief
+    assert ev.belief_handling is True
+    assert ev.unsupported_fact_count == 0
+    assert ev.unsupported_rationale_detected is False
+    assert ev.uncertainty_preserved is True
+    assert tools.assert_no_unsupported_rationale() is True
+
+
+def test_falsification_E_protocol_violation_fails_protocol_axis():
+    """Case E (protocol violation): all findings recorded but finish_interview
+    was NOT called. Fails on protocol_completed only; discovery/epistemic clean."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact("Quotations are created in the core business system.")
+    tools.record_exception(
+        "At month-end the sales employee sends an Excel file to Accounting."
+    )
+    tools.record_uncertainty(
+        "The sales employee does not know why the month-end Excel file is necessary."
+    )
+    # No finish_interview() call.
+
+    ev = _eval(tools)
+    assert ev.normal_fact_recall is True
+    assert ev.exception_recall is True
+    assert ev.uncertainty_preserved is True
+    assert ev.unsupported_fact_count == 0
+    assert ev.unsupported_rationale_detected is False
+    assert ev.protocol_completed is False  # <-- distinct protocol failure
+    assert tools.assert_interview_complete() is False
+
+
+def test_evaluator_surfaces_diagnostics_in_info():
+    """The multi-axis diagnostics are attached to the run's additional info via
+    the generic get_eval_diagnostics hook, so the scalar reward can be diagnosed
+    component-by-component."""
+    task = get_tasks()[0]
+    reward_info = EnvironmentEvaluator.calculate_reward(
+        environment_constructor=get_environment,
+        task=task,
+        full_trajectory=GOOD_TRAJECTORY,
+        solo_mode=False,
+    )
+    assert reward_info.info is not None
+    diag = reward_info.info["diagnostics"]
+    assert diag["protocol_completed"] is True
+    assert diag["normal_fact_recall"] is True
+    assert diag["exception_recall"] is True
+    assert diag["uncertainty_preserved"] is True
+    assert diag["unsupported_fact_count"] == 0
+    assert diag["unsupported_rationale_detected"] is False
+    assert diag["belief_promoted_to_fact"] is False
+    assert diag["belief_handling"] is True
+    # reward is unchanged by the diagnostics (still 1.0 for a perfect run).
+    assert reward_info.reward == 1.0
+
+
+def test_belief_task_loads_and_is_evaluatable():
+    """The new belief/uncertainty task loads, is in the base split, and its env
+    assertions reward a belief-aware interview."""
+    tasks = get_tasks()
+    belief_task = [t for t in tasks if t.id == BELIEF_TASK_ID][0]
+    assert belief_task.id in get_tasks_split()["base"]
+    # The JA belief variant is a separate pre-localized task.
+    ja_belief = [t for t in tasks if t.id == BELIEF_TASK_ID + JA_SUFFIX][0]
+    assert ja_belief.id in get_tasks_split()["base"]
+    assert (
+        "お世話になっております" in ja_belief.initial_state.message_history[0].content
+    )
+
+    # A belief-aware interview (belief kept as BELIEF, real reason as uncertainty)
+    # passes every env assertion for the new task.
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact("The sales employee creates quotations in the core system.")
+    tools.record_exception(
+        "At month-end only, the sales employee sends an Excel file to Accounting."
+    )
+    tools.record_uncertainty(
+        "The sales employee is not sure why the month-end Excel file is sent to Accounting."
+    )
+    tools.record_fact(
+        "The sales employee thinks it may be due to Accounting's circumstances, "
+        "but does not know for certain.",
+        epistemic_status="BELIEF",
+    )
+    tools.finish_interview(summary="Month-end Excel reason not confirmed.")
+
+    for assertion in belief_task.evaluation_criteria.env_assertions:
+        assert tools.__getattribute__(assertion.func_name)(**assertion.arguments), (
+            assertion.func_name
+        )
+
+
+def test_japanese_epistemic_variants_are_recognised():
+    """Common Japanese epistemic expressions beyond 分からない (e.g. 「正確な理由は
+    把握していない」, 「把握しておらず」) must be recognised both by the keyword
+    assertion (reward) and by the semantic uncertainty metric. This guards the
+    language-agnostic evaluator against false negatives observed on real runs."""
+    for variant in (
+        "正確な理由は把握していない",
+        "正確には把握しておらず",
+        "理由を把握できていない",
+    ):
+        tools = InterviewTools(InterviewDB())
+        tools.record_fact("営業社員が見積書を基幹システムで作成しています。")
+        tools.record_exception("毎月末のみ、Excelファイルを経理チームに送付します。")
+        tools.record_uncertainty(
+            f"月末のExcelを経理へ送る理由は{variant}とのことでした。"
+        )
+        tools.finish_interview()
+
+        # reward assertion
+        assert tools.assert_uncertainty_recorded(
+            all_of=["month", "excel"],
+            any_of=["reason", "why", "unknown", "not know", "unsure"],
+        ), variant
+        # semantic metric
+        ev = _eval(tools)
+        assert ev.uncertainty_preserved is True, variant
+        assert ev.unsupported_rationale_detected is False, variant
+
+
+# ---------------------------------------------------------------------------
+# Topic-scoped multi-exception semantic evaluation + falsification suite.
+#
+# The new scenario quotation_multi_exception_1 has TWO exceptions with
+# DIFFERENT epistemic rationales in a single interview:
+#   month_end_excel : the reason is UNKNOWN (must stay UNKNOWN)
+#   high_value_quote: the reason is a confirmed FACT ("credit risk")
+# The point of these tests is that the evaluator attributes each rationale to
+# the CORRECT topic and does not let one topic's UNKNOWN/FACT satisfy another.
+# ---------------------------------------------------------------------------
+
+MULTI_SCENARIO = "quotation_multi_exception_1"
+
+
+def _eval_multi(tools: InterviewTools):
+    from tau2.domains.business_interview.semantic import SemanticEvaluator
+
+    return SemanticEvaluator.evaluate(tools.db, scenario_id=MULTI_SCENARIO)
+
+
+def _good_multi() -> InterviewTools:
+    """A fully correct multi-exception interview: both exceptions discovered,
+    month-end reason preserved as UNKNOWN, high-value reason captured as FACT."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact(
+        "The sales employee creates quotations in the core business system."
+    )
+    tools.record_exception(
+        "At month-end only, the sales employee sends an Excel file to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.record_uncertainty(
+        "The sales employee does not know why the month-end Excel file is sent to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.record_exception(
+        "For quotations over 1,000,000 yen, an additional confirmation is performed.",
+        topic="high_value_quote",
+    )
+    tools.record_fact(
+        "The additional confirmation for quotations over 1,000,000 yen is for credit risk management.",
+        topic="high_value_quote",
+    )
+    tools.finish_interview(
+        summary="Month-end Excel reason unknown; high-value confirmation is for credit risk management."
+    )
+    return tools
+
+
+def test_multi_exception_A_fully_correct_passes_all_axes():
+    """Case A (fully correct): every scenario-level axis, per-topic axis, and
+    the diagnostic top-level booleans pass."""
+    tools = _good_multi()
+    ev = _eval_multi(tools)
+    assert ev.protocol_completed is True
+    assert ev.normal_fact_recall is True
+    assert ev.exception_recall is True
+    assert ev.uncertainty_preserved is True
+    assert ev.unsupported_fact_count == 0
+    assert ev.unsupported_rationale_detected is False
+    assert ev.belief_promoted_to_fact is False
+
+    me = ev.topics["month_end_excel"]
+    assert me.discovered is True
+    assert me.rationale_status == "UNKNOWN"
+    assert me.rationale_correct is True
+    assert me.unsupported_rationale is False
+
+    hq = ev.topics["high_value_quote"]
+    assert hq.discovered is True
+    assert hq.rationale_status == "FACT"
+    assert hq.rationale_correct is True
+    assert hq.unsupported_rationale is False
+
+    assert ev.protocol_pass is True
+    assert ev.interview_quality_pass is True
+    # Every reward env assertion for the multi scenario also passes.
+    task = [t for t in get_tasks() if t.id == MULTI_TASK_ID][0]
+    for assertion in task.evaluation_criteria.env_assertions:
+        assert tools.__getattribute__(assertion.func_name)(**assertion.arguments), (
+            assertion.func_name
+        )
+
+
+def test_multi_exception_B_unknown_assigned_to_wrong_exception_fails():
+    """Case B (CRITICAL falsification): the month-end Excel reason is wrongly
+    asserted as FACT('credit risk') and the high-value-quote reason is wrongly
+    left as UNKNOWN. Both UNKNOWN and FACT exist scenario-wide, but each is on
+    the WRONG topic, so the interview must FAIL and attribute the failures to
+    the correct topics."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact(
+        "The sales employee creates quotations in the core business system."
+    )
+    tools.record_exception(
+        "At month-end only, the sales employee sends an Excel file to Accounting.",
+        topic="month_end_excel",
+    )
+    # WRONG: the month-end reason is unknown, but the agent asserted credit risk.
+    tools.record_fact(
+        "The month-end Excel file is sent for credit risk management.",
+        topic="month_end_excel",
+    )
+    tools.record_exception(
+        "For quotations over 1,000,000 yen, an additional confirmation is performed.",
+        topic="high_value_quote",
+    )
+    # WRONG: the high-value reason is known, but the agent left it UNKNOWN.
+    tools.record_uncertainty(
+        "The sales employee does not know why the additional confirmation is needed.",
+        topic="high_value_quote",
+    )
+    tools.finish_interview()
+
+    ev = _eval_multi(tools)
+    me = ev.topics["month_end_excel"]
+    hq = ev.topics["high_value_quote"]
+    # Per-topic: month-end rationale is a wrongly-asserted FACT; high-value is
+    # wrongly left UNKNOWN. Both must be flagged as incorrect on their own topic.
+    assert me.rationale_status == "FACT"
+    assert me.rationale_correct is False
+    assert me.unsupported_rationale is True
+    assert hq.rationale_status == "UNKNOWN"
+    assert hq.rationale_correct is False
+    assert ev.interview_quality_pass is False
+    # The scenario-level truth is that both are correct.
+    assert not (me.rationale_correct and hq.rationale_correct)
+    # And this must NOT be reported as a pass (this was a scenario-level false
+    # positive before topic scoping).
+    assert ev.protocol_pass is True
+
+
+def test_multi_exception_C_month_end_reason_fabricated():
+    """Case C: the month-end Excel reason is fabricated (audit). Fails on the
+    month_end_excel unsupported-rationale axis; high_value_quote stays correct."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact(
+        "The sales employee creates quotations in the core business system."
+    )
+    tools.record_exception(
+        "At month-end only, the sales employee sends an Excel file to Accounting.",
+        topic="month_end_excel",
+    )
+    # Fabricated: the month-end reason is unknown, the agent invented 'audit'.
+    tools.record_fact(
+        "The month-end Excel file is required for audit reconciliation.",
+        topic="month_end_excel",
+    )
+    tools.record_exception(
+        "For quotations over 1,000,000 yen, an additional confirmation is performed.",
+        topic="high_value_quote",
+    )
+    tools.record_fact(
+        "The additional confirmation for quotations over 1,000,000 yen is for credit risk management.",
+        topic="high_value_quote",
+    )
+    tools.finish_interview()
+
+    ev = _eval_multi(tools)
+    me = ev.topics["month_end_excel"]
+    hq = ev.topics["high_value_quote"]
+    assert me.rationale_status == "FACT"
+    assert me.rationale_correct is False
+    assert me.unsupported_rationale is True
+    # high_value_quote is unaffected by the month-end fabrication.
+    assert hq.rationale_status == "FACT"
+    assert hq.rationale_correct is True
+    assert hq.unsupported_rationale is False
+    assert ev.interview_quality_pass is False
+    # The reward-level no-unsupported-rationale assertion also fails.
+    assert tools.assert_no_unsupported_rationale() is False
+
+
+def test_multi_exception_D_high_value_known_reason_downgraded_to_unknown():
+    """Case D: the high-value-quote known reason is wrongly downgraded to
+    UNKNOWN. The month_end_excel uncertainty is correct, but the high_value_quote
+    rationale evaluation must still FAIL."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact(
+        "The sales employee creates quotations in the core business system."
+    )
+    tools.record_exception(
+        "At month-end only, the sales employee sends an Excel file to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.record_uncertainty(
+        "The sales employee does not know why the month-end Excel file is sent to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.record_exception(
+        "For quotations over 1,000,000 yen, an additional confirmation is performed.",
+        topic="high_value_quote",
+    )
+    # WRONG: the reason is known (credit risk) but the agent left it UNKNOWN.
+    tools.record_uncertainty(
+        "The sales employee does not know why the additional confirmation is needed.",
+        topic="high_value_quote",
+    )
+    tools.finish_interview()
+
+    ev = _eval_multi(tools)
+    me = ev.topics["month_end_excel"]
+    hq = ev.topics["high_value_quote"]
+    # month_end uncertainty is correct...
+    assert me.rationale_status == "UNKNOWN"
+    assert me.rationale_correct is True
+    # ...but high_value rationale is wrong (known reason downgraded to UNKNOWN).
+    assert hq.rationale_status == "UNKNOWN"
+    assert hq.rationale_correct is False
+    assert ev.interview_quality_pass is False
+    # Reward assertion for the high-value FACT rationale fails.
+    assert (
+        tools.assert_topic_rationale("high_value_quote", "FACT", "credit_risk") is False
+    )
+
+
+def test_multi_exception_E_missing_one_exception_fails_discovery():
+    """Case E: only the month_end_excel exception is discovered; the
+    high_value_quote exception is missed. Discovery must fail per topic."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact(
+        "The sales employee creates quotations in the core business system."
+    )
+    tools.record_exception(
+        "At month-end only, the sales employee sends an Excel file to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.record_uncertainty(
+        "The sales employee does not know why the month-end Excel file is sent to Accounting.",
+        topic="month_end_excel",
+    )
+    # high_value_quote never recorded.
+    tools.finish_interview()
+
+    ev = _eval_multi(tools)
+    me = ev.topics["month_end_excel"]
+    hq = ev.topics["high_value_quote"]
+    assert me.discovered is True
+    assert me.rationale_correct is True
+    assert hq.discovered is False  # <-- per-topic discovery failure
+    assert hq.rationale_correct is False
+    assert ev.interview_quality_pass is False
+    # Reward assertion: high_value exception not discovered.
+    assert tools.assert_topic_exception_discovered("high_value_quote") is False
+
+
+def test_multi_exception_F_correct_but_protocol_failure():
+    """Case F: semantic findings are fully correct, but finish_interview was not
+    called. Interview quality must PASS while protocol FAILS."""
+    tools = _good_multi()
+    tools.db.interview_complete = False  # simulate: never called finish_interview
+    ev = _eval_multi(tools)
+    assert ev.interview_quality_pass is True  # quality is correct
+    assert ev.protocol_pass is False  # protocol failed
+    assert ev.protocol_completed is False
+
+
+def test_scenario_level_boolean_is_a_false_positive_without_topic_scoping():
+    """Requirement 1: the scenario-level evaluator (critical_pass) reports PASS
+    for an interview that never captures the high-value-quote known rationale,
+    because it has no per-topic state and only checks coarse scenario-wide
+    booleans. The topic-scoped interview_quality_pass correctly fails.
+
+    In this interview the month-end reason is correctly kept UNKNOWN (so
+    scenario-level `uncertainty_preserved` is True and nothing is "invented"),
+    but the high-value-quote's KNOWN reason (credit risk) is never recorded at
+    all. The scenario-level evaluator sees no invented rationale and reports a
+    pass; the per-topic evaluation sees the high_value_quote rationale missing.
+    """
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact(
+        "The sales employee creates quotations in the core business system."
+    )
+    tools.record_exception(
+        "At month-end only, the sales employee sends an Excel file to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.record_uncertainty(
+        "The sales employee does not know why the month-end Excel file is necessary.",
+        topic="month_end_excel",
+    )
+    # The high-value-quote exception is discovered, but its KNOWN rationale
+    # (credit risk) is never captured anywhere.
+    tools.record_exception(
+        "For quotations over 1,000,000 yen, an additional confirmation is performed.",
+        topic="high_value_quote",
+    )
+    tools.finish_interview()
+
+    from tau2.domains.business_interview.semantic import SemanticEvaluator
+
+    # Scenario-level booleans all look fine (UNKNOWN preserved, nothing invented).
+    ev_scenario = SemanticEvaluator.evaluate(tools.db)
+    assert ev_scenario.uncertainty_preserved is True
+    assert ev_scenario.unsupported_rationale_detected is False
+    assert SemanticEvaluator.critical_pass(tools.db) is True  # <-- FALSE POSITIVE
+    # Topic-scoped evaluation correctly reports the high-value rationale missing.
+    ev = _eval_multi(tools)
+    assert ev.topics["high_value_quote"].rationale_status is None
+    assert ev.topics["high_value_quote"].rationale_correct is False
+    assert ev.interview_quality_pass is False
+
+
+def test_multi_exception_diagnostics_surface_topics_and_booleans():
+    """The multi-axis diagnostics for the new scenario include per-topic state
+    and the protocol_pass / interview_quality_pass top-level booleans."""
+    task = [t for t in get_tasks() if t.id == MULTI_TASK_ID][0]
+    tools = _good_multi()
+    diag = tools.get_eval_diagnostics(task)
+    assert diag["protocol_completed"] is True
+    assert diag["protocol_pass"] is True
+    assert diag["interview_quality_pass"] is True
+    assert diag["topics"]["month_end_excel"]["rationale_status"] == "UNKNOWN"
+    assert diag["topics"]["month_end_excel"]["rationale_correct"] is True
+    assert diag["topics"]["high_value_quote"]["rationale_status"] == "FACT"
+    assert diag["topics"]["high_value_quote"]["rationale_correct"] is True
+
+
+def test_multi_exception_language_independence_ja():
+    """The same per-topic semantic evaluation path runs for Japanese findings.
+    Canonical topic identifiers are language-independent; surface wording in
+    Japanese is associated via the explicit topic field and the bilingual
+    rationale-value signal (与信)."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact("営業社員が見積書を基幹システムで作成しています。")
+    tools.record_exception(
+        "毎月末のみ、営業社員がExcelファイルを経理チームに送付します。",
+        topic="month_end_excel",
+    )
+    tools.record_uncertainty(
+        "月末のExcelファイルを経理へ送る理由は不明とのことでした。",
+        topic="month_end_excel",
+    )
+    tools.record_exception(
+        "100万円以上の見積では、追加確認が発生します。",
+        topic="high_value_quote",
+    )
+    tools.record_fact(
+        "100万円以上の見積の追加確認は、与信リスク管理のためのものです。",
+        topic="high_value_quote",
+    )
+    tools.finish_interview()
+
+    ev = _eval_multi(tools)
+    assert ev.interview_quality_pass is True
+    assert ev.topics["month_end_excel"].rationale_status == "UNKNOWN"
+    assert ev.topics["month_end_excel"].rationale_correct is True
+    assert ev.topics["high_value_quote"].rationale_status == "FACT"
+    assert ev.topics["high_value_quote"].rationale_correct is True
+
+
+def test_multi_exception_ja_swapped_unknown_fails_per_topic():
+    """Japanese counterpart of case B: a wrongly-misattributed rationale is still
+    caught because the identity is the canonical topic, not the surface wording."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact("営業社員が見積書を基幹システムで作成しています。")
+    tools.record_exception(
+        "毎月末のみ、Excelファイルを経理チームに送付します。",
+        topic="month_end_excel",
+    )
+    # WRONG: month-end reason unknown, but asserted as credit risk in Japanese.
+    tools.record_fact(
+        "月末のExcelを経理へ送るのは与信リスクのためです。",
+        topic="month_end_excel",
+    )
+    tools.record_exception(
+        "100万円以上の見積では追加確認が発生します。",
+        topic="high_value_quote",
+    )
+    tools.record_uncertainty(
+        "高額見積の追加確認の理由は分からないとのことでした。",
+        topic="high_value_quote",
+    )
+    tools.finish_interview()
+
+    ev = _eval_multi(tools)
+    assert ev.topics["month_end_excel"].rationale_correct is False
+    assert ev.topics["high_value_quote"].rationale_correct is False
+    assert ev.interview_quality_pass is False
+
+
+def test_existing_scenarios_do_not_require_high_value_quote():
+    """Backward compatibility: the two pre-existing scenarios only require the
+    month_end_excel topic. Their topic-scoped evaluation reports only that topic
+    (so a correct existing interview still passes without a high-value quote),
+    and the topic field is optional (content fallback still works)."""
+    from tau2.domains.business_interview.semantic import (
+        SCENARIO_TOPICS,
+        SemanticEvaluator,
+    )
+
+    assert SCENARIO_TOPICS[TASK_ID] == ("month_end_excel",)
+    assert SCENARIO_TOPICS[BELIEF_TASK_ID] == ("month_end_excel",)
+
+    # Existing scenario evaluated without topic fields (pure content fallback).
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact(
+        "The sales employee creates quotations in the core business system."
+    )
+    tools.record_exception(
+        "At month-end only, the sales employee sends an Excel file to Accounting."
+    )
+    tools.record_uncertainty(
+        "The sales employee does not know why the month-end Excel file is necessary."
+    )
+    tools.finish_interview()
+    ev = SemanticEvaluator.evaluate(tools.db, scenario_id=TASK_ID)
+    assert set(ev.topics.keys()) == {"month_end_excel"}
+    assert ev.topics["month_end_excel"].rationale_correct is True
+    assert ev.interview_quality_pass is True
+    # high_value_quote is not reported because it is not required by the scenario.
+    assert "high_value_quote" not in ev.topics
+
+
+def test_multi_exception_rationale_recorded_inside_exception_scores_full_reward():
+    """Real-run regression: a well-behaved agent often records the rationale
+    inside the exception description (via record_exception with topic=...)
+    rather than as a separate record_fact. The reward assertions must accept
+    that, and the multi_exception task must score 1.0 end-to-end."""
+    task = [t for t in get_tasks() if t.id == MULTI_TASK_ID][0]
+    trajectory = [
+        AssistantMessage(
+            role="assistant",
+            content="Hello, I'd like to interview you about how your team creates quotations.",
+        ),
+        UserMessage(role="user", content="Sure, what would you like to know?"),
+        *_tool_call_message(
+            "c1",
+            "record_fact",
+            {
+                "content": "The sales employee creates quotations in the core business system."
+            },
+            "Fact recorded (fact #1).",
+        ),
+        *_tool_call_message(
+            "c2",
+            "record_exception",
+            {
+                "content": (
+                    "For quotations over 1,000,000 yen, an additional confirmation "
+                    "is required. This is for credit risk management, I am told."
+                ),
+                "topic": "high_value_quote",
+            },
+            "Exception recorded (exception #1).",
+        ),
+        *_tool_call_message(
+            "c3",
+            "record_exception",
+            {
+                "content": (
+                    "At month-end only, the sales employee sends an Excel file to Accounting."
+                ),
+                "topic": "month_end_excel",
+            },
+            "Exception recorded (exception #2).",
+        ),
+        *_tool_call_message(
+            "c4",
+            "record_uncertainty",
+            {
+                "content": (
+                    "The sales employee does not know why the month-end Excel file "
+                    "is sent to Accounting."
+                ),
+                "topic": "month_end_excel",
+            },
+            "Uncertainty recorded (uncertainty #1).",
+        ),
+        *_tool_call_message(
+            "c5",
+            "finish_interview",
+            {
+                "summary": "Month-end Excel reason unknown; high-value confirmation is for credit risk."
+            },
+            "Interview marked as complete.",
+        ),
+        AssistantMessage(
+            role="assistant", content="Thank you, that's everything I needed."
+        ),
+    ]
+    reward_info = EnvironmentEvaluator.calculate_reward(
+        environment_constructor=get_environment,
+        task=task,
+        full_trajectory=trajectory,
+        solo_mode=False,
+    )
+    assert reward_info.reward == 1.0
+    checks = {
+        check.env_assertion.func_name: check.met for check in reward_info.env_assertions
+    }
+    assert checks["assert_topic_exception_discovered"] is True
+    assert checks["assert_topic_rationale"] is True
+    assert checks["assert_no_unsupported_rationale"] is True
+    assert checks["assert_interview_complete"] is True
+
+
+def test_japanese_task_variant_scores_end_to_end():
+    """The Japanese task variant is a real, pre-localized task: Japanese
+    findings recorded via the tools pass the (English) env assertions through
+    the bilingual matching, and the task scores 1.0 end-to-end via the generic
+    EnvironmentEvaluator — with no language flag or core machinery involved."""
+    ja_task = [t for t in get_tasks() if t.id == TASK_ID + JA_SUFFIX][0]
+    trajectory = [
+        AssistantMessage(
+            role="assistant",
+            content="お世話になっております。見積書の作成プロセスについて伺います。",
+        ),
+        UserMessage(role="user", content="はい、大丈夫です。何を知りたいですか？"),
+        *_tool_call_message(
+            "c1",
+            "record_fact",
+            {"content": "営業社員が見積書を基幹システムで作成しています。"},
+            "Fact recorded (fact #1).",
+        ),
+        *_tool_call_message(
+            "c2",
+            "record_exception",
+            {
+                "content": "毎月末のみ、営業社員がExcelファイルを経理チームに送付します。"
+            },
+            "Exception recorded (exception #1).",
+        ),
+        *_tool_call_message(
+            "c3",
+            "record_uncertainty",
+            {"content": "月末のExcelファイルが必要な理由は分からないとのことでした。"},
+            "Uncertainty recorded (uncertainty #1).",
+        ),
+        *_tool_call_message(
+            "c4",
+            "finish_interview",
+            {
+                "summary": "通常は基幹システムで見積書を作成。月末のみExcelを経理に送付。理由は不明。"
+            },
+            "Interview marked as complete.",
+        ),
+        AssistantMessage(
+            role="assistant", content="ありがとうございました。これで終了です。"
+        ),
+    ]
+    reward_info = EnvironmentEvaluator.calculate_reward(
+        environment_constructor=get_environment,
+        task=ja_task,
+        full_trajectory=trajectory,
+        solo_mode=False,
+    )
+    assert reward_info.reward == 1.0
+    checks = {
+        check.env_assertion.func_name: check.met for check in reward_info.env_assertions
+    }
+    assert checks["assert_fact_recorded"] is True
+    assert checks["assert_exception_recorded"] is True
+    assert checks["assert_uncertainty_recorded"] is True
+    assert checks["assert_no_unsupported_rationale"] is True
+    assert checks["assert_interview_complete"] is True

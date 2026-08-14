@@ -4,7 +4,6 @@ Helper functions for task loading, run configuration, and metadata.
 
 from typing import Optional
 
-from tau2.data_model.persona import PersonaConfig
 from tau2.data_model.simulation import (
     AgentInfo,
     Info,
@@ -140,13 +139,6 @@ def get_info(config: RunConfig, **overrides) -> Info:
         "speech_complexity",
         config.speech_complexity if is_voice else None,
     )
-
-    # Record the effective user persona config. In text mode the batch-level
-    # persona config is None even when --language is set (build_text_orchestrator
-    # derives it from config.language), so mirror that derivation here for the
-    # saved metadata.
-    if user_persona_config is None and getattr(config, "language", None):
-        user_persona_config = PersonaConfig(language=config.language)
 
     # Use voice guidelines for voice mode
     if is_voice:

@@ -55,11 +55,6 @@ class PersonaConfig(BaseModel):
         description="Whether user can interrupt the agent while they're speaking. Only applicable to streaming/voice users. None (default) means no interruption behavior configured.",
     )
 
-    language: Optional[str] = Field(
-        default=None,
-        description="Language for the user simulator conversation (e.g. 'ja', 'Japanese', 'es').",
-    )
-
     # Future attributes can be added here:
     # technical_skill: TechnicalSkill = TechnicalSkill.AVERAGE
     # speech_quirks: list[str] = []
@@ -88,23 +83,6 @@ You are terse in your responses.
 
 - However, if this is a voice/audio call, you must still sound natural. Do not simply join multiple terse phrases in an unnatural way.
   Example: You should NOT say "Looking for wireless, noise-canceling, over-ear—black." Instead, say "I'm looking for wireless, noise-canceling over-ear headphones in black."
-""".strip()
-            )
-
-        if self.language:
-            lang = self.language
-            if lang.lower() in ("ja", "japanese", "jp", "日本語"):
-                lang_name = "Japanese (日本語)"
-            else:
-                lang_name = lang
-            guidelines.append(
-                f"""
-## LANGUAGE REQUIREMENT
-You MUST conduct the entire conversation in {lang_name}.
-- Respond to all messages in {lang_name}, expressing all facts and answers from your scenario in natural {lang_name}.
-- This applies to every message you send, including the very first one: never open the conversation in English.
-- Do NOT switch to English even if parts of your scenario instructions are in English.
-- Control tokens like ###STOP###, ###TRANSFER###, and ###OUT-OF-SCOPE### must remain exactly as specified in ASCII.
 """.strip()
             )
 

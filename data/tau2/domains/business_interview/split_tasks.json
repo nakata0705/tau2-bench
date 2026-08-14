@@ -1,5 +1,10 @@
 {
   "base": [
-    "quotation_process_interview_1"
+    "quotation_process_interview_1",
+    "quotation_process_interview_1_ja",
+    "quotation_belief_uncertainty_1",
+    "quotation_belief_uncertainty_1_ja",
+    "quotation_multi_exception_1",
+    "quotation_multi_exception_1_ja"
   ]
 }

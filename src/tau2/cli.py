@@ -245,15 +245,6 @@ def add_run_args(parser):
         '\'{"verbosity": {"minimal": 0.8, "standard": 0.2}}\'. '
         "If not provided, uses default behavior (standard verbosity).",
     )
-    parser.add_argument(
-        "--language",
-        type=str,
-        default=None,
-        help="Language for the conversation (e.g., 'ja', 'Japanese', 'es'). "
-        "Both the agent and the user simulator will conduct the conversation in this language. "
-        "Note: for the business_interview domain the recorded findings are evaluated "
-        "with bilingual (English/Japanese) keyword checks.",
-    )
 
     # Audio-native mode arguments
     parser.add_argument(
@@ -692,7 +683,6 @@ def main():
             hallucination_retries=args.hallucination_retries,
             retrieval_config=args.retrieval_config,
             retrieval_config_kwargs=args.retrieval_config_kwargs,
-            language=args.language,
         )
 
         if audio_native_config is not None:

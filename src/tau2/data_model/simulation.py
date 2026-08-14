@@ -458,13 +458,6 @@ class BaseRunConfig(BaseModel):
     ]
 
     # ---- Misc ----
-    language: Annotated[
-        Optional[str],
-        Field(
-            description="Language for the conversation (e.g., 'ja', 'Japanese'). The agent and user simulator will converse in this language.",
-            default=None,
-        ),
-    ]
     is_remote: Annotated[
         bool,
         Field(
