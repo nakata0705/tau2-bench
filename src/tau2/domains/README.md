@@ -67,6 +67,7 @@ pytest tests/test_domains/test_<domain_name>
 | `retail` | Order management, returns, and product inquiries |
 | `telecom` | Telecom account management and troubleshooting |
 | `banking_knowledge` | Knowledge-retrieval-based banking customer service with configurable RAG pipelines |
+| `business_interview` | Business-process interview where the agent discovers a current process by interviewing a stakeholder |
 
 ### `banking_knowledge` Domain
 

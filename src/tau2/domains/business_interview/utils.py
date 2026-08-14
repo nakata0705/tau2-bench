@@ -1,0 +1,5 @@
+from tau2.utils.utils import DATA_DIR
+
+BUSINESS_INTERVIEW_DATA_DIR = DATA_DIR / "tau2" / "domains" / "business_interview"
+BUSINESS_INTERVIEW_POLICY_PATH = BUSINESS_INTERVIEW_DATA_DIR / "policy.md"
+BUSINESS_INTERVIEW_TASK_SET_PATH = BUSINESS_INTERVIEW_DATA_DIR / "tasks.json"
