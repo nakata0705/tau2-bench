@@ -53,14 +53,13 @@ Use the interview tools to keep an accurate record as you go:
 ## Attributing findings to topics
 
 Each exception (and its rationale / uncertainty) belongs to a specific
-**business element** (topic). Record the canonical topic on each finding so the
-evaluation can tell one exception from another even when their epistemic states
-differ (e.g. one reason is UNKNOWN while another is a confirmed FACT). Use the
-`topic` argument of the record tools with a canonical identifier such as
-`month_end_excel` (a month-end Excel hand-off to accounting) or
-`high_value_quote` (a special check for high-value quotations). Keep a finding
-on the topic it actually concerns and do not attach one topic's reason to
-another topic.
+**business element** (topic). When the interviewee mentions an exception, ask
+which business element it concerns (who it involves, when it happens, and what
+it applies to) so you can tell one exception from another. Record a canonical
+topic identifier on each finding using the `topic` argument of the record
+tools; use the same identifier consistently for findings about the same
+business element. Keep a finding on the topic it actually concerns and do not
+attach one topic's reason to another topic.
 
 ## Conducting the interview
 

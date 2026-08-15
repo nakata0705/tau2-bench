@@ -82,10 +82,13 @@ class InterviewTools(ToolKitBase):
             epistemic_status: "FACT" for statements the interviewee asserted as
                 certain, or "BELIEF" for statements they presented as their own
                 opinion/guess. Defaults to "FACT".
-            topic: Optional canonical topic this finding is about (e.g.
-                "month_end_excel", "high_value_quote"). When you can identify
-                which business element a finding belongs to, set it so the
-                evaluation can attribute the finding correctly. Optional.
+            topic: Optional canonical identifier for the business element
+                (exception process) this finding is about. When the interviewee
+                mentions an exception and you can identify the business element
+                it belongs to, set a canonical topic identifier so the
+                evaluation can attribute the finding to the right element. Use
+                the same identifier consistently for findings about the same
+                element. Optional.
 
         Returns:
             A confirmation message.
@@ -117,9 +120,10 @@ class InterviewTools(ToolKitBase):
 
         Args:
             content: The exception process as described by the interviewee.
-            topic: Optional canonical topic this exception is about (e.g.
-                "month_end_excel", "high_value_quote"). Set it when you can
-                identify the business element. Optional.
+            topic: Optional canonical identifier for the business element
+                (exception process) this exception is about. Set it when you can
+                identify the business element and use it consistently for
+                findings about the same element. Optional.
 
         Returns:
             A confirmation message.
@@ -139,8 +143,8 @@ class InterviewTools(ToolKitBase):
 
         Args:
             content: What the interviewee does not know.
-            topic: Optional canonical topic this uncertainty is about (e.g.
-                "month_end_excel"). Set it when you can identify the business
+            topic: Optional canonical identifier for the business element this
+                uncertainty is about. Set it when you can identify the business
                 element. Optional.
 
         Returns:
@@ -235,21 +239,31 @@ class InterviewTools(ToolKitBase):
         cause). Promoting a belief to a FACT, or inventing a reason, is flagged.
         """
 
-        # Facts: only flag a rationale when it was recorded as a FACT.
+        # Facts: only flag a rationale when it was recorded as a FACT. The
+        # resolved topic cross-checks the reported ``topic`` against the
+        # content, so a finding whose reported topic contradicts its content
+        # (topic misattribution) is not silently attributed to the reported
+        # topic.
         for fact in self.db.facts:
             if is_unsupported_rationale(
-                fact.epistemic_status, fact.content, topic=fact.topic
+                fact.epistemic_status,
+                fact.content,
+                topic=topic_of_finding(fact.topic, fact.content),
             ):
                 return False
         # Exceptions / uncertainties: never BELIEF, always subject to the rule.
         for exception in self.db.exceptions:
             if is_unsupported_rationale(
-                EpistemicStatus.EXCEPTION, exception.content, topic=exception.topic
+                EpistemicStatus.EXCEPTION,
+                exception.content,
+                topic=topic_of_finding(exception.topic, exception.content),
             ):
                 return False
         for uncertainty in self.db.uncertainties:
             if is_unsupported_rationale(
-                EpistemicStatus.UNKNOWN, uncertainty.content, topic=uncertainty.topic
+                EpistemicStatus.UNKNOWN,
+                uncertainty.content,
+                topic=topic_of_finding(uncertainty.topic, uncertainty.content),
             ):
                 return False
         if self.db.summary and is_unsupported_rationale(

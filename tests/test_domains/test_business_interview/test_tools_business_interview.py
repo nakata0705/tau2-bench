@@ -1401,3 +1401,408 @@ def test_japanese_task_variant_scores_end_to_end():
     assert checks["assert_uncertainty_recorded"] is True
     assert checks["assert_no_unsupported_rationale"] is True
     assert checks["assert_interview_complete"] is True
+
+
+# ---------------------------------------------------------------------------
+# Hardening falsification suite (ground-truth leakage + evaluator false
+# positives). These tests encode the P0/P1/P2/P3 hardening requirements:
+#   L1/L2 no hidden-exception-identity leakage in policy / tool descriptions
+#   J1  JA multi-exception: a missed topic stays required (quality FAIL)
+#   U1/U2 UNKNOWN vs NONE distinction for unknown-rationale topics
+#   N1  exception-rationale FACT alone does not set normal_fact_recall
+#   T1/T2/T3 topic-attribution robustness (reported vs content topic)
+#   K1/K2 known-rationale precision (expected rationale captured AND no extra)
+# ---------------------------------------------------------------------------
+
+# Canonical scenario ids for EN and JA variants must resolve to the SAME
+# canonical ground truth (minimal domain-local canonicalization).
+from tau2.domains.business_interview.semantic import (  # noqa: E402
+    SCENARIO_TOPICS,
+    SemanticEvaluator,
+    canonical_scenario_id,
+)
+
+# --- L1 / L2: hidden exception identity must not leak to the agent ----------
+
+# Scenario-specific identities the agent must not be handed before it discovers
+# them: the canonical topic ids and the concrete month-end-Excel / high-value
+# / credit-risk specifics.
+HIDDEN_IDENTITY_TERMS = (
+    "month_end_excel",
+    "high_value_quote",
+    "month-end",
+    "high-value",
+    "credit risk",
+)
+
+
+def test_L1_policy_has_no_hidden_exception_identity():
+    """The agent-visible policy must contain only general BA guidance — no
+    canonical topic ids and no concrete exception (month-end Excel, high-value
+    quote, credit risk) hints that would let the agent know the answer before
+    discovering it."""
+    policy = BUSINESS_INTERVIEW_POLICY_PATH.read_text().lower()
+    for term in HIDDEN_IDENTITY_TERMS:
+        assert term not in policy, f"policy leaks hidden identity term: {term}"
+    # General BA behaviour must remain (discovery guidance, not the answer).
+    assert "exceptions" in policy
+    assert "uncertainty" in policy
+
+
+def test_L2_agent_tool_descriptions_have_no_hidden_exception_identity():
+    """The agent-visible record/finish tool descriptions must not reveal the
+    hidden exception identities either."""
+    docs = "\n".join(
+        [
+            InterviewTools.record_fact.__doc__ or "",
+            InterviewTools.record_exception.__doc__ or "",
+            InterviewTools.record_uncertainty.__doc__ or "",
+            InterviewTools.finish_interview.__doc__ or "",
+        ]
+    ).lower()
+    for term in HIDDEN_IDENTITY_TERMS:
+        assert term not in docs, f"tool description leaks hidden identity: {term}"
+    # The tools still describe a canonical topic concept generically.
+    assert "canonical" in docs
+
+
+# --- J1: JA canonical scenario uses the same required topics as EN -----------
+
+
+def test_JA_canonicalization_maps_to_english_scenario():
+    assert canonical_scenario_id("quotation_multi_exception_1_ja") == (
+        "quotation_multi_exception_1"
+    )
+    assert canonical_scenario_id("quotation_multi_exception_1") == (
+        "quotation_multi_exception_1"
+    )
+    # EN and JA resolve to the same required topics.
+    en = SCENARIO_TOPICS[canonical_scenario_id("quotation_multi_exception_1")]
+    ja = SCENARIO_TOPICS[canonical_scenario_id("quotation_multi_exception_1_ja")]
+    assert en == ja == ("month_end_excel", "high_value_quote")
+
+
+def test_J1_ja_multi_exception_missed_topic_stays_required():
+    """JA multi-exception: even if high_value_quote is completely missed, it
+    must stay in the required topics and interview_quality_pass must be False
+    (no false positive from a missed topic disappearing from the diagnostics)."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact("営業社員が見積書を基幹システムで作成しています。")
+    tools.record_exception(
+        "毎月末のみ、Excelファイルを経理チームに送付します。",
+        topic="month_end_excel",
+    )
+    tools.record_uncertainty(
+        "月末のExcelを経理へ送る理由は不明とのことでした。",
+        topic="month_end_excel",
+    )
+    tools.finish_interview()
+
+    ev = SemanticEvaluator.evaluate(
+        tools.db, scenario_id="quotation_multi_exception_1_ja"
+    )
+    assert "high_value_quote" in ev.topics  # <-- still required
+    assert ev.topics["high_value_quote"].discovered is False
+    assert ev.interview_quality_pass is False
+    # The reward-level per-topic discovery assertion also fails.
+    assert tools.assert_topic_exception_discovered("high_value_quote") is False
+
+
+# --- U1 / U2: UNKNOWN vs NONE for unknown-rationale topics -------------------
+
+
+def test_U1_unknown_topic_rationale_unrecorded_is_none_incorrect():
+    """Exception discovered but its (unknown) rationale was never checked /
+    recorded -> NONE, and that must be INCORRECT (not a pass)."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact("The sales employee creates quotations in the core system.")
+    tools.record_exception(
+        "At month-end only, the sales employee sends an Excel file to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.finish_interview()
+
+    ev = SemanticEvaluator.evaluate(tools.db, scenario_id=TASK_ID)
+    me = ev.topics["month_end_excel"]
+    assert me.rationale_status is None  # <-- NONE (not checked)
+    assert me.rationale_correct is False  # <-- NONE is NOT correct
+    assert ev.interview_quality_pass is False
+    # The reward assertion that requires UNKNOWN also fails.
+    assert tools.assert_topic_rationale("month_end_excel", "UNKNOWN") is False
+
+
+def test_U2_unknown_topic_rationale_recorded_unknown_is_correct():
+    """Exception discovered AND the reason investigated and preserved as
+    UNKNOWN -> correct (the investigated-unknown path)."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact("The sales employee creates quotations in the core system.")
+    tools.record_exception(
+        "At month-end only, the sales employee sends an Excel file to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.record_uncertainty(
+        "The sales employee does not know why the month-end Excel file is "
+        "sent to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.finish_interview()
+
+    ev = SemanticEvaluator.evaluate(tools.db, scenario_id=TASK_ID)
+    me = ev.topics["month_end_excel"]
+    assert me.rationale_status == "UNKNOWN"
+    assert me.rationale_correct is True
+    assert ev.interview_quality_pass is True
+    assert tools.assert_topic_rationale("month_end_excel", "UNKNOWN") is True
+
+
+# --- N1: exception-rationale FACT alone must not set normal_fact_recall ------
+
+
+def test_N1_exception_rationale_fact_only_does_not_set_normal_fact_recall():
+    """Recording ONLY the high-value credit-risk rationale (a FACT attributed to
+    an exception topic) must NOT be counted as a normal-process fact. The normal
+    process must actually be recorded."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_exception(
+        "For quotations over 1,000,000 yen, an additional confirmation is performed.",
+        topic="high_value_quote",
+    )
+    tools.record_fact(
+        "The additional confirmation for quotations over 1,000,000 yen is for "
+        "credit risk management.",
+        topic="high_value_quote",
+    )
+    tools.finish_interview()
+
+    ev = SemanticEvaluator.evaluate(tools.db, scenario_id=MULTI_SCENARIO)
+    assert ev.normal_fact_recall is False  # <-- no normal process recorded
+
+
+def test_normal_process_fact_sets_normal_fact_recall():
+    """Positive control for N1: recording an actual normal-process fact (not an
+    exception rationale) sets normal_fact_recall."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact("The sales employee creates quotations in the core system.")
+    tools.record_fact(
+        "The additional confirmation for quotations over 1,000,000 yen is for "
+        "credit risk management.",
+        topic="high_value_quote",
+    )
+    ev = SemanticEvaluator.evaluate(tools.db, scenario_id=MULTI_SCENARIO)
+    assert ev.normal_fact_recall is True
+
+
+# --- T1 / T2 / T3: topic-attribution robustness ------------------------------
+
+
+def test_T1_fabricated_month_end_rationale_disguised_as_high_value_fails():
+    """A fabricated month-end rationale disguised with topic=high_value_quote
+    (to hide it under a known-rationale topic) must still FAIL: the content
+    clearly indicates month_end_excel, so the reported topic is not trusted and
+    the invented rationale is caught."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact("The sales employee creates quotations in the core system.")
+    tools.record_exception(
+        "At month-end only, the sales employee sends an Excel file to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.record_uncertainty(
+        "The sales employee does not know why the month-end Excel file is sent "
+        "to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.record_exception(
+        "For quotations over 1,000,000 yen, an additional confirmation is performed.",
+        topic="high_value_quote",
+    )
+    tools.record_fact(
+        "The additional confirmation for quotations over 1,000,000 yen is for "
+        "credit risk management.",
+        topic="high_value_quote",
+    )
+    # DISGUISED: fabricated month-end reason tagged high_value_quote.
+    tools.record_fact(
+        "The month-end Excel file is sent to Accounting for audit reconciliation.",
+        topic="high_value_quote",
+    )
+    tools.finish_interview()
+
+    ev = SemanticEvaluator.evaluate(tools.db, scenario_id=MULTI_SCENARIO)
+    # The disguised finding is not credited to high_value_quote (content clearly
+    # says month-end), so high_value stays correct, but the invented rationale is
+    # detected.
+    assert ev.topics["high_value_quote"].rationale_correct is True
+    assert ev.unsupported_rationale_detected is True
+    assert ev.interview_quality_pass is False
+    assert tools.assert_no_unsupported_rationale() is False
+
+
+def test_T2_high_value_rationale_misattributed_to_month_end_fails():
+    """A correct high-value credit-risk rationale tagged topic=month_end_excel
+    must NOT satisfy the high-value requirement (misattribution is not
+    rewarded). The content clearly indicates high_value_quote, so the reported
+    month_end topic is not trusted and the finding is left unassociated."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact("The sales employee creates quotations in the core system.")
+    tools.record_exception(
+        "At month-end only, the sales employee sends an Excel file to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.record_uncertainty(
+        "The sales employee does not know why the month-end Excel file is sent "
+        "to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.record_exception(
+        "For quotations over 1,000,000 yen, an additional confirmation is performed.",
+        topic="high_value_quote",
+    )
+    # MISATTRIBUTED: correct high-value rationale tagged as month_end_excel.
+    tools.record_fact(
+        "The additional confirmation for quotations over 1,000,000 yen is for "
+        "credit risk management.",
+        topic="month_end_excel",
+    )
+    tools.finish_interview()
+
+    ev = SemanticEvaluator.evaluate(tools.db, scenario_id=MULTI_SCENARIO)
+    hq = ev.topics["high_value_quote"]
+    assert hq.rationale_correct is False  # <-- high-value rationale not captured
+    assert ev.interview_quality_pass is False
+
+
+def test_T3_consistent_content_and_reported_topic_passes():
+    """When the reported topic matches the content (no misattribution), the
+    finding is trusted and the interview passes."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact("The sales employee creates quotations in the core system.")
+    tools.record_exception(
+        "At month-end only, the sales employee sends an Excel file to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.record_uncertainty(
+        "The sales employee does not know why the month-end Excel file is sent "
+        "to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.record_exception(
+        "For quotations over 1,000,000 yen, an additional confirmation is performed.",
+        topic="high_value_quote",
+    )
+    tools.record_fact(
+        "The additional confirmation for quotations over 1,000,000 yen is for "
+        "credit risk management.",
+        topic="high_value_quote",
+    )
+    tools.finish_interview()
+
+    ev = SemanticEvaluator.evaluate(tools.db, scenario_id=MULTI_SCENARIO)
+    assert ev.interview_quality_pass is True
+    assert ev.topics["month_end_excel"].rationale_correct is True
+    assert ev.topics["high_value_quote"].rationale_correct is True
+
+
+# --- K1 / K2: known-rationale precision --------------------------------------
+
+
+def test_K1_known_rationale_credit_only_passes():
+    """Known-rationale topic (high_value_quote): the expected rationale (credit
+    risk) captured and nothing extra -> PASS."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact("The sales employee creates quotations in the core system.")
+    tools.record_exception(
+        "At month-end only, the sales employee sends an Excel file to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.record_uncertainty(
+        "The sales employee does not know why the month-end Excel file is sent "
+        "to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.record_exception(
+        "For quotations over 1,000,000 yen, an additional confirmation is performed.",
+        topic="high_value_quote",
+    )
+    tools.record_fact(
+        "The additional confirmation for quotations over 1,000,000 yen is for "
+        "credit risk management.",
+        topic="high_value_quote",
+    )
+    tools.finish_interview()
+
+    ev = SemanticEvaluator.evaluate(tools.db, scenario_id=MULTI_SCENARIO)
+    hq = ev.topics["high_value_quote"]
+    assert hq.rationale_status == "FACT"
+    assert hq.rationale_correct is True
+    assert hq.unsupported_rationale is False
+    assert ev.interview_quality_pass is True
+    assert tools.assert_topic_rationale("high_value_quote", "FACT", "credit_risk")
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "credit risk and tax reporting",
+        "credit risk and audit reconciliation",
+    ],
+)
+def test_K2_known_rationale_credit_plus_unsupported_extra_fails(extra):
+    """Known-rationale topic (high_value_quote): adding an unsupported extra
+    rationale on top of the expected one must FAIL (precision: expected captured
+    AND unsupported additional absent)."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact("The sales employee creates quotations in the core system.")
+    tools.record_exception(
+        "At month-end only, the sales employee sends an Excel file to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.record_uncertainty(
+        "The sales employee does not know why the month-end Excel file is sent "
+        "to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.record_exception(
+        "For quotations over 1,000,000 yen, an additional confirmation is performed.",
+        topic="high_value_quote",
+    )
+    tools.record_fact(
+        f"The additional confirmation is for {extra}.",
+        topic="high_value_quote",
+    )
+    tools.finish_interview()
+
+    ev = SemanticEvaluator.evaluate(tools.db, scenario_id=MULTI_SCENARIO)
+    hq = ev.topics["high_value_quote"]
+    assert hq.rationale_correct is False
+    assert hq.unsupported_rationale is True
+    assert ev.interview_quality_pass is False
+    assert tools.assert_no_unsupported_rationale() is False
+
+
+# --- P3: EN-only / JA-only splits --------------------------------------------
+
+
+def test_en_ja_only_splits():
+    """The base split keeps all six tasks (backward compatible); base_en and
+    base_ja provide EN-only / JA-only runs for easy comparison."""
+    splits = get_tasks_split()
+    assert set(splits["base"]) == set(ALL_TASK_IDS)
+    assert set(splits["base_en"]) == {
+        "quotation_process_interview_1",
+        "quotation_belief_uncertainty_1",
+        "quotation_multi_exception_1",
+    }
+    assert set(splits["base_ja"]) == {
+        "quotation_process_interview_1_ja",
+        "quotation_belief_uncertainty_1_ja",
+        "quotation_multi_exception_1_ja",
+    }
+    # Loading each split returns exactly the right task ids.
+    assert [t.id for t in get_tasks(task_split_name="base_en")] == sorted(
+        splits["base_en"]
+    ) or set(t.id for t in get_tasks(task_split_name="base_en")) == set(
+        splits["base_en"]
+    )
+    assert set(t.id for t in get_tasks(task_split_name="base_ja")) == set(
+        splits["base_ja"]
+    )

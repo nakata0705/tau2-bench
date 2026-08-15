@@ -93,6 +93,39 @@ RATIONALE_SIGNALS_JP = (
     "でしょう",
 )
 
+# Additional invented rationale concepts for the *known-rationale* topic check.
+# A known-rationale topic (e.g. the high-value-quote ``credit risk`` reason) is
+# only correct when the expected rationale value is captured AND no *other*
+# rationale is asserted. This is a deliberately small, bounded set of common
+# business reasons the benchmark stakeholder never states; it is NOT an
+# unbounded forbidden-word dictionary. It is only consulted for known-rationale
+# topics, so legitimate exception discovery text never trips it.
+EXTRA_RATIONALE_SIGNALS = (
+    # English
+    "audit",
+    "reconciliation",
+    "reconcile",
+    "tax",
+    "compliance",
+    "comply",
+    "reporting",
+    "closing",
+    "balance",
+    "regulation",
+    "regulatory",
+    "legal",
+    # Japanese
+    "監査",
+    "照合",
+    "税務",
+    "コンプライアンス",
+    "法令",
+    "報告",
+    "決算",
+    "規制",
+    "法令遵守",
+)
+
 # Keywords that identify a finding as being about the exception process. The
 # no-unsupported-rationale check is scoped to these findings: the interviewee
 # never provides a rationale for the exception, while purpose statements about
@@ -321,27 +354,89 @@ SCENARIO_TOPICS: dict[str, tuple[Topic, ...]] = {
     ),
 }
 
+# Suffix that marks a Japanese (pre-localized) scenario variant of an English
+# scenario id. The EN and JA variants are the SAME canonical scenario with the
+# SAME ground truth, so the evaluator canonicalizes the id before looking up its
+# required topics. This is a minimal, domain-local canonicalization (no generic
+# i18n framework).
+JA_SCENARIO_SUFFIX = "_ja"
 
-def topic_of_finding(topic: Optional[Topic], content: str) -> Optional[Topic]:
-    """Resolve the canonical topic a finding is about.
 
-    An explicit canonical ``topic`` field always wins (this is the preferred,
-    language-independent identity). Otherwise the finding's content is matched
-    against each topic's bilingual identity signals as a backward-compatible
-    fallback. If no topic or more than one topic matches, None is returned
-    (the finding is left unassociated rather than guessed).
+def canonical_scenario_id(scenario_id: Optional[str]) -> Optional[str]:
+    """Map a Japanese scenario variant to its canonical (English) scenario id.
+
+    EN/JA variants share one canonical scenario ground truth. This is the only
+    place the language suffix is understood; it is intentionally minimal and
+    domain-local so that e.g. ``quotation_multi_exception_1_ja`` resolves to the
+    same required topics as ``quotation_multi_exception_1`` (and a missed topic
+    stays required, never disappearing from the diagnostics).
     """
-    if topic is not None:
-        return topic
+    if scenario_id is None:
+        return None
+    if scenario_id.endswith(JA_SCENARIO_SUFFIX):
+        return scenario_id[: -len(JA_SCENARIO_SUFFIX)]
+    return scenario_id
+
+
+def _content_inferred_topics(content: str) -> list[Topic]:
+    """The topics whose identity signals are unambiguous in ``content``."""
     lowered = content.lower()
-    matches = [
+    return [
         spec.topic
         for spec in TOPIC_SPECS.values()
         if any(sig in lowered for sig in spec.content_signals)
     ]
-    if len(matches) == 1:
-        return matches[0]
+
+
+def topic_of_finding(topic: Optional[Topic], content: str) -> Optional[Topic]:
+    """Resolve the canonical topic a finding is about.
+
+    An explicit canonical ``topic`` field is the preferred identity, but it is
+    only trusted when the finding's content does not unambiguously point at a
+    *different* topic. If the content clearly identifies another topic, the
+    reported topic is not reliable (the agent may be misattributing), so the
+    finding is left unassociated (None) rather than credited to either topic.
+    If the content matches no topic (or matches more than one, i.e. it is
+    ambiguous), the reported topic is trusted and no guess is made from the
+    content. When no explicit topic is given, the content is matched against
+    each topic's bilingual identity signals as a backward-compatible fallback
+    (single, unambiguous match only).
+    """
+    inferred = _content_inferred_topics(content)
+    if topic is not None:
+        if len(inferred) == 1 and inferred[0] != topic:
+            # Content clearly indicates a different topic than the reported one:
+            # do not unconditionally trust the reported topic (topic-attribution
+            # robustness) and do not reward a misattribution to the content
+            # topic either. Leave it unassociated so it satisfies neither.
+            return None
+        return topic
+    if len(inferred) == 1:
+        return inferred[0]
     return None
+
+
+def is_exception_related(content: str, topic: Optional[Topic] = None) -> bool:
+    """True if a finding concerns an exception process.
+
+    A finding is exception-related if it is attributed to a canonical exception
+    topic (via ``topic_of_finding``, which already cross-checks reported vs
+    content topic) or, as a backward-compatible fallback, if its content matches
+    the legacy month/excel/accounting exception keywords. This is broader than
+    ``is_exception_content`` so that high-value-quote findings (whose surface
+    text does not mention month/Excel/Accounting) are also treated as exceptions
+    for the scenario-level epistemic checks.
+    """
+    return topic_of_finding(topic, content) is not None or is_exception_content(content)
+
+
+def asserts_extra_rationale(content: str) -> bool:
+    """True if the content asserts a rationale other than a topic's canonical
+    value (see :data:`EXTRA_RATIONALE_SIGNALS`). Used to catch an unsupported
+    *additional* rationale on a known-rationale topic (e.g. ``credit risk`` plus
+    an invented ``tax reporting`` / ``audit reconciliation`` reason)."""
+    lowered = content.lower()
+    return any(sig in lowered for sig in EXTRA_RATIONALE_SIGNALS)
 
 
 def topic_spec(topic: Optional[Topic]) -> Optional[TopicSpec]:
@@ -435,7 +530,13 @@ def is_unsupported_rationale(
         if spec is None:
             return False
         if spec.expected_rationale_status == EpistemicStatus.FACT:
-            # This topic's reason is confirmed; asserting it is supported.
+            # Known-rationale topic: asserting its confirmed reason is supported,
+            # but adding an unsupported *additional* rationale (a reason other
+            # than the canonical value) is not. Kept to a small curated signal
+            # set so e.g. "credit risk and tax reporting" is caught without a
+            # huge forbidden-word dictionary.
+            if asserts_rationale_or_value(content) and asserts_extra_rationale(content):
+                return True
             return False
         if not asserts_rationale_or_value(content):
             return False
@@ -500,12 +601,18 @@ class SemanticEvaluator:
             )
 
         # ---- Scenario-level discovery / epistemic (backward compatible) ----
+        # A finding that is attributed to a canonical *exception* topic (or that
+        # matches the legacy exception keywords) is exception-related. It must
+        # never count as a normal-process fact, and it is what the epistemic
+        # (no-unsupported-rationale / uncertainty) checks scan. The resolved
+        # topic already cross-checks reported vs content so a misattributed
+        # finding is not counted as a normal fact either.
         normal_fact_recall = any(
-            kind == EpistemicStatus.FACT and not is_exception_content(content)
-            for kind, content, _ in canonical
+            kind == EpistemicStatus.FACT and not is_exception_related(content, topic)
+            for kind, content, topic in canonical
         )
         exception_recall = any(
-            is_exception_content(content) for _, content, _ in canonical
+            is_exception_related(content, topic) for _, content, topic in canonical
         )
 
         unsupported_fact_count = 0
@@ -514,7 +621,7 @@ class SemanticEvaluator:
         uncertainty_preserved = False
 
         for kind, content, topic in canonical:
-            if not is_exception_content(content):
+            if not is_exception_related(content, topic):
                 continue
             if kind == EpistemicStatus.UNKNOWN and expresses_uncertainty(content):
                 # The unknown reason was preserved as an uncertainty.
@@ -573,7 +680,7 @@ class SemanticEvaluator:
     ) -> dict[str, TopicEvaluation]:
         """Evaluate each topic required by the scenario (or inferred from the
         findings when no scenario id is supplied)."""
-        required = list(SCENARIO_TOPICS.get(scenario_id, ()))
+        required = list(SCENARIO_TOPICS.get(canonical_scenario_id(scenario_id), ()))
         if not required:
             inferred = {topic for _, _, topic in canonical if topic is not None}
             # Keep a deterministic order consistent with TOPIC_SPECS.
@@ -646,16 +753,20 @@ class SemanticEvaluator:
             rationale_status = None
 
         if spec.expected_rationale_status == EpistemicStatus.UNKNOWN:
-            # Unknown-rationale topic: correct iff the reason was NOT asserted
-            # as a certainty (kept UNKNOWN or left NONE) and nothing invented.
+            # Unknown-rationale topic: correct iff the reason was explicitly
+            # investigated and preserved as UNKNOWN, and nothing invented. A
+            # finding that leaves the rationale unrecorded (NONE) is NOT correct:
+            # NONE means the agent did not check, UNKNOWN means they checked and
+            # it is unknown.
             rationale_correct = (
-                rationale_status in (EpistemicStatus.UNKNOWN.value, None)
-                and not unsupported
+                rationale_status == EpistemicStatus.UNKNOWN.value and not unsupported
             )
         else:
             # Known-rationale (FACT) topic: correct iff a FACT rationale that
-            # carries the expected rationale value was captured and nothing was
-            # improperly downgraded to UNKNOWN.
+            # carries the expected rationale value was captured, nothing was
+            # improperly downgraded to UNKNOWN, and no unsupported *additional*
+            # rationale was invented (precision: expected rationale captured AND
+            # unsupported extra absent).
             captured_value = any(
                 kind in (EpistemicStatus.FACT, EpistemicStatus.EXCEPTION)
                 and asserts_rationale_or_value(content)

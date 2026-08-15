@@ -28,13 +28,23 @@ class Topic(str, Enum):
 class EpistemicStatus(str, Enum):
     """The epistemic status of a recorded finding.
 
-    Used to distinguish what is objectively true (FACT), what the stakeholder
-    believes but does not know for certain (BELIEF), what is genuinely unknown
-    (UNKNOWN / uncertainty), and what is a process exception (EXCEPTION).
+    These describe how the *source* (the stakeholder) presented the claim;
+    objective correctness is a separate concern decided by the evaluator by
+    comparing findings against the benchmark ground truth.
+
+    - ``FACT``: the stakeholder asserted the claim as certain / definitive.
+    - ``BELIEF``: the stakeholder presented the claim as their own opinion,
+      guess, or impression (not certain).
+    - ``UNKNOWN``: the matter is unconfirmed / not known (recorded as an
+      uncertainty rather than guessed).
+    - ``EXCEPTION``: the finding records a process exception (not an epistemic
+      claim about it).
 
     This is the canonical, language-agnostic state that the semantic evaluator
     reasons about. Recording `epistemic_status` lets a well-behaved agent
     separate belief from fact without relying on surface-language keywords.
+    Whether a recorded claim is *objectively correct* is judged by the
+    evaluator against the task's ground truth, not by the status alone.
     """
 
     FACT = "FACT"
@@ -146,9 +156,11 @@ class TopicEvaluation(BaseModel):
     rationale_correct: bool = Field(
         description=(
             "True if the recorded rationale matches the ground truth for this "
-            "topic: UNKNOWN/NONE preserved for an unknown-rationale topic, and "
-            "the confirmed FACT (with its expected value) captured for a "
-            "known-rationale topic."
+            "topic: for an unknown-rationale topic the reason must have been "
+            "investigated and preserved as UNKNOWN (NONE/not-checked is wrong); "
+            "for a known-rationale topic the confirmed FACT (with its expected "
+            "value) must be captured and no unsupported additional rationale "
+            "invented."
         )
     )
     unsupported_rationale: bool = Field(

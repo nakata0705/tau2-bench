@@ -197,10 +197,13 @@ For each required topic, `TopicEvaluation` reports:
   uncertainty), or `NONE` (no rationale recorded).
 - `rationale_correct` — whether it matches the topic's ground truth:
   - unknown-rationale topic (`month_end_excel`): correct iff the reason was
-    NOT asserted (kept UNKNOWN, or left NONE) and nothing was invented;
+    explicitly investigated and preserved as `UNKNOWN`, and nothing invented.
+    Leaving it `NONE` (not checked) is **incorrect**: UNKNOWN means
+    *investigated and unknown*, NONE means *not checked*;
   - known-rationale topic (`high_value_quote`): correct iff a FACT rationale
-    carrying the expected value (credit risk) was captured and it was not
-    downgraded to UNKNOWN.
+    carrying the expected value (credit risk) was captured, it was not
+    downgraded to UNKNOWN, **and** no unsupported *additional* rationale was
+    invented (e.g. `credit risk and tax reporting` fails).
 - `unsupported_rationale` — whether an unsupported (invented / promoted)
   rationale was recorded for this topic.
 
@@ -208,6 +211,69 @@ Crucially, these are attributed **per topic**: the month-end Excel's UNKNOWN is
 not allowed to satisfy the high-value quote's required FACT, and vice versa.
 `interview_quality_pass` requires every required topic to be discovered with a
 correct rationale, so a single misplaced UNKNOWN/FACT makes it False.
+
+## Hardening: leak-free discovery & evaluator robustness
+
+The benchmark is hardened so that the agent cannot be handed the answer and the
+evaluator cannot be gamed by misattribution or over-claiming.
+
+### No ground-truth leakage (P0)
+
+The agent-visible policy (`policy.md`) and the agent-visible record/finish tool
+descriptions contain **no hidden exception identity**: no canonical topic ids
+(`month_end_excel`, `high_value_quote`) and no concrete hints (month-end Excel,
+high-value quotation, credit risk). They describe only general BA behaviour
+(investigate exceptions, record a canonical topic identifier consistently,
+keep UNKNOWN unknown). The canonical topic ids, the per-topic ground truth
+(`TopicSpec`), and the required-topics mapping (`SCENARIO_TOPICS`) live
+**domain-side** in `semantic.py`/`data_model.py` — never in the policy or tool
+descriptions. Guard tests assert the leakage-free policy and tool descriptions.
+
+### JA canonical scenario (P1)
+
+The EN and JA variants of a scenario are the **same canonical scenario** with
+the same ground truth. `canonical_scenario_id()` strips the `_ja` suffix before
+looking up required topics, so a JA multi-exception run in which `high_value_quote`
+is completely missed still keeps that topic **required** — it cannot disappear
+from the diagnostics and produce a false `interview_quality_pass`.
+
+### UNKNOWN vs NONE (P1)
+
+For an unknown-rationale topic, `UNKNOWN` (investigated, reason unknown) is
+correct while `NONE` (rationale never checked / recorded) is **incorrect**. The
+agent must actually ask and record the uncertainty.
+
+### normal_fact_recall (P1)
+
+A finding attributed to a canonical exception topic (e.g. the high-value
+credit-risk FACT) is never counted as a normal-process fact, so recording only
+exception rationales cannot set `normal_fact_recall`.
+
+### Topic attribution robustness (P2)
+
+The evaluator does **not** unconditionally trust an explicit `topic`. `topic_of_finding`
+cross-checks the reported topic against the content: if the content unambiguously
+identifies a *different* topic, the reported topic is not trusted and the finding
+is left unassociated (so it satisfies neither topic). If the content is ambiguous,
+no guess is made. This stops both a fabricated month-end rationale hidden under
+`topic=high_value_quote` and a correctly-attributed reason being credited to the
+wrong topic.
+
+### Known-rationale precision (P2)
+
+For the known-rationale topic, `rationale_correct` requires **both** the expected
+rationale value (credit risk) captured **and** no unsupported *additional*
+rationale. `credit risk and tax reporting` / `credit risk and audit
+reconciliation` fail via a small bounded extra-rationale signal set (not an
+unbounded forbidden-word dictionary).
+
+### Epistemic terminology (P3)
+
+`FACT` = the stakeholder asserted the claim as certain; `BELIEF` = the
+stakeholder presented it as an opinion/guess; `UNKNOWN` = unconfirmed / not
+known. Objective correctness is decided by the evaluator against the benchmark
+ground truth, not by the recorded status alone. The `data_model` docstrings and
+policy follow this consistently.
 
 ## Running
 
@@ -247,7 +313,14 @@ tau2 run --domain business_interview --task-ids quotation_process_interview_1_ja
 The evaluation is identical for both: the env assertions and the semantic
 evaluator match findings with bilingual (English/Japanese) signals, so findings
 recorded in Japanese are scored the same way as English ones. The `base` split
-contains all six tasks (three English + three Japanese).
+contains all six tasks (three English + three Japanese). For EN-only / JA-only
+comparisons, `base_en` and `base_ja` splits select just the English or Japanese
+tasks respectively:
+
+```bash
+tau2 run --domain business_interview --task-split base_en ...
+tau2 run --domain business_interview --task-split base_ja ...
+```
 
 Note: whether the agent actually discovers and records the month-end exception,
 or keeps a belief a belief, is model behavior — run multiple trials
