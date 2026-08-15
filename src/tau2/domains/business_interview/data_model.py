@@ -25,6 +25,35 @@ class Topic(str, Enum):
     HIGH_VALUE_QUOTE = "high_value_quote"
 
 
+class Source(str, Enum):
+    """Who stated a claim (source provenance).
+
+    This is distinct from ``subject`` (what / whom a finding is *about*):
+    ``source`` is the stakeholder / source that *said* the claim. In a future
+    multi-stakeholder benchmark a claim like ``source=sales, about=accounting``
+    is possible, so ``source`` and the claim's target are kept as separate
+    concepts.
+    """
+
+    SALES = "sales"
+    ACCOUNTING = "accounting"
+    UNKNOWN = "unknown"
+
+
+class RationaleValue(str, Enum):
+    """A minimal canonical value for a rationale claim.
+
+    Free text alone is hard to compare across stakeholders later, so a claim
+    may carry a small canonical value (e.g. ``accounting_need``, ``credit_risk``).
+    This is deliberately a tiny, bounded vocabulary — not a generic proposition
+    engine.
+    """
+
+    ACCOUNTING_NEED = "accounting_need"
+    CREDIT_RISK = "credit_risk"
+    UNKNOWN = "unknown"
+
+
 class EpistemicStatus(str, Enum):
     """The epistemic status of a recorded finding.
 
@@ -85,6 +114,23 @@ class InterviewFact(BaseModel):
             "content-based topic association."
         ),
     )
+    source: Optional[Source] = Field(
+        default=None,
+        description=(
+            "Who stated this claim (source provenance), e.g. 'sales'. Distinct "
+            "from subject (what the finding is about). Optional; when omitted the "
+            "single stakeholder (sales) is assumed."
+        ),
+    )
+    value: Optional[RationaleValue] = Field(
+        default=None,
+        description=(
+            "Optional minimal canonical value of a rationale claim (e.g. "
+            "'accounting_need', 'credit_risk'). This is a small structured value "
+            "that lets the evaluator compare claims across stakeholders later. "
+            "Optional: content-based value detection is used as a fallback."
+        ),
+    )
 
 
 class InterviewException(BaseModel):
@@ -106,6 +152,10 @@ class InterviewException(BaseModel):
             "Canonical topic the exception is about (e.g. 'month_end_excel'). "
             "Optional for backward compatibility; see InterviewFact.topic."
         ),
+    )
+    source: Optional[Source] = Field(
+        default=None,
+        description=("Who described this exception (source provenance). Optional."),
     )
 
 
@@ -129,15 +179,82 @@ class InterviewUncertainty(BaseModel):
             "Optional for backward compatibility; see InterviewFact.topic."
         ),
     )
+    source: Optional[Source] = Field(
+        default=None,
+        description=("Who stated that they do not know (source provenance). Optional."),
+    )
+
+
+class ObjectiveRationale(BaseModel):
+    """The objective state of a topic's rationale.
+
+    This comes from the scenario ground truth (``TopicSpec.expected_rationale_``
+    ``status``) and is NOT something the agent sets. ``correct`` reflects whether
+    the agent *represented* that objective state correctly (e.g. an UNKNOWN
+    objective must be preserved as an uncertainty; a confirmed FACT objective
+    must be captured). This is deliberately separate from the source claims:
+    a stakeholder BELIEF does not change the objective UNKNOWN state.
+    """
+
+    status: str = Field(
+        description="Objective rationale state from ground truth: 'UNKNOWN' or 'FACT'."
+    )
+    correct: bool = Field(
+        description=(
+            "True if the objective state was correctly represented: UNKNOWN "
+            "preserved as an uncertainty (NONE/not-checked is wrong), confirmed "
+            "FACT captured."
+        )
+    )
+
+
+class ClaimEvaluation(BaseModel):
+    """Evaluation of a single recorded source claim on a topic.
+
+    A claim is what a source (stakeholder) asserted about a topic's rationale
+    (its epistemic_status, its canonical value, and who said it). ``correct``
+    requires source + epistemic status + value to all match an expected claim.
+    """
+
+    source: Optional[str] = Field(
+        description="Recorded source (who stated the claim), or None if unspecified."
+    )
+    epistemic_status: Optional[str] = Field(
+        description="Recorded epistemic status (FACT / BELIEF)."
+    )
+    value: Optional[str] = Field(
+        description="Recorded (or content-inferred) canonical value, or None."
+    )
+    source_correct: bool = Field(
+        description="True if the source matches the expected source for this claim."
+    )
+    status_correct: bool = Field(
+        description="True if the epistemic status matches the expected status."
+    )
+    value_correct: bool = Field(
+        description="True if the value matches the expected value."
+    )
+    correct: bool = Field(
+        description=(
+            "True if the claim fully satisfies some expected claim (source + "
+            "status + value all correct)."
+        )
+    )
+    promoted_to_fact: bool = Field(
+        description=(
+            "True if an expected BELIEF claim was recorded as FACT (belief "
+            "promoted to fact)."
+        )
+    )
 
 
 class TopicEvaluation(BaseModel):
     """Per-topic (per business-element) epistemic evaluation.
 
-    This is the *fine-grained* counterpart to the scenario-level metrics: it
-    attributes discovery and the Fact / Belief / Unknown state to a specific
-    canonical topic, so that e.g. the month-end-Excel reason being UNKNOWN is
-    not conflated with the high-value-quote reason being FACT.
+    A topic can hold multiple epistemic states simultaneously: the *objective*
+    rationale state (from ground truth, e.g. UNKNOWN) and a list of *source*
+    claims (e.g. a stakeholder BELIEF). These are kept separate so that e.g. a
+    stakeholder BELIEF does not erase the objective UNKNOWN (and vice versa).
     """
 
     topic: str = Field(
@@ -146,25 +263,44 @@ class TopicEvaluation(BaseModel):
     discovered: bool = Field(
         description="True if the exception for this topic was discovered and recorded."
     )
-    rationale_status: Optional[str] = Field(
+    objective_rationale: ObjectiveRationale = Field(
         description=(
-            "Epistemic status of the rationale recorded for this topic: "
-            "'FACT', 'BELIEF', 'UNKNOWN' (preserved uncertainty), or 'NONE' "
-            "(no rationale recorded)."
+            "The objective rationale state (from ground truth) and whether it "
+            "was correctly represented."
         )
     )
-    rationale_correct: bool = Field(
+    claims: list[ClaimEvaluation] = Field(
+        default_factory=list,
         description=(
-            "True if the recorded rationale matches the ground truth for this "
-            "topic: for an unknown-rationale topic the reason must have been "
-            "investigated and preserved as UNKNOWN (NONE/not-checked is wrong); "
-            "for a known-rationale topic the confirmed FACT (with its expected "
-            "value) must be captured and no unsupported additional rationale "
-            "invented."
+            "Source claims recorded for this topic (stakeholder assertions about "
+            "the rationale), each with its correctness against the expected claim."
+        ),
+    )
+    required_claims_complete: bool = Field(
+        description=(
+            "True if every claim this scenario requires for the topic was captured "
+            "with correct source + status + value."
         )
     )
     unsupported_rationale: bool = Field(
         description="True if an unsupported (invented / belief-promoted-to-fact) rationale was recorded for this topic."
+    )
+    # --- Legacy derived fields (kept for backward compatibility) ---
+    # These collapse the multi-claim model into a single value and are NOT the
+    # source of truth. Prefer objective_rationale + claims for new logic.
+    rationale_status: Optional[str] = Field(
+        description=(
+            "LEGACY derived: a single epistemic status for the topic (FACT > "
+            "BELIEF > UNKNOWN > NONE). Kept only for backward compatibility; "
+            "use objective_rationale + claims instead."
+        )
+    )
+    rationale_correct: bool = Field(
+        description=(
+            "LEGACY derived: whether the topic's overall rationale handling is "
+            "correct (objective preserved + required claims complete + no "
+            "unsupported rationale). Kept for backward compatibility."
+        )
     )
 
 

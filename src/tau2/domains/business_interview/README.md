@@ -99,9 +99,9 @@ The interviewing agent is a plain `llm_agent` given a minimal BA policy
 
 | Tool | Purpose |
 |------|---------|
-| `record_fact(content, epistemic_status="FACT", topic?)` | A fact the interviewee stated; use `epistemic_status="BELIEF"` for hedged opinions; `topic` is the optional canonical business element the finding is about |
-| `record_exception(content, topic?)` | An exception / variation the interviewee described |
-| `record_uncertainty(content, topic?)` | Something the interviewee does not know |
+| `record_fact(content, epistemic_status="FACT", topic?, source?, value?)` | A fact the interviewee stated; use `epistemic_status="BELIEF"` for hedged opinions; `topic` is the optional canonical business element; `source` is who said it; `value` is an optional canonical rationale value |
+| `record_exception(content, topic?, source?)` | An exception / variation the interviewee described |
+| `record_uncertainty(content, topic?, source?)` | Something the interviewee does not know |
 | `finish_interview(summary?)` | Mark the interview complete (and end the conversation) |
 
 ## Canonical topics
@@ -116,11 +116,22 @@ epistemic rationales.
 - `high_value_quote` — an additional confirmation for high-value quotations
   (reason is a confirmed FACT: credit risk).
 
-The `topic` argument of the record tools is the **preferred**, language-
-independent identity. As a backward-compatible fallback, when a finding has no
-explicit `topic`, the evaluator associates it by matching the content against
-each topic's small set of bilingual identity signals. The canonical topic (not
-an ever-growing keyword dictionary) is what carries the attribution.
+The `topic` argument of the record tools is a **preferred** (but optional)
+language-independent identity. As a backward-compatible fallback, when a
+finding has no explicit `topic`, the evaluator associates it via a small set of
+**structured** identity rules (bilingual) rather than weak single-word OR
+matching:
+
+- `month_end_excel`: `excel AND (month_end OR accounting)` — so `accounting`
+  alone is not read as a month-end Excel hand-off.
+- `high_value_quote`: `amount_threshold OR explicit high-value expression`.
+
+A rationale claim that names a canonical value is additionally attributed to
+the topic that value belongs to (`accounting_need -> month_end_excel`,
+`credit_risk -> high_value_quote`). This reduces the agent's dependency on
+knowing the hidden canonical topic ids: recording a natural finding (with or
+without an explicit `topic`) is resolved by the evaluator. The canonical topic
+(not an ever-growing keyword dictionary) carries the attribution.
 
 Each scenario declares which topics it *requires* (in `semantic.py`
 `SCENARIO_TOPICS`): the two original scenarios require only `month_end_excel`;
@@ -179,7 +190,7 @@ evaluated the same way.
 | `unsupported_rationale_detected` | Any finding (other than an explicitly-tagged BELIEF) asserts an invented rationale | Epistemic |
 | `belief_promoted_to_fact` | A stakeholder belief/guess was recorded as a definitive FACT | Epistemic |
 | `belief_handling` | Derived: `not belief_promoted_to_fact` | Epistemic |
-| `topics` | Per-topic (per business-element) evaluation for the scenario's required topics: each topic reports `discovered`, `rationale_status` (FACT/BELIEF/UNKNOWN/NONE), `rationale_correct`, `unsupported_rationale` | Epistemic (per topic) |
+| `topics` | Per-topic (per business-element) evaluation: `discovered`, `objective_rationale` (status + correct), `claims` (per-source claim correctness), `required_claims_complete`, `unsupported_rationale`, plus legacy derived `rationale_status`/`rationale_correct` | Epistemic (per topic) |
 | `protocol_pass` | Diagnostic top-level boolean = `protocol_completed` (named so it can be compared with `interview_quality_pass`) | Protocol |
 | `interview_quality_pass` | Diagnostic top-level boolean: full discovery + epistemic quality (every required topic discovered with a correct rationale, nothing invented, no belief promoted), judged independently of protocol | Epistemic |
 
@@ -188,29 +199,37 @@ diagnosable view on the same outcome.
 
 ### Per-topic metrics (exact meaning)
 
-For each required topic, `TopicEvaluation` reports:
+A topic can hold **multiple epistemic states simultaneously**. `TopicEvaluation`
+is a source-aware multi-claim model, not a single rationale_status:
 
 - `discovered` — the exception for this topic was recorded.
-- `rationale_status` — the epistemic status of the rationale recorded for this
-  topic: `FACT` (asserted as a certainty), `BELIEF` (asserted as the
-  stakeholder's opinion), `UNKNOWN` (the reason was preserved as an
-  uncertainty), or `NONE` (no rationale recorded).
-- `rationale_correct` — whether it matches the topic's ground truth:
-  - unknown-rationale topic (`month_end_excel`): correct iff the reason was
-    explicitly investigated and preserved as `UNKNOWN`, and nothing invented.
-    Leaving it `NONE` (not checked) is **incorrect**: UNKNOWN means
-    *investigated and unknown*, NONE means *not checked*;
-  - known-rationale topic (`high_value_quote`): correct iff a FACT rationale
-    carrying the expected value (credit risk) was captured, it was not
-    downgraded to UNKNOWN, **and** no unsupported *additional* rationale was
-    invented (e.g. `credit risk and tax reporting` fails).
+- `objective_rationale` — the **objective** state of the topic's rationale,
+  taken from the scenario ground truth (NOT set by the agent):
+  - `status`: `UNKNOWN` or `FACT`;
+  - `correct`: whether the agent *represented* it correctly (an UNKNOWN
+    objective must be preserved as an uncertainty; a confirmed FACT objective
+    must be captured).
+- `claims` — the recorded **source claims** (stakeholder assertions about the
+  rationale): each with `source` (who said it), `epistemic_status`
+  (FACT/BELIEF), `value` (canonical rationale value), and `source_correct` /
+  `status_correct` / `value_correct` / `correct` / `promoted_to_fact`.
+- `required_claims_complete` — every claim the scenario requires for the topic
+  was captured with correct source + status + value.
 - `unsupported_rationale` — whether an unsupported (invented / promoted)
   rationale was recorded for this topic.
+- `rationale_status` / `rationale_correct` — **legacy derived** single-value
+  fields kept for backward compatibility (FACT > BELIEF > UNKNOWN > NONE);
+  they are NOT the source of truth. Use `objective_rationale` + `claims`.
 
-Crucially, these are attributed **per topic**: the month-end Excel's UNKNOWN is
-not allowed to satisfy the high-value quote's required FACT, and vice versa.
-`interview_quality_pass` requires every required topic to be discovered with a
-correct rationale, so a single misplaced UNKNOWN/FACT makes it False.
+Crucially, a stakeholder BELIEF and the objective UNKNOWN **coexist**: in
+`quotation_belief_uncertainty_1` the month-end topic has `objective_rationale`
+= UNKNOWN **and** a `claim` (source=sales, BELIEF, accounting_need). The
+single `rationale_status` collapses to BELIEF but that never marks the
+objective UNKNOWN as failed. These are attributed per topic: one topic's
+UNKNOWN/FACT is not allowed to satisfy another topic's required FACT/claim.
+`interview_quality_pass` requires every required topic to be discovered, its
+objective rationale preserved correctly, and every required source claim
+captured — so a misplaced UNKNOWN/FACT/claim makes it False.
 
 ## Hardening: leak-free discovery & evaluator robustness
 
@@ -274,6 +293,47 @@ stakeholder presented it as an opinion/guess; `UNKNOWN` = unconfirmed / not
 known. Objective correctness is decided by the evaluator against the benchmark
 ground truth, not by the recorded status alone. The `data_model` docstrings and
 policy follow this consistently.
+
+## Source-aware multi-claim model
+
+The epistemic model is **source-aware**: it keeps what a stakeholder *claimed* (`source`,
+`epistemic_status`, `value`) separate from the *objective* state of the topic's rationale
+(derived from scenario ground truth). This is the foundation for a future multi-stakeholder
+benchmark: each topic can hold several claims from several sources, plus one objective state.
+
+### Data model
+
+- `Source` — who stated a claim (`sales`, `accounting`, ...), distinct from the legacy
+  `subject` (what a finding is *about*).
+- `RationaleValue` — a minimal canonical value for a rationale claim (`accounting_need`,
+  `credit_risk`). Bounded, not a proposition engine.
+- `InterviewFact.source` / `InterviewFact.value` — optional source and canonical value on a
+  recorded claim. `InterviewException.source` / `InterviewUncertainty.source` carry provenance.
+- `TopicEvaluation.objective_rationale` (`status` + `correct`) — the objective state.
+- `TopicEvaluation.claims` (`ClaimEvaluation` list) — per-source claim correctness
+  (`source_correct`, `status_correct`, `value_correct`, `correct`, `promoted_to_fact`).
+- `TopicEvaluation.required_claims_complete` — all scenario-required claims captured.
+
+### Objective state vs source claim
+
+The invariant `source claim != objective truth` is preserved. `FACT` still means *the source
+asserted it as certain* — it does **not** mean objectively true. The objective state comes from
+the scenario ground truth (`TopicSpec.expected_rationale_status` / `SCENARIO_CLAIMS`), never
+from the agent's recorded status.
+
+### Belief scenario as the primary falsification case
+
+`quotation_belief_uncertainty_1` requires holding, on one topic (`month_end_excel`):
+
+- objective rationale `status = UNKNOWN` (preserved as an uncertainty), and
+- a claim `source=sales, epistemic_status=BELIEF, value=accounting_need`.
+
+A correct interview reports `objective_rationale.correct=True`, the BELIEF claim `correct=True`,
+`required_claims_complete=True`, no belief promotion, and `interview_quality_pass=True`. The
+legacy single `rationale_status` collapses to `BELIEF` but that never fails the objective
+UNKNOWN. The A–H falsification suite in the tests covers: correct, missing-UNKNOWN (B),
+missing-belief coverage (C), belief→FACT promotion (D), wrong value (E), wrong source (F),
+BELIEF+UNKNOWN coexistence (G), and quality-PASS/protocol-FAIL (H).
 
 ## Running
 

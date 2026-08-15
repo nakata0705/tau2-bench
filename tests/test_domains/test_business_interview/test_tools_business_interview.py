@@ -1806,3 +1806,298 @@ def test_en_ja_only_splits():
     assert set(t.id for t in get_tasks(task_split_name="base_ja")) == set(
         splits["base_ja"]
     )
+
+
+# ---------------------------------------------------------------------------
+# Source-aware multi-claim model falsification suite.
+#
+# The single rationale_status model collapses a topic's epistemic state into
+# one value (FACT > BELIEF > UNKNOWN > NONE). The belief scenario
+# (quotation_belief_uncertainty_1) requires holding TWO states on the same topic
+# simultaneously:
+#   - objective rationale state : UNKNOWN (from ground truth)
+#   - stakeholder source claim  : source=sales, BELIEF, value=accounting_need
+# These falsification cases verify the new model keeps them separate.
+# ---------------------------------------------------------------------------
+
+from tau2.domains.business_interview.data_model import (  # noqa: E402
+    Source,
+    Topic,
+)
+
+
+def _eval_belief(tools):
+    return SemanticEvaluator.evaluate(tools.db, scenario_id=BELIEF_TASK_ID)
+
+
+def _eval_belief_topic(tools):
+    return _eval_belief(tools).topics["month_end_excel"]
+
+
+def _belief_base() -> InterviewTools:
+    """The correct belief scenario minus the rationale claim(s)."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact(
+        "The sales employee creates quotations in the core business system."
+    )
+    tools.record_exception(
+        "At month-end only, the sales employee sends an Excel file to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.record_uncertainty(
+        "The sales employee does not know why the month-end Excel file is sent to Accounting.",
+        topic="month_end_excel",
+    )
+    return tools
+
+
+def _belief_claim(tools: InterviewTools, **kw):
+    default = dict(
+        content="The sales employee thinks it may be due to some need on the Accounting team's side, but is not certain.",
+        epistemic_status="BELIEF",
+        topic="month_end_excel",
+    )
+    default.update(kw)
+    tools.record_fact(**default)
+
+
+def test_claim_model_A_correct_belief_passes_all():
+    """Correct belief scenario: objective UNKNOWN preserved AND the stakeholder
+    BELIEF (sales, accounting_need) captured, quality PASS."""
+    tools = _belief_base()
+    _belief_claim(tools)
+    tools.finish_interview()
+
+    ev = _eval_belief(tools)
+    t = ev.topics["month_end_excel"]
+    assert t.discovered is True
+    # Objective UNKNOWN is preserved and is separate from the source claim.
+    assert t.objective_rationale.status == "UNKNOWN"
+    assert t.objective_rationale.correct is True
+    # The source claim is captured and correctly attributed.
+    assert len(t.claims) == 1
+    c = t.claims[0]
+    assert c.source_correct is True
+    assert c.status_correct is True
+    assert c.value_correct is True
+    assert c.value == "accounting_need"
+    assert c.correct is True
+    assert c.promoted_to_fact is False
+    assert t.required_claims_complete is True
+    assert t.unsupported_rationale is False
+    # No belief promotion anywhere.
+    assert ev.belief_promoted_to_fact is False
+    assert ev.belief_handling is True
+    assert ev.interview_quality_pass is True
+    assert ev.protocol_pass is True
+    # The legacy single-status field collapses to BELIEF but is NOT the source
+    # of truth — the objective UNKNOWN is preserved in objective_rationale.
+    assert t.rationale_status == "BELIEF"
+    assert t.rationale_correct is True
+
+
+def test_claim_model_B_belief_only_missing_unknown_fails_objective():
+    """BELIEF recorded but objective UNKNOWN never investigated -> objective
+    uncertainty FAIL (objective_rationale.correct False), independent of the
+    captured claim."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact(
+        "The sales employee creates quotations in the core business system."
+    )
+    tools.record_exception(
+        "At month-end only, the sales employee sends an Excel file to Accounting.",
+        topic="month_end_excel",
+    )
+    _belief_claim(tools)
+    tools.finish_interview()
+
+    t = _eval_belief_topic(tools)
+    assert t.objective_rationale.correct is False  # <-- UNKNOWN not preserved
+    assert t.required_claims_complete is True  # the belief claim itself is fine
+    assert _eval_belief(tools).interview_quality_pass is False
+
+
+def test_claim_model_C_unknown_only_missing_belief_fails_coverage():
+    """UNKNOWN preserved but the required stakeholder BELIEF claim is dropped ->
+    required claim coverage FAIL."""
+    tools = _belief_base()
+    tools.finish_interview()
+
+    t = _eval_belief_topic(tools)
+    assert t.objective_rationale.correct is True  # UNKNOWN is fine
+    assert t.required_claims_complete is False  # <-- belief claim missing
+    assert _eval_belief(tools).interview_quality_pass is False
+
+
+def test_claim_model_D_belief_promoted_to_fact_fails():
+    """The stakeholder's BELIEF recorded as a definitive FACT -> belief promotion
+    FAIL (both per-claim and scenario-level)."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact(
+        "The sales employee creates quotations in the core business system."
+    )
+    tools.record_exception(
+        "At month-end only, the sales employee sends an Excel file to Accounting.",
+        topic="month_end_excel",
+    )
+    tools.record_uncertainty(
+        "The sales employee does not know why the month-end Excel file is sent to Accounting.",
+        topic="month_end_excel",
+    )
+    # WRONG: promoted to FACT.
+    _belief_claim(tools, epistemic_status="FACT")
+    tools.finish_interview()
+
+    ev = _eval_belief(tools)
+    t = ev.topics["month_end_excel"]
+    assert t.claims[0].status_correct is False
+    assert t.claims[0].promoted_to_fact is True
+    assert t.required_claims_complete is False
+    assert ev.belief_promoted_to_fact is True
+    assert ev.interview_quality_pass is False
+
+
+def test_claim_model_E_wrong_value_fails():
+    """The belief's canonical value is wrong (credit_risk instead of
+    accounting_need) -> claim value correctness FAIL."""
+    tools = _belief_base()
+    _belief_claim(tools, value="credit_risk")
+    tools.finish_interview()
+
+    t = _eval_belief_topic(tools)
+    assert t.claims[0].value_correct is False
+    assert t.claims[0].correct is False
+    assert t.required_claims_complete is False
+    assert _eval_belief(tools).interview_quality_pass is False
+
+
+def test_claim_model_F_wrong_source_fails():
+    """The belief is attributed to the wrong source (accounting instead of the
+    sales interviewee) -> source attribution FAIL."""
+    tools = _belief_base()
+    _belief_claim(tools, source="accounting")
+    tools.finish_interview()
+
+    t = _eval_belief_topic(tools)
+    assert t.claims[0].source_correct is False
+    assert t.claims[0].correct is False
+    assert t.required_claims_complete is False
+    assert _eval_belief(tools).interview_quality_pass is False
+
+
+def test_claim_model_G_belief_and_unknown_coexist():
+    """The key falsification: BELIEF and objective UNKNOWN coexist on one topic
+    and are BOTH evaluated correctly. The single rationale_status does not lose
+    either: objective_rationale stays UNKNOWN while the source claim is BELIEF."""
+    tools = _belief_base()
+    _belief_claim(tools)
+    tools.finish_interview()
+
+    ev = _eval_belief(tools)
+    t = ev.topics["month_end_excel"]
+    # Objective state is ground-truth UNKNOWN, unaffected by the BELIEF claim.
+    assert t.objective_rationale.status == "UNKNOWN"
+    assert t.objective_rationale.correct is True
+    # The source claim is a BELIEF.
+    assert t.claims[0].epistemic_status == "BELIEF"
+    assert t.claims[0].correct is True
+    # The legacy single status collapses to BELIEF, but that must NOT mark the
+    # objective UNKNOWN as failed.
+    assert t.rationale_status == "BELIEF"
+    assert t.rationale_correct is True
+    assert ev.interview_quality_pass is True
+    # And a bare record of the belief (BELIEF) is never reported as promoted.
+    assert ev.belief_promoted_to_fact is False
+
+
+def test_claim_model_H_semantic_ok_protocol_fail():
+    """Semantic content is fully correct but finish_interview was not called ->
+    quality PASS while protocol FAILS (separation maintained)."""
+    tools = _belief_base()
+    _belief_claim(tools)
+    # No finish_interview.
+
+    ev = _eval_belief(tools)
+    assert ev.interview_quality_pass is True
+    assert ev.protocol_pass is False
+    assert ev.protocol_completed is False
+
+
+def test_claim_model_agent_can_omit_topic_and_source():
+    """DoD: the agent need not know hidden canonical topic IDs / source labels.
+    A natural belief claim recorded without topic/source is still attributed to
+    the month-end topic (value inference) and to the sales source (default)."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact(
+        "The sales employee creates quotations in the core business system."
+    )
+    tools.record_exception(
+        "At month-end only, the sales employee sends an Excel file to Accounting."
+    )
+    tools.record_uncertainty(
+        "The sales employee does not know why the month-end Excel file is necessary."
+    )
+    # No topic, no source, no value — natural free-text belief.
+    tools.record_fact(
+        "The sales employee thinks it may be due to some need on the Accounting "
+        "team's side, but is not certain.",
+        epistemic_status="BELIEF",
+    )
+    tools.finish_interview()
+
+    t = _eval_belief_topic(tools)
+    assert t.discovered is True
+    assert t.objective_rationale.correct is True
+    assert len(t.claims) == 1
+    assert t.claims[0].source_correct is True  # default sales
+    assert t.claims[0].value == "accounting_need"  # inferred from content
+    assert t.claims[0].correct is True
+    assert t.required_claims_complete is True
+    assert _eval_belief(tools).interview_quality_pass is True
+
+
+def test_topic_inference_accounting_alone_is_not_month_end():
+    """DoD: structured topic inference — ``accounting`` alone (no Excel / month /
+    rationale) must NOT be attributed to the month-end Excel topic. This avoids
+    the weak single-word OR matcher false positive."""
+    from tau2.domains.business_interview.semantic import _content_inferred_topics
+
+    # A normal accounting-team statement with no Excel / month / rationale.
+    assert _content_inferred_topics("The Accounting team manages the budget") == []
+    assert _content_inferred_topics("The accounting department reviews reports") == []
+    # A genuine month-end Excel hand-off still resolves to month_end_excel.
+    assert _content_inferred_topics(
+        "At month-end, an Excel file is sent to the Accounting team"
+    ) == [Topic.MONTH_END_EXCEL]
+
+
+def test_topic_inference_high_value_requires_amount_or_explicit():
+    """Structured topic inference for high_value_quote requires an amount
+    threshold or an explicit high-value expression."""
+    from tau2.domains.business_interview.semantic import _content_inferred_topics
+
+    assert _content_inferred_topics("For quotations over 1,000,000 yen") == [
+        Topic.HIGH_VALUE_QUOTE
+    ]
+    assert _content_inferred_topics("100万円を超える見積") == [Topic.HIGH_VALUE_QUOTE]
+    # A generic 'large quotation' phrase alone (without amount) still matches via
+    # the explicit high-value expression, but a plain unrelated phrase does not.
+    assert _content_inferred_topics("a high-value quotation") == [
+        Topic.HIGH_VALUE_QUOTE
+    ]
+
+
+def test_claim_model_source_and_subject_are_distinct():
+    """DoD: ``source`` (who said it) and ``subject`` (what it is about) are kept
+    distinct — the new source field does not overload the legacy subject field."""
+    tools = InterviewTools(InterviewDB())
+    tools.record_fact(
+        "The Accounting team receives the month-end Excel file.",
+        topic="month_end_excel",
+        source="sales",
+    )
+    tools.finish_interview()
+    fact = tools.db.facts[0]
+    assert fact.source == Source.SALES
+    # subject remains a separate, unused (about-target) field.
+    assert fact.subject is None

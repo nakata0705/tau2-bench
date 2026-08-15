@@ -7,6 +7,8 @@ from tau2.domains.business_interview.data_model import (
     InterviewException,
     InterviewFact,
     InterviewUncertainty,
+    RationaleValue,
+    Source,
     Topic,
 )
 from tau2.domains.business_interview.semantic import (
@@ -57,12 +59,34 @@ class InterviewTools(ToolKitBase):
         except ValueError:
             return None
 
+    @staticmethod
+    def _parse_source(source: Optional[str]) -> Optional[Source]:
+        """Parse an optional source label into a Source, best-effort."""
+        if source is None:
+            return None
+        try:
+            return Source(str(source).strip().lower())
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _parse_value(value: Optional[str]) -> Optional[RationaleValue]:
+        """Parse an optional canonical rationale value, best-effort."""
+        if value is None:
+            return None
+        try:
+            return RationaleValue(str(value).strip().lower())
+        except ValueError:
+            return None
+
     @is_tool(ToolType.WRITE)
     def record_fact(
         self,
         content: str,
         epistemic_status: str = EpistemicStatus.FACT.value,
         topic: Optional[str] = None,
+        source: Optional[str] = None,
+        value: Optional[str] = None,
     ) -> str:
         """
         Record a fact about the current process that the interviewee stated.
@@ -89,6 +113,12 @@ class InterviewTools(ToolKitBase):
                 evaluation can attribute the finding to the right element. Use
                 the same identifier consistently for findings about the same
                 element. Optional.
+            source: Optional who stated this claim (e.g. "sales"). Distinct
+                from what the claim is about. Optional; when omitted the single
+                interviewee is assumed.
+            value: Optional canonical value of a rationale claim (e.g.
+                "accounting_need", "credit_risk") when the statement asserts a
+                reason. Optional; the evaluator can infer it from the content.
 
         Returns:
             A confirmation message.
@@ -105,12 +135,16 @@ class InterviewTools(ToolKitBase):
                 content=content,
                 epistemic_status=status,
                 topic=self._parse_topic(topic),
+                source=self._parse_source(source),
+                value=self._parse_value(value),
             )
         )
         return f"Fact recorded (fact #{len(self.db.facts)})."
 
     @is_tool(ToolType.WRITE)
-    def record_exception(self, content: str, topic: Optional[str] = None) -> str:
+    def record_exception(
+        self, content: str, topic: Optional[str] = None, source: Optional[str] = None
+    ) -> str:
         """
         Record an exception or process variation the interviewee described.
 
@@ -124,17 +158,25 @@ class InterviewTools(ToolKitBase):
                 (exception process) this exception is about. Set it when you can
                 identify the business element and use it consistently for
                 findings about the same element. Optional.
+            source: Optional who described this exception (e.g. "sales").
+                Optional.
 
         Returns:
             A confirmation message.
         """
         self.db.exceptions.append(
-            InterviewException(content=content, topic=self._parse_topic(topic))
+            InterviewException(
+                content=content,
+                topic=self._parse_topic(topic),
+                source=self._parse_source(source),
+            )
         )
         return f"Exception recorded (exception #{len(self.db.exceptions)})."
 
     @is_tool(ToolType.WRITE)
-    def record_uncertainty(self, content: str, topic: Optional[str] = None) -> str:
+    def record_uncertainty(
+        self, content: str, topic: Optional[str] = None, source: Optional[str] = None
+    ) -> str:
         """
         Record something the interviewee does not know.
 
@@ -146,12 +188,18 @@ class InterviewTools(ToolKitBase):
             topic: Optional canonical identifier for the business element this
                 uncertainty is about. Set it when you can identify the business
                 element. Optional.
+            source: Optional who stated they do not know (e.g. "sales").
+                Optional.
 
         Returns:
             A confirmation message.
         """
         self.db.uncertainties.append(
-            InterviewUncertainty(content=content, topic=self._parse_topic(topic))
+            InterviewUncertainty(
+                content=content,
+                topic=self._parse_topic(topic),
+                source=self._parse_source(source),
+            )
         )
         return f"Uncertainty recorded (uncertainty #{len(self.db.uncertainties)})."
 
@@ -248,7 +296,9 @@ class InterviewTools(ToolKitBase):
             if is_unsupported_rationale(
                 fact.epistemic_status,
                 fact.content,
-                topic=topic_of_finding(fact.topic, fact.content),
+                topic=topic_of_finding(
+                    fact.topic, fact.content, fact.value.value if fact.value else None
+                ),
             ):
                 return False
         # Exceptions / uncertainties: never BELIEF, always subject to the rule.
@@ -291,24 +341,31 @@ class InterviewTools(ToolKitBase):
         spec = TOPIC_SPECS.get(t)
         if spec is None:
             return False
-        findings: list[tuple[EpistemicStatus, str, Optional[Topic]]] = []
+        findings: list[tuple[EpistemicStatus, str, Optional[Topic], Optional[str]]] = []
         for fact in self.db.facts:
-            findings.append((fact.epistemic_status, fact.content, fact.topic))
+            findings.append(
+                (
+                    fact.epistemic_status,
+                    fact.content,
+                    fact.topic,
+                    fact.value.value if fact.value else None,
+                )
+            )
         for exception in self.db.exceptions:
             findings.append(
-                (EpistemicStatus.EXCEPTION, exception.content, exception.topic)
+                (EpistemicStatus.EXCEPTION, exception.content, exception.topic, None)
             )
         for uncertainty in self.db.uncertainties:
             findings.append(
-                (EpistemicStatus.UNKNOWN, uncertainty.content, uncertainty.topic)
+                (EpistemicStatus.UNKNOWN, uncertainty.content, uncertainty.topic, None)
             )
         return any(
-            topic_of_finding(topic_field, content) == t
+            topic_of_finding(topic_field, content, value) == t
             and (
                 kind == EpistemicStatus.EXCEPTION
-                or any(sig in content.lower() for sig in spec.content_signals)
+                or spec.content_matches(content.lower())
             )
-            for kind, content, topic_field in findings
+            for kind, content, topic_field, value in findings
         )
 
     def assert_topic_rationale(

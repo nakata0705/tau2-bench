@@ -37,7 +37,10 @@ Use the interview tools to keep an accurate record as you go:
   Use the interviewee's own terms where possible. If the interviewee
   qualifies a statement as their own opinion or guess (e.g. "I think it's
   because ..."), record it with `epistemic_status="BELIEF"` and do NOT
-  promote it to a fact.
+  promote it to a fact. When recording a rationale, you may note who said it
+  with `source` (e.g. `"sales"`) and a short canonical `value` for the reason
+  (e.g. `"credit_risk"`, `"accounting_need"`) if one is identifiable; these
+  are optional.
 - `record_exception` — a process variation or exception the interviewee
   described (e.g., a different path used only in special circumstances).
   Describe when it happens, who does it, and what is involved — not why you
