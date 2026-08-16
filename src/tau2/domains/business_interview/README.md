@@ -70,15 +70,16 @@ ids):
 | `connect_steps(from_step, to_step, condition?)` | Record a transition / conditional path |
 | `add_branch(from_step, condition, paths)` | Record an explicit branch |
 | `set_step_rationale(step_id, content, epistemic_status, source?)` | Record why a step is needed (FACT/BELIEF) |
-| `set_step_unknown(step_id, note?)` | Record an UNKNOWN necessity |
-| `challenge_step(step_id, question)` | Question a step's necessity |
-| `record_necessity_detail(step_id, owner?, evidence?, requirement_type?)` | Record who requires / evidence |
+| `set_step_unknown(step_id, note?)` | Record an UNKNOWN necessity (marks investigated) |
+| `challenge_step(step_id, dimension, question)` | Investigate one necessity dimension (why / owner / evidence / removal / deletion) |
+| `record_necessity_detail(step_id, owner?, evidence?, removal_impact?, requirement_type?)` | Record who requires / evidence / removal impact |
 | `propose_improvement(step_id?, kind, note?)` | Record an improvement (order-aware) |
 | `finish_interview(summary?)` | Close the interview |
 
 The agent uses its own step ids (`s1`, `s2`, ...) and its own action text; the
-evaluator matches reconstructed steps to the ground truth by content, so this is
-**not** a game of guessing hidden ids.
+evaluator resolves actions to language-independent *concepts* and maps the
+agent's step ids to the ground-truth ids, so arbitrary ids and equivalent EN/JA
+free text both score identically. This is **not** a game of guessing hidden ids.
 
 ## Evaluation
 
@@ -96,20 +97,34 @@ The scalar reward is the product of a few env assertions:
 independent. All granular metrics are surfaced via `get_eval_diagnostics`:
 
 - `step_recall`, `unexpected_step_count`
+- `trigger_accuracy`, `purpose_accuracy`, `outcome_accuracy`
 - `actor_accuracy`, `system_accuracy`
-- `data_read_accuracy`, `data_write_accuracy`
-- `transition_accuracy`
+- `data_read_recall` / `data_read_precision`, `data_write_recall` / `data_write_precision`
+- `transition_accuracy` (from/to **and** condition)
 - `branch_recall`, `branch_condition_accuracy`
-- `rationale_coverage`, `uncertainty_handling`, `fabricated_rationale`
-- `challenge_done`, `improvement_order_ok`
+- `rationale_coverage`, `confirmed_rationale_ok`, `uncertainty_handling`, `fabricated_rationale`
+- `challenge_target_identified`, `why_investigated`, `owner_investigated`,
+  `evidence_investigated`, `removal_investigated`, `deletion_considered`,
+  `challenge_done`, `improvement_order_ok`
 
 ## Necessity / challenge model
 
-Each step carries a `Necessity`: whether a rationale is known, who stated it /
-owns the requirement, whether evidence was identified, the epistemic status
-(FACT / BELIEF / UNKNOWN), whether it was challenged, and the challenge
-questions. `FACT` means the source asserted it as certain — it is **not**
-objective truth; the objective rationale state is in the ground truth.
+Each step carries a `Necessity` with an explicit **investigation vs outcome**
+split so that "the agent did not ask" is never confused with "the agent asked
+and got UNKNOWN / NONE":
+
+- `investigated` — the "why is this needed?" question was asked and its result
+  recorded (including a recorded UNKNOWN).
+- `owner_investigated` / `evidence_investigated` / `removal_investigated` /
+  `deletion_considered` — the corresponding necessity question was asked
+  (regardless of whether a concrete answer exists).
+- `rationale` / `epistemic_status` / `source` / `owner` / `evidence` — the found
+  values. An investigated "no owner" / "no evidence" / "reason unknown" is a
+  valid finding; recording an UNKNOWN as a FACT is an epistemic fail.
+
+`FACT` means the source asserted it as certain — it is **not** objective truth;
+the objective rationale state and the expected rationale content / source are in
+the ground truth.
 
 ## Running
 
@@ -126,8 +141,11 @@ EN / JA and comparison runs use the `base_en` / `base_ja` / `base` splits.
 uv run pytest tests/test_domains/test_business_interview/
 ```
 
-The tests cover the workflow tools, leakage-free agent-visible context, the
-workflow falsification suite A-L, and an end-to-end EnvironmentEvaluator check.
+The tests cover the workflow tools, leakage-free agent-visible context,
+stakeholder truth completeness, arbitrary step-id canonicalisation, NONE vs
+UNKNOWN separation, confirmed-rationale content/source/status evaluation, EN/JA
+semantic equivalence, precision-aware data, condition-aware transitions, and the
+workflow falsification suite A-R.
 
 ## Design notes
 

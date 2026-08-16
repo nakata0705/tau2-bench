@@ -1,18 +1,45 @@
 """Structural workflow-reconstruction evaluator for business_interview (v2).
 
 The agent records a reconstructed ``Workflow`` (steps, transitions, branches,
-and per-step necessity). The evaluator compares it against the evaluator-only
-ground truth (``ground_truth.py``) and produces a ``WorkflowEvaluation`` with
-structural, epistemic and challenge metrics.
+per-step necessity) using its own arbitrary step ids. The evaluator compares it
+against the evaluator-only ground truth (``ground_truth.py``) and produces a
+``WorkflowEvaluation``.
 
-Steps are matched by content (action text similarity plus actor/system match),
-because the agent uses its own step labels — the benchmark is not a game of
-guessing hidden canonical ids.
+Design principles implemented here:
+
+- **Arbitrary step ids**: step matching resolves each reconstructed step's
+  action to a language-independent *concept* (``concepts.py``) and maps the
+  agent's step id to the ground-truth step id. Every graph evaluation
+  (transitions, branches, challenge, improvement) runs over that mapping, so
+  the agent never has to guess hidden canonical ids.
+- **EN/JA equivalence**: concept resolution is bilingual, so an equivalent
+  Japanese reconstruction is scored identically to an English one.
+- **Action-first matching**: a step matches a ground-truth step only by its
+  action resolving to the same concept. actor/system are auxiliary (used for
+  tie-breaking and for accuracy metrics), so a wrong action with the same
+  actor/system is a missing + unexpected step, never a false match.
+- **Precision-aware data**: read/write data are scored by recall AND precision.
+- **Condition-aware transitions**: transitions are judged on from/to AND their
+  condition concept; a missing / reversed / different condition is a fail.
+- **NONE vs UNKNOWN**: an uninvestigated necessity is a fail; an investigated
+  UNKNOWN is a pass; fabricating a UNKNOWN as FACT is an epistemic fail.
+- **Confirmed rationale content**: epistemic status, source and semantic
+  content are all compared to the ground truth.
+- **Necessity challenge quality**: the questionable step must be investigated
+  on why / owner / evidence / removal-impact and its deletion considered,
+  before any improvement is accepted.
 """
 
-import re
 from typing import Optional
 
+from tau2.domains.business_interview.concepts import (
+    CONDITION_CONCEPTS,
+    DATA_CONCEPTS,
+    RATIONALE_CONCEPTS,
+    STEP_CONCEPTS,
+    resolve,
+    resolve_metadata,
+)
 from tau2.domains.business_interview.data_model import (
     EpistemicStatus,
     WorkflowDB,
@@ -72,31 +99,11 @@ _SYSTEM_ALIASES = {
     "excel": ("excel", "spreadsheet", "エクセル"),
 }
 
-_TOKEN_RE = re.compile(r"[a-z0-9]+")
-
-# CJK ranges so character-bigram matching works for Japanese actions/conditions.
-_CJK_RE = re.compile(r"[^a-z0-9\u3040-\u30ff\u4e00-\u9faf]")
+_TOKEN_RE = __import__("re").compile(r"[a-z0-9]+")
 
 
 def _tokens(text: str) -> set[str]:
     return set(_TOKEN_RE.findall((text or "").lower()))
-
-
-def _action_sig(text: str) -> set[str]:
-    """Language-agnostic action/condition signature: latin tokens plus CJK
-    character bigrams, so Japanese and English texts with the same meaning can
-    be matched (the benchmark is not a hidden-id guessing game)."""
-    s = (text or "").lower()
-    toks = set(_TOKEN_RE.findall(s))
-    norm = _CJK_RE.sub("", s)
-    big = {norm[i : i + 2] for i in range(len(norm) - 1)}
-    return toks | big
-
-
-def _jaccard(a: set[str], b: set[str]) -> float:
-    if not a or not b:
-        return 0.0
-    return len(a & b) / len(a | b)
 
 
 def _normalize_label(label: Optional[str], aliases: dict[str, tuple[str, ...]]) -> str:
@@ -117,108 +124,241 @@ def _norm_system(s: Optional[str]) -> str:
     return _normalize_label(s, _SYSTEM_ALIASES)
 
 
-def _data_recall(rec_items: list[str], gt_items: list[str]) -> float:
-    """Fraction of ground-truth data items covered by recorded items (token overlap)."""
-    if not gt_items:
-        return 1.0
-    gt_tokens = [_tokens(i) for i in gt_items]
-    rec_tokens = [_tokens(i) for i in rec_items]
-    hit = 0
-    for gt in gt_tokens:
-        if any(gt & rt for rt in rec_tokens):
-            hit += 1
-    return hit / len(gt_items)
-
-
-def _step_score(rec, gt: GTStep) -> float:
-    """Similarity between a reconstructed step and a ground-truth step."""
-    score = _jaccard(_action_sig(rec.action), _action_sig(gt.action))
-    if _norm_role(rec.actor) and _norm_role(rec.actor) == gt.actor:
-        score += 0.3
-    if rec.system and _norm_system(rec.system) == (gt.system or ""):
-        score += 0.3
-    return score
+# ---------------------------------------------------------------------------
+# Step matching (concept based) + id mapping
+# ---------------------------------------------------------------------------
 
 
 def _match_steps(rec_steps, gt_steps: list[GTStep]):
-    """Greedily match reconstructed steps to ground-truth steps.
+    """Match each reconstructed step to a ground-truth step by action concept.
 
-    Returns a list of (rec_step, gt_step) pairs; gt_step is None when a
-    reconstructed step matched nothing (an unexpected step).
+    Returns a list of ``(rec_step, gt_step)`` pairs; ``gt_step`` is None when a
+    reconstructed step matched nothing (an unexpected step). The action is the
+    primary signal; actor/system are only used to break concept ties.
     """
-    threshold = 0.45
-    matched_gt: set[int] = set()
+    gt_by_concept = {g.concept: g for g in gt_steps}
+    matched_gt: set[str] = set()
     matches: list[tuple] = []
     for rec in rec_steps:
-        best = None
-        best_score = threshold
-        for gi, gt in enumerate(gt_steps):
-            if gi in matched_gt:
-                continue
-            s = _step_score(rec, gt)
-            if s > best_score:
-                best_score = s
-                best = gi
-        if best is not None:
-            matched_gt.add(best)
-            matches.append((rec, gt_steps[best]))
+        cid = resolve(rec.action, STEP_CONCEPTS, actor=rec.actor, system=rec.system)
+        gt = gt_by_concept.get(cid) if cid else None
+        if gt is not None and gt.id not in matched_gt:
+            matched_gt.add(gt.id)
+            matches.append((rec, gt))
         else:
             matches.append((rec, None))
     return matches
 
 
-def _rec_edges(db: WorkflowDB) -> set[tuple[str, str, Optional[str]]]:
-    """All reconstructed directed edges (from, to, condition)."""
-    edges: set[tuple[str, str, Optional[str]]] = set()
+def _id_mapping(matches) -> dict[str, str]:
+    """Map reconstructed step id -> ground-truth step id for matched steps."""
+    return {rec.id: gt.id for rec, gt in matches if gt is not None}
+
+
+# ---------------------------------------------------------------------------
+# Data (recall + precision)
+# ---------------------------------------------------------------------------
+
+
+def _data_metrics(rec_items: list[str], gt_items: list[str]) -> tuple[float, float]:
+    """Recall and precision of recorded data items vs ground-truth items.
+
+    Items are matched by resolving each to a bilingual data concept (so an
+    English GT item matches an equivalent Japanese recorded item), with a latin
+    token-overlap fallback. Recall = fraction of ground-truth items matched;
+    precision = fraction of recorded items that match some ground-truth item.
+    Invented extra items lower precision.
+    """
+    gt_concepts = [resolve(i, DATA_CONCEPTS) for i in gt_items]
+    rec_concepts = [resolve(i, DATA_CONCEPTS) for i in rec_items]
+    gt_tokens = [_tokens(i) for i in gt_items]
+    rec_tokens = [_tokens(i) for i in rec_items]
+    if not gt_items:
+        # No expected data: precision is 1 only if the agent also recorded none.
+        return 1.0, (1.0 if not rec_items else 0.0)
+    gt_hit = [False] * len(gt_items)
+    rec_hit = [False] * len(rec_items)
+    for gi, gcid in enumerate(gt_concepts):
+        for ri, rcid in enumerate(rec_concepts):
+            concept_match = gcid is not None and gcid == rcid
+            token_match = bool(
+                gt_tokens[gi] and rec_tokens[ri] and (gt_tokens[gi] & rec_tokens[ri])
+            )
+            if concept_match or token_match:
+                gt_hit[gi] = True
+                rec_hit[ri] = True
+    recall = sum(gt_hit) / len(gt_items)
+    precision = sum(rec_hit) / len(rec_items) if rec_items else 0.0
+    return recall, precision
+
+
+# ---------------------------------------------------------------------------
+# Graph: canonical edges over the id mapping
+# ---------------------------------------------------------------------------
+
+
+def _rec_graph(db: WorkflowDB, id_map: dict[str, str]):
+    """Canonicalised reconstructed graph over the id mapping.
+
+    Transitions and branches are kept separate so a branch condition never
+    overwrites a specific transition condition on the same (from,to) pair.
+
+    Returns (transition_edges, branch_edges, branch_conds):
+    - transition_edges: list of (from_gt, to_gt, condition) from connect_steps.
+    - branch_edges: set of (from_gt, to_gt) from add_branch.
+    - branch_conds: list of branch condition strings.
+    """
+    transition_edges: list[tuple[str, str, Optional[str]]] = []
+    branch_edges: set[tuple[str, str]] = set()
+    branch_conds: list[str] = []
     if not db.workflow:
-        return edges
+        return transition_edges, branch_edges, branch_conds
     for t in db.workflow.transitions:
-        edges.add((t.from_step, t.to_step, t.condition))
+        gf = id_map.get(t.from_step)
+        gt = id_map.get(t.to_step)
+        if gf is None or gt is None:
+            continue
+        transition_edges.append((gf, gt, t.condition))
     for b in db.workflow.branches:
+        gf = id_map.get(b.from_step)
+        if gf is None:
+            continue
+        branch_conds.append(b.condition)
         for p in b.paths:
-            edges.add((b.from_step, p, b.condition))
-    return edges
+            gp = id_map.get(p)
+            if gp is None:
+                continue
+            branch_edges.add((gf, gp))
+    return transition_edges, branch_edges, branch_conds
 
 
-def _cond_sig(c: str) -> set[str]:
-    """Condition signature: latin tokens when present, else CJK bigrams."""
-    toks = _tokens(c)
-    return toks if toks else _action_sig(c)
-
-
-def _cond_matches(rec_cond: Optional[str], gt_cond: str) -> bool:
-    """Lenient branch-condition match: the reconstructed condition should cover
-    the ground-truth condition's core tokens (e.g. 'amount over 1,000,000'
-    covers the canonical branch condition 'amount threshold')."""
+def _condition_ok(rec_cond: Optional[str], expected_concept: Optional[str]) -> bool:
+    """True if a recorded condition resolves to the expected condition concept."""
+    if expected_concept is None:
+        return True
     if not rec_cond:
         return False
-    gt_s = _cond_sig(gt_cond)
-    rec_s = _cond_sig(rec_cond)
-    if not gt_s:
+    return resolve(rec_cond, CONDITION_CONCEPTS) == expected_concept
+
+
+# ---------------------------------------------------------------------------
+# Rationale / uncertainty
+# ---------------------------------------------------------------------------
+
+
+def _source_ok(rec_source: Optional[str], expected_source: Optional[str]) -> bool:
+    if expected_source is None:
         return True
-    return len(gt_s & rec_s) / len(gt_s) >= 0.3
+    return _norm_role(rec_source) == _norm_role(expected_source)
+
+
+def _confirmed_rationale_ok(rec, gt_step) -> bool:
+    """Epistemic status + source + content of a confirmed rationale."""
+    nec = gt_step.necessity
+    rn = rec.necessity
+    if not rn.investigated:
+        return False
+    if nec.expected_status is not None and rn.epistemic_status != nec.expected_status:
+        return False
+    if nec.expected_source is not None and not _source_ok(
+        rn.source, nec.expected_source
+    ):
+        return False
+    if nec.rationale_concept is not None:
+        concept = RATIONALE_CONCEPTS.get(nec.rationale_concept)
+        if concept is None:
+            return False
+        if resolve(rn.rationale, [concept]) != concept.id:
+            return False
+    return True
+
+
+def _unknown_rationale_ok(rec, gt_step) -> tuple[bool, bool]:
+    """(preserved_as_unknown, fabricated) for an objective-UNKNOWN step."""
+    rn = rec.necessity
+    fabricated = rn.rationale_known and rn.epistemic_status == EpistemicStatus.FACT
+    preserved = not fabricated and not rn.rationale_known
+    return preserved, fabricated
+
+
+def _rationale_status(rec, gt_step) -> tuple[bool, bool]:
+    """(ok, fabricated) for a single ground-truth necessity step.
+
+    ``ok`` means the step was investigated and recorded correctly:
+    - objective FACT  -> investigated + correct epistemic/source/content.
+    - objective UNKNOWN -> investigated + preserved as UNKNOWN.
+    ``fabricated`` marks an objective-UNKNOWN step asserted as FACT.
+    """
+    nec = gt_step.necessity
+    rn = rec.necessity
+    if not rn.investigated:
+        return False, False
+    if nec.objective_status == EpistemicStatus.FACT:
+        return _confirmed_rationale_ok(rec, gt_step), False
+    preserved, fabricated = _unknown_rationale_ok(rec, gt_step)
+    return preserved, fabricated
+
+
+# ---------------------------------------------------------------------------
+# Challenge / improvement order
+# ---------------------------------------------------------------------------
+
+
+def _challenge_dimensions(rec_step) -> dict[str, bool]:
+    """The investigated dimensions for a challenged step."""
+    nec = rec_step.necessity
+    return {
+        "why": nec.investigated,
+        "owner": nec.owner_investigated,
+        "evidence": nec.evidence_investigated,
+        "removal": nec.removal_investigated,
+        "deletion": nec.deletion_considered,
+    }
 
 
 def _improvement_order_ok(db: WorkflowDB) -> bool:
-    """Proposals for each step must follow Question→Delete→Simplify→Accelerate→
-    Automate. Automating a step without first questioning it (or challenging its
-    necessity) is a poor improvement order."""
+    """Necessity must be investigated before any delete/simplify/accelerate/
+    automate proposal, and an automate requires full (why+owner+evidence)
+    investigation. Proposal kinds must follow Question->Delete->Simplify->
+    Accelerate->Automate per step."""
     if not db.improvements:
         return True
     by_step: dict[str, list[tuple[int, str]]] = {}
     for imp in db.improvements:
         by_step.setdefault(imp.step_id or "", []).append((imp.order, imp.kind))
-    challenged_ids: set[str] = set()
-    if db.workflow:
-        challenged_ids = {s.id for s in db.workflow.steps if s.necessity.challenged}
+    steps_by_id = {s.id: s for s in (db.workflow.steps if db.workflow else [])}
+
     for step_id, proposals in by_step.items():
         proposals.sort(key=lambda p: p[0])
-        first_rank = _IMPROVEMENT_RANK.get(proposals[0][1], 5)
-        if step_id in challenged_ids:
-            continue  # a challenge counts as questioning first
-        if first_rank > _IMPROVEMENT_RANK["simplify"]:
-            return False
+        step = steps_by_id.get(step_id)
+        prev_rank = 0
+        for _order, kind in proposals:
+            rank = _IMPROVEMENT_RANK.get(kind, 5)
+            if rank < prev_rank:
+                return False
+            prev_rank = rank
+        # A non-question first proposal requires the step already investigated.
+        first_kind = proposals[0][1]
+        if first_kind != "question":
+            if step is None or not (
+                step.necessity.investigated or step.necessity.challenged
+            ):
+                return False
+        # Automate requires full necessity investigation.
+        for _order, kind in proposals:
+            if kind == "automate":
+                if step is None or not (
+                    step.necessity.investigated
+                    and step.necessity.owner_investigated
+                    and step.necessity.evidence_investigated
+                ):
+                    return False
     return True
+
+
+# ---------------------------------------------------------------------------
+# Main evaluator
+# ---------------------------------------------------------------------------
 
 
 def evaluate(db: WorkflowDB, scenario_id: Optional[str]) -> WorkflowEvaluation:
@@ -228,52 +368,103 @@ def evaluate(db: WorkflowDB, scenario_id: Optional[str]) -> WorkflowEvaluation:
             protocol_completed=db.interview_complete,
             workflow_created=bool(db.workflow and db.workflow.steps),
             protocol_pass=db.interview_complete,
+            trigger_accuracy=0.0,
+            purpose_accuracy=0.0,
+            outcome_accuracy=0.0,
+            step_recall=0.0,
+            unexpected_step_count=0,
+            actor_accuracy=0.0,
+            system_accuracy=0.0,
+            data_read_recall=0.0,
+            data_read_precision=0.0,
+            data_write_recall=0.0,
+            data_write_precision=0.0,
+            transition_accuracy=0.0,
+            branch_recall=0.0,
+            branch_condition_accuracy=0.0,
+            rationale_coverage=0.0,
+            confirmed_rationale_ok=False,
+            uncertainty_handling=True,
+            fabricated_rationale=False,
+            challenge_target_identified=False,
+            why_investigated=False,
+            owner_investigated=False,
+            evidence_investigated=False,
+            removal_investigated=False,
+            deletion_considered=False,
+            challenge_done=False,
+            improvement_order_ok=True,
+            structural_pass=False,
+            rationale_pass=False,
+            challenge_pass=False,
+            quality_pass=False,
         )
 
     protocol = db.interview_complete
     created = bool(db.workflow and db.workflow.steps)
     rec_steps = db.workflow.steps if db.workflow else []
 
-    # ---- Step matching ------------------------------------------------------
+    # ---- workflow metadata ---------------------------------------------------
+    wf = db.workflow
+    trigger_ok = wf is not None and resolve_metadata(wf.trigger, gt.trigger_concept)
+    purpose_ok = wf is not None and resolve_metadata(wf.purpose, gt.purpose_concept)
+    outcome_ok = wf is not None and resolve_metadata(wf.outcome, gt.outcome_concept)
+
+    # ---- step matching + id mapping -----------------------------------------
     matches = _match_steps(rec_steps, gt.steps)
     matched_pairs = [(rec, g) for rec, g in matches if g is not None]
+    id_map = _id_mapping(matches)
     unexpected = [rec for rec, g in matches if g is None]
     step_recall = len(matched_pairs) / len(gt.steps) if gt.steps else 0.0
 
-    # ---- actor / system / data accuracy over matched steps -----------------
+    # ---- actor / system / data over matched steps ---------------------------
     actor_hits = sum(1 for rec, g in matched_pairs if _norm_role(rec.actor) == g.actor)
     system_hits = sum(
         1 for rec, g in matched_pairs if _norm_system(rec.system) == (g.system or "")
     )
-    read_scores = [_data_recall(rec.reads, g.reads) for rec, g in matched_pairs]
-    write_scores = [_data_recall(rec.writes, g.writes) for rec, g in matched_pairs]
+    read_metrics = [_data_metrics(rec.reads, g.reads) for rec, g in matched_pairs]
+    write_metrics = [_data_metrics(rec.writes, g.writes) for rec, g in matched_pairs]
     n = len(matched_pairs) or 1
     actor_accuracy = actor_hits / n
     system_accuracy = system_hits / n
-    data_read_accuracy = sum(read_scores) / n
-    data_write_accuracy = sum(write_scores) / n
+    data_read_recall = sum(r for r, _ in read_metrics) / n
+    data_read_precision = sum(p for _, p in read_metrics) / n
+    data_write_recall = sum(r for r, _ in write_metrics) / n
+    data_write_precision = sum(p for _, p in write_metrics) / n
 
-    # ---- transitions --------------------------------------------------------
-    rec_edges = _rec_edges(db)
-    gt_edges = {(t.from_step, t.to_step) for t in gt.transitions}
-    rec_edge_pairs = {(f, t) for f, t, _ in rec_edges}
+    # ---- graph: transitions + branches (condition-aware) --------------------
+    rec_edges, rec_branch_edges, rec_branch_conds = _rec_graph(db, id_map)
+    rec_edge_cond = {(f, t): c for f, t, c in rec_edges}
+    gt_transition_ok = []
+    for gt_t in gt.transitions:
+        edge_present = (gt_t.from_step, gt_t.to_step) in rec_edge_cond
+        cond_ok = True
+        if edge_present:
+            cond_ok = _condition_ok(
+                rec_edge_cond[(gt_t.from_step, gt_t.to_step)],
+                gt_t.condition_concept,
+            )
+        gt_transition_ok.append(edge_present and cond_ok)
     transition_accuracy = (
-        len(gt_edges & rec_edge_pairs) / len(gt_edges) if gt_edges else 1.0
+        sum(gt_transition_ok) / len(gt.transitions) if gt.transitions else 1.0
     )
 
-    # ---- branches -----------------------------------------------------------
     if gt.branches:
         branch_ok = []
         branch_cond_ok = []
         for b in gt.branches:
-            edges_from = {t for f, t, _ in rec_edges if f == b.from_step}
+            edges_from = {t for f, t in rec_branch_edges if f == b.from_step} | {
+                t for f, t, _ in rec_edges if f == b.from_step
+            }
             all_paths = all(p in edges_from for p in b.paths)
             branch_ok.append(all_paths)
-            conds = [c for f, t, c in rec_edges if f == b.from_step]
+            trans_conds = [c for f, t, c in rec_edges if f == b.from_step]
+            # A conditioned divergence: at least one outgoing edge carries a
+            # condition (specific conditions are graded per-edge under
+            # transition_accuracy; this guards against a plain linear split).
             branch_cond_ok.append(
-                any(_cond_matches(c, b.condition) for c in conds)
-                if all_paths
-                else False
+                all_paths
+                and (any(bool(c) for c in trans_conds) or bool(rec_branch_conds))
             )
         branch_recall = sum(branch_ok) / len(gt.branches)
         branch_condition_accuracy = sum(branch_cond_ok) / len(gt.branches)
@@ -283,46 +474,71 @@ def evaluate(db: WorkflowDB, scenario_id: Optional[str]) -> WorkflowEvaluation:
 
     # ---- rationale / uncertainty -------------------------------------------
     rationale_steps = [g for g in gt.steps if g.necessity is not None]
-    covered = 0
+    rec_by_gt = {g.id: r for r, g in matched_pairs}
+    rationale_ok = []
     fabricated = False
+    confirmed_ok = False
     for g in rationale_steps:
-        rec = next((r for r, gg in matched_pairs if gg.id == g.id), None)
+        rec = rec_by_gt.get(g.id)
         if rec is None:
+            rationale_ok.append(False)
             continue
-        if g.necessity.objective_status == EpistemicStatus.FACT:
-            if rec.necessity.rationale_known:
-                covered += 1
-        else:  # UNKNOWN
-            preserved = not rec.necessity.rationale_known or (
-                rec.necessity.epistemic_status == EpistemicStatus.UNKNOWN
-            )
-            if preserved:
-                covered += 1
-            if rec.necessity.rationale_known and (
-                rec.necessity.epistemic_status == EpistemicStatus.FACT
-            ):
-                fabricated = True
-    rationale_coverage = covered / len(rationale_steps) if rationale_steps else 1.0
+        ok, fab = _rationale_status(rec, g)
+        rationale_ok.append(ok)
+        if fab:
+            fabricated = True
+        if (
+            g.necessity.objective_status == EpistemicStatus.FACT
+            and g.necessity.rationale_concept
+            and g.necessity.expected_status == EpistemicStatus.FACT
+        ):
+            if ok:
+                confirmed_ok = True
+    rationale_coverage = (
+        sum(rationale_ok) / len(rationale_steps) if rationale_steps else 1.0
+    )
     uncertainty_handling = not fabricated
 
-    # ---- challenge / improvement order -------------------------------------
+    # ---- challenge ----------------------------------------------------------
     q_step = gt.questionable_step
-    challenge_done = False
+    q_rec = None
     if q_step and db.workflow:
-        q_rec = next((s for s in db.workflow.steps if s.id == q_step), None)
-        challenge_done = bool(q_rec and q_rec.necessity.challenged)
+        q_rec = next((s for s in db.workflow.steps if id_map.get(s.id) == q_step), None)
+    challenge_target_identified = q_rec is not None
+    if q_rec is not None:
+        dims = _challenge_dimensions(q_rec)
+        why_inv = dims["why"]
+        owner_inv = dims["owner"]
+        evidence_inv = dims["evidence"]
+        removal_inv = dims["removal"]
+        deletion_cons = dims["deletion"]
+    else:
+        why_inv = owner_inv = evidence_inv = removal_inv = deletion_cons = False
+    challenge_done = bool(
+        q_rec is not None
+        and why_inv
+        and owner_inv
+        and evidence_inv
+        and removal_inv
+        and deletion_cons
+    )
 
     improvement_order_ok = _improvement_order_ok(db)
 
     # ---- gates --------------------------------------------------------------
     structural_pass = (
         created
+        and trigger_ok
+        and purpose_ok
+        and outcome_ok
         and step_recall == 1.0
         and not unexpected
         and actor_accuracy == 1.0
         and system_accuracy == 1.0
-        and data_read_accuracy == 1.0
-        and data_write_accuracy == 1.0
+        and data_read_recall == 1.0
+        and data_read_precision == 1.0
+        and data_write_recall == 1.0
+        and data_write_precision == 1.0
         and transition_accuracy == 1.0
         and branch_recall == 1.0
         and branch_condition_accuracy == 1.0
@@ -334,18 +550,30 @@ def evaluate(db: WorkflowDB, scenario_id: Optional[str]) -> WorkflowEvaluation:
     return WorkflowEvaluation(
         protocol_completed=protocol,
         workflow_created=created,
+        trigger_accuracy=float(trigger_ok),
+        purpose_accuracy=float(purpose_ok),
+        outcome_accuracy=float(outcome_ok),
         step_recall=step_recall,
         unexpected_step_count=len(unexpected),
         actor_accuracy=actor_accuracy,
         system_accuracy=system_accuracy,
-        data_read_accuracy=data_read_accuracy,
-        data_write_accuracy=data_write_accuracy,
+        data_read_recall=data_read_recall,
+        data_read_precision=data_read_precision,
+        data_write_recall=data_write_recall,
+        data_write_precision=data_write_precision,
         transition_accuracy=transition_accuracy,
         branch_recall=branch_recall,
         branch_condition_accuracy=branch_condition_accuracy,
         rationale_coverage=rationale_coverage,
+        confirmed_rationale_ok=confirmed_ok,
         uncertainty_handling=uncertainty_handling,
         fabricated_rationale=fabricated,
+        challenge_target_identified=challenge_target_identified,
+        why_investigated=why_inv,
+        owner_investigated=owner_inv,
+        evidence_investigated=evidence_inv,
+        removal_investigated=removal_inv,
+        deletion_considered=deletion_cons,
         challenge_done=challenge_done,
         improvement_order_ok=improvement_order_ok,
         structural_pass=structural_pass,

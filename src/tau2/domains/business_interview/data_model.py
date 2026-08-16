@@ -39,19 +39,52 @@ class EpistemicStatus(str, Enum):
 class Necessity(BaseModel):
     """Why a step is needed and how strongly it is grounded.
 
-    Captures the answers to the necessity questions a good BA asks:
+    Captures the answers to the necessity questions a good BA asks, with an
+    explicit *investigation* vs *outcome* split so that "the agent did not ask"
+    is never confused with "the agent asked and got UNKNOWN / NONE".
 
-    - why is this step needed?  (``rationale`` / ``rationale_known``)
-    - who requires it?          (``source`` / ``owner_identified``)
-    - what is the evidence?     (``evidence_identified``)
-    - what happens if removed?  (part of ``challenges``)
-    - can it be deleted / simplified?  (``challenged`` / ``deletion_candidate``)
+    Investigation flags record *that a question was asked* (whether or not a
+    concrete answer exists); the found values (``owner`` / ``evidence``) may be
+    empty even when the flag is true — an investigated empty result is a valid
+    finding.
+
+    - why is this step needed?    (``investigated`` + ``rationale`` / ``epistemic_status``)
+    - who requires it?            (``owner_investigated`` + ``owner``)
+    - what is the evidence?       (``evidence_investigated`` + ``evidence``)
+    - what happens if removed?    (``removal_investigated``)
+    - can it be deleted/simplified?  (``deletion_considered``)
 
     ``epistemic_status`` is how the source presented the rationale (FACT /
     BELIEF / UNKNOWN); it is separate from the objective state the evaluator
     holds in the ground truth.
     """
 
+    # --- investigation flags (was the question asked?) ---------------------
+    investigated: bool = Field(
+        default=False,
+        description=(
+            "True if the 'why is this step needed?' question was asked and its "
+            "result recorded (including a recorded UNKNOWN)."
+        ),
+    )
+    owner_investigated: bool = Field(
+        default=False,
+        description="True if who-requires-it / owner was asked (value may be none).",
+    )
+    evidence_investigated: bool = Field(
+        default=False,
+        description="True if supporting evidence was asked about (value may be none).",
+    )
+    removal_investigated: bool = Field(
+        default=False,
+        description="True if 'what happens if this step is removed?' was asked.",
+    )
+    deletion_considered: bool = Field(
+        default=False,
+        description="True if deletion/simplification of this step was considered.",
+    )
+
+    # --- rationale / why ----------------------------------------------------
     rationale_known: bool = Field(
         default=False,
         description="True if a rationale for the step's necessity was stated.",
@@ -62,7 +95,7 @@ class Necessity(BaseModel):
     )
     source: Optional[str] = Field(
         default=None,
-        description="Who stated the rationale / who requires the step.",
+        description="Who stated the rationale (the stakeholder).",
     )
     epistemic_status: Optional[EpistemicStatus] = Field(
         default=None,
@@ -71,18 +104,20 @@ class Necessity(BaseModel):
             "BELIEF (opinion/guess), or UNKNOWN (not known)."
         ),
     )
-    owner_identified: bool = Field(
-        default=False,
-        description="True if the owner / who-requires-it was asked and recorded.",
+
+    # --- owner / evidence found values --------------------------------------
+    owner: Optional[str] = Field(
+        default=None, description="Who requires / owns the requirement (may be none)."
     )
-    evidence_identified: bool = Field(
-        default=False,
-        description="True if concrete evidence for the requirement was asked and recorded.",
+    evidence: Optional[str] = Field(
+        default=None, description="Evidence for the requirement (may be none)."
     )
     requirement_type: Optional[str] = Field(
         default=None,
         description="Optional type of the requirement (e.g. 'customer', 'regulatory', 'internal').",
     )
+
+    # --- challenge -----------------------------------------------------------
     challenged: bool = Field(
         default=False,
         description="True if the agent questioned this step's necessity.",
@@ -177,8 +212,12 @@ class WorkflowEvaluation(BaseModel):
     The scalar reward connects minimally to this; the detailed, human-readable
     axes live here (and are surfaced via ``get_eval_diagnostics``).
 
-    Accuracy metrics are fractions in [0,1] over the ground-truth items
-    (matched reconstructed steps to ground-truth steps by content).
+    All graph evaluations (transitions / branches / challenge / improvement)
+    are computed over the *matched-step mapping* — the reconstructed step ids
+    are first canonicalised to ground-truth step ids, so the agent's arbitrary
+    step ids never leak into the score.
+
+    Accuracy metrics are fractions in [0,1] over the ground-truth items.
     """
 
     protocol_completed: bool = Field(
@@ -187,8 +226,21 @@ class WorkflowEvaluation(BaseModel):
     workflow_created: bool = Field(
         description="True if the agent created a workflow with at least one step."
     )
+
+    # --- workflow metadata ---------------------------------------------------
+    trigger_accuracy: float = Field(
+        description="1.0 if the recorded trigger resolves to the ground-truth trigger concept."
+    )
+    purpose_accuracy: float = Field(
+        description="1.0 if the recorded purpose resolves to the ground-truth purpose concept."
+    )
+    outcome_accuracy: float = Field(
+        description="1.0 if the recorded outcome resolves to the ground-truth outcome concept."
+    )
+
+    # --- steps (content / concept matching) ----------------------------------
     step_recall: float = Field(
-        description="Fraction of ground-truth steps that were reconstructed."
+        description="Fraction of ground-truth steps that were reconstructed (by concept)."
     )
     unexpected_step_count: int = Field(
         description="Number of reconstructed steps that match no ground-truth step."
@@ -199,23 +251,38 @@ class WorkflowEvaluation(BaseModel):
     system_accuracy: float = Field(
         description="Fraction of matched steps whose system matches the ground truth."
     )
-    data_read_accuracy: float = Field(
-        description="Fraction of matched steps whose read-data set matches."
+
+    # --- data (recall + precision) -------------------------------------------
+    data_read_recall: float = Field(
+        description="Fraction of ground-truth read-data items covered by the recorded reads."
     )
-    data_write_accuracy: float = Field(
-        description="Fraction of matched steps whose write-data set matches."
+    data_read_precision: float = Field(
+        description="Fraction of recorded read-data items that are grounded in the ground truth."
     )
+    data_write_recall: float = Field(
+        description="Fraction of ground-truth write-data items covered by the recorded writes."
+    )
+    data_write_precision: float = Field(
+        description="Fraction of recorded write-data items that are grounded in the ground truth."
+    )
+
+    # --- graph: transitions + branches (condition-aware) ---------------------
     transition_accuracy: float = Field(
-        description="Fraction of ground-truth transitions reconstructed (from/to)."
+        description="Fraction of ground-truth transitions reconstructed (from/to AND condition)."
     )
     branch_recall: float = Field(
-        description="Fraction of ground-truth branches reconstructed (both paths present)."
+        description="Fraction of ground-truth branches reconstructed (all paths present)."
     )
     branch_condition_accuracy: float = Field(
-        description="Fraction of reconstructed branches whose condition matches."
+        description="Fraction of reconstructed branches that are conditioned (not a plain linear split)."
     )
+
+    # --- rationale / uncertainty ---------------------------------------------
     rationale_coverage: float = Field(
-        description="Fraction of ground-truth steps whose necessity was covered (rationale or UNKNOWN preserved)."
+        description="Fraction of ground-truth necessity steps fully handled (investigated + correct)."
+    )
+    confirmed_rationale_ok: bool = Field(
+        description="True if the confirmed rationale's epistemic status, source and content all match."
     )
     uncertainty_handling: bool = Field(
         description="True if every ground-truth UNKNOWN-rationale step was preserved as UNKNOWN (not fabricated)."
@@ -223,21 +290,42 @@ class WorkflowEvaluation(BaseModel):
     fabricated_rationale: bool = Field(
         description="True if a rationale was asserted as FACT for a step whose objective rationale is UNKNOWN."
     )
+
+    # --- necessity challenge (investigation dimensions) ----------------------
+    challenge_target_identified: bool = Field(
+        description="True if the questionable step was found among the reconstructed steps."
+    )
+    why_investigated: bool = Field(
+        description="True if the rationale/why of the questionable step was investigated."
+    )
+    owner_investigated: bool = Field(
+        description="True if the owner / who-requires-it of the questionable step was investigated."
+    )
+    evidence_investigated: bool = Field(
+        description="True if evidence for the questionable step was investigated."
+    )
+    removal_investigated: bool = Field(
+        description="True if removal-impact of the questionable step was investigated."
+    )
+    deletion_considered: bool = Field(
+        description="True if deletion of the questionable step was considered."
+    )
     challenge_done: bool = Field(
-        description="True if the questionable legacy step was challenged."
+        description="True if the questionable legacy step was fully challenged on all dimensions."
     )
     improvement_order_ok: bool = Field(
-        description="True if the agent questioned necessity before proposing deletion/automation."
+        description="True if necessity was investigated before proposing delete/simplify/accelerate/automate."
     )
-    # Convenience gates (used by the reward env assertions).
+
+    # --- gates ---------------------------------------------------------------
     structural_pass: bool = Field(
-        description="True if steps + transitions + branches + actor/system/data reconstruct the ground truth."
+        description="True if metadata + steps + actor/system + data + transitions + branches reconstruct the ground truth."
     )
     rationale_pass: bool = Field(
-        description="True if confirmed rationale captured and UNKNOWN preserved (no fabrication)."
+        description="True if confirmed rationale captured correctly and UNKNOWN preserved (no fabrication)."
     )
     challenge_pass: bool = Field(
-        description="True if the questionable step was challenged with correct improvement order."
+        description="True if the questionable step was fully challenged with correct improvement order."
     )
     protocol_pass: bool = Field(
         description="Equal to protocol_completed (named for protocol-vs-quality comparison)."

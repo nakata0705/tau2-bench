@@ -1,8 +1,11 @@
-"""Tests for the Workflow-first business_interview domain (v2).
+"""Tests for the hardened Workflow-first business_interview domain (v2).
 
-Covers the workflow-reconstruction tools, the structural/epistemic/challenge
-evaluation, the leakage-free agent-visible context, the workflow falsification
-suite (A-L), and an end-to-end EnvironmentEvaluator check.
+Covers the workflow-reconstruction tools, the concept-based structural /
+epistemic / challenge evaluation, arbitrary step-id canonicalisation, NONE vs
+UNKNOWN separation, confirmed-rationale content evaluation, EN/JA semantic
+equivalence, precision-aware data, condition-aware transitions, workflow
+metadata, necessity-challenge quality, leakage, stakeholder truth
+completeness, and the full falsification suite (A-R).
 """
 
 from tau2.data_model.message import (
@@ -12,7 +15,7 @@ from tau2.data_model.message import (
     UserMessage,
 )
 from tau2.data_model.tasks import Task
-from tau2.domains.business_interview.data_model import WorkflowDB
+from tau2.domains.business_interview.data_model import EpistemicStatus, WorkflowDB
 from tau2.domains.business_interview.environment import (
     get_environment,
     get_tasks,
@@ -20,6 +23,7 @@ from tau2.domains.business_interview.environment import (
 )
 from tau2.domains.business_interview.ground_truth import (
     get_ground_truth,
+    stakeholder_knowledge_requirements,
 )
 from tau2.domains.business_interview.semantic import evaluate
 from tau2.domains.business_interview.tools import InterviewTools
@@ -31,6 +35,100 @@ SCENARIO = "quotation_workflow_1"
 JA_SCENARIO = SCENARIO + "_ja"
 ALL_TASK_IDS = [SCENARIO, JA_SCENARIO]
 
+_EN_STEPS = [
+    ("s1", "receive quotation request", "sales", None, [], ["request"], None),
+    (
+        "s2",
+        "check customer information in the CRM",
+        "sales",
+        "crm",
+        ["customer"],
+        [],
+        None,
+    ),
+    (
+        "s3",
+        "create quotation in the quoting system",
+        "sales",
+        "quoting",
+        ["customer", "pricing"],
+        ["quote"],
+        None,
+    ),
+    (
+        "s4",
+        "approve high-value quotation",
+        "manager",
+        "quoting",
+        ["quote"],
+        ["approval"],
+        "amount over 1,000,000",
+    ),
+    (
+        "s5",
+        "send quotation to customer",
+        "sales",
+        "email",
+        ["quote"],
+        ["sent_quote"],
+        None,
+    ),
+    (
+        "s6",
+        "send quotation summary to accounting at month-end",
+        "sales",
+        "excel",
+        ["quote"],
+        ["excel_summary"],
+        "month-end",
+    ),
+]
+
+_EN_EDGES = [
+    ("s1", "s2", None),
+    ("s2", "s3", None),
+    ("s3", "s4", "amount over 1,000,000"),
+    ("s3", "s5", "amount at or below 1,000,000"),
+    ("s4", "s5", None),
+    ("s5", "s6", "month-end"),
+]
+
+_JA_STEPS = [
+    ("s1", "見積依頼を受け付ける", "営業", None, [], ["依頼"], None),
+    ("s2", "CRMで顧客情報を確認する", "営業", "crm", ["顧客"], [], None),
+    (
+        "s3",
+        "見積システムで見積を作成する",
+        "営業",
+        "quoting",
+        ["顧客", "価格"],
+        ["見積"],
+        None,
+    ),
+    ("s4", "高額見積を承認する", "manager", "quoting", ["見積"], ["承認"], "100万円超"),
+    ("s5", "見積を顧客に送付する", "営業", "email", ["見積"], ["送付済み"], None),
+    (
+        "s6",
+        "月末に経理へ見積集計を送る",
+        "営業",
+        "excel",
+        ["見積"],
+        ["excel_summary"],
+        "月末",
+    ),
+]
+
+_JA_EDGES = [
+    ("s1", "s2", None),
+    ("s2", "s3", None),
+    ("s3", "s4", "100万円超"),
+    ("s3", "s5", "100万円以下"),
+    ("s4", "s5", None),
+    ("s5", "s6", "月末"),
+]
+
+_CHALLENGE_DIMS = ["why", "owner", "evidence", "removal", "deletion"]
+
 
 def _tools() -> InterviewTools:
     return InterviewTools(WorkflowDB())
@@ -40,72 +138,33 @@ def _eval(tools: InterviewTools, scenario: str = SCENARIO):
     return evaluate(tools.db, scenario)
 
 
-# ---------------------------------------------------------------------------
-# Good reconstruction (reference behaviour)
-# ---------------------------------------------------------------------------
-
-
-def _good_workflow() -> InterviewTools:
-    """A correct reconstruction: all steps, actors, systems, data, transitions,
-    branches, the confirmed rationale, the UNKNOWN rationale, and a challenge."""
-    tools = _tools()
-    tools.create_workflow(
-        "Quotation creation",
-        trigger="customer requests a quotation",
-        purpose="produce an accurate quotation",
-        outcome="customer receives a quotation",
-    )
-    steps = [
-        ("s1", "receive quotation request", "sales", None, [], ["request"], None),
-        (
-            "s2",
-            "check customer information in the CRM",
-            "sales",
-            "crm",
-            ["customer"],
-            [],
-            None,
-        ),
-        (
-            "s3",
-            "create quotation in the quoting system",
-            "sales",
-            "quoting",
-            ["customer", "pricing"],
-            ["quote"],
-            None,
-        ),
-        (
-            "s4",
-            "approve high-value quotation",
-            "manager",
-            "quoting",
-            ["quote"],
-            ["approval"],
-            "amount over 1,000,000",
-        ),
-        (
-            "s5",
-            "send quotation to customer",
-            "sales",
-            "email",
-            ["quote"],
-            ["sent_quote"],
-            None,
-        ),
-        (
-            "s6",
-            "send quotation summary to accounting at month-end",
-            "sales",
-            "excel",
-            ["quote"],
-            ["excel_summary"],
-            "month-end",
-        ),
-    ]
+def _build(
+    tools: InterviewTools,
+    ja: bool = False,
+    ids: tuple = ("s1", "s2", "s3", "s4", "s5", "s6"),
+):
+    """Build a correct workflow using the given step ids (may be arbitrary)."""
+    steps = _JA_STEPS if ja else _EN_STEPS
+    edges = _JA_EDGES if ja else _EN_EDGES
+    i1, i2, i3, i4, i5, i6 = ids
+    if ja:
+        tools.create_workflow(
+            "見積作成",
+            trigger="顧客が見積を依頼する",
+            purpose="正確な見積を作成する",
+            outcome="顧客が見積を受け取る",
+        )
+    else:
+        tools.create_workflow(
+            "Quotation creation",
+            trigger="customer requests a quotation",
+            purpose="produce an accurate quotation",
+            outcome="customer receives a quotation",
+        )
+    remap = {"s1": i1, "s2": i2, "s3": i3, "s4": i4, "s5": i5, "s6": i6}
     for sid, act, actor, system, reads, writes, cond in steps:
         tools.add_step(
-            sid,
+            remap[sid],
             act,
             actor=actor,
             system=system,
@@ -113,50 +172,516 @@ def _good_workflow() -> InterviewTools:
             writes=writes,
             condition=cond,
         )
-    for a, b, c in [
-        ("s1", "s2", None),
-        ("s2", "s3", None),
-        ("s3", "s4", "amount over 1,000,000"),
-        ("s3", "s5", "amount at or below 1,000,000"),
-        ("s4", "s5", None),
-        ("s5", "s6", "month-end"),
-    ]:
-        tools.connect_steps(a, b, c)
-    tools.add_branch("s3", "amount threshold", ["s4", "s5"])
-    tools.set_step_rationale("s4", "for credit risk management", "FACT", source="sales")
-    tools.set_step_unknown("s6", "the stakeholder does not know why")
-    tools.challenge_step("s6", "is this month-end excel step actually necessary?")
+    for a, b, c in edges:
+        tools.connect_steps(remap[a], remap[b], c)
+    tools.add_branch(
+        remap["s3"],
+        "金額閾値" if ja else "amount threshold",
+        [remap["s4"], remap["s5"]],
+    )
+    tools.set_step_rationale(
+        remap["s4"],
+        "与信リスク管理のため" if ja else "for credit risk management",
+        "FACT",
+        source="営業" if ja else "sales",
+    )
+    tools.set_step_unknown(remap["s6"], "理由は不明" if ja else "unknown")
+    for dim in _CHALLENGE_DIMS:
+        tools.challenge_step(remap["s6"], dim, f"investigate {dim}")
     tools.finish_interview()
-    return tools
+
+
+# ---------------------------------------------------------------------------
+# Good reconstruction (reference behaviour)
+# ---------------------------------------------------------------------------
 
 
 def test_good_reconstruction_passes_all_axes():
-    tools = _good_workflow()
+    tools = _tools()
+    _build(tools)
     ev = _eval(tools)
     assert ev.protocol_completed is True
+    assert ev.trigger_accuracy == 1.0
+    assert ev.purpose_accuracy == 1.0
+    assert ev.outcome_accuracy == 1.0
     assert ev.step_recall == 1.0
     assert ev.unexpected_step_count == 0
     assert ev.actor_accuracy == 1.0
     assert ev.system_accuracy == 1.0
-    assert ev.data_read_accuracy == 1.0
-    assert ev.data_write_accuracy == 1.0
+    assert ev.data_read_recall == 1.0
+    assert ev.data_read_precision == 1.0
+    assert ev.data_write_recall == 1.0
+    assert ev.data_write_precision == 1.0
     assert ev.transition_accuracy == 1.0
     assert ev.branch_recall == 1.0
     assert ev.branch_condition_accuracy == 1.0
     assert ev.rationale_coverage == 1.0
+    assert ev.confirmed_rationale_ok is True
     assert ev.uncertainty_handling is True
     assert ev.fabricated_rationale is False
+    assert ev.challenge_target_identified is True
+    assert ev.why_investigated is True
+    assert ev.owner_investigated is True
+    assert ev.evidence_investigated is True
+    assert ev.removal_investigated is True
+    assert ev.deletion_considered is True
     assert ev.challenge_done is True
     assert ev.improvement_order_ok is True
     assert ev.structural_pass is True
     assert ev.rationale_pass is True
     assert ev.challenge_pass is True
-    assert ev.quality_pass is True
     assert ev.protocol_pass is True
+    assert ev.quality_pass is True
 
 
 # ---------------------------------------------------------------------------
-# Leakage: agent-visible policy / tools must not reveal the hidden workflow
+# P0: arbitrary step ids
+# ---------------------------------------------------------------------------
+
+
+def test_arbitrary_step_ids_full_pass():
+    tools = _tools()
+    _build(
+        tools,
+        ids=(
+            "request",
+            "check_customer",
+            "create_quote",
+            "approval",
+            "send_quote",
+            "month_end_export",
+        ),
+    )
+    ev = _eval(tools)
+    assert ev.step_recall == 1.0
+    assert ev.unexpected_step_count == 0
+    assert ev.transition_accuracy == 1.0
+    assert ev.branch_recall == 1.0
+    assert ev.challenge_target_identified is True
+    assert ev.challenge_done is True
+    assert ev.structural_pass is True
+    assert ev.quality_pass is True
+
+
+def test_arbitrary_ids_canonicalise_graph_not_raw_ids():
+    """A full pass must not depend on the agent using s1..s6."""
+    tools = _tools()
+    _build(tools, ids=("a", "b", "c", "d", "e", "f"))
+    ev = _eval(tools)
+    assert ev.transition_accuracy == 1.0
+    assert ev.branch_recall == 1.0
+    assert ev.quality_pass is True
+
+
+# ---------------------------------------------------------------------------
+# P1: NONE / NOT_INVESTIGATED vs UNKNOWN
+# ---------------------------------------------------------------------------
+
+
+def test_uninvestigated_rationale_fails():
+    tools = _tools()
+    _build(tools)
+    for s in tools.db.workflow.steps:
+        s.necessity.investigated = False
+    ev = _eval(tools)
+    assert ev.rationale_coverage == 0.0  # NOT_INVESTIGATED -> FAIL
+    assert ev.rationale_pass is False
+
+
+def test_investigated_unknown_passes():
+    tools = _tools()
+    _build(tools)  # s6 investigated and recorded UNKNOWN
+    ev = _eval(tools)
+    assert ev.rationale_coverage == 1.0
+    assert ev.rationale_pass is True
+    s6 = next(s for s in tools.db.workflow.steps if s.id == "s6")
+    assert s6.necessity.investigated is True
+    assert s6.necessity.epistemic_status == EpistemicStatus.UNKNOWN
+
+
+def test_unknown_fabricated_as_fact_fails():
+    tools = _tools()
+    _build(tools)
+    for s in tools.db.workflow.steps:
+        if s.id == "s6":
+            s.necessity.rationale_known = True
+            s.necessity.epistemic_status = EpistemicStatus.FACT
+            s.necessity.rationale = "for accounting reconciliation"
+    ev = _eval(tools)
+    assert ev.fabricated_rationale is True
+    assert ev.uncertainty_handling is False
+    assert ev.rationale_pass is False
+
+
+# ---------------------------------------------------------------------------
+# P1: confirmed rationale content / status / source
+# ---------------------------------------------------------------------------
+
+
+def test_confirmed_rationale_content_must_match():
+    tools = _tools()
+    _build(tools)
+    for s in tools.db.workflow.steps:
+        if s.id == "s4":
+            s.necessity.rationale = "for tax reporting"  # wrong content
+    ev = _eval(tools)
+    assert ev.confirmed_rationale_ok is False
+    assert ev.rationale_pass is False
+
+
+def test_confirmed_rationale_wrong_source_fails():
+    tools = _tools()
+    _build(tools)
+    for s in tools.db.workflow.steps:
+        if s.id == "s4":
+            s.necessity.source = "manager"  # wrong source
+    ev = _eval(tools)
+    assert ev.confirmed_rationale_ok is False
+    assert ev.rationale_pass is False
+
+
+def test_correct_content_as_belief_fails():
+    tools = _tools()
+    _build(tools)
+    for s in tools.db.workflow.steps:
+        if s.id == "s4":
+            s.necessity.epistemic_status = (
+                EpistemicStatus.BELIEF
+            )  # correct content, wrong status
+    ev = _eval(tools)
+    assert ev.confirmed_rationale_ok is False
+    assert ev.rationale_pass is False
+
+
+# ---------------------------------------------------------------------------
+# P2: step matching robustness (action-first)
+# ---------------------------------------------------------------------------
+
+
+def test_same_actor_system_wrong_action_no_match():
+    tools = _tools()
+    _build(tools)
+    for s in tools.db.workflow.steps:
+        if s.id == "s2":  # sales/crm, but totally different action
+            s.action = "take a coffee break"
+    ev = _eval(tools)
+    assert ev.step_recall < 1.0  # missing + unexpected
+    assert ev.unexpected_step_count == 1
+    assert ev.structural_pass is False
+
+
+# ---------------------------------------------------------------------------
+# P2: precision-aware data
+# ---------------------------------------------------------------------------
+
+
+def test_exact_data_passes():
+    tools = _tools()
+    _build(tools)
+    ev = _eval(tools)
+    assert ev.data_read_recall == 1.0 and ev.data_read_precision == 1.0
+    assert ev.data_write_recall == 1.0 and ev.data_write_precision == 1.0
+    assert ev.structural_pass is True
+
+
+def test_missing_required_data_fails_recall():
+    tools = _tools()
+    _build(tools)
+    for s in tools.db.workflow.steps:
+        if s.id == "s3":
+            s.reads = ["customer"]  # pricing missing
+    ev = _eval(tools)
+    assert ev.data_read_recall < 1.0
+    assert ev.structural_pass is False
+
+
+def test_invented_extra_data_fails_precision():
+    tools = _tools()
+    _build(tools)
+    for s in tools.db.workflow.steps:
+        if s.id == "s3":
+            s.writes = ["quote", "quarterly_report", "tax_ledger"]  # invented extras
+    ev = _eval(tools)
+    assert ev.data_write_precision < 1.0
+    assert ev.structural_pass is False
+
+
+# ---------------------------------------------------------------------------
+# P2: condition-aware transitions
+# ---------------------------------------------------------------------------
+
+
+def test_wrong_edge_fails_transition():
+    tools = _tools()
+    _build(tools)
+    # Rewire s1->s2 into a wrong edge.
+    tools.db.workflow.transitions = [
+        t
+        for t in tools.db.workflow.transitions
+        if (t.from_step, t.to_step) != ("s1", "s2")
+    ]
+    tools.connect_steps("s1", "s3", None)  # skip the check step
+    # (keep all other edges)
+    ev = _eval(tools)
+    assert ev.transition_accuracy < 1.0
+    assert ev.structural_pass is False
+
+
+def test_reversed_condition_fails():
+    tools = _tools()
+    _build(tools)
+    for t in tools.db.workflow.transitions:
+        if (t.from_step, t.to_step) == ("s3", "s4"):
+            t.condition = "amount at or below 1,000,000"  # reversed
+    ev = _eval(tools)
+    assert ev.transition_accuracy < 1.0
+    assert ev.structural_pass is False
+
+
+def test_missing_condition_fails():
+    tools = _tools()
+    _build(tools)
+    for t in tools.db.workflow.transitions:
+        if (t.from_step, t.to_step) == ("s5", "s6"):
+            t.condition = None  # month-end condition dropped
+    ev = _eval(tools)
+    assert ev.transition_accuracy < 1.0
+    assert ev.structural_pass is False
+
+
+def test_missing_branch_path_fails_branch_recall():
+    tools = _tools()
+    _build(tools)
+    # Record the flow as linear: drop the low-value path from both the branch
+    # record and the transitions (no divergence reconstructed).
+    tools.db.workflow.transitions = [
+        t
+        for t in tools.db.workflow.transitions
+        if (t.from_step, t.to_step) != ("s3", "s5")
+    ]
+    tools.db.workflow.branches = [
+        b for b in tools.db.workflow.branches if not (b.from_step == "s3")
+    ]
+    ev = _eval(tools)
+    assert ev.branch_recall < 1.0
+    assert ev.structural_pass is False
+
+
+# ---------------------------------------------------------------------------
+# P2: workflow metadata
+# ---------------------------------------------------------------------------
+
+
+def test_workflow_metadata_accuracy():
+    tools = _tools()
+    _build(tools)
+    ev = _eval(tools)
+    assert ev.trigger_accuracy == 1.0
+    assert ev.purpose_accuracy == 1.0
+    assert ev.outcome_accuracy == 1.0
+    assert ev.structural_pass is True
+
+
+def test_wrong_purpose_fails_metadata():
+    tools = _tools()
+    _build(tools)
+    tools.db.workflow.purpose = "track inventory levels"  # wrong purpose
+    ev = _eval(tools)
+    assert ev.purpose_accuracy == 0.0
+    assert ev.structural_pass is False
+
+
+# ---------------------------------------------------------------------------
+# P1: EN / JA semantic equivalence
+# ---------------------------------------------------------------------------
+
+
+def test_en_full_structural_pass():
+    tools = _tools()
+    _build(tools, ja=False)
+    ev = _eval(tools, SCENARIO)
+    assert ev.step_recall == 1.0
+    assert ev.transition_accuracy == 1.0
+    assert ev.structural_pass is True
+    assert ev.quality_pass is True
+
+
+def test_ja_equivalent_full_structural_pass():
+    tools = _tools()
+    _build(tools, ja=True)
+    ev = _eval(tools, JA_SCENARIO)
+    assert ev.step_recall == 1.0
+    assert ev.transition_accuracy == 1.0
+    assert ev.branch_recall == 1.0
+    assert ev.structural_pass is True
+    assert ev.rationale_pass is True
+    assert ev.challenge_pass is True
+    assert ev.quality_pass is True
+
+
+def test_en_ja_structural_metrics_equivalent():
+    en_tools = _tools()
+    ja_tools = _tools()
+    _build(en_tools, ja=False)
+    _build(ja_tools, ja=True)
+    en = _eval(en_tools, SCENARIO)
+    ja = _eval(ja_tools, JA_SCENARIO)
+    for field in (
+        "step_recall",
+        "transition_accuracy",
+        "branch_recall",
+        "branch_condition_accuracy",
+        "actor_accuracy",
+        "system_accuracy",
+        "data_read_recall",
+        "data_read_precision",
+        "data_write_recall",
+        "data_write_precision",
+        "rationale_coverage",
+    ):
+        assert getattr(en, field) == getattr(ja, field), field
+    assert en.structural_pass == ja.structural_pass is True
+    assert en.quality_pass == ja.quality_pass is True
+
+
+# ---------------------------------------------------------------------------
+# P2: necessity challenge quality
+# ---------------------------------------------------------------------------
+
+
+def test_owner_not_investigated_fails_challenge():
+    tools = _tools()
+    _build(tools)
+    for s in tools.db.workflow.steps:
+        if s.id == "s6":
+            s.necessity.owner_investigated = False
+    ev = _eval(tools)
+    assert ev.owner_investigated is False
+    assert ev.challenge_done is False
+    assert ev.challenge_pass is False
+
+
+def test_evidence_not_investigated_fails_challenge():
+    tools = _tools()
+    _build(tools)
+    for s in tools.db.workflow.steps:
+        if s.id == "s6":
+            s.necessity.evidence_investigated = False
+    ev = _eval(tools)
+    assert ev.evidence_investigated is False
+    assert ev.challenge_done is False
+
+
+def test_removal_impact_not_investigated_fails_challenge():
+    tools = _tools()
+    _build(tools)
+    for s in tools.db.workflow.steps:
+        if s.id == "s6":
+            s.necessity.removal_investigated = False
+    ev = _eval(tools)
+    assert ev.removal_investigated is False
+    assert ev.challenge_done is False
+
+
+def test_challenge_target_found_via_id_mapping():
+    """An arbitrary-id challenge still targets the questionable step."""
+    tools = _tools()
+    _build(tools, ids=("r", "cc", "cq", "ap", "sq", "me"))
+    ev = _eval(tools)
+    assert ev.challenge_target_identified is True
+    assert ev.challenge_done is True
+
+
+def test_no_challenge_at_all_fails():
+    tools = _tools()
+    _build(tools)
+    for s in tools.db.workflow.steps:
+        if s.id == "s6":
+            s.necessity.investigated = False
+            s.necessity.owner_investigated = False
+            s.necessity.evidence_investigated = False
+            s.necessity.removal_investigated = False
+            s.necessity.deletion_considered = False
+    ev = _eval(tools)
+    assert ev.challenge_done is False
+    assert ev.challenge_pass is False
+
+
+# ---------------------------------------------------------------------------
+# P2: improvement order
+# ---------------------------------------------------------------------------
+
+
+def test_automate_before_investigation_fails():
+    tools = _tools()
+    _build(tools)
+    for s in tools.db.workflow.steps:
+        if s.id == "s6":
+            s.necessity.investigated = False
+            s.necessity.owner_investigated = False
+            s.necessity.evidence_investigated = False
+            s.necessity.challenged = False
+    tools.propose_improvement("s6", "automate", "RPA it now")
+    ev = _eval(tools)
+    assert ev.improvement_order_ok is False
+    assert ev.challenge_pass is False
+
+
+def test_question_before_automate_ok():
+    tools = _tools()
+    _build(tools)
+    tools.propose_improvement("s6", "question", "is this needed?")
+    tools.propose_improvement("s6", "automate", "then automate")
+    ev = _eval(tools)
+    assert ev.improvement_order_ok is True
+
+
+def test_delete_after_investigation_ok():
+    """Investigated unknown/no-evidence step treated as a deletion candidate is good."""
+    tools = _tools()
+    _build(tools)
+    tools.propose_improvement("s6", "question", "is this step needed?")
+    tools.propose_improvement("s6", "delete", "reason unknown, no evidence")
+    ev = _eval(tools)
+    assert ev.improvement_order_ok is True
+
+
+# ---------------------------------------------------------------------------
+# Protocol vs quality
+# ---------------------------------------------------------------------------
+
+
+def test_quality_pass_protocol_fail():
+    tools = _tools()
+    _build(tools)
+    tools.db.interview_complete = False
+    ev = _eval(tools)
+    assert ev.quality_pass is True
+    assert ev.protocol_pass is False
+    assert ev.protocol_completed is False
+
+
+# ---------------------------------------------------------------------------
+# Stakeholder truth completeness (structure test)
+# ---------------------------------------------------------------------------
+
+
+def test_scenario_covers_stakeholder_knowledge_requirements():
+    """Every fact the evaluator grades that the stakeholder knows must be
+    answerable from the scenario's known_info (truth completeness)."""
+    for task in get_tasks():
+        known = task.user_scenario.instructions.known_info or ""
+        known_l = known.lower()
+        for req in stakeholder_knowledge_requirements():
+            matched = any(sig.lower() in known_l for sig in req.signals)
+            assert matched, (
+                f"{task.id}: scenario missing knowledge '{req.key}' ({req.signals})"
+            )
+            del req  # noqa: PLW0127
+
+
+# ---------------------------------------------------------------------------
+# Leakage (R)
 # ---------------------------------------------------------------------------
 
 HIDDEN_TERMS = (
@@ -171,17 +696,16 @@ HIDDEN_TERMS = (
 )
 
 
-def test_L1_policy_has_no_hidden_workflow_identity():
+def test_policy_has_no_hidden_workflow_identity():
     policy = BUSINESS_INTERVIEW_POLICY_PATH.read_text().lower()
     for term in HIDDEN_TERMS:
         assert term not in policy, f"policy leaks hidden term: {term}"
-    # General workflow guidance is present.
     assert "workflow" in policy
     assert "branch" in policy
     assert "necessity" in policy
 
 
-def test_L2_tool_descriptions_have_no_hidden_workflow_identity():
+def test_tool_descriptions_have_no_hidden_workflow_identity():
     docs = "\n".join(
         [
             InterviewTools.create_workflow.__doc__ or "",
@@ -191,26 +715,35 @@ def test_L2_tool_descriptions_have_no_hidden_workflow_identity():
             InterviewTools.set_step_rationale.__doc__ or "",
             InterviewTools.set_step_unknown.__doc__ or "",
             InterviewTools.challenge_step.__doc__ or "",
+            InterviewTools.record_necessity_detail.__doc__ or "",
             InterviewTools.propose_improvement.__doc__ or "",
             InterviewTools.finish_interview.__doc__ or "",
         ]
     ).lower()
     for term in HIDDEN_TERMS:
         assert term not in docs, f"tool description leaks hidden term: {term}"
-    assert "condition" in docs
+
+
+def test_agent_system_prompt_has_no_ground_truth():
+    """The agent's system prompt is built only from the domain policy, so the
+    evaluator-only ground truth (in description.notes and the reference
+    evaluation_criteria.actions) never reaches the agent."""
+    from tau2.agent.llm_agent import LLMAgent
+
+    env = get_environment()
+    agent = LLMAgent(tools=env.get_tools(), domain_policy=env.get_policy(), llm="dummy")
+    prompt = agent.system_prompt.lower()
+    for term in HIDDEN_TERMS:
+        assert term not in prompt, f"agent system prompt leaks hidden term: {term}"
+    # The task description / evaluation criteria are evaluator-only and must not
+    # be referenced by the agent prompt.
+    assert "description" not in prompt and "evaluation_criteria" not in prompt
 
 
 def test_ground_truth_is_evaluator_only_not_in_scenario():
-    """The hidden workflow (steps, branch answer, rationale, challenge target)
-    must not appear in the stakeholder scenario text the agent could see."""
     task = [t for t in get_tasks() if t.id == SCENARIO][0]
     scenario = str(task.user_scenario).lower()
-    # The confirmed rationale (credit risk) is something the stakeholder knows,
-    # but the canonical step ids and the branch/step structure must not be given.
     assert "s1" not in scenario and "s4" not in scenario
-    gt = get_ground_truth(SCENARIO)
-    assert gt is not None
-    # The stakeholder text should not spell out the full step list / branch answer.
     assert "amount over 1,000,000" not in scenario
 
 
@@ -227,302 +760,21 @@ def test_en_ja_share_canonical_ground_truth():
     ja = get_ground_truth(JA_SCENARIO)
     assert en is not None and ja is not None
     assert en.scenario_id == "quotation_workflow_1"
-    assert [s.id for s in en.steps] == [s.id for s in ja.steps]
+    assert [s.concept for s in en.steps] == [s.concept for s in ja.steps]
 
 
-# ---------------------------------------------------------------------------
-# Workflow reconstruction falsification suite (A-L)
-# ---------------------------------------------------------------------------
-
-
-def _base_steps(tools: InterviewTools):
-    """Add the six steps with correct attributes (no transitions/branches yet)."""
-    steps = [
-        ("s1", "receive quotation request", "sales", None, [], ["request"], None),
-        (
-            "s2",
-            "check customer information in the CRM",
-            "sales",
-            "crm",
-            ["customer"],
-            [],
-            None,
-        ),
-        (
-            "s3",
-            "create quotation in the quoting system",
-            "sales",
-            "quoting",
-            ["customer", "pricing"],
-            ["quote"],
-            None,
-        ),
-        (
-            "s4",
-            "approve high-value quotation",
-            "manager",
-            "quoting",
-            ["quote"],
-            ["approval"],
-            "amount over 1,000,000",
-        ),
-        (
-            "s5",
-            "send quotation to customer",
-            "sales",
-            "email",
-            ["quote"],
-            ["sent_quote"],
-            None,
-        ),
-        (
-            "s6",
-            "send quotation summary to accounting at month-end",
-            "sales",
-            "excel",
-            ["quote"],
-            ["excel_summary"],
-            "month-end",
-        ),
-    ]
-    for sid, act, actor, system, reads, writes, cond in steps:
-        tools.add_step(
-            sid,
-            act,
-            actor=actor,
-            system=system,
-            reads=reads,
-            writes=writes,
-            condition=cond,
-        )
-
-
-def _good_edges(tools: InterviewTools):
-    for a, b, c in [
-        ("s1", "s2", None),
-        ("s2", "s3", None),
-        ("s3", "s4", "amount over 1,000,000"),
-        ("s3", "s5", "amount at or below 1,000,000"),
-        ("s4", "s5", None),
-        ("s5", "s6", "month-end"),
-    ]:
-        tools.connect_steps(a, b, c)
-    tools.add_branch("s3", "amount threshold", ["s4", "s5"])
-
-
-def _good_rationale_challenge(tools: InterviewTools):
-    tools.set_step_rationale("s4", "for credit risk management", "FACT", source="sales")
-    tools.set_step_unknown("s6", "the stakeholder does not know why")
-    tools.challenge_step("s6", "is this step actually necessary?")
-
-
-def test_falsification_A_structural_pass():
+def test_diagnostics_explain_challenge_failure():
+    """Diagnostics surface which challenge dimension was not investigated."""
     tools = _tools()
-    tools.create_workflow("Quotation creation")
-    _base_steps(tools)
-    _good_edges(tools)
-    _good_rationale_challenge(tools)
-    tools.finish_interview()
-    ev = _eval(tools)
-    assert ev.quality_pass is True
-    assert ev.structural_pass is True
-
-
-def test_falsification_B_step_missing_fails_step_recall():
-    tools = _tools()
-    tools.create_workflow("Quotation creation")
-    _base_steps(tools)
-    # Drop step s2 entirely.
-    tools.db.workflow.steps = [s for s in tools.db.workflow.steps if s.id != "s2"]
-    _good_edges(tools)
-    _good_rationale_challenge(tools)
-    tools.finish_interview()
-    ev = _eval(tools)
-    assert ev.step_recall < 1.0  # <-- step recall FAIL
-    assert ev.structural_pass is False
-
-
-def test_falsification_C_wrong_order_fails_transition():
-    tools = _tools()
-    tools.create_workflow("Quotation creation")
-    _base_steps(tools)
-    # Wrong order: s3 -> s1 (instead of s1 -> s2 -> s3).
-    for a, b, c in [
-        ("s3", "s1", None),
-        ("s1", "s2", None),
-        ("s2", "s4", "amount over 1,000,000"),
-        ("s2", "s5", "amount at or below 1,000,000"),
-        ("s4", "s5", None),
-        ("s5", "s6", "month-end"),
-    ]:
-        tools.connect_steps(a, b, c)
-    tools.add_branch("s3", "amount threshold", ["s4", "s5"])
-    _good_rationale_challenge(tools)
-    tools.finish_interview()
-    ev = _eval(tools)
-    assert ev.transition_accuracy < 1.0  # <-- transition FAIL
-    assert ev.structural_pass is False
-
-
-def test_falsification_D_branch_as_linear_fails_branch():
-    tools = _tools()
-    tools.create_workflow("Quotation creation")
-    _base_steps(tools)
-    # Record the flow as linear: s3 -> s4 only; the other branch path is missing.
-    for a, b, c in [
-        ("s1", "s2", None),
-        ("s2", "s3", None),
-        ("s3", "s4", None),
-        ("s4", "s5", None),
-        ("s5", "s6", "month-end"),
-    ]:
-        tools.connect_steps(a, b, c)
-    _good_rationale_challenge(tools)
-    tools.finish_interview()
-    ev = _eval(tools)
-    assert ev.branch_recall < 1.0  # <-- branch FAIL
-    assert ev.structural_pass is False
-
-
-def test_falsification_E_wrong_actor_fails_actor():
-    tools = _tools()
-    tools.create_workflow("Quotation creation")
-    # s4 is approved by sales instead of manager.
-    _base_steps(tools)
-    tools.db.workflow.steps = [
-        s if s.id != "s4" else s.model_copy(update={"actor": "sales"})
-        for s in tools.db.workflow.steps
-    ]
-    _good_edges(tools)
-    _good_rationale_challenge(tools)
-    tools.finish_interview()
-    ev = _eval(tools)
-    assert ev.actor_accuracy < 1.0  # <-- actor FAIL
-    assert ev.structural_pass is False
-
-
-def test_falsification_F_wrong_system_fails_system():
-    tools = _tools()
-    tools.create_workflow("Quotation creation")
-    _base_steps(tools)
-    # s3 uses the wrong system (email instead of quoting).
-    tools.db.workflow.steps = [
-        s if s.id != "s3" else s.model_copy(update={"system": "email"})
-        for s in tools.db.workflow.steps
-    ]
-    _good_edges(tools)
-    _good_rationale_challenge(tools)
-    tools.finish_interview()
-    ev = _eval(tools)
-    assert ev.system_accuracy < 1.0  # <-- system FAIL
-    assert ev.structural_pass is False
-
-
-def test_falsification_G_wrong_data_fails_data():
-    tools = _tools()
-    tools.create_workflow("Quotation creation")
-    _base_steps(tools)
-    # s3 writes 'approval' instead of 'quote' (read/write mix-up).
-    tools.db.workflow.steps = [
-        s if s.id != "s3" else s.model_copy(update={"writes": ["approval"]})
-        for s in tools.db.workflow.steps
-    ]
-    _good_edges(tools)
-    _good_rationale_challenge(tools)
-    tools.finish_interview()
-    ev = _eval(tools)
-    assert ev.data_write_accuracy < 1.0  # <-- data FAIL
-    assert ev.structural_pass is False
-
-
-def test_falsification_H_rationale_not_checked_fails_coverage():
-    tools = _tools()
-    tools.create_workflow("Quotation creation")
-    _base_steps(tools)
-    _good_edges(tools)
-    # The confirmed rationale (s4) is never recorded.
-    tools.set_step_unknown("s6", "the stakeholder does not know why")
-    tools.challenge_step("s6", "is this step actually necessary?")
-    tools.finish_interview()
-    ev = _eval(tools)
-    assert ev.rationale_coverage < 1.0  # <-- rationale coverage FAIL
-    assert ev.rationale_pass is False
-
-
-def test_falsification_I_unknown_rationale_fabricated_fails_epistemic():
-    tools = _tools()
-    tools.create_workflow("Quotation creation")
-    _base_steps(tools)
-    _good_edges(tools)
-    tools.set_step_rationale("s4", "for credit risk management", "FACT", source="sales")
-    # WRONG: the UNKNOWN rationale of s6 is fabricated as a FACT.
-    tools.set_step_rationale("s6", "for accounting reconciliation", "FACT")
-    tools.challenge_step("s6", "is this step actually necessary?")
-    tools.finish_interview()
-    ev = _eval(tools)
-    assert ev.fabricated_rationale is True  # <-- epistemic FAIL
-    assert ev.uncertainty_handling is False
-    assert ev.rationale_pass is False
-
-
-def test_falsification_J_legacy_not_challenged_fails_challenge():
-    tools = _tools()
-    tools.create_workflow("Quotation creation")
-    _base_steps(tools)
-    _good_edges(tools)
-    _good_rationale_challenge(tools)
-    # Remove the challenge on the questionable step s6.
+    _build(tools)
     for s in tools.db.workflow.steps:
-        s.necessity.challenged = False
-        s.necessity.challenges = []
-    tools.finish_interview()
+        if s.id == "s6":
+            s.necessity.evidence_investigated = False
     ev = _eval(tools)
-    assert ev.challenge_done is False  # <-- challenge FAIL
-    assert ev.challenge_pass is False
-
-
-def test_falsification_K_automate_without_questioning_fails_improvement_order():
-    tools = _tools()
-    tools.create_workflow("Quotation creation")
-    _base_steps(tools)
-    _good_edges(tools)
-    _good_rationale_challenge(tools)
-    # No challenge on s6, and an automation proposal without questioning first.
-    for s in tools.db.workflow.steps:
-        s.necessity.challenged = False
-        s.necessity.challenges = []
-    tools.propose_improvement("s6", "automate", "let us RPA the excel step")
-    tools.finish_interview()
-    ev = _eval(tools)
-    assert ev.improvement_order_ok is False  # <-- improvement-order FAIL
-    assert ev.challenge_pass is False
-
-
-def test_falsification_L_semantic_ok_protocol_fail():
-    tools = _tools()
-    tools.create_workflow("Quotation creation")
-    _base_steps(tools)
-    _good_edges(tools)
-    _good_rationale_challenge(tools)
-    # No finish_interview.
-    ev = _eval(tools)
-    assert ev.quality_pass is True
-    assert ev.protocol_pass is False
-    assert ev.protocol_completed is False
-
-
-def test_improvement_order_question_before_automate_ok():
-    tools = _tools()
-    tools.create_workflow("Quotation creation")
-    _base_steps(tools)
-    _good_edges(tools)
-    _good_rationale_challenge(tools)
-    # Question first, then automate: valid order.
-    tools.propose_improvement("s6", "question", "is this step needed?")
-    tools.propose_improvement("s6", "automate", "then automate if needed")
-    tools.finish_interview()
-    ev = _eval(tools)
-    assert ev.improvement_order_ok is True
+    diag = ev.model_dump(mode="json")
+    assert diag["evidence_investigated"] is False
+    assert diag["challenge_done"] is False
+    assert diag["challenge_pass"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -540,7 +792,6 @@ def _tool_call(cid: str, name: str, args: dict, result: str) -> list:
 
 
 def _trajectory_from_reference(task: Task):
-    """Execute the reference actions to build a trajectory with real tool results."""
     traj = [
         AssistantMessage(role="assistant", content="Hello, I'd like to interview you."),
         UserMessage(role="user", content="Sure."),
@@ -573,7 +824,6 @@ def test_evaluator_rewards_full_reconstruction():
         "assert_rationale_handled": True,
         "assert_necessity_challenged": True,
     }
-    assert reward_info.info is not None
     diag = reward_info.info["diagnostics"]
     assert diag["step_recall"] == 1.0
     assert diag["quality_pass"] is True
@@ -583,7 +833,6 @@ def test_evaluator_detects_missing_step():
     from tau2.evaluator.evaluator_env import EnvironmentEvaluator
 
     task = [t for t in get_tasks() if t.id == SCENARIO][0]
-    # Drop the s2 step and the s1->s2 edge by removing the relevant actions.
     keep = []
     drop_ids = {"wf_3", "wf_8"}  # add_step s2, connect s1->s2
     for a in task.evaluation_criteria.actions:
@@ -607,76 +856,3 @@ def test_evaluator_detects_missing_step():
     assert reward_info.reward == 0.0
     checks = {c.env_assertion.func_name: c.met for c in reward_info.env_assertions}
     assert checks["assert_workflow_reconstructed"] is False
-
-
-def test_japanese_scenario_loads_and_ground_truth_matches():
-    ja_task = [t for t in get_tasks() if t.id == JA_SCENARIO][0]
-    assert ja_task.initial_state is not None
-    assert "お世話になっております" in ja_task.initial_state.message_history[0].content
-    # A JA reconstruction (Japanese actions) is matched via content tokens.
-    tools = _tools()
-    tools.create_workflow("見積作成")
-    for sid, act, actor, system, reads, writes, cond in [
-        ("s1", "見積依頼を受け付ける", "営業", None, [], ["依頼"], None),
-        ("s2", "CRMで顧客情報を確認する", "営業", "crm", ["顧客"], [], None),
-        (
-            "s3",
-            "見積システムで見積を作成する",
-            "営業",
-            "quoting",
-            ["顧客", "価格"],
-            ["見積"],
-            None,
-        ),
-        (
-            "s4",
-            "高額見積を承認する",
-            "manager",
-            "quoting",
-            ["見積"],
-            ["承認"],
-            "100万円超",
-        ),
-        ("s5", "見積を顧客に送付する", "営業", "email", ["見積"], ["送付済み"], None),
-        (
-            "s6",
-            "月末に経理へ見積集計を送る",
-            "営業",
-            "excel",
-            ["見積"],
-            ["excel_summary"],
-            "月末",
-        ),
-    ]:
-        tools.add_step(
-            sid,
-            act,
-            actor=actor,
-            system=system,
-            reads=reads,
-            writes=writes,
-            condition=cond,
-        )
-    for a, b, c in [
-        ("s1", "s2", None),
-        ("s2", "s3", None),
-        ("s3", "s4", "100万円超"),
-        ("s3", "s5", "100万円以下"),
-        ("s4", "s5", None),
-        ("s5", "s6", "月末"),
-    ]:
-        tools.connect_steps(a, b, c)
-    tools.add_branch("s3", "金額閾値", ["s4", "s5"])
-    tools.set_step_rationale("s4", "与信リスク管理のため", "FACT", source="営業")
-    tools.set_step_unknown("s6", "理由は不明")
-    tools.challenge_step("s6", "このステップは本当に必要ですか？")
-    tools.finish_interview()
-
-    ev = _eval(tools, JA_SCENARIO)
-    # Bilingual matching partially reconstructs the steps (actor/system carry
-    # steps whose free-text shares no latin tokens with the EN ground truth).
-    assert ev.step_recall >= 0.5
-    # The rationale and challenge handling are language-independent and hold.
-    assert ev.rationale_pass is True
-    assert ev.challenge_pass is True
-    assert ev.fabricated_rationale is False
