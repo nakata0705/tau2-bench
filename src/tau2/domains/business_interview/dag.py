@@ -92,13 +92,23 @@ class Node(BaseModel):
     """A vertex in the business DAG.
 
     ``id`` is the (possibly agent-assigned) node identifier. ``action`` is the
-    natural-language action; ``actor`` / ``system`` / ``reads`` / ``writes`` and
-    ``necessity`` describe the node. Each attribute is an ``InferredValue`` so
-    confidence / provenance can differ per attribute.
+    open-world natural-language action; ``primitive`` is the optional generic
+    operation (CHECK / CREATE / APPROVE / ...); ``concept_id`` optionally
+    references a ``DiscoveredConcept``. ``actor`` / ``system`` / ``reads`` /
+    ``writes`` and ``necessity`` describe the node. Each attribute is an
+    ``InferredValue`` so confidence / provenance can differ per attribute.
     """
 
     id: str
     action: InferredValue = Field(default_factory=InferredValue)
+    primitive: Optional[InferredValue] = Field(
+        default=None,
+        description="Optional generic operation primitive (open-world; None/unknown ok).",
+    )
+    concept_id: Optional[str] = Field(
+        default=None,
+        description="Optional reference to a DiscoveredConcept in the DAG.",
+    )
     actor: InferredValue = Field(default_factory=InferredValue)
     system: InferredValue = Field(default_factory=InferredValue)
     reads: list[InferredValue] = Field(default_factory=list)
@@ -111,6 +121,30 @@ class Node(BaseModel):
         default_factory=list,
         description="Observations attached to this node (multiple allowed).",
     )
+
+
+class DiscoveredConcept(BaseModel):
+    """A first-class, agent-discovered open-world domain concept.
+
+    The agent discovers and integrates unknown domain concepts during the
+    interview (e.g. ``"chamber seasoning"`` with alias ``"conditioning cycle"``),
+    independent of any scenario ontology. New observations for the same concept
+    are merged into the existing concept.
+    """
+
+    id: str
+    label: str = Field(description="The concept's canonical label.")
+    description: Optional[str] = Field(default=None)
+    aliases: list[str] = Field(default_factory=list)
+    observation_ids: list[str] = Field(default_factory=list)
+    confidence: float = Field(default=0.0)
+
+    @field_validator("confidence")
+    @classmethod
+    def _confidence_in_range(cls, v: float) -> float:
+        if not (0.0 <= v <= 1.0):
+            raise ValueError(f"confidence must be in [0, 1], got {v}")
+        return v
 
 
 class Edge(BaseModel):
@@ -158,6 +192,10 @@ class BusinessDAG(BaseModel):
     name: str = Field(default="")
     nodes: dict[str, Node] = Field(default_factory=dict, description="Nodes by id.")
     edges: dict[str, Edge] = Field(default_factory=dict, description="Edges by id.")
+    concepts: dict[str, DiscoveredConcept] = Field(
+        default_factory=dict,
+        description="Agent-discovered open-world concepts by id.",
+    )
     start_node_id: Optional[str] = Field(default=None)
     end_node_ids: list[str] = Field(default_factory=list)
 

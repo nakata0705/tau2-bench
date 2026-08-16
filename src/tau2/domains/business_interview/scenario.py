@@ -15,7 +15,7 @@ from tau2.domains.business_interview.dag import (
     Necessity,
     Node,
 )
-from tau2.domains.business_interview.evaluation import EvaluationSpec
+from tau2.domains.business_interview.evaluation import EvaluationSpec, TruthNodeSpec
 from tau2.domains.business_interview.stakeholder import StakeholderFilter
 
 JA_SCENARIO_SUFFIX = "_ja"
@@ -109,15 +109,111 @@ def quotation_truth() -> BusinessDAG:
 
 
 def quotation_spec() -> EvaluationSpec:
+    """Hidden, evaluator-only, scenario-local semantic spec.
+
+    The expressions are aliases/paraphrases the evaluator uses to match the
+    agent's free-text actions to the Truth nodes; ``primitive`` is the expected
+    generic operation. This metadata is never shown to the agent.
+    """
     return EvaluationSpec(
-        truth_node_concepts={
-            "r": "receive_request",
-            "cc": "check_customer",
-            "cq": "create_quote",
-            "ap": "approve_quote",
-            "sq": "send_quote",
-            "me": "month_end_summary",
-        }
+        truth_nodes={
+            "r": TruthNodeSpec(
+                expressions=[
+                    "receive quotation request",
+                    "receive the request",
+                    "record the quotation request",
+                    "intake request",
+                    "見積依頼を受け付ける",
+                    "見積依頼の受付",
+                    "依頼を受ける",
+                ],
+                primitive="receive",
+            ),
+            "cc": TruthNodeSpec(
+                expressions=[
+                    "check customer information in the CRM",
+                    "check the customer",
+                    "verify customer information",
+                    "customer check in the CRM",
+                    "CRMで顧客情報を確認する",
+                    "顧客情報を確認",
+                    "顧客を確認",
+                ],
+                primitive="check",
+            ),
+            "cq": TruthNodeSpec(
+                expressions=[
+                    "create quotation in the quoting system",
+                    "create the quotation",
+                    "prepare quotation",
+                    "generate a quote",
+                    "見積システムで見積を作成する",
+                    "見積を作成する",
+                    "見積書を作成",
+                ],
+                primitive="create",
+            ),
+            "ap": TruthNodeSpec(
+                expressions=[
+                    "approve high-value quotation",
+                    "manager approval",
+                    "approve the high-value quote",
+                    "high-value quotation approval",
+                    "高額見積を承認する",
+                    "見積を承認する",
+                    "高額承認",
+                ],
+                primitive="approve",
+            ),
+            "sq": TruthNodeSpec(
+                expressions=[
+                    "send quotation to customer",
+                    "send the quotation",
+                    "deliver the quote",
+                    "send quote by email",
+                    "見積を顧客に送付する",
+                    "見積を送付",
+                    "見積書を送る",
+                ],
+                primitive="send",
+            ),
+            "me": TruthNodeSpec(
+                expressions=[
+                    "send quotation summary to accounting at month-end",
+                    "month-end accounting summary",
+                    "send summary to accounting",
+                    "月末に経理へ見積集計を送る",
+                    "月末の見積集計",
+                    "経理へ集計を送る",
+                ],
+                primitive="send",
+            ),
+        },
+        predicate_expressions={
+            "amount over 1,000,000": [
+                "amount over 1,000,000",
+                "over 1,000,000",
+                "100万円超",
+                "100万円を超える",
+            ],
+            "amount at or below 1,000,000": [
+                "amount at or below 1,000,000",
+                "at or below 1,000,000",
+                "100万円以下",
+                "100万円未満",
+            ],
+            "month-end": ["month-end", "monthly", "月末"],
+        },
+        necessity_expressions={
+            "for credit risk management": [
+                "for credit risk management",
+                "credit risk management",
+                "与信リスク管理",
+                "与信リスク管理のため",
+                "credit risk",
+                "与信",
+            ],
+        },
     )
 
 
@@ -148,6 +244,106 @@ def quotation_finance_filter() -> StakeholderFilter:
     )
 
 
+def lab_sample_truth() -> BusinessDAG:
+    """A non-quotation Truth DAG (lab sample conditioning).
+
+    Demonstrates open-world domain concepts ("specimen accession",
+    "chamber seasoning", "conditioning cycle") that are not part of any global
+    ontology.
+    """
+    return BusinessDAG(
+        id="lab",
+        name="Lab sample conditioning",
+        nodes={
+            "n1": Node(
+                id="n1",
+                action=_iv("specimen accession"),
+                actor=_iv("lab tech"),
+                reads=[_iv("sample")],
+                writes=[_iv("accessioned sample")],
+            ),
+            "n2": Node(
+                id="n2",
+                action=_iv("chamber seasoning"),
+                actor=_iv("lab tech"),
+                system=_iv("environment chamber"),
+                writes=[_iv("seasoned chamber")],
+            ),
+            "n3": Node(
+                id="n3",
+                action=_iv("conditioning cycle"),
+                actor=_iv("lab tech"),
+                system=_iv("environment chamber"),
+                reads=[_iv("accessioned sample")],
+                writes=[_iv("conditioned sample")],
+            ),
+            "n4": Node(
+                id="n4",
+                action=_iv("approve conditioned batch"),
+                actor=_iv("lab supervisor"),
+                reads=[_iv("conditioned sample")],
+                writes=[_iv("batch approval")],
+            ),
+        },
+        edges={
+            "l1": Edge(id="l1", from_node="n1", to_node="n2"),
+            "l2": Edge(id="l2", from_node="n2", to_node="n3"),
+            "l3": Edge(id="l3", from_node="n3", to_node="n4"),
+        },
+        start_node_id="n1",
+        end_node_ids=["n4"],
+    )
+
+
+def lab_sample_spec() -> EvaluationSpec:
+    return EvaluationSpec(
+        truth_nodes={
+            "n1": TruthNodeSpec(
+                expressions=[
+                    "specimen accession",
+                    "accession the sample",
+                    "receive the specimen",
+                ],
+                primitive="receive",
+            ),
+            "n2": TruthNodeSpec(
+                expressions=[
+                    "chamber seasoning",
+                    "season the chamber",
+                    "prepare the conditioning chamber",
+                ],
+                primitive="create",
+            ),
+            "n3": TruthNodeSpec(
+                expressions=[
+                    "conditioning cycle",
+                    "run the conditioning cycle",
+                    "process samples in the chamber",
+                ],
+                primitive="transform",
+            ),
+            "n4": TruthNodeSpec(
+                expressions=[
+                    "approve conditioned batch",
+                    "approve the batch",
+                    "approve conditioned samples",
+                ],
+                primitive="approve",
+            ),
+        }
+    )
+
+
+def lab_sample_filter() -> StakeholderFilter:
+    return StakeholderFilter(
+        name="lab tech",
+        visible_node_ids=["n1", "n2", "n3", "n4"],
+        visible_edge_ids=["l1", "l2", "l3"],
+        visible_attributes=["actor", "system", "reads", "writes"],
+        visible_necessity={},
+    )
+
+
 @dataclass
 class Scenario:
     scenario_id: str
@@ -162,6 +358,12 @@ _SCENARIOS: dict[str, Scenario] = {
         truth=quotation_truth(),
         spec=quotation_spec(),
         stakeholder=quotation_sales_filter(),
+    ),
+    "lab_sample_flow": Scenario(
+        scenario_id="lab_sample_flow",
+        truth=lab_sample_truth(),
+        spec=lab_sample_spec(),
+        stakeholder=lab_sample_filter(),
     ),
 }
 

@@ -9,8 +9,6 @@ avoids duplication between ``semantic.py`` (evaluation) and ``ground_truth.py``
 
 from typing import Optional
 
-from tau2.domains.business_interview.concepts import DATA_CONCEPTS, resolve
-
 _ROLE_ALIASES = {
     "sales": (
         "sales",
@@ -102,14 +100,4 @@ def value_signals(value: Optional[str], axis: str) -> tuple[str, ...]:
         return tuple({v} | set(_ROLE_ALIASES.get(v, ())))
     if axis == "system":
         return tuple({v} | set(_SYSTEM_ALIASES.get(v, ())))
-    if axis == "data":
-        cid = resolve(value, DATA_CONCEPTS)
-        if cid is not None:
-            for c in DATA_CONCEPTS:
-                if c.id == cid:
-                    extra = {s.lower() for s in c.primary} | {
-                        s.lower() for s in c.context
-                    }
-                    return tuple({v} | extra)
-        return tuple({v} | set(_VALUE_VARIANTS.get(v, ())))
     return tuple({v} | set(_VALUE_VARIANTS.get(v, ())))

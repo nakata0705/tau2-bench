@@ -1,159 +1,69 @@
-"""Language-independent concepts for business_interview (v3).
+"""Generic, scenario-independent primitives for business_interview (v4, open-world).
 
-Concepts are **evaluator-only annotations** — they are not domain objects and are
-not stored on nodes. They let the evaluator decide that a Truth Node such as
-"approve high-value quotation" and an Agent Node such as "100万円超の見積を営業部長が承認"
-denote the same thing, so an equivalent EN or JA reconstruction is scored
-identically and agent-assigned node ids never leak into the score.
+The global resolver here contains only **reusable generic operation primitives**
+(e.g. CHECK / CREATE / APPROVE / SEND ...) and signal words used to guess an
+abstract operation from free text. It is **not** a quotation-specific ontology
+and it is **not** the agent's business-understanding mechanism — it is only a
+benchmark scoring aid for the optional ``primitive`` axis. Unseen / unknown
+operations are allowed (resolution returns None).
 
-Resolution is deterministic (bilingual substring signal scoring); no LLM judge.
+Scenario-specific domain concepts and their expressions live in the scenario's
+hidden ``EvaluationSpec`` (evaluator-only), never here.
 """
 
-from dataclasses import dataclass
 from typing import Optional
 
-
-@dataclass(frozen=True)
-class Concept:
-    id: str
-    primary: list[str]
-    context: list[str] = ()
-    actor: Optional[str] = None
-    system: Optional[str] = None
-
-
-# ---------------------------------------------------------------------------
-# Node concepts (the 6 actions of the quotation workflow)
-# ---------------------------------------------------------------------------
-
-NODE_CONCEPTS = [
-    Concept(
-        "receive_request",
-        ["receive", "request", "intake", "受け付", "受付", "依頼を受け"],
-        ["customer", "quotation", "見積"],
-        actor="sales",
+# A primitive is (id, signal_words). Signals are case-insensitive substrings.
+_PRIMITIVES: list[tuple[str, tuple[str, ...]]] = [
+    (
+        "create",
+        (
+            "create",
+            "build",
+            "generate",
+            "produce",
+            "make",
+            "prepare",
+            "作成",
+            "生成",
+            "作成する",
+            "準備",
+        ),
     ),
-    Concept(
-        "check_customer",
-        ["check", "verify", "確認", "照会"],
-        ["customer", "crm", "顧客"],
-        actor="sales",
-        system="crm",
+    (
+        "check",
+        ("check", "verify", "validate", "confirm", "inspect", "照会", "確認", "検証"),
     ),
-    Concept(
-        "create_quote",
-        ["create", "build", "prepare", "generate", "作成", "生成"],
-        ["quotation", "quote", "見積", "quoting"],
-        actor="sales",
-        system="quoting",
-    ),
-    Concept(
-        "approve_quote",
-        ["approve", "authorize", "承認", "審査"],
-        ["approval", "quotation", "見積", "manager"],
-        actor="manager",
-        system="quoting",
-    ),
-    Concept(
-        "send_quote",
-        ["send", "deliver", "transmit", "送付", "送信", "発送"],
-        ["customer", "email", "見積"],
-        actor="sales",
-        system="email",
-    ),
-    Concept(
-        "month_end_summary",
-        ["month", "month-end", "monthly", "月末", "集計"],
-        ["summary", "accounting", "excel", "経理", "見積"],
-        actor="sales",
-        system="excel",
-    ),
+    ("approve", ("approve", "authorize", "sanction", "承認", "許可", "認可")),
+    ("reject", ("reject", "decline", "refuse", "却下", "拒否")),
+    ("send", ("send", "deliver", "transmit", "dispatch", "送付", "送信", "発送")),
+    ("receive", ("receive", "intake", "accept", "受領", "受け付", "受付")),
+    ("record", ("record", "log", "enter", "register", "記録", "登録")),
+    ("update", ("update", "edit", "modify", "change", "更新", "変更")),
+    ("transform", ("transform", "convert", "process", "変換", "加工")),
+    ("reconcile", ("reconcile", "match", "align", "照合", "突合")),
+    ("notify", ("notify", "alert", "inform", "通知")),
+    ("move", ("move", "transfer", "route", "移送", "移動")),
+    ("review", ("review", "examine", "レビュー", "精査")),
 ]
 
-# ---------------------------------------------------------------------------
-# Read/write data-item concepts
-# ---------------------------------------------------------------------------
 
-DATA_CONCEPTS = [
-    Concept("d_request", ["request", "依頼"]),
-    Concept("d_customer", ["customer", "顧客"]),
-    Concept("d_pricing", ["pricing", "price", "価格", "料金"]),
-    Concept("d_quote", ["quotation", "見積", "見積書"], ["quote"]),
-    Concept("d_approval", ["approval", "承認", "批准"]),
-    Concept("d_sent", ["sent", "send", "送付", "送信", "deliver"]),
-    Concept("d_summary", ["excel", "summary", "集計", "excel_summary"]),
-]
+def resolve_primitive(text: Optional[str]) -> Optional[str]:
+    """Guess an abstract generic primitive from free text, or None if unknown.
 
-# ---------------------------------------------------------------------------
-# Edge predicate concepts (control-flow conditions)
-# ---------------------------------------------------------------------------
-
-PREDICATE_CONCEPTS = [
-    Concept(
-        "pred_amount_over",
-        ["over", "above", "exceed", "greater", "more than", "超", "超過"],
-        ["amount", "1,000,000", "100万", "百万", "高額", "金額"],
-    ),
-    Concept(
-        "pred_amount_below",
-        ["below", "under", "less than", "at or below", "以下", "未満"],
-        ["amount", "1,000,000", "100万", "百万", "金額"],
-    ),
-    Concept(
-        "pred_month_end",
-        ["month", "month-end", "monthly", "月末"],
-        ["summary", "accounting", "excel", "経理"],
-    ),
-]
-
-# ---------------------------------------------------------------------------
-# Necessity value concepts
-# ---------------------------------------------------------------------------
-
-NECESSITY_CONCEPTS = {
-    "credit_risk": Concept(
-        "credit_risk",
-        ["credit", "与信"],
-        ["risk", "risk management", "creditworthiness", "リスク", "credit control"],
-    ),
-}
-
-
-def resolve(
-    text: Optional[str],
-    concepts: list[Concept],
-    actor: Optional[str] = None,
-    system: Optional[str] = None,
-) -> Optional[str]:
-    """Resolve free text to the id of the best-matching concept, or None.
-
-    Scoring is ``2 * primary_hits + context_hits`` (substring, case-insensitive).
-    ``actor`` / ``system`` only break ties between equally-scored concepts.
+    Returns the best-scoring primitive id (substring signal scoring) or None,
+    so that an unseen operation never fails the agent.
     """
     if not text:
         return None
     t = text.lower()
-    scored: list[tuple[int, Concept]] = []
-    for c in concepts:
-        prim = sum(1 for s in c.primary if s in t)
-        ctx = sum(1 for s in c.context if s in t)
-        sc = 2 * prim + ctx
-        if sc > 0:
-            scored.append((sc, c))
+    scored: list[tuple[int, str]] = []
+    for pid, signals in _PRIMITIVES:
+        hits = sum(1 for s in signals if s in t)
+        if hits > 0:
+            scored.append((hits, pid))
     if not scored:
         return None
-    best_score = max(sc for sc, _ in scored)
-    candidates = [c for sc, c in scored if sc == best_score]
-    if len(candidates) == 1:
-        return candidates[0].id
-    if actor:
-        a = actor.strip().lower()
-        for c in candidates:
-            if (c.actor and c.actor in a) or (a and c.actor and a in c.actor):
-                return c.id
-    if system:
-        s = system.strip().lower()
-        for c in candidates:
-            if c.system and c.system in s:
-                return c.id
-    return candidates[0].id
+    best = max(h for h, _ in scored)
+    cands = sorted(p for h, p in scored if h == best)
+    return cands[0]

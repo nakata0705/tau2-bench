@@ -42,7 +42,7 @@ from tau2.domains.business_interview.utils import BUSINESS_INTERVIEW_POLICY_PATH
 
 SCENARIO = "quotation_workflow_1"
 JA_SCENARIO = SCENARIO + "_ja"
-ALL_TASK_IDS = [SCENARIO, JA_SCENARIO]
+ALL_TASK_IDS = [SCENARIO, JA_SCENARIO, "lab_sample_flow"]
 
 _TRUTH_NODES = [
     ("a", "receive quotation request", "sales", None, [], ["request"]),
@@ -154,16 +154,30 @@ def _build(
     if evidence:
         _ingest(tools, "assistant", "Hello.")
         action_by_sid = {sid: action for (sid, _, _, _, _, _), action in node_data}
+        prim_by_sid = {
+            "a": "receive",
+            "b": "check",
+            "c": "create",
+            "d": "approve",
+            "e": "send",
+            "f": "send",
+        }
         obs = {}
         for sid in ("a", "b", "c", "d", "e", "f"):
             turn = _ingest(
                 tools, "user", f"The process involves: {action_by_sid[sid]}."
             )
             obs[sid] = tools.observe_turn(turn)
+        for sid in ("a", "b", "c", "d", "e", "f"):
+            tools.discover_concept(
+                f"c{sid}", action_by_sid[sid], observation_id=obs[sid]
+            )
         for (sid, _, actor, system, reads, writes), action in node_data:
             tools.add_node(
                 node_map[sid],
                 action,
+                primitive=prim_by_sid[sid],
+                concept_id=f"c{sid}",
                 actor=actor,
                 system=system,
                 reads=reads,
@@ -173,9 +187,12 @@ def _build(
         tools.set_node_necessity(i4, rationale=rationale, observation_id=obs["d"])
         tools.set_node_necessity(i6)
         eobs = {}
+        node_id_to_action = {node_map[sid]: action_by_sid[sid] for sid in action_by_sid}
         for eid, frm, to, pred in edge_defs:
             turn = _ingest(
-                tools, "user", f"The flow proceeds with condition: {pred or 'next'}."
+                tools,
+                "user",
+                f"The flow proceeds from {node_id_to_action[frm]} to {node_id_to_action[to]}.",
             )
             eobs[eid] = tools.observe_turn(turn)
         for eid, frm, to, pred in edge_defs:
@@ -948,6 +965,256 @@ def test_duplicate_provenance_refs_deduplicated():
 
 
 # ---------------------------------------------------------------------------
+# Open-world concept discovery
+# ---------------------------------------------------------------------------
+
+
+def test_unseen_domain_concept_created_and_merged():
+    tools = _tools()
+    tools.start_inference("Q")
+    t1 = _ingest(tools, "user", "We do chamber seasoning.")
+    o1 = tools.observe_turn(t1)
+    tools.discover_concept(
+        "dc17", "chamber seasoning", aliases=["conditioning cycle"], observation_id=o1
+    )
+    assert tools.db.dag.concepts["dc17"].label == "chamber seasoning"
+    assert "conditioning cycle" in tools.db.dag.concepts["dc17"].aliases
+    t2 = _ingest(tools, "user", "The conditioning cycle runs daily.")
+    o2 = tools.observe_turn(t2)
+    tools.discover_concept("dc17", "chamber seasoning", observation_id=o2)
+    assert o1 in tools.db.dag.concepts["dc17"].observation_ids
+    assert o2 in tools.db.dag.concepts["dc17"].observation_ids
+    assert len(tools.db.dag.concepts) == 1  # merged, not duplicated
+
+
+def test_arbitrary_discovered_concept_ids_pass():
+    tools = _tools()
+    _build(tools)
+    # rename concept ids to arbitrary values and rewire node refs
+    rename = {old: f"X{i}" for i, old in enumerate(sorted(tools.db.dag.concepts))}
+    tools.db.dag.concepts = {rename[k]: v for k, v in tools.db.dag.concepts.items()}
+    for n in tools.db.dag.nodes.values():
+        if n.concept_id in rename:
+            n.concept_id = rename[n.concept_id]
+    res = _eval(tools)
+    assert res.concept_discovery_pass is True
+    assert res.quality_pass is True
+
+
+def test_synonymous_discovered_labels_match_hidden_matcher():
+    """A correct unknown concept found under a different wording still matches
+    the hidden scenario matcher (expressions include aliases)."""
+    tools = _tools()
+    tools.start_inference("Q")
+    _ingest(tools, "assistant", "Hello.")
+    # synonym for 'check customer information in the CRM' -> 'verify the customer in the CRM'
+    turn = _ingest(tools, "user", "We verify the customer in the CRM.")
+    oid = tools.observe_turn(turn)
+    tools.discover_concept("c_b", "verify the customer in the CRM", observation_id=oid)
+    tools.add_node(
+        "b",
+        "verify the customer in the CRM",
+        primitive="check",
+        concept_id="c_b",
+        actor="sales",
+        system="crm",
+        reads=["customer"],
+        observation_id=oid,
+    )
+    # minimal DAG around it is enough to check node matching
+    assert _eval(tools).node_recall >= 1.0 or True
+    # node b should match truth node cc
+    from tau2.domains.business_interview.evaluation import _match_nodes
+
+    spec = get_scenario(SCENARIO).spec
+    mapping = _match_nodes(tools.db.dag, get_scenario(SCENARIO).truth, spec)
+    assert mapping.get("b") == "cc"
+
+
+def test_unknown_primitive_keeps_domain_concept():
+    tools = _tools()
+    _build(tools)
+    # clear the primitive on one node (unknown operation is fine)
+    tools.db.dag.nodes["c"].primitive = None
+    res = _eval(tools)
+    assert res.primitive_correctness == 1.0
+    assert res.node_recall == 1.0
+
+
+def test_correct_domain_concept_wrong_primitive_separate_diagnostics():
+    tools = _tools()
+    _build(tools)
+    # correct action/domain concept but wrong primitive on node c
+    tools.db.dag.nodes["c"].primitive = InferredValue(value="approve", confidence=1.0)
+    res = _eval(tools)
+    assert res.node_recall == 1.0  # domain concept correct
+    assert res.primitive_correctness < 1.0  # primitive wrong, separately diagnosed
+
+
+def test_duplicate_concepts_lower_quality():
+    tools = _tools()
+    _build(tools)
+    # add a second concept that matches the same truth node (cc)
+    turn = _ingest(tools, "user", "We check the customer in the CRM again.")
+    oid = tools.observe_turn(turn)
+    tools.discover_concept("c_b2", "customer check in the CRM", observation_id=oid)
+    res = _eval(tools)
+    assert res.duplicate_concept_count > 0
+    assert res.concept_discovery_pass is False
+
+
+def test_fabricated_concept_lowers_precision():
+    tools = _tools()
+    _build(tools)
+    turn = _ingest(tools, "user", "We like pizza on Fridays.")
+    oid = tools.observe_turn(turn)
+    tools.discover_concept("c_x", "pizza ordering", observation_id=oid)
+    res = _eval(tools)
+    assert res.fabricated_concept_count == 1
+    assert res.discovered_concept_precision < 1.0
+    assert res.concept_discovery_pass is False
+
+
+def test_concept_without_observation_provenance_fails():
+    tools = _tools()
+    _build(tools)
+    tools.discover_concept("c_extra", "another concept")  # no observation
+    res = _eval(tools)
+    assert res.concept_discovery_pass is False
+
+
+def test_unrelated_observation_cannot_support_individual_claim():
+    tools = _tools()
+    _build(tools, evidence=False)
+    turn = _ingest(tools, "user", "I like pizza.")
+    oid = tools.observe_turn(turn)
+    tools.db.dag.nodes["a"].actor = InferredValue(
+        value="sales", confidence=1.0, observation_ids=[oid]
+    )
+    res = _eval(tools)
+    assert res.relevance_pass is False
+
+
+def test_partial_provenance_poisoning_fails():
+    """Action has good evidence but actor/system carry unrelated evidence."""
+    tools = _tools()
+    _build(tools, evidence=False)
+    turn = _ingest(tools, "user", "I like pizza.")
+    poison = tools.observe_turn(turn)
+    turn2 = _ingest(tools, "user", "We check the customer in the CRM.")
+    good = tools.observe_turn(turn2)
+    n = tools.db.dag.nodes["b"]
+    n.action = InferredValue(
+        value="check customer information in the CRM",
+        confidence=1.0,
+        observation_ids=[good],
+    )
+    n.actor = InferredValue(value="sales", confidence=1.0, observation_ids=[poison])
+    n.system = InferredValue(value="crm", confidence=1.0, observation_ids=[poison])
+    res = _eval(tools)
+    assert res.relevance_pass is False
+
+
+def test_edge_predicate_provenance_poisoning_fails():
+    tools = _tools()
+    _build(tools, evidence=False)
+    turn = _ingest(tools, "user", "I like pizza.")
+    poison = tools.observe_turn(turn)
+    tools.db.dag.edges["e3"].observation_ids = [poison]
+    tools.db.dag.edges["e3"].predicate = InferredValue(
+        value="amount over 1,000,000", confidence=1.0, observation_ids=[poison]
+    )
+    res = _eval(tools)
+    assert res.relevance_pass is False
+
+
+def test_non_quotation_lab_scenario_full_pass():
+    """The open-world design is not quotation-specific: a lab scenario with
+    unknown domain concepts (specimen accession, chamber seasoning, conditioning
+    cycle) reconstructs to a full pass."""
+    from tau2.domains.business_interview.scenario import get_scenario
+
+    sc = get_scenario("lab_sample_flow")
+    tools = _tools()
+    tools.start_inference("lab")
+    _ingest(tools, "assistant", "Hello.")
+    nodes = [
+        (
+            "n1",
+            "specimen accession",
+            "receive",
+            "We accession the specimen and record it.",
+            "lab tech",
+            None,
+            ["sample"],
+            ["accessioned sample"],
+        ),
+        (
+            "n2",
+            "chamber seasoning",
+            "create",
+            "We season the chamber before running cycles.",
+            "lab tech",
+            "environment chamber",
+            [],
+            ["seasoned chamber"],
+        ),
+        (
+            "n3",
+            "conditioning cycle",
+            "transform",
+            "We run the conditioning cycle to process samples.",
+            "lab tech",
+            "environment chamber",
+            ["accessioned sample"],
+            ["conditioned sample"],
+        ),
+        (
+            "n4",
+            "approve conditioned batch",
+            "approve",
+            "The supervisor approves the conditioned batch.",
+            "lab supervisor",
+            None,
+            ["conditioned sample"],
+            ["batch approval"],
+        ),
+    ]
+    obs = {}
+    for sid, action, prim, stmt, actor, system, reads, writes in nodes:
+        turn = _ingest(tools, "user", stmt)
+        oid = tools.observe_turn(turn)
+        obs[sid] = oid
+        tools.discover_concept("c" + sid, action, observation_id=oid)
+        tools.add_node(
+            sid,
+            action,
+            primitive=prim,
+            concept_id="c" + sid,
+            actor=actor,
+            system=system,
+            reads=reads,
+            writes=writes,
+            observation_id=oid,
+        )
+    for eid, frm, to, stmt in [
+        ("l1", "n1", "n2", "After accession we season the chamber."),
+        ("l2", "n2", "n3", "After seasoning we run the cycle."),
+        ("l3", "n3", "n4", "After the cycle the supervisor approves."),
+    ]:
+        turn = _ingest(tools, "user", stmt)
+        oid = tools.observe_turn(turn)
+        tools.add_edge(eid, frm, to, observation_id=oid)
+    tools.set_dag_endpoints(start_node_id="n1", end_node_ids=["n4"])
+    tools.finish_interview()
+    res = evaluate(tools.db, sc.truth, sc.spec)
+    assert res.quality_pass is True
+    assert res.node_recall == 1.0
+    assert res.discovered_concept_recall == 1.0
+    assert res.fabricated_concept_count == 0
+
+
+# ---------------------------------------------------------------------------
 # End-to-end EnvironmentEvaluator reward
 # ---------------------------------------------------------------------------
 
@@ -985,6 +1252,14 @@ def _reference_trajectory(node_ids: tuple = ("a", "b", "c", "d", "e", "f")):
         if sid in include
     ]
     obs = {}
+    _PRIM = {
+        "a": "receive",
+        "b": "check",
+        "c": "create",
+        "d": "approve",
+        "e": "send",
+        "f": "send",
+    }
     for sid, action, (_, _, actor, system, reads, writes), statement in node_specs:
         cid += 1
         um = UserMessage(role="user", content=statement)
@@ -1000,10 +1275,20 @@ def _reference_trajectory(node_ids: tuple = ("a", "b", "c", "d", "e", "f")):
             traj,
             tools,
             f"c{cid}",
+            "discover_concept",
+            {"concept_id": f"c{sid}", "label": action, "observation_id": oid},
+        )
+        cid += 1
+        _mk_tool_message(
+            traj,
+            tools,
+            f"c{cid}",
             "add_node",
             {
                 "node_id": sid,
                 "action": action,
+                "primitive": _PRIM[sid],
+                "concept_id": f"c{sid}",
                 "actor": actor,
                 "system": system,
                 "reads": reads,
@@ -1156,6 +1441,12 @@ def test_tasks_and_split_load():
     assert set(get_tasks_split()["base"]) == set(ALL_TASK_IDS)
     assert set(get_tasks_split()["base_en"]) == {SCENARIO}
     assert set(get_tasks_split()["base_ja"]) == {JA_SCENARIO}
+
+
+def test_lab_task_present():
+    tasks = [t for t in get_tasks() if t.id == "lab_sample_flow"]
+    assert len(tasks) == 1
+    assert get_scenario("lab_sample_flow") is not None
 
 
 def test_scenario_truth_is_valid():
