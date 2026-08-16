@@ -845,6 +845,7 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             self._update_voice_metadata(user_msg)
 
             self.trajectory.append(user_msg)
+            self.environment.on_message(user_msg)
             self.message = user_msg
             self.from_role = Role.USER
             if user_msg.is_tool_call():
@@ -864,6 +865,7 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
                 self.termination_reason = TerminationReason.AGENT_STOP
 
             self.trajectory.append(agent_msg)
+            self.environment.on_message(agent_msg)
             self.message = agent_msg
             self.from_role = Role.AGENT
             if agent_msg.is_tool_call():
@@ -883,6 +885,8 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
                 "Number of tool calls and tool messages should be the same"
             )
             self.trajectory.extend(tool_results)
+            for tr in tool_results:
+                self.environment.on_message(tr)
             self.message = self._wrap_tool_results(tool_results)
             self.to_role = self.from_role
             self.from_role = Role.ENV

@@ -108,9 +108,10 @@ class InterviewTools(ToolKitBase):
     def start_inference(self, name: str = "") -> str:
         """Start building the inferred business DAG.
 
-        This is destructive: it discards any previous inferred DAG and any
-        recorded observations, and resets the interview. Call it once at the
-        beginning of the inference.
+        This is destructive: it discards the previous inferred DAG and any
+        captured Observations, and resets the interview. The conversation ledger
+        (the stakeholder's actual messages) is kept — observations are re-captured
+        from it with ``observe_turn``. Call it once at the beginning.
 
         Args:
             name: Optional name for the DAG.
@@ -125,34 +126,59 @@ class InterviewTools(ToolKitBase):
         return "Inference started (previous DAG and observations discarded)."
 
     @is_tool(ToolType.WRITE)
-    def record_observation(
-        self,
-        text: str,
-        source_id: str = "stakeholder",
-        locale: Optional[str] = None,
-    ) -> str:
-        """Record an observation (something the stakeholder said).
+    def observe_turn(self, turn_idx: int) -> str:
+        """Capture the stakeholder message at ``turn_idx`` as an Observation.
 
-        Observations are immutable evidence. Record each statement the
-        stakeholder makes, then attach it to the node it supports.
+        The Observation's text, source and turn are taken from the actual
+        conversation message — you cannot write arbitrary text. The capture is
+        idempotent: capturing the same turn again returns the same observation id.
+
+        Only user (stakeholder) messages can be observed; assistant / tool
+        messages and nonexistent turns are rejected.
 
         Args:
-            text: What the stakeholder said.
-            source_id: Who said it (default 'stakeholder').
-            locale: Optional language tag.
+            turn_idx: The conversation message index to observe.
 
         Returns:
-            The new observation id (to reference when attaching/recording).
+            The observation id (use it as provenance on nodes / edges /
+            necessity).
         """
+        if turn_idx < 0 or turn_idx >= len(self.db.messages):
+            raise ValueError(f"no message at turn {turn_idx}")
+        msg = self.db.messages[turn_idx]
+        if msg.get("role") != "user":
+            raise ValueError(
+                f"turn {turn_idx} is not a stakeholder (user) message; "
+                f"role={msg.get('role')}"
+            )
+        for obs in self.db.observations:
+            if obs.turn == turn_idx:
+                return obs.id
         obs = Observation(
-            id=f"o{len(self.db.observations) + 1}",
-            source_id=source_id,
-            text=text,
+            id=f"obs_{turn_idx}",
+            source_id="stakeholder",
+            text=msg.get("content") or "",
             order=len(self.db.observations),
-            locale=locale,
+            turn=turn_idx,
         )
         self.db.observations.append(obs)
         return obs.id
+
+    @is_tool(ToolType.READ)
+    def list_stakeholder_messages(self) -> str:
+        """List the stakeholder (user) messages with their turn indices.
+
+        Use this to find the turn index of a stakeholder statement before
+        calling ``observe_turn``.
+
+        Returns:
+            A numbered list of stakeholder messages.
+        """
+        lines = []
+        for i, msg in enumerate(self.db.messages):
+            if msg.get("role") == "user":
+                lines.append(f"turn {i}: {msg.get('content')}")
+        return "\n".join(lines) if lines else "(no stakeholder messages yet)"
 
     @is_tool(ToolType.WRITE)
     def add_node(

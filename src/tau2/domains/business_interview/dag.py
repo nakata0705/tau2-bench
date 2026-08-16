@@ -145,6 +145,9 @@ class Observation(BaseModel):
     text: str
     order: int = Field(description="Sequence / turn number.")
     locale: Optional[str] = Field(default=None, description="Optional language tag.")
+    turn: int = Field(
+        description="The conversation message index this observation derives from."
+    )
 
 
 class BusinessDAG(BaseModel):
@@ -255,9 +258,19 @@ class InterviewResult(BaseModel):
 
 
 class InterviewDB(DB):
-    """State of an interview: the inferred DAG and the observations collected."""
+    """State of an interview: the inferred DAG, the conversation ledger, and the
+    authentic Observations captured from stakeholder messages.
+
+    ``messages`` is an environment-controlled ledger of the conversation
+    (role + content per message index); ``observations`` are derived only from
+    user (stakeholder) messages via ``observe_turn``.
+    """
 
     dag: Optional[BusinessDAG] = Field(default=None)
+    messages: list[dict] = Field(
+        default_factory=list,
+        description="Conversation ledger: {role, content} by message index.",
+    )
     observations: list[Observation] = Field(default_factory=list)
     interview_complete: bool = Field(default=False)
     summary: Optional[str] = Field(default=None)

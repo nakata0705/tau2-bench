@@ -74,6 +74,13 @@ class EvaluationResult(BaseModel):
     invalid_observation_reference_count: int
     evidence_pass: bool
 
+    # observation authenticity
+    authentic_observation_count: int
+    invalid_observation_source_count: int
+    orphan_observation_count: int
+    provenance_authenticity_pass: bool
+    relevance_pass: bool
+
     structural_pass: bool
     necessity_pass: bool
     protocol_pass: bool
@@ -181,36 +188,43 @@ def _iter_node_inferred(node):
 _NECESSITY_PROPS = ("rationale", "owner", "evidence", "removal_impact")
 
 
-def _evidence_metrics(agent: BusinessDAG, valid_obs_ids: set[str]):
-    """Compute evidence coverage over the agent DAG.
+def _evidence_metrics(
+    agent: BusinessDAG, all_obs_ids: set[str], authentic_obs_ids: set[str]
+):
+    """Compute evidence coverage over the agent DAG against authentic evidence.
 
     Only *asserted* claims (``value`` set and ``confidence > 0``) need
-    provenance; an unset value (unknown) needs none. Any reference to an
-    observation id that does not exist counts as invalid.
+    provenance; an unset value (unknown) needs none. A provenance reference
+    counts as invalid if it points to a nonexistent observation, and as
+    non-authentic if it points to an observation that is not derived from a real
+    stakeholder message.
     """
-    invalid = 0
+    invalid = 0  # refs to nonexistent observations
+    nonauthentic = 0  # refs to existing but non-authentic observations
     node_total = node_hit = 0
     attr_total = attr_hit = 0
     edge_total = edge_hit = 0
     pred_total = pred_hit = 0
     nec_total = nec_hit = 0
 
-    def count_refs(ids: list[str]) -> None:
-        nonlocal invalid
+    def classify(ids: list[str]) -> None:
+        nonlocal invalid, nonauthentic
         for i in ids:
-            if i not in valid_obs_ids:
+            if i not in all_obs_ids:
                 invalid += 1
+            elif i not in authentic_obs_ids:
+                nonauthentic += 1
 
     def iv_has_valid_ref(iv: InferredValue) -> bool:
-        return any(o in valid_obs_ids for o in iv.observation_ids)
+        return any(o in authentic_obs_ids for o in iv.observation_ids)
 
     for node in agent.nodes.values():
-        count_refs(node.observation_ids)
+        classify(node.observation_ids)
         node_total += 1
-        if any(o in valid_obs_ids for o in node.observation_ids):
+        if any(o in authentic_obs_ids for o in node.observation_ids):
             node_hit += 1
         for iv in _iter_node_inferred(node):
-            count_refs(iv.observation_ids)
+            classify(iv.observation_ids)
             if iv.asserted:
                 attr_total += 1
                 if iv_has_valid_ref(iv):
@@ -218,19 +232,19 @@ def _evidence_metrics(agent: BusinessDAG, valid_obs_ids: set[str]):
         if node.necessity is not None:
             for prop in _NECESSITY_PROPS:
                 iv = getattr(node.necessity, prop)
-                count_refs(iv.observation_ids)
+                classify(iv.observation_ids)
                 if iv.asserted:
                     nec_total += 1
                     if iv_has_valid_ref(iv):
                         nec_hit += 1
 
     for edge in agent.edges.values():
-        count_refs(edge.observation_ids)
+        classify(edge.observation_ids)
         edge_total += 1
-        if any(o in valid_obs_ids for o in edge.observation_ids):
+        if any(o in authentic_obs_ids for o in edge.observation_ids):
             edge_hit += 1
         if edge.predicate is not None:
-            count_refs(edge.predicate.observation_ids)
+            classify(edge.predicate.observation_ids)
             if edge.predicate.asserted:
                 pred_total += 1
                 if iv_has_valid_ref(edge.predicate):
@@ -248,7 +262,73 @@ def _evidence_metrics(agent: BusinessDAG, valid_obs_ids: set[str]):
         predicate_provenance_coverage,
         necessity_provenance_coverage,
         invalid,
+        nonauthentic,
     )
+
+
+def _node_evidence_obs_ids(node) -> set[str]:
+    ids = set(node.observation_ids)
+    for iv in _iter_node_inferred(node):
+        ids.update(iv.observation_ids)
+    if node.necessity is not None:
+        for p in _NECESSITY_PROPS:
+            ids.update(getattr(node.necessity, p).observation_ids)
+    return ids
+
+
+def _node_has_asserted_claims(node) -> bool:
+    for iv in _iter_node_inferred(node):
+        if iv.asserted:
+            return True
+    if node.necessity is not None:
+        for p in _NECESSITY_PROPS:
+            if getattr(node.necessity, p).asserted:
+                return True
+    return False
+
+
+def _relevance_pass(agent: BusinessDAG, obs_by_id: dict[str, object]) -> bool:
+    """Lightweight, deterministic relevance check.
+
+    For every node with asserted claims, at least one of its evidence
+    observations must share a concept signal (or a word) with the node's action.
+    This is deliberately conservative: it only rejects clearly-unrelated
+    evidence (e.g. ``"I like pizza."`` supporting ``actor=sales``), never a
+    heavy-paraphrase claim.
+    """
+    for node in agent.nodes.values():
+        if not _node_has_asserted_claims(node):
+            continue
+        action = node.action.value or ""
+        signals = [action.lower()]
+        cid = resolve(action, NODE_CONCEPTS)
+        if cid:
+            for c in NODE_CONCEPTS:
+                if c.id == cid:
+                    signals.extend(c.primary)
+                    signals.extend(c.context)
+                    break
+        texts = [
+            obs_by_id[oid].text.lower()
+            for oid in _node_evidence_obs_ids(node)
+            if oid in obs_by_id
+        ]
+        if not texts:
+            return False
+        if not any(any(s and s.lower() in t for s in signals) for t in texts):
+            return False
+    return True
+
+
+def _all_referenced_observation_ids(agent: BusinessDAG) -> set[str]:
+    ids: set[str] = set()
+    for node in agent.nodes.values():
+        ids.update(_node_evidence_obs_ids(node))
+    for edge in agent.edges.values():
+        ids.update(edge.observation_ids)
+        if edge.predicate is not None:
+            ids.update(edge.predicate.observation_ids)
+    return ids
 
 
 def evaluate(
@@ -258,7 +338,6 @@ def evaluate(
     protocol = db.interview_complete
     dag_created = len(agent.nodes) > 0
     dag_valid = agent.is_valid
-    valid_obs_ids = {o.id for o in db.observations}
 
     # ---- node matching -----------------------------------------------------
     mapping = _match_nodes(agent, truth, spec)
@@ -367,6 +446,27 @@ def evaluate(
                     nec_hits += 1
     necessity_correctness = nec_hits / nec_total if nec_total else 1.0
 
+    # ---- observation authenticity -------------------------------------------
+    all_obs_ids = {o.id for o in db.observations}
+    authentic_obs_ids: set[str] = set()
+    invalid_observation_source_count = 0
+    for o in db.observations:
+        m = db.messages[o.turn] if 0 <= o.turn < len(db.messages) else None
+        if (
+            m is not None
+            and m.get("role") == "user"
+            and (m.get("content") or "") == (o.text or "")
+        ):
+            authentic_obs_ids.add(o.id)
+        else:
+            invalid_observation_source_count += 1
+    authentic_observation_count = len(authentic_obs_ids)
+    obs_by_id = {o.id: o for o in db.observations}
+    referenced_obs = _all_referenced_observation_ids(agent)
+    orphan_observation_count = sum(
+        1 for o in db.observations if o.id not in referenced_obs
+    )
+
     # ---- evidence ----------------------------------------------------------
     (
         node_evidence_coverage,
@@ -375,15 +475,20 @@ def evaluate(
         predicate_provenance_coverage,
         necessity_provenance_coverage,
         invalid_observation_reference_count,
-    ) = _evidence_metrics(agent, valid_obs_ids)
+        nonauthentic_reference_count,
+    ) = _evidence_metrics(agent, all_obs_ids, authentic_obs_ids)
+    provenance_authenticity_pass = bool(
+        invalid_observation_reference_count == 0 and nonauthentic_reference_count == 0
+    )
     evidence_pass = bool(
-        invalid_observation_reference_count == 0
+        provenance_authenticity_pass
         and node_evidence_coverage == 1.0
         and attribute_provenance_coverage == 1.0
         and edge_evidence_coverage == 1.0
         and predicate_provenance_coverage == 1.0
         and necessity_provenance_coverage == 1.0
     )
+    relevance_pass = _relevance_pass(agent, obs_by_id)
 
     # ---- gates -------------------------------------------------------------
     structural_pass = bool(
@@ -404,7 +509,13 @@ def evaluate(
     )
     necessity_pass = necessity_correctness == 1.0 and not fabricated_necessity
     protocol_pass = protocol
-    quality_pass = structural_pass and necessity_pass and evidence_pass
+    quality_pass = bool(
+        structural_pass
+        and necessity_pass
+        and evidence_pass
+        and provenance_authenticity_pass
+        and relevance_pass
+    )
 
     return EvaluationResult(
         protocol_completed=protocol,
@@ -433,6 +544,11 @@ def evaluate(
         necessity_provenance_coverage=necessity_provenance_coverage,
         invalid_observation_reference_count=invalid_observation_reference_count,
         evidence_pass=evidence_pass,
+        authentic_observation_count=authentic_observation_count,
+        invalid_observation_source_count=invalid_observation_source_count,
+        orphan_observation_count=orphan_observation_count,
+        provenance_authenticity_pass=provenance_authenticity_pass,
+        relevance_pass=relevance_pass,
         structural_pass=structural_pass,
         necessity_pass=necessity_pass,
         protocol_pass=protocol_pass,

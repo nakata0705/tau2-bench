@@ -335,6 +335,9 @@ class Environment:
                 [not isinstance(message, UserMessage) for message in message_history]
             ), "User messages are not allowed in solo mode"
 
+        for msg in message_history:
+            self.on_message(msg)
+
         def get_actions_from_messages(
             messages: list[Message],
         ) -> list[tuple[ToolCall, ToolMessage]]:
@@ -466,6 +469,16 @@ class Environment:
         self.solo_mode = solo_mode
         if solo_mode:
             self.validate_solo_mode()
+
+    def on_message(self, message: Message) -> None:
+        """Hook called when a conversation message becomes available.
+
+        Called by ``set_state`` for every message in the (re)played history and by
+        the half-duplex orchestrator for every message appended during a live run,
+        so a domain sees the conversation deterministically in both paths. The
+        base implementation is a no-op; domains may override it (e.g. to record
+        stakeholder statements as evidence).
+        """
 
     def validate_solo_mode(self) -> None:
         """

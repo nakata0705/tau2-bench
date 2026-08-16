@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Optional
 
+from tau2.data_model.message import Message
 from tau2.data_model.tasks import Task
 from tau2.domains.business_interview.dag import InterviewDB
 from tau2.domains.business_interview.tools import InterviewTools
@@ -12,17 +13,39 @@ from tau2.environment.environment import Environment
 from tau2.utils import load_file
 
 
+class BusinessInterviewEnvironment(Environment):
+    """Environment that ingests the conversation into the interview DB.
+
+    Every conversation message is recorded into ``db.messages`` (an
+    environment-controlled ledger). The agent can then capture stakeholder
+    (user) messages as Observations via ``observe_turn``; it never writes
+    Observation text itself.
+    """
+
+    def on_message(self, message: Message) -> None:
+        if self.tools is None or getattr(self.tools, "db", None) is None:
+            return
+        db = self.tools.db
+        db.messages.append(
+            {
+                "role": str(getattr(message, "role", "")),
+                "content": getattr(message, "content", None),
+            }
+        )
+
+
 def get_environment(solo_mode: bool = False) -> Environment:
     """Build the business_interview environment.
 
-    There is no pre-existing data: the database only accumulates what the
-    interviewing agent records (observations + the inferred DAG).
+    There is no pre-existing data: the database only accumulates the
+    conversation, the authentic Observations captured from stakeholder messages,
+    and the inferred DAG.
     """
     db = InterviewDB()
     tools = InterviewTools(db)
     with open(BUSINESS_INTERVIEW_POLICY_PATH, "r") as fp:
         policy = fp.read()
-    env = Environment(
+    env = BusinessInterviewEnvironment(
         domain_name="business_interview",
         policy=policy,
         tools=tools,

@@ -33,15 +33,17 @@ There are no Truth-only node/edge classes.
   not a single number per node.
 - `Necessity` — a node property (0 or 1 per node) with `rationale`, `owner`,
   `evidence`, `removal_impact`, each an `InferredValue`.
-- `Observation` — `id`, `source_id`, `text`, `order`, `locale`.
+- `Observation` — `id`, `source_id`, `text`, `order`, `turn` (authentic: derived
+  from an actual stakeholder conversation message).
 - `InterviewResult` — `dag` + `observations`.
 
 ## Agent tools
 
 | Tool | Purpose |
 |------|---------|
-| `start_inference(name?)` | Begin an inferred DAG |
-| `record_observation(text, source_id?, locale?)` | Record an observation (immutable evidence) |
+| `start_inference(name?)` | Begin an inferred DAG (destructive to prior DAG + captured Observations) |
+| `list_stakeholder_messages()` | See the stakeholder statements and their turn indices |
+| `observe_turn(turn_idx)` | **Capture** a stakeholder (user) message at a turn as an authentic Observation (idempotent); returns the observation id |
 | `add_node(node_id, action, ...)` | Add a node (only when no existing node corresponds) |
 | `update_node(node_id, ...)` | Update an existing node's attributes / evidence |
 | `attach_observation(node_id, observation_id)` | Attach an observation to a node (multiple per node) |
@@ -126,8 +128,10 @@ leakage, and the falsification suite A-AE.
 ## Design notes
 
 - **Truth and Inferred DAGs are the same class.** No GT-only node/edge types.
-- **Observations are independent evidence**, not nodes; multiple observations
-  attach to one node.
+- **Observations are authentic primary evidence.** They are captured only from
+  actual stakeholder (user) messages via `observe_turn` — the agent cannot write
+  arbitrary Observation text, source, or turn. Observations are immutable, and
+  multiple observations attach to one node.
 - **Conditional branches are edges with predicates** — no Branch class, no
   node-level condition.
 - **Necessity is a node property** with per-property confidence / provenance;

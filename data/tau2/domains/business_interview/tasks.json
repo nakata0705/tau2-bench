@@ -17,49 +17,371 @@
     },
     "initial_state": {
       "message_history": [
-        {"role": "assistant", "content": "Hello, I'm a business analyst and I'd like to interview you about how your team prepares quotations. Is now a good time?", "turn_idx": 0},
-        {"role": "user", "content": "Sure, that's fine. What would you like to know?", "turn_idx": 1}
+        {
+          "role": "assistant",
+          "content": "Hello, I'm a business analyst and I'd like to interview you about how your team prepares quotations. Is now a good time?",
+          "turn_idx": 0
+        },
+        {
+          "role": "user",
+          "content": "Sure, that's fine. What would you like to know?",
+          "turn_idx": 1
+        }
       ]
     },
     "evaluation_criteria": {
       "actions": [
-        {"action_id": "inf_1", "name": "start_inference", "arguments": {"name": "Quotation creation"}, "info": "Reference: start the inference."},
-        {"action_id": "inf_2", "name": "record_observation", "arguments": {"text": "We receive quotation requests from customers and send the quotation by email."}, "info": "Reference: observation o1."},
-        {"action_id": "inf_3", "name": "add_node", "arguments": {"node_id": "a", "action": "receive quotation request", "actor": "sales", "writes": ["request"], "observation_id": "o1"}, "info": "Reference: node receive_request."},
-        {"action_id": "inf_4", "name": "record_observation", "arguments": {"text": "We check the customer's information in the CRM."}, "info": "Reference: observation o2."},
-        {"action_id": "inf_5", "name": "add_node", "arguments": {"node_id": "b", "action": "check customer information in the CRM", "actor": "sales", "system": "crm", "reads": ["customer"], "observation_id": "o2"}, "info": "Reference: node check_customer."},
-        {"action_id": "inf_6", "name": "record_observation", "arguments": {"text": "We create the quotation in the quoting system using customer and pricing information."}, "info": "Reference: observation o3."},
-        {"action_id": "inf_7", "name": "add_node", "arguments": {"node_id": "c", "action": "create quotation in the quoting system", "actor": "sales", "system": "quoting", "reads": ["customer", "pricing"], "writes": ["quote"], "observation_id": "o3"}, "info": "Reference: node create_quote."},
-        {"action_id": "inf_8", "name": "record_observation", "arguments": {"text": "For quotations over 1,000,000 yen a manager must approve before sending; this is for credit risk management."}, "info": "Reference: observation o4."},
-        {"action_id": "inf_9", "name": "add_node", "arguments": {"node_id": "d", "action": "approve high-value quotation", "actor": "manager", "system": "quoting", "reads": ["quote"], "writes": ["approval"], "observation_id": "o4"}, "info": "Reference: node approve_quote."},
-        {"action_id": "inf_10", "name": "set_node_necessity", "arguments": {"node_id": "d", "rationale": "for credit risk management", "observation_id": "o4"}, "info": "Reference: approval necessity (confirmed rationale)."},
-        {"action_id": "inf_11", "name": "record_observation", "arguments": {"text": "We send the quotation to the customer by email."}, "info": "Reference: observation o5."},
-        {"action_id": "inf_12", "name": "add_node", "arguments": {"node_id": "e", "action": "send quotation to customer", "actor": "sales", "system": "email", "reads": ["quote"], "writes": ["sent_quote"], "observation_id": "o5"}, "info": "Reference: node send_quote."},
-        {"action_id": "inf_13", "name": "record_observation", "arguments": {"text": "At month-end we also send a summary to Accounting as an Excel file, but I do not know why."}, "info": "Reference: observation o6."},
-        {"action_id": "inf_14", "name": "add_node", "arguments": {"node_id": "f", "action": "send quotation summary to accounting at month-end", "actor": "sales", "system": "excel", "reads": ["quote"], "writes": ["excel_summary"], "observation_id": "o6"}, "info": "Reference: node month_end_summary."},
-        {"action_id": "inf_15", "name": "set_node_necessity", "arguments": {"node_id": "f"}, "info": "Reference: month-end necessity unknown (all properties unset)."},
-        {"action_id": "inf_16", "name": "record_observation", "arguments": {"text": "The request step is followed by checking the customer in the CRM."}, "info": "Reference: observation o7 (edge e1)."},
-        {"action_id": "inf_17", "name": "add_edge", "arguments": {"edge_id": "e1", "from_node": "a", "to_node": "b", "observation_id": "o7"}, "info": "Reference: receive -> check."},
-        {"action_id": "inf_18", "name": "record_observation", "arguments": {"text": "After checking, we create the quotation."}, "info": "Reference: observation o8 (edge e2)."},
-        {"action_id": "inf_19", "name": "add_edge", "arguments": {"edge_id": "e2", "from_node": "b", "to_node": "c", "observation_id": "o8"}, "info": "Reference: check -> create."},
-        {"action_id": "inf_20", "name": "record_observation", "arguments": {"text": "For quotations over 1,000,000 the quotation goes to a manager for approval."}, "info": "Reference: observation o9 (edge e3)."},
-        {"action_id": "inf_21", "name": "add_edge", "arguments": {"edge_id": "e3", "from_node": "c", "to_node": "d", "predicate": "amount over 1,000,000", "observation_id": "o9"}, "info": "Reference: create -> approve [amount > 1M]."},
-        {"action_id": "inf_22", "name": "record_observation", "arguments": {"text": "Quotations at or below 1,000,000 are sent straight to the customer."}, "info": "Reference: observation o10 (edge e4)."},
-        {"action_id": "inf_23", "name": "add_edge", "arguments": {"edge_id": "e4", "from_node": "c", "to_node": "e", "predicate": "amount at or below 1,000,000", "observation_id": "o10"}, "info": "Reference: create -> send [amount <= 1M]."},
-        {"action_id": "inf_24", "name": "record_observation", "arguments": {"text": "After approval, the quotation is sent to the customer."}, "info": "Reference: observation o11 (edge e5)."},
-        {"action_id": "inf_25", "name": "add_edge", "arguments": {"edge_id": "e5", "from_node": "d", "to_node": "e", "observation_id": "o11"}, "info": "Reference: approve -> send."},
-        {"action_id": "inf_26", "name": "record_observation", "arguments": {"text": "At month-end, a summary of the quotation information is also sent to Accounting."}, "info": "Reference: observation o12 (edge e6)."},
-        {"action_id": "inf_27", "name": "add_edge", "arguments": {"edge_id": "e6", "from_node": "c", "to_node": "f", "predicate": "month-end", "observation_id": "o12"}, "info": "Reference: create -> month-end summary [month-end]."},
-        {"action_id": "inf_28", "name": "set_dag_endpoints", "arguments": {"start_node_id": "a", "end_node_ids": ["e", "f"]}, "info": "Reference: set start and ends."},
-        {"action_id": "inf_29", "name": "finish_interview", "arguments": {"summary": "Inferred the quotation DAG including the approval branch and the conditional month-end summary."}, "info": "Reference: finish the interview."}
+        {
+          "action_id": "inf_1",
+          "name": "start_inference",
+          "arguments": {
+            "name": "Quotation creation"
+          },
+          "info": "Reference: start the inference."
+        },
+        {
+          "action_id": "inf_2",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 3
+          },
+          "info": "Reference: capture stakeholder turn 3."
+        },
+        {
+          "action_id": "inf_3",
+          "name": "add_node",
+          "arguments": {
+            "node_id": "a",
+            "action": "receive quotation request",
+            "actor": "sales",
+            "reads": [],
+            "writes": [
+              "request"
+            ],
+            "observation_id": "obs_3"
+          },
+          "info": "Reference: node a."
+        },
+        {
+          "action_id": "inf_4",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 7
+          },
+          "info": "Reference: capture stakeholder turn 7."
+        },
+        {
+          "action_id": "inf_5",
+          "name": "add_node",
+          "arguments": {
+            "node_id": "b",
+            "action": "check customer information in the CRM",
+            "actor": "sales",
+            "reads": [
+              "customer"
+            ],
+            "writes": [],
+            "observation_id": "obs_7",
+            "system": "crm"
+          },
+          "info": "Reference: node b."
+        },
+        {
+          "action_id": "inf_6",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 11
+          },
+          "info": "Reference: capture stakeholder turn 11."
+        },
+        {
+          "action_id": "inf_7",
+          "name": "add_node",
+          "arguments": {
+            "node_id": "c",
+            "action": "create quotation in the quoting system",
+            "actor": "sales",
+            "reads": [
+              "customer",
+              "pricing"
+            ],
+            "writes": [
+              "quote"
+            ],
+            "observation_id": "obs_11",
+            "system": "quoting"
+          },
+          "info": "Reference: node c."
+        },
+        {
+          "action_id": "inf_8",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 15
+          },
+          "info": "Reference: capture stakeholder turn 15."
+        },
+        {
+          "action_id": "inf_9",
+          "name": "add_node",
+          "arguments": {
+            "node_id": "d",
+            "action": "approve high-value quotation",
+            "actor": "manager",
+            "reads": [
+              "quote"
+            ],
+            "writes": [
+              "approval"
+            ],
+            "observation_id": "obs_15",
+            "system": "quoting"
+          },
+          "info": "Reference: node d."
+        },
+        {
+          "action_id": "inf_10",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 19
+          },
+          "info": "Reference: capture stakeholder turn 19."
+        },
+        {
+          "action_id": "inf_11",
+          "name": "add_node",
+          "arguments": {
+            "node_id": "e",
+            "action": "send quotation to customer",
+            "actor": "sales",
+            "reads": [
+              "quote"
+            ],
+            "writes": [
+              "sent_quote"
+            ],
+            "observation_id": "obs_19",
+            "system": "email"
+          },
+          "info": "Reference: node e."
+        },
+        {
+          "action_id": "inf_12",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 23
+          },
+          "info": "Reference: capture stakeholder turn 23."
+        },
+        {
+          "action_id": "inf_13",
+          "name": "add_node",
+          "arguments": {
+            "node_id": "f",
+            "action": "send quotation summary to accounting at month-end",
+            "actor": "sales",
+            "reads": [
+              "quote"
+            ],
+            "writes": [
+              "excel_summary"
+            ],
+            "observation_id": "obs_23",
+            "system": "excel"
+          },
+          "info": "Reference: node f."
+        },
+        {
+          "action_id": "inf_14",
+          "name": "set_node_necessity",
+          "arguments": {
+            "node_id": "d",
+            "rationale": "for credit risk management",
+            "observation_id": "obs_15"
+          },
+          "info": "Reference: approval necessity."
+        },
+        {
+          "action_id": "inf_15",
+          "name": "set_node_necessity",
+          "arguments": {
+            "node_id": "f"
+          },
+          "info": "Reference: month-end necessity unknown."
+        },
+        {
+          "action_id": "inf_16",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 27
+          },
+          "info": "Reference: capture stakeholder turn 27."
+        },
+        {
+          "action_id": "inf_17",
+          "name": "add_edge",
+          "arguments": {
+            "edge_id": "e1",
+            "from_node": "a",
+            "to_node": "b",
+            "observation_id": "obs_27"
+          },
+          "info": "Reference: edge e1."
+        },
+        {
+          "action_id": "inf_18",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 31
+          },
+          "info": "Reference: capture stakeholder turn 31."
+        },
+        {
+          "action_id": "inf_19",
+          "name": "add_edge",
+          "arguments": {
+            "edge_id": "e2",
+            "from_node": "b",
+            "to_node": "c",
+            "observation_id": "obs_31"
+          },
+          "info": "Reference: edge e2."
+        },
+        {
+          "action_id": "inf_20",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 35
+          },
+          "info": "Reference: capture stakeholder turn 35."
+        },
+        {
+          "action_id": "inf_21",
+          "name": "add_edge",
+          "arguments": {
+            "edge_id": "e3",
+            "from_node": "c",
+            "to_node": "d",
+            "observation_id": "obs_35",
+            "predicate": "amount over 1,000,000"
+          },
+          "info": "Reference: edge e3."
+        },
+        {
+          "action_id": "inf_22",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 39
+          },
+          "info": "Reference: capture stakeholder turn 39."
+        },
+        {
+          "action_id": "inf_23",
+          "name": "add_edge",
+          "arguments": {
+            "edge_id": "e4",
+            "from_node": "c",
+            "to_node": "e",
+            "observation_id": "obs_39",
+            "predicate": "amount at or below 1,000,000"
+          },
+          "info": "Reference: edge e4."
+        },
+        {
+          "action_id": "inf_24",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 43
+          },
+          "info": "Reference: capture stakeholder turn 43."
+        },
+        {
+          "action_id": "inf_25",
+          "name": "add_edge",
+          "arguments": {
+            "edge_id": "e5",
+            "from_node": "d",
+            "to_node": "e",
+            "observation_id": "obs_43"
+          },
+          "info": "Reference: edge e5."
+        },
+        {
+          "action_id": "inf_26",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 47
+          },
+          "info": "Reference: capture stakeholder turn 47."
+        },
+        {
+          "action_id": "inf_27",
+          "name": "add_edge",
+          "arguments": {
+            "edge_id": "e6",
+            "from_node": "c",
+            "to_node": "f",
+            "observation_id": "obs_47",
+            "predicate": "month-end"
+          },
+          "info": "Reference: edge e6."
+        },
+        {
+          "action_id": "inf_28",
+          "name": "set_dag_endpoints",
+          "arguments": {
+            "start_node_id": "a",
+            "end_node_ids": [
+              "e",
+              "f"
+            ]
+          },
+          "info": "Reference: endpoints."
+        },
+        {
+          "action_id": "inf_29",
+          "name": "finish_interview",
+          "arguments": {
+            "summary": "Inferred the quotation DAG."
+          },
+          "info": "Reference: finish."
+        }
       ],
       "env_assertions": [
-        {"env_type": "assistant", "func_name": "assert_finish_interview", "arguments": {}, "message": "The interview must be finished via finish_interview."},
-        {"env_type": "assistant", "func_name": "assert_dag_reconstructed", "arguments": {"scenario_id": "quotation_workflow_1"}, "message": "The inferred DAG must match the truth DAG (nodes, edges, declared start, declared ends, predicates, attributes)."},
-        {"env_type": "assistant", "func_name": "assert_necessity_handled", "arguments": {"scenario_id": "quotation_workflow_1"}, "message": "Node necessity must match the truth (confirmed rationale; unknown preserved, nothing fabricated)."},
-        {"env_type": "assistant", "func_name": "assert_evidence_backed", "arguments": {"scenario_id": "quotation_workflow_1"}, "message": "Every asserted claim must be traceable to a recorded Observation."}
+        {
+          "env_type": "assistant",
+          "func_name": "assert_finish_interview",
+          "arguments": {},
+          "message": "The interview must be finished via finish_interview."
+        },
+        {
+          "env_type": "assistant",
+          "func_name": "assert_dag_reconstructed",
+          "arguments": {
+            "scenario_id": "quotation_workflow_1"
+          },
+          "message": "The inferred DAG must match the truth DAG (nodes, edges, declared start, declared ends, predicates, attributes)."
+        },
+        {
+          "env_type": "assistant",
+          "func_name": "assert_necessity_handled",
+          "arguments": {
+            "scenario_id": "quotation_workflow_1"
+          },
+          "message": "Node necessity must match the truth (confirmed rationale; unknown preserved, nothing fabricated)."
+        },
+        {
+          "env_type": "assistant",
+          "func_name": "assert_evidence_backed",
+          "arguments": {
+            "scenario_id": "quotation_workflow_1"
+          },
+          "message": "Every asserted claim must be traceable to a recorded Observation."
+        }
       ],
-      "reward_basis": ["ENV_ASSERTION"]
+      "reward_basis": [
+        "ENV_ASSERTION"
+      ]
     }
   },
   {
@@ -81,49 +403,371 @@
     },
     "initial_state": {
       "message_history": [
-        {"role": "assistant", "content": "お世話になっております。私はビジネスアナリストの田中と申します。御社のチームでの見積書の作成プロセスについてお話を伺いたいのですが、今よろしいでしょうか？", "turn_idx": 0},
-        {"role": "user", "content": "はい、大丈夫です。何を知りたいですか？", "turn_idx": 1}
+        {
+          "role": "assistant",
+          "content": "お世話になっております。私はビジネスアナリストの田中と申します。御社のチームでの見積書の作成プロセスについてお話を伺いたいのですが、今よろしいでしょうか？",
+          "turn_idx": 0
+        },
+        {
+          "role": "user",
+          "content": "はい、大丈夫です。何を知りたいですか？",
+          "turn_idx": 1
+        }
       ]
     },
     "evaluation_criteria": {
       "actions": [
-        {"action_id": "inf_1", "name": "start_inference", "arguments": {"name": "Quotation creation"}, "info": "Reference: start the inference."},
-        {"action_id": "inf_2", "name": "record_observation", "arguments": {"text": "We receive quotation requests from customers and send the quotation by email."}, "info": "Reference: observation o1."},
-        {"action_id": "inf_3", "name": "add_node", "arguments": {"node_id": "a", "action": "receive quotation request", "actor": "sales", "writes": ["request"], "observation_id": "o1"}, "info": "Reference: node receive_request."},
-        {"action_id": "inf_4", "name": "record_observation", "arguments": {"text": "We check the customer's information in the CRM."}, "info": "Reference: observation o2."},
-        {"action_id": "inf_5", "name": "add_node", "arguments": {"node_id": "b", "action": "check customer information in the CRM", "actor": "sales", "system": "crm", "reads": ["customer"], "observation_id": "o2"}, "info": "Reference: node check_customer."},
-        {"action_id": "inf_6", "name": "record_observation", "arguments": {"text": "We create the quotation in the quoting system using customer and pricing information."}, "info": "Reference: observation o3."},
-        {"action_id": "inf_7", "name": "add_node", "arguments": {"node_id": "c", "action": "create quotation in the quoting system", "actor": "sales", "system": "quoting", "reads": ["customer", "pricing"], "writes": ["quote"], "observation_id": "o3"}, "info": "Reference: node create_quote."},
-        {"action_id": "inf_8", "name": "record_observation", "arguments": {"text": "For quotations over 1,000,000 yen a manager must approve before sending; this is for credit risk management."}, "info": "Reference: observation o4."},
-        {"action_id": "inf_9", "name": "add_node", "arguments": {"node_id": "d", "action": "approve high-value quotation", "actor": "manager", "system": "quoting", "reads": ["quote"], "writes": ["approval"], "observation_id": "o4"}, "info": "Reference: node approve_quote."},
-        {"action_id": "inf_10", "name": "set_node_necessity", "arguments": {"node_id": "d", "rationale": "for credit risk management", "observation_id": "o4"}, "info": "Reference: approval necessity (confirmed rationale)."},
-        {"action_id": "inf_11", "name": "record_observation", "arguments": {"text": "We send the quotation to the customer by email."}, "info": "Reference: observation o5."},
-        {"action_id": "inf_12", "name": "add_node", "arguments": {"node_id": "e", "action": "send quotation to customer", "actor": "sales", "system": "email", "reads": ["quote"], "writes": ["sent_quote"], "observation_id": "o5"}, "info": "Reference: node send_quote."},
-        {"action_id": "inf_13", "name": "record_observation", "arguments": {"text": "At month-end we also send a summary to Accounting as an Excel file, but I do not know why."}, "info": "Reference: observation o6."},
-        {"action_id": "inf_14", "name": "add_node", "arguments": {"node_id": "f", "action": "send quotation summary to accounting at month-end", "actor": "sales", "system": "excel", "reads": ["quote"], "writes": ["excel_summary"], "observation_id": "o6"}, "info": "Reference: node month_end_summary."},
-        {"action_id": "inf_15", "name": "set_node_necessity", "arguments": {"node_id": "f"}, "info": "Reference: month-end necessity unknown (all properties unset)."},
-        {"action_id": "inf_16", "name": "record_observation", "arguments": {"text": "The request step is followed by checking the customer in the CRM."}, "info": "Reference: observation o7 (edge e1)."},
-        {"action_id": "inf_17", "name": "add_edge", "arguments": {"edge_id": "e1", "from_node": "a", "to_node": "b", "observation_id": "o7"}, "info": "Reference: receive -> check."},
-        {"action_id": "inf_18", "name": "record_observation", "arguments": {"text": "After checking, we create the quotation."}, "info": "Reference: observation o8 (edge e2)."},
-        {"action_id": "inf_19", "name": "add_edge", "arguments": {"edge_id": "e2", "from_node": "b", "to_node": "c", "observation_id": "o8"}, "info": "Reference: check -> create."},
-        {"action_id": "inf_20", "name": "record_observation", "arguments": {"text": "For quotations over 1,000,000 the quotation goes to a manager for approval."}, "info": "Reference: observation o9 (edge e3)."},
-        {"action_id": "inf_21", "name": "add_edge", "arguments": {"edge_id": "e3", "from_node": "c", "to_node": "d", "predicate": "amount over 1,000,000", "observation_id": "o9"}, "info": "Reference: create -> approve [amount > 1M]."},
-        {"action_id": "inf_22", "name": "record_observation", "arguments": {"text": "Quotations at or below 1,000,000 are sent straight to the customer."}, "info": "Reference: observation o10 (edge e4)."},
-        {"action_id": "inf_23", "name": "add_edge", "arguments": {"edge_id": "e4", "from_node": "c", "to_node": "e", "predicate": "amount at or below 1,000,000", "observation_id": "o10"}, "info": "Reference: create -> send [amount <= 1M]."},
-        {"action_id": "inf_24", "name": "record_observation", "arguments": {"text": "After approval, the quotation is sent to the customer."}, "info": "Reference: observation o11 (edge e5)."},
-        {"action_id": "inf_25", "name": "add_edge", "arguments": {"edge_id": "e5", "from_node": "d", "to_node": "e", "observation_id": "o11"}, "info": "Reference: approve -> send."},
-        {"action_id": "inf_26", "name": "record_observation", "arguments": {"text": "At month-end, a summary of the quotation information is also sent to Accounting."}, "info": "Reference: observation o12 (edge e6)."},
-        {"action_id": "inf_27", "name": "add_edge", "arguments": {"edge_id": "e6", "from_node": "c", "to_node": "f", "predicate": "month-end", "observation_id": "o12"}, "info": "Reference: create -> month-end summary [month-end]."},
-        {"action_id": "inf_28", "name": "set_dag_endpoints", "arguments": {"start_node_id": "a", "end_node_ids": ["e", "f"]}, "info": "Reference: set start and ends."},
-        {"action_id": "inf_29", "name": "finish_interview", "arguments": {"summary": "Inferred the quotation DAG including the approval branch and the conditional month-end summary."}, "info": "Reference: finish the interview."}
+        {
+          "action_id": "inf_1",
+          "name": "start_inference",
+          "arguments": {
+            "name": "Quotation creation"
+          },
+          "info": "Reference: start the inference."
+        },
+        {
+          "action_id": "inf_2",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 3
+          },
+          "info": "Reference: capture stakeholder turn 3."
+        },
+        {
+          "action_id": "inf_3",
+          "name": "add_node",
+          "arguments": {
+            "node_id": "a",
+            "action": "receive quotation request",
+            "actor": "sales",
+            "reads": [],
+            "writes": [
+              "request"
+            ],
+            "observation_id": "obs_3"
+          },
+          "info": "Reference: node a."
+        },
+        {
+          "action_id": "inf_4",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 7
+          },
+          "info": "Reference: capture stakeholder turn 7."
+        },
+        {
+          "action_id": "inf_5",
+          "name": "add_node",
+          "arguments": {
+            "node_id": "b",
+            "action": "check customer information in the CRM",
+            "actor": "sales",
+            "reads": [
+              "customer"
+            ],
+            "writes": [],
+            "observation_id": "obs_7",
+            "system": "crm"
+          },
+          "info": "Reference: node b."
+        },
+        {
+          "action_id": "inf_6",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 11
+          },
+          "info": "Reference: capture stakeholder turn 11."
+        },
+        {
+          "action_id": "inf_7",
+          "name": "add_node",
+          "arguments": {
+            "node_id": "c",
+            "action": "create quotation in the quoting system",
+            "actor": "sales",
+            "reads": [
+              "customer",
+              "pricing"
+            ],
+            "writes": [
+              "quote"
+            ],
+            "observation_id": "obs_11",
+            "system": "quoting"
+          },
+          "info": "Reference: node c."
+        },
+        {
+          "action_id": "inf_8",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 15
+          },
+          "info": "Reference: capture stakeholder turn 15."
+        },
+        {
+          "action_id": "inf_9",
+          "name": "add_node",
+          "arguments": {
+            "node_id": "d",
+            "action": "approve high-value quotation",
+            "actor": "manager",
+            "reads": [
+              "quote"
+            ],
+            "writes": [
+              "approval"
+            ],
+            "observation_id": "obs_15",
+            "system": "quoting"
+          },
+          "info": "Reference: node d."
+        },
+        {
+          "action_id": "inf_10",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 19
+          },
+          "info": "Reference: capture stakeholder turn 19."
+        },
+        {
+          "action_id": "inf_11",
+          "name": "add_node",
+          "arguments": {
+            "node_id": "e",
+            "action": "send quotation to customer",
+            "actor": "sales",
+            "reads": [
+              "quote"
+            ],
+            "writes": [
+              "sent_quote"
+            ],
+            "observation_id": "obs_19",
+            "system": "email"
+          },
+          "info": "Reference: node e."
+        },
+        {
+          "action_id": "inf_12",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 23
+          },
+          "info": "Reference: capture stakeholder turn 23."
+        },
+        {
+          "action_id": "inf_13",
+          "name": "add_node",
+          "arguments": {
+            "node_id": "f",
+            "action": "send quotation summary to accounting at month-end",
+            "actor": "sales",
+            "reads": [
+              "quote"
+            ],
+            "writes": [
+              "excel_summary"
+            ],
+            "observation_id": "obs_23",
+            "system": "excel"
+          },
+          "info": "Reference: node f."
+        },
+        {
+          "action_id": "inf_14",
+          "name": "set_node_necessity",
+          "arguments": {
+            "node_id": "d",
+            "rationale": "for credit risk management",
+            "observation_id": "obs_15"
+          },
+          "info": "Reference: approval necessity."
+        },
+        {
+          "action_id": "inf_15",
+          "name": "set_node_necessity",
+          "arguments": {
+            "node_id": "f"
+          },
+          "info": "Reference: month-end necessity unknown."
+        },
+        {
+          "action_id": "inf_16",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 27
+          },
+          "info": "Reference: capture stakeholder turn 27."
+        },
+        {
+          "action_id": "inf_17",
+          "name": "add_edge",
+          "arguments": {
+            "edge_id": "e1",
+            "from_node": "a",
+            "to_node": "b",
+            "observation_id": "obs_27"
+          },
+          "info": "Reference: edge e1."
+        },
+        {
+          "action_id": "inf_18",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 31
+          },
+          "info": "Reference: capture stakeholder turn 31."
+        },
+        {
+          "action_id": "inf_19",
+          "name": "add_edge",
+          "arguments": {
+            "edge_id": "e2",
+            "from_node": "b",
+            "to_node": "c",
+            "observation_id": "obs_31"
+          },
+          "info": "Reference: edge e2."
+        },
+        {
+          "action_id": "inf_20",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 35
+          },
+          "info": "Reference: capture stakeholder turn 35."
+        },
+        {
+          "action_id": "inf_21",
+          "name": "add_edge",
+          "arguments": {
+            "edge_id": "e3",
+            "from_node": "c",
+            "to_node": "d",
+            "observation_id": "obs_35",
+            "predicate": "amount over 1,000,000"
+          },
+          "info": "Reference: edge e3."
+        },
+        {
+          "action_id": "inf_22",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 39
+          },
+          "info": "Reference: capture stakeholder turn 39."
+        },
+        {
+          "action_id": "inf_23",
+          "name": "add_edge",
+          "arguments": {
+            "edge_id": "e4",
+            "from_node": "c",
+            "to_node": "e",
+            "observation_id": "obs_39",
+            "predicate": "amount at or below 1,000,000"
+          },
+          "info": "Reference: edge e4."
+        },
+        {
+          "action_id": "inf_24",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 43
+          },
+          "info": "Reference: capture stakeholder turn 43."
+        },
+        {
+          "action_id": "inf_25",
+          "name": "add_edge",
+          "arguments": {
+            "edge_id": "e5",
+            "from_node": "d",
+            "to_node": "e",
+            "observation_id": "obs_43"
+          },
+          "info": "Reference: edge e5."
+        },
+        {
+          "action_id": "inf_26",
+          "name": "observe_turn",
+          "arguments": {
+            "turn_idx": 47
+          },
+          "info": "Reference: capture stakeholder turn 47."
+        },
+        {
+          "action_id": "inf_27",
+          "name": "add_edge",
+          "arguments": {
+            "edge_id": "e6",
+            "from_node": "c",
+            "to_node": "f",
+            "observation_id": "obs_47",
+            "predicate": "month-end"
+          },
+          "info": "Reference: edge e6."
+        },
+        {
+          "action_id": "inf_28",
+          "name": "set_dag_endpoints",
+          "arguments": {
+            "start_node_id": "a",
+            "end_node_ids": [
+              "e",
+              "f"
+            ]
+          },
+          "info": "Reference: endpoints."
+        },
+        {
+          "action_id": "inf_29",
+          "name": "finish_interview",
+          "arguments": {
+            "summary": "Inferred the quotation DAG."
+          },
+          "info": "Reference: finish."
+        }
       ],
       "env_assertions": [
-        {"env_type": "assistant", "func_name": "assert_finish_interview", "arguments": {}, "message": "The interview must be finished via finish_interview."},
-        {"env_type": "assistant", "func_name": "assert_dag_reconstructed", "arguments": {"scenario_id": "quotation_workflow_1_ja"}, "message": "The inferred DAG must match the truth DAG."},
-        {"env_type": "assistant", "func_name": "assert_necessity_handled", "arguments": {"scenario_id": "quotation_workflow_1_ja"}, "message": "Node necessity must match the truth; nothing fabricated."},
-        {"env_type": "assistant", "func_name": "assert_evidence_backed", "arguments": {"scenario_id": "quotation_workflow_1_ja"}, "message": "Every asserted claim must be traceable to a recorded Observation."}
+        {
+          "env_type": "assistant",
+          "func_name": "assert_finish_interview",
+          "arguments": {},
+          "message": "The interview must be finished via finish_interview."
+        },
+        {
+          "env_type": "assistant",
+          "func_name": "assert_dag_reconstructed",
+          "arguments": {
+            "scenario_id": "quotation_workflow_1_ja"
+          },
+          "message": "The inferred DAG must match the truth DAG."
+        },
+        {
+          "env_type": "assistant",
+          "func_name": "assert_necessity_handled",
+          "arguments": {
+            "scenario_id": "quotation_workflow_1_ja"
+          },
+          "message": "Node necessity must match the truth; nothing fabricated."
+        },
+        {
+          "env_type": "assistant",
+          "func_name": "assert_evidence_backed",
+          "arguments": {
+            "scenario_id": "quotation_workflow_1_ja"
+          },
+          "message": "Every asserted claim must be traceable to a recorded Observation."
+        }
       ],
-      "reward_basis": ["ENV_ASSERTION"]
+      "reward_basis": [
+        "ENV_ASSERTION"
+      ]
     }
   }
 ]

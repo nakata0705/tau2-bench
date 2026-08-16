@@ -1,10 +1,11 @@
-"""Tests for the evidence-backed DAG business_interview domain (v3).
+"""Tests for the evidence-backed DAG business_interview domain (v3, authenticity).
 
-This replaces the old Step/Transition/Branch workflow tests. It covers the
-BusinessDAG model (shared by Truth and Agent result), Observation-as-evidence,
-incremental node update, per-attribute confidence / provenance, necessity as a
-node property, the Stakeholder filter, the evaluator metrics, EN/JA equivalence,
-leakage, and the falsification suite A-AE.
+Observations are now **authentic primary evidence**: they are derived only from
+actual stakeholder (user) messages via ``observe_turn`` — the agent cannot write
+arbitrary Observation text, source, or turn. These tests cover the DAG model,
+declared endpoints, evidence/provenance gates, observation authenticity
+(falsification A-F of the exploit), lightweight relevance, EN/JA equivalence,
+leakage, and the end-to-end reward path.
 """
 
 import pytest
@@ -17,7 +18,6 @@ from tau2.data_model.message import (
     ToolMessage,
     UserMessage,
 )
-from tau2.data_model.tasks import Task
 from tau2.domains.business_interview.dag import (
     BusinessDAG,
     Edge,
@@ -90,6 +90,24 @@ _JA_ACTIONS = [
     "月末に経理へ見積集計を送る",
 ]
 
+_NODE_STATEMENTS = [
+    "We receive quotation requests and send them by email.",
+    "We check the customer information in the CRM.",
+    "We create the quotation in the quoting system using customer and pricing info.",
+    "A manager approves high-value quotations over 1,000,000; this is for credit risk management.",
+    "We send the quotation to the customer by email.",
+    "At month-end we send a summary to Accounting as an Excel file, but I do not know why.",
+]
+
+_EDGE_STATEMENTS = [
+    "The request step is followed by checking the customer.",
+    "After checking we create the quotation.",
+    "Quotations over 1,000,000 go to a manager for approval.",
+    "Quotations at or below 1,000,000 are sent straight to the customer.",
+    "After approval the quotation is sent to the customer.",
+    "At month-end a summary is also sent to Accounting.",
+]
+
 
 def _tools() -> InterviewTools:
     return InterviewTools(InterviewDB())
@@ -100,6 +118,11 @@ def _eval(tools: InterviewTools, scenario: str = SCENARIO):
     return evaluate(tools.db, sc.truth, sc.spec)
 
 
+def _ingest(tools: InterviewTools, role: str = "user", content: str = "") -> int:
+    tools.db.messages.append({"role": role, "content": content})
+    return len(tools.db.messages) - 1
+
+
 def _build(
     tools: InterviewTools,
     ja: bool = False,
@@ -107,11 +130,11 @@ def _build(
     edge_ids: tuple = ("e1", "e2", "e3", "e4", "e5", "e6"),
     evidence: bool = True,
 ):
-    """Build the correct quotation DAG using (possibly arbitrary) ids.
+    """Build the correct quotation DAG.
 
-    With ``evidence=True`` each claim is recorded as an Observation and the node /
-    edge / necessity carries its provenance (the evidence-backed path). With
-    ``evidence=False`` the same topology is built but with no provenance (used to
+    With ``evidence=True`` each claim is captured as an authentic Observation
+    from an ingested stakeholder (user) message via ``observe_turn``. With
+    ``evidence=False`` the same topology is built with no provenance (used to
     prove the evidence gate rejects un-evidenced DAGs).
     """
     i1, i2, i3, i4, i5, i6 = ids
@@ -129,8 +152,15 @@ def _build(
     rationale = "与信リスク管理のため" if ja else "for credit risk management"
 
     if evidence:
-        for k, ((sid, _, actor, system, reads, writes), action) in enumerate(node_data):
-            tools.record_observation(f"node statement {sid}")
+        _ingest(tools, "assistant", "Hello.")
+        action_by_sid = {sid: action for (sid, _, _, _, _, _), action in node_data}
+        obs = {}
+        for sid in ("a", "b", "c", "d", "e", "f"):
+            turn = _ingest(
+                tools, "user", f"The process involves: {action_by_sid[sid]}."
+            )
+            obs[sid] = tools.observe_turn(turn)
+        for (sid, _, actor, system, reads, writes), action in node_data:
             tools.add_node(
                 node_map[sid],
                 action,
@@ -138,12 +168,18 @@ def _build(
                 system=system,
                 reads=reads,
                 writes=writes,
-                observation_id=f"o{k + 1}",
+                observation_id=obs[sid],
             )
-        tools.set_node_necessity(i4, rationale=rationale, observation_id="o4")
-        for k, (eid, frm, to, pred) in enumerate(edge_defs, start=7):
-            tools.record_observation(f"edge statement {eid}")
-            tools.add_edge(eid, frm, to, predicate=pred, observation_id=f"o{k}")
+        tools.set_node_necessity(i4, rationale=rationale, observation_id=obs["d"])
+        tools.set_node_necessity(i6)
+        eobs = {}
+        for eid, frm, to, pred in edge_defs:
+            turn = _ingest(
+                tools, "user", f"The flow proceeds with condition: {pred or 'next'}."
+            )
+            eobs[eid] = tools.observe_turn(turn)
+        for eid, frm, to, pred in edge_defs:
+            tools.add_edge(eid, frm, to, predicate=pred, observation_id=eobs[eid])
     else:
         for (sid, _, actor, system, reads, writes), action in node_data:
             tools.add_node(
@@ -155,10 +191,10 @@ def _build(
                 writes=writes,
             )
         tools.set_node_necessity(i4, rationale=rationale)
+        tools.set_node_necessity(i6)
         for eid, frm, to, pred in edge_defs:
             tools.add_edge(eid, frm, to, predicate=pred)
 
-    tools.set_node_necessity(i6)  # month-end necessity unknown
     tools.set_dag_endpoints(start_node_id=i1, end_node_ids=[i5, i6])
     tools.finish_interview()
 
@@ -245,7 +281,6 @@ def test_F_dangling_edge_reject():
 def test_G_condition_only_on_edge_predicate():
     assert "condition" not in Node.model_fields
     assert "predicate" in Edge.model_fields
-    # no Node-level condition concept
     assert not hasattr(scmod, "StakeholderStepTruth")
 
 
@@ -263,98 +298,241 @@ def test_J_no_step_class():
 
 
 # ---------------------------------------------------------------------------
-# Falsification K-N: Observation
+# Observation authenticity (exploit falsification A-F)
 # ---------------------------------------------------------------------------
 
 
-def test_K_multiple_observations_attach_to_one_node():
-    tools = _tools()
-    tools.start_inference("Q")
-    tools.record_observation("We receive requests.")
-    tools.record_observation("Requests come from customers.")
-    tools.add_node("n1", "receive request", observation_id="o1")
-    tools.attach_observation("n1", "o1")
-    tools.attach_observation("n1", "o2")
-    assert tools.db.dag.nodes["n1"].observation_ids == ["o1", "o2"]
-    assert len([o for o in tools.db.observations if o.id in ("o1", "o2")]) == 2
+def test_A_no_arbitrary_text_observation_api():
+    assert not hasattr(InterviewTools, "record_observation")
 
 
-def test_L_observation_update_existing_node_no_duplicate():
+def test_B_valid_stakeholder_turn_creates_observation():
+    tools = _tools()
+    turn = _ingest(tools, "user", "We receive quotation requests.")
+    oid = tools.observe_turn(turn)
+    obs = tools.db.observations[0]
+    assert oid == "obs_%d" % turn
+    assert obs.text == "We receive quotation requests."
+    assert obs.source_id == "stakeholder"
+    assert obs.turn == turn
+
+
+def test_C_nonexistent_turn_rejected():
+    tools = _tools()
+    with pytest.raises(ValueError):
+        tools.observe_turn(99)
+    with pytest.raises(ValueError):
+        tools.observe_turn(-1)
+
+
+def test_D_assistant_turn_rejected():
+    tools = _tools()
+    _ingest(tools, "assistant", "I am the agent.")
+    with pytest.raises(ValueError):
+        tools.observe_turn(0)
+    _ingest(tools, "user", "I am the stakeholder.")
+    # tool message role rejected too
+    _ingest(tools, "tool", "tool result")
+    with pytest.raises(ValueError):
+        tools.observe_turn(len(tools.db.messages) - 1)
+
+
+def test_E_duplicate_capture_idempotent():
+    tools = _tools()
+    turn = _ingest(tools, "user", "We receive quotation requests.")
+    oid1 = tools.observe_turn(turn)
+    oid2 = tools.observe_turn(turn)
+    assert oid1 == oid2
+    assert len(tools.db.observations) == 1  # no unlimited duplicates
+
+
+def test_F_observation_immutable():
+    tools = _tools()
+    turn = _ingest(tools, "user", "We receive quotation requests.")
+    tools.observe_turn(turn)
+    with pytest.raises(Exception):
+        tools.db.observations[0].text = "fabricated"
+    with pytest.raises(Exception):
+        tools.db.observations[0].source_id = "manager"
+
+
+def test_fake_observation_cannot_be_inserted_through_normal_tools():
     tools = _tools()
     tools.start_inference("Q")
-    tools.record_observation("The step checks the customer in the CRM.")
-    tools.add_node("n1", "check customer", actor="sales", system="crm")
+    _ingest(tools, "user", "We receive quotation requests.")
+    oid = tools.observe_turn(turn_idx=len(tools.db.messages) - 1)
+    tools.add_node("a", "receive quotation request", observation_id=oid)
+    with pytest.raises(ValueError):
+        tools.add_node("b", "check customer", observation_id="does_not_exist")
+
+
+def test_correct_dag_authentic_provenance_passes():
+    tools = _tools()
+    _build(tools, evidence=True)
+    res = _eval(tools)
+    assert res.quality_pass is True
+    assert res.provenance_authenticity_pass is True
+    assert res.evidence_pass is True
+    assert res.relevance_pass is True
+    assert res.authentic_observation_count > 0
+    assert res.invalid_observation_source_count == 0
+
+
+def test_correct_dag_zero_observations_fails():
+    tools = _tools()
+    _build(tools, evidence=False)
+    res = _eval(tools)
+    assert res.quality_pass is False
+    assert res.evidence_pass is False
+    assert res.authentic_observation_count == 0
+
+
+def test_correct_dag_fabricated_observation_fails():
+    """An observation whose source message is not a real stakeholder statement
+    (or was directly injected) fails provenance authenticity."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    # Directly inject a fabricated observation (bypassing observe_turn).
+    from tau2.domains.business_interview.dag import Observation
+
+    tools.db.observations.append(
+        Observation(
+            id="obs_fake",
+            source_id="stakeholder",
+            text="I like pizza.",
+            order=99,
+            turn=99,
+        )
+    )
+    # point a claim at it
+    tools.db.dag.nodes["a"].action.observation_ids = ["obs_fake"]
+    res = _eval(tools)
+    assert res.invalid_observation_source_count > 0
+    assert res.provenance_authenticity_pass is False
+    assert res.evidence_pass is False
+
+
+def test_unrelated_authentic_observation_does_not_pass_relevance():
+    """A real but unrelated stakeholder message attached to all claims does not
+    pass the lightweight relevance gate."""
+    tools = _tools()
+    _build(tools, evidence=False)  # no provenance
+    turn = _ingest(tools, "user", "I like pizza.")
+    oid = tools.observe_turn(turn)
+    for nid in ("a", "b", "c", "d", "e", "f"):
+        tools.attach_observation(nid, oid)
+        for iv in (
+            tools.db.dag.nodes[nid].action,
+            tools.db.dag.nodes[nid].actor,
+            tools.db.dag.nodes[nid].system,
+        ):
+            iv.observation_ids = [oid]
+    res = _eval(tools)
+    assert res.relevance_pass is False
+    assert res.quality_pass is False
+
+
+# ---------------------------------------------------------------------------
+# Observation / Necessity / confidence helpers
+# ---------------------------------------------------------------------------
+
+
+def test_observation_keeps_source_turn_text():
+    tools = _tools()
+    turn = _ingest(tools, "user", "We approve high-value quotations.")
+    oid = tools.observe_turn(turn)
+    obs = tools.db.observations[0]
+    assert obs.source_id == "stakeholder"
+    assert obs.turn == turn
+    assert obs.text == "We approve high-value quotations."
+    assert oid == f"obs_{turn}"
+
+
+def test_multiple_observations_attach_to_one_node():
+    tools = _tools()
+    tools.start_inference("Q")
+    t1 = _ingest(tools, "user", "We receive requests.")
+    t2 = _ingest(tools, "user", "Requests come from customers.")
+    o1 = tools.observe_turn(t1)
+    o2 = tools.observe_turn(t2)
+    tools.add_node("n1", "receive request", observation_id=o1)
+    tools.attach_observation("n1", o1)
+    tools.attach_observation("n1", o2)
+    assert tools.db.dag.nodes["n1"].observation_ids == [o1, o2]
+
+
+def test_observation_updates_existing_node_no_duplicate():
+    tools = _tools()
+    tools.start_inference("Q")
+    t = _ingest(tools, "user", "It checks the customer in the CRM.")
+    o = tools.observe_turn(t)
+    tools.add_node("n1", "check customer", observation_id=o)
     before = len(tools.db.dag.nodes)
-    tools.record_observation("It reads the customer data.")
-    tools.update_node("n1", reads=["customer"], observation_id="o2")
-    after = len(tools.db.dag.nodes)
-    assert before == after == 1  # no duplicate node
+    t2 = _ingest(tools, "user", "It reads the customer data.")
+    o2 = tools.observe_turn(t2)
+    tools.update_node("n1", reads=["customer"], observation_id=o2)
+    assert len(tools.db.dag.nodes) == before
     assert tools.db.dag.nodes["n1"].reads[0].value == "customer"
 
 
-def test_M_observation_alone_does_not_create_duplicate_node():
+def test_observation_alone_does_not_create_duplicate_node():
     tools = _tools()
     tools.start_inference("Q")
-    tools.add_node("n1", "send quotation")
+    t = _ingest(tools, "user", "We send it by email.")
+    o = tools.observe_turn(t)
+    tools.add_node("n1", "send quotation", observation_id=o)
     before = len(tools.db.dag.nodes)
-    tools.record_observation("We send it by email.")
-    tools.attach_observation("n1", "o1")
-    assert len(tools.db.dag.nodes) == before  # no new node created
-    assert "o1" in tools.db.dag.nodes["n1"].observation_ids
+    t2 = _ingest(tools, "user", "Another statement.")
+    o2 = tools.observe_turn(t2)
+    tools.attach_observation("n1", o2)
+    assert len(tools.db.dag.nodes) == before
 
 
-def test_N_observation_keeps_source_and_text():
+def test_necessity_is_node_property_with_provenance():
     tools = _tools()
     tools.start_inference("Q")
-    tools.record_observation(
-        "We approve high-value quotes.", source_id="manager", locale="en"
+    t = _ingest(tools, "user", "The approval is for credit risk management.")
+    o = tools.observe_turn(t)
+    tools.add_node("n1", "approve high-value quotation", observation_id=o)
+    tools.set_node_necessity(
+        "n1", rationale="for credit risk management", observation_id=o
     )
-    obs = tools.db.observations[0]
-    assert obs.source_id == "manager"
-    assert obs.text == "We approve high-value quotes."
-    assert obs.locale == "en"
-
-
-# ---------------------------------------------------------------------------
-# Falsification O-R: Necessity / confidence
-# ---------------------------------------------------------------------------
-
-
-def test_O_necessity_is_node_property():
-    tools = _tools()
-    tools.start_inference("Q")
-    tools.add_node("n1", "approve high-value quotation")
-    tools.set_node_necessity("n1", rationale="for credit risk management")
     assert (
         tools.db.dag.nodes["n1"].necessity.rationale.value
         == "for credit risk management"
     )
+    assert o in tools.db.dag.nodes["n1"].necessity.rationale.observation_ids
 
 
-def test_P_necessity_has_multiple_observation_provenance():
+def test_necessity_multiple_provenance():
     tools = _tools()
     tools.start_inference("Q")
-    tools.record_observation("Manager must approve over 1M.")
-    tools.record_observation("The approval protects against credit risk.")
-    tools.add_node("n1", "approve high-value quotation")
-    tools.set_node_necessity("n1", rationale="for credit risk", observation_id="o1")
+    t1 = _ingest(tools, "user", "A manager must approve.")
+    t2 = _ingest(tools, "user", "It protects against credit risk.")
+    o1 = tools.observe_turn(t1)
+    o2 = tools.observe_turn(t2)
+    tools.add_node("n1", "approve high-value quotation", observation_id=o1)
+    tools.set_node_necessity("n1", rationale="for credit risk", observation_id=o1)
     tools.set_node_necessity(
-        "n1", rationale="for credit risk management", observation_id="o2"
+        "n1", rationale="for credit risk management", observation_id=o2
     )
     ids = tools.db.dag.nodes["n1"].necessity.rationale.observation_ids
-    assert "o1" in ids and "o2" in ids
+    assert o1 in ids and o2 in ids
 
 
-def test_Q_per_property_confidence():
+def test_per_property_confidence():
     tools = _tools()
     tools.start_inference("Q")
-    tools.add_node("n1", "month-end summary")
+    t = _ingest(tools, "user", "Month-end summary is for accounting.")
+    o = tools.observe_turn(t)
+    tools.add_node("n1", "month-end summary", observation_id=o)
     tools.set_node_necessity(
         "n1",
         rationale="for accounting",
         rationale_confidence=0.9,
         owner="accounting",
         owner_confidence=0.5,
+        observation_id=o,
     )
     nec = tools.db.dag.nodes["n1"].necessity
     assert nec.rationale.confidence == 0.9
@@ -362,7 +540,7 @@ def test_Q_per_property_confidence():
     assert nec.rationale.confidence != nec.owner.confidence
 
 
-def test_R_confidence_out_of_range_rejected():
+def test_confidence_out_of_range_rejected():
     with pytest.raises(ValueError):
         InferredValue(value="x", confidence=1.5)
     with pytest.raises(ValueError):
@@ -370,11 +548,11 @@ def test_R_confidence_out_of_range_rejected():
 
 
 # ---------------------------------------------------------------------------
-# Falsification S-X: DAG evaluation
+# Falsification S-X / evaluation metrics
 # ---------------------------------------------------------------------------
 
 
-def test_S_arbitrary_agent_node_ids_full_pass():
+def test_arbitrary_agent_node_ids_full_pass():
     tools = _tools()
     _build(tools, ids=("req", "check", "create", "approve", "send", "month_end"))
     res = _eval(tools)
@@ -382,16 +560,16 @@ def test_S_arbitrary_agent_node_ids_full_pass():
     assert res.node_recall == 1.0 and res.node_precision == 1.0
 
 
-def test_T_missing_truth_node_lowers_recall():
+def test_missing_truth_node_lowers_recall():
     tools = _tools()
     _build(tools)
-    tools.db.dag.nodes.pop("d")  # drop approve node
+    tools.db.dag.nodes.pop("d")
     res = _eval(tools)
     assert res.node_recall < 1.0
     assert res.structural_pass is False
 
 
-def test_U_fabricated_node_lowers_precision():
+def test_fabricated_node_lowers_precision():
     tools = _tools()
     _build(tools)
     tools.add_node("zz", "take a coffee break", actor="sales")
@@ -401,10 +579,9 @@ def test_U_fabricated_node_lowers_precision():
     assert res.structural_pass is False
 
 
-def test_V_wrong_edge_lowers_edge_metrics():
+def test_wrong_edge_lowers_edge_metrics():
     tools = _tools()
     _build(tools)
-    # wrong edge: a -> c (skip check)
     tools.db.dag.edges.pop("e1")
     tools.add_edge("wrong", "a", "c")
     res = _eval(tools)
@@ -413,7 +590,7 @@ def test_V_wrong_edge_lowers_edge_metrics():
     assert res.fabricated_edge_count >= 1
 
 
-def test_W_wrong_predicate_lowers_predicate_correctness():
+def test_wrong_predicate_lowers_predicate_correctness():
     tools = _tools()
     _build(tools)
     tools.db.dag.edges["e3"].predicate = InferredValue(
@@ -441,209 +618,20 @@ def test_wrong_actor_system_data_fail_structural():
     assert res.structural_pass is False
 
 
-def test_confidence_zero_asserted_value_treated_as_unasserted():
-    """A value with confidence 0 is not an active claim: it does not count as
-    evidence-backed and does not satisfy a known necessity."""
-    tools = _tools()
-    _build(tools, evidence=True)
-    # approve rationale kept but confidence set to 0 -> treated as unasserted
-    tools.db.dag.nodes["d"].necessity.rationale.confidence = 0.0
-    res = _eval(tools)
-    assert res.necessity_correctness < 1.0  # known necessity not satisfied
-    assert res.necessity_pass is False
-    # a confidence-0 value is not an asserted claim, so it does not need coverage
-    assert res.necessity_provenance_coverage == 1.0
-
-
-def test_X_branch_evaluated_as_multiple_outgoing_edges():
+def test_branch_evaluated_as_multiple_outgoing_edges():
     tools = _tools()
     _build(tools)
-    # create (c) has two conditional outgoing edges to approve (d) and send (e)
     res = _eval(tools)
     assert res.edge_recall == 1.0
     assert res.structural_pass is True
-    # dropping the low-value path lowers edge recall
     tools.db.dag.edges.pop("e4")
     res2 = _eval(tools)
     assert res2.edge_recall < 1.0
 
 
 # ---------------------------------------------------------------------------
-# Falsification Y-Z: EN/JA equivalence and leakage
+# Endpoint correctness
 # ---------------------------------------------------------------------------
-
-
-def test_Y_en_ja_equivalent_dag_evaluation():
-    en = _tools()
-    ja = _tools()
-    _build(en, ja=False)
-    _build(ja, ja=True)
-    ren = _eval(en, SCENARIO)
-    rja = _eval(ja, JA_SCENARIO)
-    for field in (
-        "node_recall",
-        "node_precision",
-        "edge_recall",
-        "edge_precision",
-        "predicate_correctness",
-        "necessity_correctness",
-        "quality_pass",
-    ):
-        assert getattr(ren, field) == getattr(rja, field), field
-
-
-HIDDEN_TERMS = (
-    "receive_request",
-    "check_customer",
-    "create_quote",
-    "approve_quote",
-    "send_quote",
-    "month_end_summary",
-    "credit_risk",
-    "pred_amount_over",
-    "e6",
-)
-
-
-def test_Z_hidden_truth_not_leaked_to_agent():
-    policy = BUSINESS_INTERVIEW_POLICY_PATH.read_text().lower()
-    docs = "\n".join(
-        [
-            InterviewTools.add_node.__doc__ or "",
-            InterviewTools.add_edge.__doc__ or "",
-            InterviewTools.record_observation.__doc__ or "",
-            InterviewTools.set_node_necessity.__doc__ or "",
-            InterviewTools.set_dag_endpoints.__doc__ or "",
-            InterviewTools.finish_interview.__doc__ or "",
-        ]
-    ).lower()
-    for term in HIDDEN_TERMS:
-        assert term not in policy, f"policy leaks {term}"
-        assert term not in docs, f"tool doc leaks {term}"
-
-
-def test_agent_system_prompt_has_no_ground_truth():
-    from tau2.agent.llm_agent import LLMAgent
-
-    env = get_environment()
-    agent = LLMAgent(tools=env.get_tools(), domain_policy=env.get_policy(), llm="dummy")
-    prompt = agent.system_prompt.lower()
-    for term in HIDDEN_TERMS:
-        assert term not in prompt, f"agent prompt leaks {term}"
-
-
-def test_scenario_has_no_truth_dag_ids():
-    for task in get_tasks():
-        s = str(task.user_scenario).lower()
-        for tid in ("r", "cc", "cq", "ap", "sq", "me"):
-            # node ids are short letters; check they don't appear as identifiers
-            assert f"node '{tid}'" not in s
-            assert f"'{tid}'" not in s
-
-
-# ---------------------------------------------------------------------------
-# Falsification AA-AB: Stakeholder Filter
-# ---------------------------------------------------------------------------
-
-
-def test_AA_two_stakeholder_filters_on_same_truth():
-    sc = get_scenario(SCENARIO)
-    sales = quotation_sales_filter()
-    finance = quotation_finance_filter()
-    sd = sales.apply(sc.truth)
-    fd = finance.apply(sc.truth)
-    assert set(sd.nodes) == {"r", "cc", "cq", "ap", "sq", "me"}
-    assert set(fd.nodes) == {"cq", "sq", "me"}
-    assert set(sd.nodes) != set(fd.nodes)
-
-
-def test_AB_filter_hides_out_of_scope_information():
-    sc = get_scenario(SCENARIO)
-    sales = quotation_sales_filter()
-    finance = quotation_finance_filter()
-    sd = sales.apply(sc.truth)
-    fd = finance.apply(sc.truth)
-    # finance filter drops the approval node
-    assert "ap" not in fd.nodes
-    assert "ap" in sd.nodes
-    # month-end necessity is hidden from the sales stakeholder but visible to finance
-    assert sd.nodes["me"].necessity is None
-    assert fd.nodes["me"].necessity is not None
-    # approval rationale is visible to sales
-    assert sd.nodes["ap"].necessity is not None
-    assert sd.nodes["ap"].necessity.rationale.value is not None
-    # finance does not leak the approval rationale
-    assert "ap" not in finance.describe(sc.truth)
-
-
-# ---------------------------------------------------------------------------
-# Falsification AC-AE: necessity correctness
-# ---------------------------------------------------------------------------
-
-
-def test_AC_correct_necessity_passes():
-    tools = _tools()
-    _build(tools)
-    res = _eval(tools)
-    assert res.necessity_pass is True
-    assert res.necessity_correctness == 1.0
-
-
-def test_AD_fabricated_necessity_fails():
-    tools = _tools()
-    _build(tools)
-    # fabricate a rationale for the month-end node whose truth is unknown
-    tools.set_node_necessity("f", rationale="for accounting reconciliation")
-    res = _eval(tools)
-    assert res.fabricated_necessity is True
-    assert res.necessity_pass is False
-
-
-def test_AE_unknown_fabricated_as_fact_fails():
-    tools = _tools()
-    _build(tools)
-    tools.set_node_necessity(
-        "f", rationale="a documented regulatory requirement", rationale_confidence=1.0
-    )
-    res = _eval(tools)
-    assert res.fabricated_necessity is True
-    assert res.necessity_pass is False
-
-
-def test_missing_confirmed_rationale_fails():
-    tools = _tools()
-    _build(tools)
-    # approve node records no rationale (all properties unset)
-    tools.db.dag.nodes["d"].necessity = Necessity()
-    res = _eval(tools)
-    assert res.necessity_correctness < 1.0
-    assert res.necessity_pass is False
-
-
-# ---------------------------------------------------------------------------
-# Confidence / provenance in diagnostics
-# ---------------------------------------------------------------------------
-
-
-def test_confidence_stored_and_validated_in_tools():
-    tools = _tools()
-    tools.start_inference("Q")
-    tools.add_node(
-        "n1", "approve high-value quotation", actor="manager", confidence=0.7
-    )
-    assert tools.db.dag.nodes["n1"].action.confidence == 0.7
-    assert tools.db.dag.nodes["n1"].actor.confidence == 0.7
-    with pytest.raises(ValueError):
-        tools.add_node("n2", "x", confidence=2.0)
-
-
-def test_observation_provenance_present():
-    tools = _tools()
-    tools.start_inference("Q")
-    o1 = tools.record_observation("We receive requests from customers.")
-    tools.add_node("a", "receive quotation request", observation_id=o1)
-    assert tools.db.dag.nodes["a"].observation_ids == [o1]
-    assert tools.db.dag.nodes["a"].action.observation_ids == [o1]
 
 
 def test_empty_end_node_ids_invalid():
@@ -658,10 +646,9 @@ def test_empty_end_node_ids_invalid():
 
 
 def test_undeclared_ends_cannot_get_full_structural_score():
-    """Correct topology but no declared end nodes -> not structurally complete."""
     tools = _tools()
     _build(tools, evidence=True)
-    tools.db.dag.end_node_ids = []  # agent never declared ends
+    tools.db.dag.end_node_ids = []
     res = _eval(tools)
     assert res.dag_valid is False
     assert res.end_precision == 0.0
@@ -669,24 +656,25 @@ def test_undeclared_ends_cannot_get_full_structural_score():
 
 
 def test_declared_endpoints_must_match_truth_not_just_sinks():
-    """Declaring the wrong end nodes fails even if the topology is correct."""
     tools = _tools()
     _build(tools, evidence=True)
-    # correct sinks but wrong declared end set (declares 'c' instead of 'e')
     tools.db.dag.end_node_ids = ["c", "f"]
     res = _eval(tools)
     assert res.end_recall < 1.0 or res.end_precision < 1.0
     assert res.structural_pass is False
 
 
+# ---------------------------------------------------------------------------
+# Evidence / provenance / relevance
+# ---------------------------------------------------------------------------
+
+
 def test_perfect_dag_with_zero_observations_fails_evidence_gate():
     tools = _tools()
-    _build(tools, evidence=False)  # correct DAG, but no recorded observations
+    _build(tools, evidence=False)
     res = _eval(tools)
     assert res.structural_pass is True
     assert res.evidence_pass is False
-    assert res.node_evidence_coverage == 0.0
-    assert res.edge_evidence_coverage == 0.0
     assert res.quality_pass is False
 
 
@@ -709,8 +697,9 @@ def test_nonexistent_observation_ref_rejected_by_tool():
     tools.start_inference("Q")
     with pytest.raises(ValueError):
         tools.add_node("n1", "receive request", observation_id="does_not_exist")
-    tools.record_observation("we receive requests")
-    tools.add_node("n1", "receive request", observation_id="o1")
+    turn = _ingest(tools, "user", "we receive requests")
+    o = tools.observe_turn(turn)
+    tools.add_node("n1", "receive request", observation_id=o)
     with pytest.raises(ValueError):
         tools.update_node("n1", actor="sales", observation_id="fake")
     with pytest.raises(ValueError):
@@ -722,7 +711,7 @@ def test_nonexistent_observation_ref_rejected_by_tool():
 def test_node_attribute_without_provenance_fails():
     tools = _tools()
     _build(tools, evidence=True)
-    tools.db.dag.nodes["a"].action.observation_ids = []  # claim without provenance
+    tools.db.dag.nodes["a"].action.observation_ids = []
     res = _eval(tools)
     assert res.attribute_provenance_coverage < 1.0
     assert res.evidence_pass is False
@@ -756,17 +745,206 @@ def test_known_necessity_without_provenance_fails():
 
 
 def test_unrelated_observation_alone_does_not_pass_evidence():
-    """Attaching an unrelated observation to a node does not give its attributes
-    provenance."""
     tools = _tools()
-    _build(tools, evidence=False)  # no attribute provenance
-    tools.record_observation("some unrelated statement")
-    tools.attach_observation("a", "o1")
+    _build(tools, evidence=False)
+    turn = _ingest(tools, "user", "some unrelated statement")
+    o = tools.observe_turn(turn)
+    tools.attach_observation("a", o)
     res = _eval(tools)
-    # only node 'a' gained node-level evidence; claims still lack provenance
     assert res.node_evidence_coverage < 1.0
     assert res.attribute_provenance_coverage < 1.0
     assert res.evidence_pass is False
+
+
+def test_confidence_zero_asserted_value_treated_as_unasserted():
+    tools = _tools()
+    _build(tools, evidence=True)
+    tools.db.dag.nodes["d"].necessity.rationale.confidence = 0.0
+    res = _eval(tools)
+    assert res.necessity_correctness < 1.0
+    assert res.necessity_pass is False
+    assert res.necessity_provenance_coverage == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Falsification Y-Z: EN/JA equivalence and leakage
+# ---------------------------------------------------------------------------
+
+
+def test_en_ja_equivalent_dag_evaluation():
+    en = _tools()
+    ja = _tools()
+    _build(en, ja=False)
+    _build(ja, ja=True)
+    ren = _eval(en, SCENARIO)
+    rja = _eval(ja, JA_SCENARIO)
+    for field in (
+        "node_recall",
+        "node_precision",
+        "edge_recall",
+        "edge_precision",
+        "predicate_correctness",
+        "necessity_correctness",
+        "quality_pass",
+        "evidence_pass",
+        "provenance_authenticity_pass",
+    ):
+        assert getattr(ren, field) == getattr(rja, field), field
+
+
+HIDDEN_TERMS = (
+    "receive_request",
+    "check_customer",
+    "create_quote",
+    "approve_quote",
+    "send_quote",
+    "month_end_summary",
+    "credit_risk",
+    "pred_amount_over",
+    "e6",
+)
+
+
+def test_hidden_truth_not_leaked_to_agent():
+    policy = BUSINESS_INTERVIEW_POLICY_PATH.read_text().lower()
+    docs = "\n".join(
+        [
+            InterviewTools.add_node.__doc__ or "",
+            InterviewTools.add_edge.__doc__ or "",
+            InterviewTools.observe_turn.__doc__ or "",
+            InterviewTools.list_stakeholder_messages.__doc__ or "",
+            InterviewTools.set_node_necessity.__doc__ or "",
+            InterviewTools.set_dag_endpoints.__doc__ or "",
+            InterviewTools.finish_interview.__doc__ or "",
+        ]
+    ).lower()
+    for term in HIDDEN_TERMS:
+        assert term not in policy, f"policy leaks {term}"
+        assert term not in docs, f"tool doc leaks {term}"
+
+
+def test_agent_system_prompt_has_no_ground_truth():
+    from tau2.agent.llm_agent import LLMAgent
+
+    env = get_environment()
+    agent = LLMAgent(tools=env.get_tools(), domain_policy=env.get_policy(), llm="dummy")
+    prompt = agent.system_prompt.lower()
+    for term in HIDDEN_TERMS:
+        assert term not in prompt, f"agent prompt leaks {term}"
+
+
+def test_scenario_has_no_truth_dag_ids():
+    for task in get_tasks():
+        s = str(task.user_scenario).lower()
+        for tid in ("r", "cc", "cq", "ap", "sq", "me"):
+            assert f"node '{tid}'" not in s
+            assert f"'{tid}'" not in s
+
+
+# ---------------------------------------------------------------------------
+# Falsification AA-AB: Stakeholder Filter
+# ---------------------------------------------------------------------------
+
+
+def test_AA_two_stakeholder_filters_on_same_truth():
+    sc = get_scenario(SCENARIO)
+    sales = quotation_sales_filter()
+    finance = quotation_finance_filter()
+    sd = sales.apply(sc.truth)
+    fd = finance.apply(sc.truth)
+    assert set(sd.nodes) == {"r", "cc", "cq", "ap", "sq", "me"}
+    assert set(fd.nodes) == {"cq", "sq", "me"}
+    assert set(sd.nodes) != set(fd.nodes)
+
+
+def test_AB_filter_hides_out_of_scope_information():
+    sc = get_scenario(SCENARIO)
+    sales = quotation_sales_filter()
+    finance = quotation_finance_filter()
+    sd = sales.apply(sc.truth)
+    fd = finance.apply(sc.truth)
+    assert "ap" not in fd.nodes
+    assert "ap" in sd.nodes
+    assert sd.nodes["me"].necessity is None
+    assert fd.nodes["me"].necessity is not None
+    assert sd.nodes["ap"].necessity is not None
+    assert sd.nodes["ap"].necessity.rationale.value is not None
+    assert "ap" not in finance.describe(sc.truth)
+
+
+# ---------------------------------------------------------------------------
+# Falsification AC-AE: necessity correctness
+# ---------------------------------------------------------------------------
+
+
+def test_AC_correct_necessity_passes():
+    tools = _tools()
+    _build(tools, evidence=True)
+    res = _eval(tools)
+    assert res.necessity_pass is True
+    assert res.necessity_correctness == 1.0
+
+
+def test_AD_fabricated_necessity_fails():
+    tools = _tools()
+    _build(tools, evidence=True)
+    tools.set_node_necessity("f", rationale="for accounting reconciliation")
+    res = _eval(tools)
+    assert res.fabricated_necessity is True
+    assert res.necessity_pass is False
+
+
+def test_AE_unknown_fabricated_as_fact_fails():
+    tools = _tools()
+    _build(tools, evidence=True)
+    tools.set_node_necessity("f", rationale="a documented regulatory requirement")
+    res = _eval(tools)
+    assert res.fabricated_necessity is True
+    assert res.necessity_pass is False
+
+
+def test_missing_confirmed_rationale_fails():
+    tools = _tools()
+    _build(tools, evidence=True)
+    tools.db.dag.nodes["d"].necessity = Necessity()
+    res = _eval(tools)
+    assert res.necessity_correctness < 1.0
+    assert res.necessity_pass is False
+
+
+# ---------------------------------------------------------------------------
+# Tool semantics
+# ---------------------------------------------------------------------------
+
+
+def test_start_inference_keeps_conversation_ledger():
+    tools = _tools()
+    turn = _ingest(tools, "user", "We receive requests.")
+    o = tools.observe_turn(turn)
+    tools.add_node("n1", "receive request", observation_id=o)
+    tools.start_inference("Restart")
+    # conversation ledger persists; observations / dag reset
+    assert len(tools.db.messages) > 0
+    assert tools.db.observations == []
+    assert not tools.db.dag.nodes
+
+
+def test_observation_ids_deterministic():
+    tools = _tools()
+    t1 = _ingest(tools, "user", "We receive requests.")
+    t2 = _ingest(tools, "user", "We send quotations.")
+    assert tools.observe_turn(t1) == f"obs_{t1}"
+    assert tools.observe_turn(t2) == f"obs_{t2}"
+
+
+def test_duplicate_provenance_refs_deduplicated():
+    tools = _tools()
+    turn = _ingest(tools, "user", "We receive requests.")
+    o = tools.observe_turn(turn)
+    tools.add_node("n1", "receive request", observation_id=o)
+    tools.attach_observation("n1", o)
+    tools.attach_observation("n1", o)
+    assert tools.db.dag.nodes["n1"].observation_ids == [o]
 
 
 # ---------------------------------------------------------------------------
@@ -774,27 +952,123 @@ def test_unrelated_observation_alone_does_not_pass_evidence():
 # ---------------------------------------------------------------------------
 
 
-def _tool_call(cid: str, name: str, args: dict, result: str) -> list:
-    return [
-        AssistantMessage(
-            role="assistant", tool_calls=[ToolCall(id=cid, name=name, arguments=args)]
-        ),
-        ToolMessage(role="tool", id=cid, content=result),
-    ]
+def _mk_tool_message(traj, tools, cid, name, args):
+    tc = ToolCall(id=cid, name=name, arguments=args)
+    traj.append(AssistantMessage(role="assistant", tool_calls=[tc]))
+    tools.db.messages.append({"role": "assistant", "content": None})
+    res = getattr(tools, name)(**args)
+    traj.append(ToolMessage(role="tool", id=cid, content=res))
+    tools.db.messages.append({"role": "tool", "content": res})
+    return res
 
 
-def _trajectory_from_reference(task: Task):
-    traj = [
-        AssistantMessage(role="assistant", content="Hello, I'd like to interview you."),
-        UserMessage(role="user", content="Sure."),
-    ]
+def _reference_trajectory(node_ids: tuple = ("a", "b", "c", "d", "e", "f")):
+    """A realistic reference conversation: stakeholder statements interleaved
+    with observe_turn + DAG-building tool calls, all authentic."""
+    include = set(node_ids)
+    traj = []
     tools = InterviewTools(InterviewDB())
-    for i, a in enumerate(task.evaluation_criteria.actions):
-        res = getattr(tools, a.name)(**a.arguments)
-        traj += _tool_call(f"c{i}", a.name, a.arguments, res)
-    traj += [
-        AssistantMessage(role="assistant", content="That completes the interview.")
+    cid = 0
+    traj.append(
+        AssistantMessage(role="assistant", content="Hello, I'd like to interview you.")
+    )
+    tools.db.messages.append(
+        {"role": "assistant", "content": "Hello, I'd like to interview you."}
+    )
+    _mk_tool_message(
+        traj, tools, "c0", "start_inference", {"name": "Quotation creation"}
+    )
+
+    node_specs = [
+        (sid, t[1], t, statement)
+        for sid, t, statement in zip("abcdef", _TRUTH_NODES, _NODE_STATEMENTS)
+        if sid in include
     ]
+    obs = {}
+    for sid, action, (_, _, actor, system, reads, writes), statement in node_specs:
+        cid += 1
+        um = UserMessage(role="user", content=statement)
+        traj.append(um)
+        tools.db.messages.append({"role": "user", "content": statement})
+        turn = len(tools.db.messages) - 1
+        oid = _mk_tool_message(
+            traj, tools, f"c{cid}", "observe_turn", {"turn_idx": turn}
+        )
+        obs[sid] = oid
+        cid += 1
+        _mk_tool_message(
+            traj,
+            tools,
+            f"c{cid}",
+            "add_node",
+            {
+                "node_id": sid,
+                "action": action,
+                "actor": actor,
+                "system": system,
+                "reads": reads,
+                "writes": writes,
+                "observation_id": oid,
+            },
+        )
+    if "d" in include:
+        cid += 1
+        _mk_tool_message(
+            traj,
+            tools,
+            f"c{cid}",
+            "set_node_necessity",
+            {
+                "node_id": "d",
+                "rationale": "for credit risk management",
+                "observation_id": obs["d"],
+            },
+        )
+    cid += 1
+    _mk_tool_message(traj, tools, f"c{cid}", "set_node_necessity", {"node_id": "f"})
+
+    edge_specs = [
+        ("e1", "a", "b", None),
+        ("e2", "b", "c", None),
+        ("e3", "c", "d", "amount over 1,000,000"),
+        ("e4", "c", "e", "amount at or below 1,000,000"),
+        ("e5", "d", "e", None),
+        ("e6", "c", "f", "month-end"),
+    ]
+    for k, (eid, frm, to, pred) in enumerate(edge_specs):
+        if frm not in include or to not in include:
+            continue
+        cid += 1
+        statement = _EDGE_STATEMENTS[k]
+        um = UserMessage(role="user", content=statement)
+        traj.append(um)
+        tools.db.messages.append({"role": "user", "content": statement})
+        turn = len(tools.db.messages) - 1
+        oid = _mk_tool_message(
+            traj, tools, f"c{cid}", "observe_turn", {"turn_idx": turn}
+        )
+        cid += 1
+        args = {"edge_id": eid, "from_node": frm, "to_node": to, "observation_id": oid}
+        if pred:
+            args["predicate"] = pred
+        _mk_tool_message(traj, tools, f"c{cid}", "add_edge", args)
+
+    cid += 1
+    _mk_tool_message(
+        traj,
+        tools,
+        f"c{cid}",
+        "set_dag_endpoints",
+        {"start_node_id": "a", "end_node_ids": ["e", "f"]},
+    )
+    cid += 1
+    _mk_tool_message(
+        traj,
+        tools,
+        f"c{cid}",
+        "finish_interview",
+        {"summary": "Inferred the quotation DAG."},
+    )
     return traj
 
 
@@ -802,10 +1076,11 @@ def test_evaluator_rewards_full_reconstruction():
     from tau2.evaluator.evaluator_env import EnvironmentEvaluator
 
     task = [t for t in get_tasks() if t.id == SCENARIO][0]
+    traj = _reference_trajectory()
     reward_info = EnvironmentEvaluator.calculate_reward(
         environment_constructor=get_environment,
         task=task,
-        full_trajectory=_trajectory_from_reference(task),
+        full_trajectory=traj,
         solo_mode=False,
     )
     assert reward_info.reward == 1.0
@@ -821,6 +1096,7 @@ def test_evaluator_rewards_full_reconstruction():
     assert diag["edge_recall"] == 1.0
     assert diag["quality_pass"] is True
     assert diag["evidence_pass"] is True
+    assert diag["provenance_authenticity_pass"] is True
     assert diag["invalid_observation_reference_count"] == 0
 
 
@@ -828,24 +1104,11 @@ def test_evaluator_detects_missing_node():
     from tau2.evaluator.evaluator_env import EnvironmentEvaluator
 
     task = [t for t in get_tasks() if t.id == SCENARIO][0]
-    keep = []
-    drop_ids = {"inf_9", "inf_10", "inf_21", "inf_25"}  # approve node + its refs
-    for a in task.evaluation_criteria.actions:
-        if a.action_id not in drop_ids:
-            keep.append((a.name, a.arguments))
-    traj = [
-        AssistantMessage(role="assistant", content="Hello."),
-        UserMessage(role="user", content="Sure."),
-    ]
-    tools = InterviewTools(InterviewDB())
-    for i, (name, args) in enumerate(keep):
-        res = getattr(tools, name)(**args)
-        traj += _tool_call(f"c{i}", name, args, res)
-    traj += [AssistantMessage(role="assistant", content="done")]
+    filtered = _reference_trajectory_without_d()
     reward_info = EnvironmentEvaluator.calculate_reward(
         environment_constructor=get_environment,
         task=task,
-        full_trajectory=traj,
+        full_trajectory=filtered,
         solo_mode=False,
     )
     assert reward_info.reward == 0.0
@@ -853,24 +1116,24 @@ def test_evaluator_detects_missing_node():
     assert checks["assert_dag_reconstructed"] is False
 
 
+def _reference_trajectory_without_d():
+    return _reference_trajectory(node_ids=("a", "b", "c", "e", "f"))
+
+
 def test_evaluator_detects_fabricated_necessity():
     from tau2.evaluator.evaluator_env import EnvironmentEvaluator
 
     task = [t for t in get_tasks() if t.id == SCENARIO][0]
-    actions = [a for a in task.evaluation_criteria.actions]
-    # replace month-end necessity with a fabricated rationale
-    for a in actions:
-        if a.name == "set_node_necessity" and a.arguments.get("node_id") == "f":
-            a.arguments["rationale"] = "for accounting reconciliation"
-    traj = [
-        AssistantMessage(role="assistant", content="Hello."),
-        UserMessage(role="user", content="Sure."),
-    ]
-    tools = InterviewTools(InterviewDB())
-    for i, a in enumerate(actions):
-        res = getattr(tools, a.name)(**a.arguments)
-        traj += _tool_call(f"c{i}", a.name, a.arguments, res)
-    traj += [AssistantMessage(role="assistant", content="done")]
+    traj = _reference_trajectory()
+    # Change the month-end set_node_necessity to a fabricated rationale.
+    for m in traj:
+        if isinstance(m, AssistantMessage) and m.tool_calls:
+            for tc in m.tool_calls:
+                if (
+                    tc.name == "set_node_necessity"
+                    and tc.arguments.get("node_id") == "f"
+                ):
+                    tc.arguments["rationale"] = "for accounting reconciliation"
     reward_info = EnvironmentEvaluator.calculate_reward(
         environment_constructor=get_environment,
         task=task,
