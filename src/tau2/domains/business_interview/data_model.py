@@ -376,38 +376,50 @@ class WorkflowEvaluation(BaseModel):
     why_recorded: bool = Field(
         description="True if a 'why' result was recorded for the questionable step."
     )
+    why_correct: bool = Field(
+        description="True if the recorded 'why' result matches the ground-truth expectation."
+    )
     owner_asked: bool = Field(
         description="True if the owner of the questionable step was asked."
     )
     owner_recorded: bool = Field(
-        description="True if an owner result was recorded for the questionable step."
+        description="True if a valid owner result was recorded (KNOWN with a value, or UNKNOWN/NONE_FOUND)."
     )
     owner_result: str = Field(
         description="Recorded owner outcome (KNOWN / UNKNOWN / NONE_FOUND / NOT_RECORDED)."
+    )
+    owner_correct: bool = Field(
+        description="True if the recorded owner outcome matches the ground-truth expectation."
     )
     evidence_asked: bool = Field(
         description="True if evidence for the questionable step was asked."
     )
     evidence_recorded: bool = Field(
-        description="True if an evidence result was recorded for the questionable step."
+        description="True if a valid evidence result was recorded."
     )
     evidence_result: str = Field(
         description="Recorded evidence outcome (KNOWN / UNKNOWN / NONE_FOUND / NOT_RECORDED)."
+    )
+    evidence_correct: bool = Field(
+        description="True if the recorded evidence outcome matches the ground-truth expectation."
     )
     removal_asked: bool = Field(
         description="True if removal-impact of the questionable step was asked."
     )
     removal_recorded: bool = Field(
-        description="True if a removal result was recorded for the questionable step."
+        description="True if a valid removal result was recorded."
     )
     removal_result: str = Field(
         description="Recorded removal outcome (KNOWN / UNKNOWN / NONE_FOUND / NOT_RECORDED)."
+    )
+    removal_correct: bool = Field(
+        description="True if the recorded removal outcome matches the ground-truth expectation."
     )
     deletion_considered: bool = Field(
         description="True if deletion of the questionable step was considered (analyst assessment)."
     )
     challenge_done: bool = Field(
-        description="True if every required observation was recorded and deletion was considered."
+        description="True if every required observation was recorded AND correct, and deletion was considered."
     )
     improvement_order_ok: bool = Field(
         description="True if necessity was recorded before proposing delete/simplify/accelerate/automate."

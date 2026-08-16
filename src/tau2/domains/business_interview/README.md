@@ -123,10 +123,46 @@ recorded*, not merely whether a question was posed.
 `UNKNOWN` means the stakeholder was asked and confirmed they do not know, and
 that was recorded. `NONE_FOUND` means it was investigated and nothing exists.
 An asked-but-unrecorded dimension is `NOT_RECORDED` — it is **never** treated as
-`UNKNOWN` / `NONE_FOUND`. `challenge_pass` requires every required observation
-(why / owner / evidence / removal) to be recorded **and** deletion to be
-considered. `FACT` means the source asserted it as certain — it is **not**
+`UNKNOWN` / `NONE_FOUND`. `KNOWN` **requires a value** — a `KNOWN` result with no
+value is invalid (the tool rejects it; the evaluator also treats it as not
+recorded). `FACT` means the source asserted it as certain — it is **not**
 objective truth; recording an UNKNOWN as a FACT is an epistemic fail.
+
+## Observation correctness (ASKED / RECORDED / CORRECT)
+
+The challenge is judged in three tiers, not two:
+
+1. **asked** — the question was posed (`*_asked`).
+2. **recorded** — a valid result was recorded (`*_result`).
+3. **correct** — the recorded result matches the ground-truth expectation
+   (`owner_correct` / `evidence_correct` / `removal_correct`).
+
+For the questionable legacy step the ground truth declares the expected
+observations (`GTNecessity.expected_owner_result` etc.). For the bundled
+scenario: owner `UNKNOWN`, evidence `NONE_FOUND`, removal `UNKNOWN`. A recorded
+`KNOWN` that contradicts the expectation (e.g. an invented owner) is recorded but
+**incorrect**. `challenge_pass` requires every required observation to be
+recorded **and correct**, plus deletion considered.
+
+Diagnostics surface all three tiers per dimension, e.g.:
+
+```
+owner:   { asked: true, recorded: true, result: KNOWN,  correct: false }
+evidence: { asked: true, recorded: true, result: NONE_FOUND, correct: true }
+```
+
+## Stakeholder Truth (structured, step-unit)
+
+Stakeholder Truth is structured per step (by concept) and axis
+(`StakeholderTruth` / `StakeholderStepTruth` in `ground_truth.py`), kept separate
+from the Evaluator Ground Truth and the Agent Reconstruction. Completeness
+(`stakeholder_truth_completeness`) is a **structural** per-step comparison
+between the evaluator-required axes and each step's truth — a word that happens
+to appear in another step can never satisfy a missing axis. A separate
+consistency check (`missing_from_instructions`) verifies the user simulator can
+answer every structured truth value, so we never create a state where the
+evaluator has truth the simulator cannot answer. The structured truth is never
+shown to the agent.
 
 ## Same-concept multi-step matching
 
@@ -152,11 +188,12 @@ uv run pytest tests/test_domains/test_business_interview/
 ```
 
 The tests cover the workflow tools, leakage-free agent-visible context,
-step-unit stakeholder truth completeness, ASKED vs RESULT RECORDED, the
-UNKNOWN / NOT_RECORDED / NONE_FOUND distinction, arbitrary step-id
-canonicalisation, same-concept multi-step matching, confirmed-rationale
-content/source/status evaluation, EN/JA semantic equivalence, precision-aware
-data, condition-aware transitions, and the workflow falsification suite A-V.
+structured step-unit stakeholder truth and structural completeness,
+ASKED / RECORDED / CORRECT observation correctness, KNOWN-value validation, the
+UNKNOWN / NOT_RECORDED / NONE_FOUND distinction, the same-concept matcher None
+fix, arbitrary step-id canonicalisation, EN/JA semantic equivalence,
+precision-aware data, condition-aware transitions, and the workflow
+falsification suite A-V.
 
 ## Design notes
 

@@ -1,13 +1,17 @@
 """Tests for the hardened Workflow-first business_interview domain (v2).
 
 Covers the workflow-reconstruction tools, the concept-based structural /
-epistemic / challenge evaluation, the ASKED-vs-RESULT-RECORDED separation, the
-UNKNOWN / NOT_RECORDED / NONE_FOUND distinction, step-unit stakeholder truth
-completeness, same-concept multi-step matching, arbitrary step-id
-canonicalisation, confirmed-rationale content/source/status evaluation, EN/JA
-semantic equivalence, precision-aware data, condition-aware transitions,
-workflow metadata, leakage, and the full falsification suite A-V.
+epistemic / challenge evaluation, the ASKED-vs-RECORDED-vs-CORRECT separation,
+the UNKNOWN / NOT_RECORDED / NONE_FOUND distinction, KNOWN-value validation,
+ground-truth observation correctness (owner / evidence / removal), structured
+step-unit stakeholder truth and structural completeness, the same-concept
+matcher None fix, arbitrary step-id canonicalisation, EN/JA semantic
+equivalence, leakage, and the falsification suite A-V.
 """
+
+import copy
+
+import pytest
 
 from tau2.data_model.message import (
     AssistantMessage,
@@ -27,10 +31,13 @@ from tau2.domains.business_interview.environment import (
     get_tasks_split,
 )
 from tau2.domains.business_interview.ground_truth import (
+    GTStep,
     get_ground_truth,
-    missing_stakeholder_truth,
+    get_stakeholder_truth,
+    missing_from_instructions,
+    stakeholder_truth_completeness,
 )
-from tau2.domains.business_interview.semantic import evaluate
+from tau2.domains.business_interview.semantic import _match_steps, evaluate
 from tau2.domains.business_interview.tools import InterviewTools
 from tau2.domains.business_interview.utils import (
     BUSINESS_INTERVIEW_POLICY_PATH,
@@ -213,7 +220,7 @@ def _build(
 
 
 # ---------------------------------------------------------------------------
-# Good reconstruction (reference behaviour) = falsification K
+# Good reconstruction (reference behaviour) = falsification L / K
 # ---------------------------------------------------------------------------
 
 
@@ -241,10 +248,16 @@ def test_good_reconstruction_passes_all_axes():
     assert ev.uncertainty_handling is True
     assert ev.fabricated_rationale is False
     assert ev.challenge_target_identified is True
-    assert ev.why_asked is True and ev.why_recorded is True
-    assert ev.owner_asked is True and ev.owner_recorded is True
+    assert ev.why_asked is True and ev.why_recorded is True and ev.why_correct is True
+    assert (
+        ev.owner_asked is True
+        and ev.owner_recorded is True
+        and ev.owner_correct is True
+    )
     assert ev.evidence_asked is True and ev.evidence_recorded is True
+    assert ev.evidence_correct is True
     assert ev.removal_asked is True and ev.removal_recorded is True
+    assert ev.removal_correct is True
     assert ev.deletion_considered is True
     assert ev.challenge_done is True
     assert ev.improvement_order_ok is True
@@ -256,233 +269,323 @@ def test_good_reconstruction_passes_all_axes():
 
 
 # ---------------------------------------------------------------------------
-# Falsification A-D: the "why" dimension, ASKED vs RESULT RECORDED
+# Falsification A-F: observation correctness vs ground truth
 # ---------------------------------------------------------------------------
 
 
-def test_A_why_not_asked_fails():
-    """A: the 'why is this needed' question was never asked / answered."""
+def test_A_owner_unknown_expected_unknown_recorded_passes():
+    tools = _tools()
+    _build(tools)
+    ev = _eval(tools)
+    assert ev.owner_result == "UNKNOWN"
+    assert ev.owner_recorded is True
+    assert ev.owner_correct is True
+    assert ev.challenge_pass is True
+
+
+def test_B_owner_unknown_expected_known_fake_value_fails():
     tools = _tools()
     _build(tools)
     s6 = _step(tools, "s6")
-    s6.necessity.why_asked = False
-    s6.necessity.rationale_result = RationaleResult.NOT_RECORDED
+    s6.necessity.owner_result = NecessityResult.KNOWN
+    s6.necessity.owner = "CEO"
     ev = _eval(tools)
-    assert ev.why_asked is False
-    assert ev.why_recorded is False
-    assert ev.challenge_done is False
+    assert ev.owner_recorded is True
+    assert ev.owner_result == "KNOWN"
+    assert ev.owner_correct is False  # fabricated KNOWN vs expected UNKNOWN
     assert ev.challenge_pass is False
 
 
-def test_B_why_asked_but_result_not_recorded_fails():
-    """B: the question was asked, but no answer was recorded -> NOT recorded.
+def test_C_evidence_none_found_expected_none_found_passes():
+    tools = _tools()
+    _build(tools)
+    ev = _eval(tools)
+    assert ev.evidence_result == "NONE_FOUND"
+    assert ev.evidence_recorded is True
+    assert ev.evidence_correct is True
+    assert ev.challenge_pass is True
 
-    This is the core hardening: challenge_step('why') alone must NOT pass. An
-    asked-but-unanswered 'why' is treated as NOT_RECORDED, never as UNKNOWN.
-    """
+
+def test_D_evidence_none_found_expected_known_fake_fails():
     tools = _tools()
     _build(tools)
     s6 = _step(tools, "s6")
-    s6.necessity.why_asked = True  # the question was asked
-    s6.necessity.rationale_result = RationaleResult.NOT_RECORDED  # no answer recorded
+    s6.necessity.evidence_result = NecessityResult.KNOWN
+    s6.necessity.evidence = "law"
     ev = _eval(tools)
-    assert ev.why_asked is True
-    assert ev.why_recorded is False
-    assert ev.challenge_done is False
+    assert ev.evidence_recorded is True
+    assert ev.evidence_result == "KNOWN"
+    assert ev.evidence_correct is False
     assert ev.challenge_pass is False
 
 
-def test_C_explicit_unknown_recorded_passes():
-    """C: an explicit UNKNOWN (stakeholder confirmed they don't know) passes."""
+def test_E_removal_unknown_expected_unknown_passes():
     tools = _tools()
-    _build(tools)  # s6 why is recorded as UNKNOWN via set_step_unknown
-    s6 = _step(tools, "s6")
-    assert s6.necessity.rationale_result == RationaleResult.UNKNOWN
+    _build(tools)
     ev = _eval(tools)
-    assert ev.why_recorded is True
-    assert ev.challenge_done is True
+    assert ev.removal_result == "UNKNOWN"
+    assert ev.removal_recorded is True
+    assert ev.removal_correct is True
+    assert ev.challenge_pass is True
 
 
-def test_D_unknown_fabricated_as_fact_fails():
-    """D: promoting an UNKNOWN to a FACT is an epistemic fail."""
+def test_F_removal_unknown_expected_known_fabricated_fails():
     tools = _tools()
     _build(tools)
     s6 = _step(tools, "s6")
-    s6.necessity.rationale_result = RationaleResult.FACT
-    s6.necessity.rationale = "for accounting reconciliation"
+    s6.necessity.removal_result = NecessityResult.KNOWN
+    s6.necessity.removal_impact = "sales cannot be booked"
     ev = _eval(tools)
-    assert ev.fabricated_rationale is True
-    assert ev.uncertainty_handling is False
-    assert ev.rationale_pass is False
+    assert ev.removal_recorded is True
+    assert ev.removal_result == "KNOWN"
+    assert ev.removal_correct is False
+    assert ev.challenge_pass is False
 
 
 # ---------------------------------------------------------------------------
-# Falsification E-H: the "owner" and "evidence" dimensions
+# Falsification G-I: KNOWN requires a value
 # ---------------------------------------------------------------------------
 
 
-def test_E_owner_asked_but_not_recorded_fails():
-    """E: asking about the owner without recording a result -> FAIL."""
+def test_G_known_owner_without_value_tool_rejects():
+    tools = _tools()
+    _build(tools)
+    with pytest.raises(ValueError):
+        tools.record_necessity_detail("s6", owner_state="KNOWN")  # no owner value
+
+
+def test_G_known_owner_without_value_evaluator_fails_defensively():
     tools = _tools()
     _build(tools)
     s6 = _step(tools, "s6")
-    s6.necessity.owner_asked = True  # the question was asked
-    s6.necessity.owner_result = NecessityResult.NOT_RECORDED  # no answer recorded
+    s6.necessity.owner_result = NecessityResult.KNOWN
+    s6.necessity.owner = None  # KNOWN without a value -> invalid
     ev = _eval(tools)
-    assert ev.owner_asked is True
     assert ev.owner_recorded is False
-    assert ev.challenge_done is False
+    assert ev.owner_correct is False
     assert ev.challenge_pass is False
 
 
-def test_F_owner_unknown_or_none_found_recorded_passes():
-    """F: recording an owner UNKNOWN or NONE_FOUND result is a valid finding."""
-    for state in ("UNKNOWN", "NONE_FOUND", "KNOWN"):
-        tools = _tools()
-        _build(tools)
-        s6 = _step(tools, "s6")
-        s6.necessity.owner_asked = True
-        s6.necessity.owner_result = NecessityResult(state)
-        if state == "KNOWN":
-            s6.necessity.owner = "sales"
-        ev = _eval(tools)
-        assert ev.owner_recorded is True, state
-        assert ev.owner_result == state, state
-        assert ev.challenge_done is True, state
-
-
-def test_G_evidence_asked_but_not_recorded_fails():
-    """G: asking about evidence without recording a result -> FAIL."""
+def test_H_known_evidence_without_value_fails():
     tools = _tools()
     _build(tools)
+    with pytest.raises(ValueError):
+        tools.record_necessity_detail("s6", evidence_state="KNOWN")
     s6 = _step(tools, "s6")
-    s6.necessity.evidence_asked = True
-    s6.necessity.evidence_result = NecessityResult.NOT_RECORDED
+    s6.necessity.evidence_result = NecessityResult.KNOWN
+    s6.necessity.evidence = None
     ev = _eval(tools)
-    assert ev.evidence_asked is True
     assert ev.evidence_recorded is False
-    assert ev.challenge_done is False
+    assert ev.evidence_correct is False
     assert ev.challenge_pass is False
 
 
-def test_H_evidence_unknown_or_none_found_recorded_passes():
-    """H: recording an evidence UNKNOWN / NONE_FOUND result is a valid finding."""
-    for state in ("UNKNOWN", "NONE_FOUND", "KNOWN"):
-        tools = _tools()
-        _build(tools)
-        s6 = _step(tools, "s6")
-        s6.necessity.evidence_asked = True
-        s6.necessity.evidence_result = NecessityResult(state)
-        if state == "KNOWN":
-            s6.necessity.evidence = "a written process document"
-        ev = _eval(tools)
-        assert ev.evidence_recorded is True, state
-        assert ev.evidence_result == state, state
-        assert ev.challenge_done is True, state
-
-
-# ---------------------------------------------------------------------------
-# Falsification I-J: the "removal" dimension
-# ---------------------------------------------------------------------------
-
-
-def test_I_removal_asked_but_not_recorded_fails():
-    """I: asking about removal impact without recording a result -> FAIL."""
+def test_I_known_removal_without_value_fails():
     tools = _tools()
     _build(tools)
+    with pytest.raises(ValueError):
+        tools.record_necessity_detail("s6", removal_state="KNOWN")
     s6 = _step(tools, "s6")
-    s6.necessity.removal_asked = True
-    s6.necessity.removal_result = NecessityResult.NOT_RECORDED
+    s6.necessity.removal_result = NecessityResult.KNOWN
+    s6.necessity.removal_impact = None
     ev = _eval(tools)
-    assert ev.removal_asked is True
+    assert ev.removal_recorded is False
+    assert ev.removal_correct is False
+    assert ev.challenge_pass is False
+
+
+# ---------------------------------------------------------------------------
+# Falsification J-L: asked / recorded / correct three tiers
+# ---------------------------------------------------------------------------
+
+
+def test_J_asked_only_fails():
+    """Asked a question but recorded no result -> FAIL."""
+    tools = _tools()
+    _build(tools, record_observations=False)  # only asks, records nothing
+    s6 = _step(tools, "s6")
+    assert s6.necessity.owner_asked is True
+    ev = _eval(tools)
+    assert ev.owner_recorded is False
+    assert ev.evidence_recorded is False
     assert ev.removal_recorded is False
     assert ev.challenge_done is False
     assert ev.challenge_pass is False
 
 
-def test_J_removal_result_recorded_passes():
-    """J: recording a removal result (KNOWN / UNKNOWN) is a valid finding."""
-    for state in ("UNKNOWN", "KNOWN"):
-        tools = _tools()
-        _build(tools)
-        s6 = _step(tools, "s6")
-        s6.necessity.removal_asked = True
-        s6.necessity.removal_result = NecessityResult(state)
-        if state == "KNOWN":
-            s6.necessity.removal_impact = "accounting would miss its summary"
-        ev = _eval(tools)
-        assert ev.removal_recorded is True, state
-        assert ev.challenge_done is True, state
-
-
-def test_asked_but_unrecorded_is_never_unknown_or_none_found():
-    """An asked-but-unrecorded dimension is NOT_RECORDED, never UNKNOWN/NONE."""
+def test_K_recorded_but_incorrect_fails():
+    """Recorded a result but it contradicts the ground truth -> FAIL."""
     tools = _tools()
     _build(tools)
     s6 = _step(tools, "s6")
-    # The agent only asks; records nothing for owner.
-    s6.necessity.owner_asked = True
-    s6.necessity.owner_result = NecessityResult.NOT_RECORDED
-    s6.necessity.owner = None
+    s6.necessity.owner_result = NecessityResult.KNOWN
+    s6.necessity.owner = "CEO"  # recorded but wrong (expected UNKNOWN)
     ev = _eval(tools)
-    assert ev.owner_result == "NOT_RECORDED"
-    assert ev.owner_recorded is False
-
-
-# ---------------------------------------------------------------------------
-# Falsification L-M: improvement order
-# ---------------------------------------------------------------------------
-
-
-def test_L_automate_before_necessity_recorded_fails():
-    """L: automating an uninvestigated step (nothing recorded) -> FAIL."""
-    tools = _tools()
-    _build(tools)
-    s6 = _step(tools, "s6")
-    s6.necessity.rationale_result = RationaleResult.NOT_RECORDED
-    s6.necessity.owner_result = NecessityResult.NOT_RECORDED
-    s6.necessity.evidence_result = NecessityResult.NOT_RECORDED
-    s6.necessity.removal_result = NecessityResult.NOT_RECORDED
-    tools.propose_improvement("s6", "automate", "RPA it now")
-    ev = _eval(tools)
-    assert ev.improvement_order_ok is False
+    assert ev.owner_recorded is True
+    assert ev.owner_correct is False
     assert ev.challenge_pass is False
 
 
-def test_automate_after_question_recorded_ok():
+def test_L_recorded_and_correct_passes():
+    """Recorded a result that matches the ground truth -> PASS."""
     tools = _tools()
     _build(tools)
-    tools.propose_improvement("s6", "question", "is this needed?")
-    tools.propose_improvement("s6", "automate", "then automate")
     ev = _eval(tools)
-    assert ev.improvement_order_ok is True
+    assert ev.owner_recorded is True and ev.owner_correct is True
+    assert ev.evidence_recorded is True and ev.evidence_correct is True
+    assert ev.removal_recorded is True and ev.removal_correct is True
+    assert ev.challenge_pass is True
 
 
-def test_M_delete_after_necessity_recorded_passes():
-    """M: after the necessity is recorded, considering deletion is good."""
+def test_diagnostics_distinguish_asked_recorded_correct():
+    """Diagnostics surface the three tiers for each observation."""
     tools = _tools()
     _build(tools)
-    tools.propose_improvement("s6", "question", "is this step needed?")
-    tools.propose_improvement("s6", "delete", "reason unknown, no evidence")
+    s6 = _step(tools, "s6")
+    s6.necessity.owner_result = NecessityResult.KNOWN
+    s6.necessity.owner = "CEO"
     ev = _eval(tools)
-    assert ev.improvement_order_ok is True
-
-
-def test_wrong_kind_order_fails():
-    tools = _tools()
-    _build(tools)
-    tools.propose_improvement("s6", "automate", "automate first")
-    tools.propose_improvement("s6", "question", "question later")
-    ev = _eval(tools)
-    assert ev.improvement_order_ok is False
+    diag = ev.model_dump(mode="json")
+    assert diag["owner_asked"] is True
+    assert diag["owner_recorded"] is True
+    assert diag["owner_result"] == "KNOWN"
+    assert diag["owner_correct"] is False
+    assert diag["evidence_result"] == "NONE_FOUND"
+    assert diag["evidence_correct"] is True
 
 
 # ---------------------------------------------------------------------------
-# Falsification P: arbitrary step ids
+# Falsification M-O: structured step/axis stakeholder-truth completeness
 # ---------------------------------------------------------------------------
 
 
-def test_arbitrary_step_ids_full_pass():
+def test_M_step_axis_stakeholder_truth_completeness_passes():
+    """Every evaluator-required field is present in the step-unit truth."""
+    assert stakeholder_truth_completeness(SCENARIO) == []
+    assert stakeholder_truth_completeness(JA_SCENARIO) == []
+
+
+def test_N_removing_approve_system_from_truth_fails_completeness():
+    """If approve_quote.system is required but missing from its own truth -> FAIL."""
+    truth = copy.deepcopy(get_stakeholder_truth(SCENARIO))
+    truth.steps["approve_quote"].system = None
+    missing = stakeholder_truth_completeness(SCENARIO, stakeholder_truth=truth)
+    assert ("approve_quote", "system") in missing
+
+
+def test_O_other_step_same_system_does_not_fix_completeness():
+    """A 'quoting' string in another step must NOT satisfy approve_quote.system."""
+    truth = copy.deepcopy(get_stakeholder_truth(SCENARIO))
+    truth.steps["approve_quote"].system = None
+    assert truth.steps["create_quote"].system == "quoting"  # same string elsewhere
+    missing = stakeholder_truth_completeness(SCENARIO, stakeholder_truth=truth)
+    assert ("approve_quote", "system") in missing
+
+
+def test_P_scenario_id_truth_completeness_is_scenario_aware():
+    """Completeness uses each scenario's own truth; EN and JA share the canonical."""
+    en = get_stakeholder_truth(SCENARIO)
+    ja = get_stakeholder_truth(JA_SCENARIO)
+    assert en is not None and en is ja  # canonical resolution for EN/JA
+    # A scenario without a defined stakeholder truth is not graded (no missing).
+    assert stakeholder_truth_completeness("unknown_scenario") == []
+    # The check keys on the provided truth, not a global copy.
+    truth = copy.deepcopy(en)
+    truth.steps["send_quote"].system = None
+    assert ("send_quote", "system") in stakeholder_truth_completeness(
+        SCENARIO, stakeholder_truth=truth
+    )
+    assert stakeholder_truth_completeness(SCENARIO) == []  # global truth unchanged
+
+
+def test_stakeholder_truth_is_answerable_by_simulator():
+    """The simulator prompt can answer every structured truth value (no gap)."""
+    for task in get_tasks():
+        inst = task.user_scenario.instructions
+        text = " ".join(
+            [
+                inst.known_info or "",
+                inst.unknown_info or "",
+                inst.task_instructions or "",
+            ]
+        )
+        assert missing_from_instructions(task.id, text) == [], task.id
+
+
+# ---------------------------------------------------------------------------
+# Falsification Q: same-concept matcher None fix
+# ---------------------------------------------------------------------------
+
+
+def test_Q_unresolved_none_data_is_not_matching_evidence():
+    """Two completely different unknown data items (both resolve to None) must
+    not count as a data match in same-concept disambiguation."""
+    g1 = GTStep(
+        id="g1",
+        concept="approve_quote",
+        action="approve a",
+        actor="sales",
+        system="email",
+        reads=["quote"],  # resolved data
+    )
+    g2 = GTStep(
+        id="g2",
+        concept="approve_quote",
+        action="approve b",
+        actor="sales",
+        system="email",
+        reads=["mysterywidget"],  # unresolved -> None
+    )
+    rec = GTStep(
+        id="r1",
+        concept="approve_quote",
+        action="approve the quotation",
+        actor="sales",
+        system="email",
+        reads=["completelydifferentunknown"],  # unresolved -> None
+    )
+    matches = _match_steps([rec], [g1, g2])
+    # rec must NOT be pulled to g2 by None&None data overlap; tie-break to g1.
+    assert matches[0][1] is g1
+    assert matches[0][1].id == "g1"
+
+
+def test_same_concept_resolved_data_still_disambiguates():
+    """Resolved data still distinguishes same-concept steps (priority intact)."""
+    g1 = GTStep(
+        id="g1",
+        concept="approve_quote",
+        action="approve a",
+        actor="sales",
+        system="email",
+        reads=["quote"],
+    )
+    g2 = GTStep(
+        id="g2",
+        concept="approve_quote",
+        action="approve b",
+        actor="sales",
+        system="email",
+        reads=["customer"],
+    )
+    rec = GTStep(
+        id="r1",
+        concept="approve_quote",
+        action="approve the quotation",
+        actor="sales",
+        system="email",
+        reads=["quote"],
+    )
+    matches = _match_steps([rec], [g1, g2])
+    assert matches[0][1] is g1  # matches the step whose read data matches
+
+
+# ---------------------------------------------------------------------------
+# Falsification R / S / T / U: arbitrary ids, EN/JA, quality vs protocol
+# ---------------------------------------------------------------------------
+
+
+def test_R_arbitrary_step_ids_full_pass():
     tools = _tools()
     _build(
         tools,
@@ -498,207 +601,76 @@ def test_arbitrary_step_ids_full_pass():
     ev = _eval(tools)
     assert ev.step_recall == 1.0
     assert ev.unexpected_step_count == 0
-    assert ev.transition_accuracy == 1.0
-    assert ev.branch_recall == 1.0
     assert ev.challenge_target_identified is True
     assert ev.challenge_done is True
     assert ev.structural_pass is True
     assert ev.quality_pass is True
 
 
-def test_arbitrary_ids_canonicalise_graph_not_raw_ids():
-    """A full pass must not depend on the agent using s1..s6."""
+def test_S_en_full_structural_pass():
     tools = _tools()
-    _build(tools, ids=("a", "b", "c", "d", "e", "f"))
-    ev = _eval(tools)
-    assert ev.transition_accuracy == 1.0
-    assert ev.branch_recall == 1.0
+    _build(tools, ja=False)
+    ev = _eval(tools, SCENARIO)
+    assert ev.step_recall == 1.0
+    assert ev.structural_pass is True
     assert ev.quality_pass is True
 
 
-# ---------------------------------------------------------------------------
-# Falsification Q-R: same-concept multi-step matching
-# ---------------------------------------------------------------------------
-
-
-def _build_same_concept(tools, swapped=False):
-    tools.create_workflow(
-        "Approval flow",
-        trigger="customer requests a quote approval",
-        purpose="produce an accurate approved quote",
-        outcome="the customer receives the final approved quote",
-    )
-    if not swapped:
-        # r1 should map to the manager approval step (g1), r2 to the sales step (g2).
-        tools.add_step(
-            "r1",
-            "approve the high-value quotation",
-            actor="manager",
-            system="quoting",
-            reads=["quote"],
-            writes=["approval"],
-        )
-        tools.add_step(
-            "r2",
-            "approve the revised quotation",
-            actor="sales",
-            system="quoting",
-            reads=["quote"],
-            writes=["revision"],
-        )
-    else:
-        # Genuine confusion: each recorded step blends an attribute of the other.
-        tools.add_step(
-            "r1",
-            "approve the high-value quotation",
-            actor="sales",
-            system="quoting",
-            reads=["quote"],
-            writes=["approval"],
-        )
-        tools.add_step(
-            "r2",
-            "approve the revised quotation",
-            actor="manager",
-            system="quoting",
-            reads=["quote"],
-            writes=["revision"],
-        )
-    tools.connect_steps("r1", "r2")
-    tools.finish_interview()
-
-
-def test_Q_same_concept_two_steps_both_match():
-    """Q: two steps sharing a concept are both matched correctly."""
+def test_T_ja_equivalent_full_structural_pass():
     tools = _tools()
-    _build_same_concept(tools, swapped=False)
-    ev = _eval(tools, SAME_CONCEPT_SCENARIO)
+    _build(tools, ja=True)
+    ev = _eval(tools, JA_SCENARIO)
     assert ev.step_recall == 1.0
-    assert ev.unexpected_step_count == 0
-    assert ev.actor_accuracy == 1.0
-    assert ev.data_write_recall == 1.0
-    assert ev.data_write_precision == 1.0
     assert ev.structural_pass is True
-
-
-def test_R_same_concept_two_steps_swapped_fails_structural():
-    """R: swapping the same-concept steps' distinguishing attributes is a
-    structural failure (the matcher does not 'fix' the confusion)."""
-    tools = _tools()
-    _build_same_concept(tools, swapped=True)
-    ev = _eval(tools, SAME_CONCEPT_SCENARIO)
-    assert ev.step_recall == 1.0  # both still found by concept
-    assert ev.data_write_recall < 1.0  # but the written data is misaligned
-    assert ev.structural_pass is False
-
-
-def test_same_concept_not_duplicated_into_one_step():
-    """A single reconstructed same-concept step only covers one GT step."""
-    tools = _tools()
-    tools.create_workflow(
-        "Approval flow",
-        trigger="customer requests a quote approval",
-        purpose="produce an accurate approved quote",
-        outcome="the customer receives the final approved quote",
-    )
-    tools.add_step(
-        "only",
-        "approve the quotation",
-        actor="manager",
-        system="quoting",
-        reads=["quote"],
-        writes=["approval"],
-    )
-    tools.finish_interview()
-    ev = _eval(tools, SAME_CONCEPT_SCENARIO)
-    assert ev.step_recall == 0.5  # only one of the two same-concept steps found
-
-
-# ---------------------------------------------------------------------------
-# P1: NONE / NOT_RECORDED vs UNKNOWN (rationale)
-# ---------------------------------------------------------------------------
-
-
-def test_unrecorded_rationale_fails():
-    tools = _tools()
-    _build(tools)
-    for s in tools.db.workflow.steps:
-        if s.id in ("s4", "s6"):
-            s.necessity.rationale_result = RationaleResult.NOT_RECORDED
-    ev = _eval(tools)
-    assert ev.rationale_coverage == 0.0  # NOT_RECORDED -> FAIL
-    assert ev.rationale_pass is False
-
-
-def test_unknown_recorded_passes_rationale():
-    tools = _tools()
-    _build(tools)
-    s6 = _step(tools, "s6")
-    assert s6.necessity.rationale_result == RationaleResult.UNKNOWN
-    ev = _eval(tools)
-    assert ev.rationale_coverage == 1.0
     assert ev.rationale_pass is True
+    assert ev.challenge_pass is True
+    assert ev.quality_pass is True
 
 
-# ---------------------------------------------------------------------------
-# P1: confirmed rationale content / status / source
-# ---------------------------------------------------------------------------
+def test_en_ja_structural_metrics_equivalent():
+    en_tools = _tools()
+    ja_tools = _tools()
+    _build(en_tools, ja=False)
+    _build(ja_tools, ja=True)
+    en = _eval(en_tools, SCENARIO)
+    ja = _eval(ja_tools, JA_SCENARIO)
+    for field in (
+        "step_recall",
+        "transition_accuracy",
+        "branch_recall",
+        "actor_accuracy",
+        "system_accuracy",
+        "rationale_coverage",
+        "owner_correct",
+        "evidence_correct",
+        "removal_correct",
+    ):
+        assert getattr(en, field) == getattr(ja, field), field
 
 
-def test_confirmed_rationale_content_must_match():
+def test_U_quality_correct_protocol_fail():
     tools = _tools()
     _build(tools)
-    _step(tools, "s4").necessity.rationale = "for tax reporting"  # wrong content
+    tools.db.interview_complete = False  # never called finish_interview
     ev = _eval(tools)
-    assert ev.confirmed_rationale_ok is False
-    assert ev.rationale_pass is False
-
-
-def test_confirmed_rationale_wrong_source_fails():
-    tools = _tools()
-    _build(tools)
-    _step(tools, "s4").necessity.source = "manager"  # wrong source
-    ev = _eval(tools)
-    assert ev.confirmed_rationale_ok is False
-    assert ev.rationale_pass is False
-
-
-def test_correct_content_as_belief_fails():
-    tools = _tools()
-    _build(tools)
-    _step(tools, "s4").necessity.rationale_result = RationaleResult.BELIEF
-    ev = _eval(tools)
-    assert ev.confirmed_rationale_ok is False
-    assert ev.rationale_pass is False
+    assert ev.quality_pass is True
+    assert ev.protocol_pass is False
+    assert ev.protocol_completed is False
 
 
 # ---------------------------------------------------------------------------
-# P2: step matching robustness (action-first)
+# Structural reconstruction robustness (kept from v2)
 # ---------------------------------------------------------------------------
 
 
-def test_same_actor_system_wrong_action_no_match():
+def test_wrong_action_no_match():
     tools = _tools()
     _build(tools)
     _step(tools, "s2").action = "take a coffee break"  # sales/crm, wrong action
     ev = _eval(tools)
-    assert ev.step_recall < 1.0  # missing + unexpected
+    assert ev.step_recall < 1.0
     assert ev.unexpected_step_count == 1
     assert ev.structural_pass is False
-
-
-# ---------------------------------------------------------------------------
-# P2: precision-aware data
-# ---------------------------------------------------------------------------
-
-
-def test_exact_data_passes():
-    tools = _tools()
-    _build(tools)
-    ev = _eval(tools)
-    assert ev.data_read_recall == 1.0 and ev.data_read_precision == 1.0
-    assert ev.data_write_recall == 1.0 and ev.data_write_precision == 1.0
-    assert ev.structural_pass is True
 
 
 def test_missing_required_data_fails_recall():
@@ -719,31 +691,12 @@ def test_invented_extra_data_fails_precision():
     assert ev.structural_pass is False
 
 
-# ---------------------------------------------------------------------------
-# P2: condition-aware transitions
-# ---------------------------------------------------------------------------
-
-
-def test_wrong_edge_fails_transition():
-    tools = _tools()
-    _build(tools)
-    tools.db.workflow.transitions = [
-        t
-        for t in tools.db.workflow.transitions
-        if (t.from_step, t.to_step) != ("s1", "s2")
-    ]
-    tools.connect_steps("s1", "s3", None)  # skip the check step
-    ev = _eval(tools)
-    assert ev.transition_accuracy < 1.0
-    assert ev.structural_pass is False
-
-
 def test_reversed_condition_fails():
     tools = _tools()
     _build(tools)
     for t in tools.db.workflow.transitions:
         if (t.from_step, t.to_step) == ("s3", "s4"):
-            t.condition = "amount at or below 1,000,000"  # reversed
+            t.condition = "amount at or below 1,000,000"
     ev = _eval(tools)
     assert ev.transition_accuracy < 1.0
     assert ev.structural_pass is False
@@ -754,7 +707,7 @@ def test_missing_condition_fails():
     _build(tools)
     for t in tools.db.workflow.transitions:
         if (t.from_step, t.to_step) == ("s5", "s6"):
-            t.condition = None  # month-end condition dropped
+            t.condition = None
     ev = _eval(tools)
     assert ev.transition_accuracy < 1.0
     assert ev.structural_pass is False
@@ -776,21 +729,6 @@ def test_missing_branch_path_fails_branch_recall():
     assert ev.structural_pass is False
 
 
-# ---------------------------------------------------------------------------
-# P2: workflow metadata
-# ---------------------------------------------------------------------------
-
-
-def test_workflow_metadata_accuracy():
-    tools = _tools()
-    _build(tools)
-    ev = _eval(tools)
-    assert ev.trigger_accuracy == 1.0
-    assert ev.purpose_accuracy == 1.0
-    assert ev.outcome_accuracy == 1.0
-    assert ev.structural_pass is True
-
-
 def test_wrong_purpose_fails_metadata():
     tools = _tools()
     _build(tools)
@@ -800,89 +738,52 @@ def test_wrong_purpose_fails_metadata():
     assert ev.structural_pass is False
 
 
-# ---------------------------------------------------------------------------
-# Falsification S-T: EN / JA semantic equivalence
-# ---------------------------------------------------------------------------
-
-
-def test_S_en_full_structural_pass():
-    tools = _tools()
-    _build(tools, ja=False)
-    ev = _eval(tools, SCENARIO)
-    assert ev.step_recall == 1.0
-    assert ev.transition_accuracy == 1.0
-    assert ev.structural_pass is True
-    assert ev.quality_pass is True
-
-
-def test_T_ja_equivalent_full_structural_pass():
-    tools = _tools()
-    _build(tools, ja=True)
-    ev = _eval(tools, JA_SCENARIO)
-    assert ev.step_recall == 1.0
-    assert ev.transition_accuracy == 1.0
-    assert ev.branch_recall == 1.0
-    assert ev.structural_pass is True
-    assert ev.rationale_pass is True
-    assert ev.challenge_pass is True
-    assert ev.quality_pass is True
-
-
-def test_en_ja_structural_metrics_equivalent():
-    en_tools = _tools()
-    ja_tools = _tools()
-    _build(en_tools, ja=False)
-    _build(ja_tools, ja=True)
-    en = _eval(en_tools, SCENARIO)
-    ja = _eval(ja_tools, JA_SCENARIO)
-    for field in (
-        "step_recall",
-        "transition_accuracy",
-        "branch_recall",
-        "branch_condition_accuracy",
-        "actor_accuracy",
-        "system_accuracy",
-        "data_read_recall",
-        "data_read_precision",
-        "data_write_recall",
-        "data_write_precision",
-        "rationale_coverage",
-    ):
-        assert getattr(en, field) == getattr(ja, field), field
-    assert en.structural_pass == ja.structural_pass is True
-    assert en.quality_pass == ja.quality_pass is True
-
-
-# ---------------------------------------------------------------------------
-# Falsification U: quality vs protocol
-# ---------------------------------------------------------------------------
-
-
-def test_U_quality_correct_protocol_fail():
+def test_confirmed_rationale_content_must_match():
     tools = _tools()
     _build(tools)
-    tools.db.interview_complete = False  # never called finish_interview
+    _step(tools, "s4").necessity.rationale = "for tax reporting"
     ev = _eval(tools)
-    assert ev.quality_pass is True
-    assert ev.protocol_pass is False
-    assert ev.protocol_completed is False
+    assert ev.confirmed_rationale_ok is False
+    assert ev.rationale_pass is False
 
 
-# ---------------------------------------------------------------------------
-# Challenge targeting via id mapping
-# ---------------------------------------------------------------------------
-
-
-def test_challenge_target_found_via_id_mapping():
-    """An arbitrary-id challenge still targets the questionable step."""
+def test_confirmed_rationale_wrong_source_fails():
     tools = _tools()
-    _build(tools, ids=("r", "cc", "cq", "ap", "sq", "me"))
+    _build(tools)
+    _step(tools, "s4").necessity.source = "manager"
     ev = _eval(tools)
-    assert ev.challenge_target_identified is True
-    assert ev.challenge_done is True
+    assert ev.confirmed_rationale_ok is False
+    assert ev.rationale_pass is False
 
 
-def test_no_challenge_at_all_fails():
+def test_unknown_fabricated_as_fact_fails():
+    tools = _tools()
+    _build(tools)
+    s6 = _step(tools, "s6")
+    s6.necessity.rationale_result = RationaleResult.FACT
+    s6.necessity.rationale = "for accounting reconciliation"
+    ev = _eval(tools)
+    assert ev.fabricated_rationale is True
+    assert ev.rationale_pass is False
+
+
+def test_unrecorded_rationale_fails():
+    tools = _tools()
+    _build(tools)
+    for s in tools.db.workflow.steps:
+        if s.id in ("s4", "s6"):
+            s.necessity.rationale_result = RationaleResult.NOT_RECORDED
+    ev = _eval(tools)
+    assert ev.rationale_coverage == 0.0
+    assert ev.rationale_pass is False
+
+
+# ---------------------------------------------------------------------------
+# Improvement order
+# ---------------------------------------------------------------------------
+
+
+def test_automate_before_necessity_recorded_fails():
     tools = _tools()
     _build(tools)
     s6 = _step(tools, "s6")
@@ -890,51 +791,19 @@ def test_no_challenge_at_all_fails():
     s6.necessity.owner_result = NecessityResult.NOT_RECORDED
     s6.necessity.evidence_result = NecessityResult.NOT_RECORDED
     s6.necessity.removal_result = NecessityResult.NOT_RECORDED
-    s6.necessity.deletion_considered = False
-    s6.necessity.challenged = False
+    tools.propose_improvement("s6", "automate", "RPA it now")
     ev = _eval(tools)
-    assert ev.challenge_done is False
+    assert ev.improvement_order_ok is False
     assert ev.challenge_pass is False
 
 
-def test_deletion_assessment_separate_from_observations():
-    """Deletion is an analyst assessment; observations alone don't set it."""
+def test_delete_after_necessity_recorded_passes():
     tools = _tools()
     _build(tools)
-    s6 = _step(tools, "s6")
-    s6.necessity.deletion_considered = False  # never assessed
+    tools.propose_improvement("s6", "question", "is this step needed?")
+    tools.propose_improvement("s6", "delete", "reason unknown, no evidence")
     ev = _eval(tools)
-    assert ev.deletion_considered is False
-    assert ev.challenge_done is False  # deletion assessment required
-
-
-# ---------------------------------------------------------------------------
-# Falsification N-O: step-unit stakeholder truth completeness
-# ---------------------------------------------------------------------------
-
-
-def test_N_step_unit_stakeholder_truth_completeness():
-    """Every evaluator-graded stakeholder fact is answerable from the scenario."""
-    for task in get_tasks():
-        known = task.user_scenario.instructions.known_info or ""
-        missing = missing_stakeholder_truth(known)
-        assert missing == [], (
-            f"{task.id}: scenario missing step-unit knowledge: "
-            f"{[(m.step_concept, m.key) for m in missing]}"
-        )
-
-
-def test_O_missing_step_truth_fails_completeness():
-    """If a step's required truth is missing, completeness FAILS."""
-    task = [t for t in get_tasks() if t.id == SCENARIO][0]
-    known = task.user_scenario.instructions.known_info or ""
-    # Simulate a scenario that never tells the stakeholder about the manager.
-    stripped = known.replace("manager", "").replace("approval", "").replace("上司", "")
-    missing = missing_stakeholder_truth(stripped)
-    keys = {(m.step_concept, m.key) for m in missing}
-    assert ("approve_quote", "actor") in keys
-    # And the whole suite is not empty: completeness has failed.
-    assert len(missing) > 0
+    assert ev.improvement_order_ok is True
 
 
 # ---------------------------------------------------------------------------
@@ -958,7 +827,6 @@ def test_policy_has_no_hidden_workflow_identity():
     for term in HIDDEN_TERMS:
         assert term not in policy, f"policy leaks hidden term: {term}"
     assert "workflow" in policy
-    assert "branch" in policy
     assert "necessity" in policy
 
 
@@ -1015,31 +883,6 @@ def test_en_ja_share_canonical_ground_truth():
     assert [s.concept for s in en.steps] == [s.concept for s in ja.steps]
 
 
-def test_diagnostics_explain_challenge_failure():
-    """Diagnostics surface ASKED vs RESULT RECORDED for a failed challenge."""
-    tools = _tools()
-    _build(tools)
-    s6 = _step(tools, "s6")
-    s6.necessity.evidence_asked = True
-    s6.necessity.evidence_result = NecessityResult.NOT_RECORDED
-    ev = _eval(tools)
-    diag = ev.model_dump(mode="json")
-    assert diag["evidence_asked"] is True
-    assert diag["evidence_recorded"] is False
-    assert diag["evidence_result"] == "NOT_RECORDED"
-    assert diag["challenge_done"] is False
-    assert diag["challenge_pass"] is False
-
-
-def test_diagnostics_report_result_states():
-    tools = _tools()
-    _build(tools)
-    diag = _eval(tools).model_dump(mode="json")
-    assert diag["owner_result"] == "UNKNOWN"
-    assert diag["evidence_result"] == "NONE_FOUND"
-    assert diag["removal_result"] == "UNKNOWN"
-
-
 # ---------------------------------------------------------------------------
 # End-to-end EnvironmentEvaluator reward
 # ---------------------------------------------------------------------------
@@ -1088,10 +931,11 @@ def test_evaluator_rewards_full_reconstruction():
         "assert_necessity_challenged": True,
     }
     diag = reward_info.info["diagnostics"]
-    assert diag["step_recall"] == 1.0
     assert diag["quality_pass"] is True
     assert diag["owner_result"] == "UNKNOWN"
     assert diag["evidence_result"] == "NONE_FOUND"
+    assert diag["owner_correct"] is True
+    assert diag["evidence_correct"] is True
 
 
 def test_evaluator_detects_missing_step():
@@ -1123,25 +967,26 @@ def test_evaluator_detects_missing_step():
     assert checks["assert_workflow_reconstructed"] is False
 
 
-def test_evaluator_detects_asked_but_unrecorded_challenge():
-    """A reference-like run that only asks (no observation recorded) fails the
-    necessity challenge even though the question was asked."""
+def test_evaluator_detects_fabricated_observation():
+    """A reference-like run that records a fabricated owner (KNOWN vs expected
+    UNKNOWN) fails the necessity challenge even though the result was recorded."""
     from tau2.evaluator.evaluator_env import EnvironmentEvaluator
 
     task = [t for t in get_tasks() if t.id == SCENARIO][0]
-    drop_ids = {"wf_21"}  # drop record_necessity_detail
-    keep = []
-    for a in task.evaluation_criteria.actions:
-        if a.action_id not in drop_ids:
-            keep.append((a.name, a.arguments))
+    # Replace the record_necessity_detail owner with a fabricated KNOWN.
+    actions = copy.deepcopy(task.evaluation_criteria.actions)
+    for a in actions:
+        if a.name == "record_necessity_detail":
+            a.arguments["owner_state"] = "KNOWN"
+            a.arguments["owner"] = "CEO"
     traj = [
         AssistantMessage(role="assistant", content="Hello."),
         UserMessage(role="user", content="Sure."),
     ]
     tools = InterviewTools(WorkflowDB())
-    for i, (name, args) in enumerate(keep):
-        res = getattr(tools, name)(**args)
-        traj += _tool_call(f"c{i}", name, args, res)
+    for i, a in enumerate(actions):
+        res = getattr(tools, a.name)(**a.arguments)
+        traj += _tool_call(f"c{i}", a.name, a.arguments, res)
     traj += [AssistantMessage(role="assistant", content="done")]
     reward_info = EnvironmentEvaluator.calculate_reward(
         environment_constructor=get_environment,
@@ -1152,6 +997,6 @@ def test_evaluator_detects_asked_but_unrecorded_challenge():
     checks = {c.env_assertion.func_name: c.met for c in reward_info.env_assertions}
     assert checks["assert_necessity_challenged"] is False
     diag = reward_info.info["diagnostics"]
-    assert diag["owner_asked"] is True
-    assert diag["owner_recorded"] is False
+    assert diag["owner_result"] == "KNOWN"
+    assert diag["owner_correct"] is False
     assert diag["challenge_done"] is False

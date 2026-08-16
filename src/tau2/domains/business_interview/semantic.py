@@ -37,6 +37,7 @@ Design principles implemented here:
 from collections import defaultdict
 from typing import Optional
 
+from tau2.domains.business_interview.aliases import norm_role, norm_system
 from tau2.domains.business_interview.concepts import (
     CONDITION_CONCEPTS,
     DATA_CONCEPTS,
@@ -65,47 +66,6 @@ _IMPROVEMENT_RANK = {
     "automate": 5,
 }
 
-_ROLE_ALIASES = {
-    "sales": (
-        "sales",
-        "sales employee",
-        "sales representative",
-        "sales rep",
-        "salesperson",
-        "quotation handler",
-        "quotation preparer",
-        "handler",
-        "interviewee",
-        "営業",
-        "営業担当者",
-        "営業社員",
-        "見積担当",
-    ),
-    "manager": (
-        "manager",
-        "approver",
-        "supervisor",
-        "approval",
-        "authority",
-        "承認者",
-        "上司",
-        "承認",
-    ),
-}
-
-_SYSTEM_ALIASES = {
-    "crm": ("crm", "customer relationship management"),
-    "quoting": (
-        "quoting",
-        "quote system",
-        "quoting system",
-        "quotation system",
-        "見積システム",
-    ),
-    "email": ("email", "e-mail", "mail", "メール"),
-    "excel": ("excel", "spreadsheet", "エクセル"),
-}
-
 _TOKEN_RE = __import__("re").compile(r"[a-z0-9]+")
 
 
@@ -113,22 +73,13 @@ def _tokens(text: str) -> set[str]:
     return set(_TOKEN_RE.findall((text or "").lower()))
 
 
-def _normalize_label(label: Optional[str], aliases: dict[str, tuple[str, ...]]) -> str:
-    if label is None:
-        return ""
-    key = label.strip().lower().replace("_", " ").replace("-", " ")
-    for canonical, variants in aliases.items():
-        if key == canonical or any(v in key for v in variants):
-            return canonical
-    return key
+def _data_concepts(items: list[str]) -> set[str]:
+    """Resolve data items to concepts, dropping unresolved (None) values.
 
-
-def _norm_role(s: Optional[str]) -> str:
-    return _normalize_label(s, _ROLE_ALIASES)
-
-
-def _norm_system(s: Optional[str]) -> str:
-    return _normalize_label(s, _SYSTEM_ALIASES)
+    Unresolved data must never contribute matching evidence: two different
+    unknown items both resolving to None must not be treated as a match.
+    """
+    return {c for c in (resolve(i, DATA_CONCEPTS) for i in items) if c is not None}
 
 
 # ---------------------------------------------------------------------------
@@ -145,10 +96,10 @@ def _pick_candidate(rec, candidates: list[GTStep]) -> Optional[GTStep]:
     reconstructed step whose action resolved to a concept always maps to one
     ground-truth step of that concept.
     """
-    rec_actor = _norm_role(rec.actor)
-    rec_system = _norm_system(rec.system)
-    rec_reads = {resolve(i, DATA_CONCEPTS) for i in rec.reads}
-    rec_writes = {resolve(i, DATA_CONCEPTS) for i in rec.writes}
+    rec_actor = norm_role(rec.actor)
+    rec_system = norm_system(rec.system)
+    rec_reads = _data_concepts(rec.reads)
+    rec_writes = _data_concepts(rec.writes)
 
     def score(g: GTStep) -> int:
         sc = 0
@@ -156,8 +107,8 @@ def _pick_candidate(rec, candidates: list[GTStep]) -> Optional[GTStep]:
             sc += 2
         if rec_system == (g.system or ""):
             sc += 1
-        sc += len(rec_reads & {resolve(i, DATA_CONCEPTS) for i in g.reads})
-        sc += len(rec_writes & {resolve(i, DATA_CONCEPTS) for i in g.writes})
+        sc += len(rec_reads & _data_concepts(g.reads))
+        sc += len(rec_writes & _data_concepts(g.writes))
         return sc
 
     scores = [score(g) for g in candidates]
@@ -293,7 +244,7 @@ def _condition_ok(rec_cond: Optional[str], expected_concept: Optional[str]) -> b
 def _source_ok(rec_source: Optional[str], expected_source: Optional[str]) -> bool:
     if expected_source is None:
         return True
-    return _norm_role(rec_source) == _norm_role(expected_source)
+    return norm_role(rec_source) == norm_role(expected_source)
 
 
 def _confirmed_rationale_ok(rec, gt_step) -> bool:
@@ -350,15 +301,51 @@ def _rationale_status(rec, gt_step) -> tuple[bool, bool]:
 # ---------------------------------------------------------------------------
 
 
-def _observation_recorded(rec_step) -> dict[str, bool]:
-    """The dimensions for which a result was actually recorded."""
+def _observation_correct(rec_step, gt_necessity, dim: str) -> tuple[bool, bool]:
+    """Evaluate one recorded observation dimension against the ground truth.
+
+    Returns ``(recorded, correct)``. A dimension counts as *recorded* only if a
+    valid result exists:
+    - ``KNOWN`` requires a non-empty value; ``KNOWN`` with no value is invalid
+      (not recorded, not correct).
+    - ``UNKNOWN`` / ``NONE_FOUND`` do not require a value.
+    ``correct`` means the recorded result matches the ground-truth expectation
+    (``expected_*_result``), and a ``KNOWN`` value is only ever correct when the
+    expectation is also ``KNOWN``.
+    """
     nec = rec_step.necessity
-    return {
-        "why": nec.why_recorded,
-        "owner": nec.owner_recorded,
-        "evidence": nec.evidence_recorded,
-        "removal": nec.removal_recorded,
-    }
+    if dim == "owner":
+        result = nec.owner_result
+        value = nec.owner
+        expected = gt_necessity.expected_owner_result
+    elif dim == "evidence":
+        result = nec.evidence_result
+        value = nec.evidence
+        expected = gt_necessity.expected_evidence_result
+    else:  # removal
+        result = nec.removal_result
+        value = nec.removal_impact
+        expected = gt_necessity.expected_removal_result
+
+    if result == NecessityResult.NOT_RECORDED:
+        return False, False
+    if result == NecessityResult.KNOWN:
+        # KNOWN requires a concrete value; without one it is invalid.
+        if not (value or "").strip():
+            return False, False
+        # A fabricated KNOWN is only correct when the truth is also KNOWN.
+        return True, expected == NecessityResult.KNOWN
+    # UNKNOWN / NONE_FOUND: value optional; correct iff it matches the expectation.
+    return True, result == expected
+
+
+def _why_correct(rec_step, gt_step) -> bool:
+    """True if the recorded 'why' result matches the ground-truth expectation.
+
+    Reuses ``_rationale_status`` (recorded + correct for the step's objective
+    rationale state).
+    """
+    return _rationale_status(rec_step, gt_step)[0]
 
 
 def _improvement_order_ok(db: WorkflowDB) -> bool:
@@ -431,15 +418,19 @@ def _empty_evaluation(db: WorkflowDB) -> WorkflowEvaluation:
         challenge_target_identified=False,
         why_asked=False,
         why_recorded=False,
+        why_correct=False,
         owner_asked=False,
         owner_recorded=False,
         owner_result=NecessityResult.NOT_RECORDED.value,
+        owner_correct=False,
         evidence_asked=False,
         evidence_recorded=False,
         evidence_result=NecessityResult.NOT_RECORDED.value,
+        evidence_correct=False,
         removal_asked=False,
         removal_recorded=False,
         removal_result=NecessityResult.NOT_RECORDED.value,
+        removal_correct=False,
         deletion_considered=False,
         challenge_done=False,
         improvement_order_ok=True,
@@ -473,9 +464,9 @@ def evaluate(db: WorkflowDB, scenario_id: Optional[str]) -> WorkflowEvaluation:
     step_recall = len(matched_pairs) / len(gt.steps) if gt.steps else 0.0
 
     # ---- actor / system / data over matched steps ---------------------------
-    actor_hits = sum(1 for rec, g in matched_pairs if _norm_role(rec.actor) == g.actor)
+    actor_hits = sum(1 for rec, g in matched_pairs if norm_role(rec.actor) == g.actor)
     system_hits = sum(
-        1 for rec, g in matched_pairs if _norm_system(rec.system) == (g.system or "")
+        1 for rec, g in matched_pairs if norm_system(rec.system) == (g.system or "")
     )
     read_metrics = [_data_metrics(rec.reads, g.reads) for rec, g in matched_pairs]
     write_metrics = [_data_metrics(rec.writes, g.writes) for rec, g in matched_pairs]
@@ -554,41 +545,53 @@ def evaluate(db: WorkflowDB, scenario_id: Optional[str]) -> WorkflowEvaluation:
     )
     uncertainty_handling = not fabricated
 
-    # ---- challenge (ASKED vs RESULT RECORDED) ------------------------------
+    # ---- challenge (ASKED vs RESULT RECORDED vs RESULT CORRECT) -----------
     q_step = gt.questionable_step
     q_rec = None
+    q_gt = None
     if q_step and db.workflow:
         q_rec = next((s for s in db.workflow.steps if id_map.get(s.id) == q_step), None)
+        q_gt = next((g for g in gt.steps if g.id == q_step), None)
     challenge_target_identified = q_rec is not None
-    if q_rec is not None:
+    if q_rec is not None and q_gt is not None and q_gt.necessity is not None:
         rn = q_rec.necessity
         why_asked = rn.why_asked
         why_recorded = rn.why_recorded
+        why_correct = _why_correct(q_rec, q_gt)
         owner_asked = rn.owner_asked
-        owner_recorded = rn.owner_recorded
+        owner_recorded, owner_correct = _observation_correct(
+            q_rec, q_gt.necessity, "owner"
+        )
         owner_result = rn.owner_result.value
         evidence_asked = rn.evidence_asked
-        evidence_recorded = rn.evidence_recorded
+        evidence_recorded, evidence_correct = _observation_correct(
+            q_rec, q_gt.necessity, "evidence"
+        )
         evidence_result = rn.evidence_result.value
         removal_asked = rn.removal_asked
-        removal_recorded = rn.removal_recorded
+        removal_recorded, removal_correct = _observation_correct(
+            q_rec, q_gt.necessity, "removal"
+        )
         removal_result = rn.removal_result.value
         deletion_cons = rn.deletion_considered
     else:
-        why_asked = why_recorded = False
-        owner_asked = owner_recorded = False
+        why_asked = why_recorded = why_correct = False
+        owner_asked = owner_recorded = owner_correct = False
         owner_result = NecessityResult.NOT_RECORDED.value
-        evidence_asked = evidence_recorded = False
+        evidence_asked = evidence_recorded = evidence_correct = False
         evidence_result = NecessityResult.NOT_RECORDED.value
-        removal_asked = removal_recorded = False
+        removal_asked = removal_recorded = removal_correct = False
         removal_result = NecessityResult.NOT_RECORDED.value
         deletion_cons = False
     challenge_done = bool(
         q_rec is not None
-        and why_recorded
+        and why_correct
         and owner_recorded
+        and owner_correct
         and evidence_recorded
+        and evidence_correct
         and removal_recorded
+        and removal_correct
         and deletion_cons
     )
 
@@ -640,15 +643,19 @@ def evaluate(db: WorkflowDB, scenario_id: Optional[str]) -> WorkflowEvaluation:
         challenge_target_identified=challenge_target_identified,
         why_asked=why_asked,
         why_recorded=why_recorded,
+        why_correct=why_correct,
         owner_asked=owner_asked,
         owner_recorded=owner_recorded,
         owner_result=owner_result,
+        owner_correct=owner_correct,
         evidence_asked=evidence_asked,
         evidence_recorded=evidence_recorded,
         evidence_result=evidence_result,
+        evidence_correct=evidence_correct,
         removal_asked=removal_asked,
         removal_recorded=removal_recorded,
         removal_result=removal_result,
+        removal_correct=removal_correct,
         deletion_considered=deletion_cons,
         challenge_done=challenge_done,
         improvement_order_ok=improvement_order_ok,

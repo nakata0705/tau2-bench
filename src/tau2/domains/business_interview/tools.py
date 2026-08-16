@@ -312,22 +312,34 @@ class InterviewTools(ToolKitBase):
         """
         s = self._step(step_id)
         if owner is not None or owner_state is not None:
+            owner_res = _parse_necessity_result(owner_state or "KNOWN")
+            if owner_res == NecessityResult.KNOWN and not (owner or "").strip():
+                raise ValueError("owner_state=KNOWN requires a non-empty owner value.")
             s.necessity.owner_asked = True
-            s.necessity.owner_result = _parse_necessity_result(owner_state or "KNOWN")
+            s.necessity.owner_result = owner_res
             if owner is not None:
                 s.necessity.owner = owner
         if evidence is not None or evidence_state is not None:
+            evidence_res = _parse_necessity_result(evidence_state or "KNOWN")
+            if evidence_res == NecessityResult.KNOWN and not (evidence or "").strip():
+                raise ValueError(
+                    "evidence_state=KNOWN requires a non-empty evidence value."
+                )
             s.necessity.evidence_asked = True
-            s.necessity.evidence_result = _parse_necessity_result(
-                evidence_state or "KNOWN"
-            )
+            s.necessity.evidence_result = evidence_res
             if evidence is not None:
                 s.necessity.evidence = evidence
         if removal_impact is not None or removal_state is not None:
+            removal_res = _parse_necessity_result(removal_state or "KNOWN")
+            if (
+                removal_res == NecessityResult.KNOWN
+                and not (removal_impact or "").strip()
+            ):
+                raise ValueError(
+                    "removal_state=KNOWN requires a non-empty removal_impact value."
+                )
             s.necessity.removal_asked = True
-            s.necessity.removal_result = _parse_necessity_result(
-                removal_state or "KNOWN"
-            )
+            s.necessity.removal_result = removal_res
             if removal_impact is not None:
                 s.necessity.removal_impact = removal_impact
         if requirement_type is not None:

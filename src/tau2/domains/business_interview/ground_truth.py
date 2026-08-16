@@ -7,24 +7,35 @@ only what the scenario tells them; the agent must discover the workflow, its
 actor/system/data, branches, rationale, and the questionable legacy step on its
 own.
 
-The design keeps the *workflow structure* (Workflow/Step/Branch), the
-*language-independent concepts* (``concepts.py``) that let an equivalent EN/JA
-reconstruction be scored identically, and the *epistemic layer* (a source's
-FACT/BELIEF/UNKNOWN about a step's necessity) separate.
+Three layers are kept distinct:
+
+- **Evaluator Ground Truth** (``WorkflowGroundTruth``) — the objective, complete
+  workflow the evaluator grades against.
+- **Stakeholder Truth** (``StakeholderTruth``) — the facts the stakeholder can
+  answer when asked, expressed **per step (by concept) and per axis** as
+  structured data. It is not a keyword search over the scenario text.
+- **Agent Reconstruction** — the workflow the agent records during the
+  interview.
+
+Completeness is a **structural comparison**: every axis the evaluator requires
+for a step must be present in that step's Stakeholder Truth (``stakeholder_truth_completeness``),
+so a word that happens to appear in another step can never satisfy it. A
+separate consistency check (``missing_from_instructions``) verifies the user
+simulator's prompt can actually answer every Stakeholder Truth value, so we never
+create a state where the evaluator has truth the simulator cannot answer.
 
 ``FACT`` here means a source asserted it as certain — not objective truth; the
-objective rationale state is given by ``GTNecessity.objective_status``.
-
-Stakeholder truth is **step-unit**: each requirement is tied to a specific
-ground-truth step (by concept) and axis, so completeness is judged per step,
-not by a keyword search over the whole scenario. A structural test asserts the
-scenario's ``known_info`` can answer every requirement the evaluator grades.
+objective rationale state is given by ``GTNecessity.objective_status``. The
+questionable step's owner / evidence / removal observations carry explicit
+ground-truth expectations (``expected_owner_result`` etc.) used to judge whether
+a recorded observation is *correct*, not merely *recorded*.
 """
 
 from dataclasses import dataclass, field
 from typing import Optional
 
-from tau2.domains.business_interview.data_model import EpistemicStatus
+from tau2.domains.business_interview.aliases import value_signals
+from tau2.domains.business_interview.data_model import EpistemicStatus, NecessityResult
 
 # Suffix marking a Japanese pre-localized scenario variant. EN and JA variants
 # share the same canonical ground truth.
@@ -46,6 +57,10 @@ class GTNecessity:
       UNKNOWN).
     - ``questionable``: this is the legacy step whose necessity must be
       challenged.
+    - ``expected_owner_result`` / ``expected_evidence_result`` /
+      ``expected_removal_result``: the ground-truth owner / evidence / removal
+      observation results for a questionable step (KNOWN / UNKNOWN / NONE_FOUND).
+      Used to judge whether a recorded observation is *correct*.
     """
 
     objective_status: EpistemicStatus = EpistemicStatus.UNKNOWN
@@ -54,6 +69,9 @@ class GTNecessity:
     expected_source: Optional[str] = None
     expected_status: Optional[EpistemicStatus] = None
     questionable: bool = False
+    expected_owner_result: Optional[NecessityResult] = None
+    expected_evidence_result: Optional[NecessityResult] = None
+    expected_removal_result: Optional[NecessityResult] = None
 
 
 @dataclass
@@ -114,6 +132,9 @@ def _quotation_workflow() -> WorkflowGroundTruth:
         objective_status=EpistemicStatus.UNKNOWN,
         investigated_required=True,
         questionable=True,
+        expected_owner_result=NecessityResult.UNKNOWN,
+        expected_evidence_result=NecessityResult.NONE_FOUND,
+        expected_removal_result=NecessityResult.UNKNOWN,
     )
     return WorkflowGroundTruth(
         scenario_id="quotation_workflow_1",
@@ -277,124 +298,277 @@ def get_ground_truth(scenario_id: Optional[str]) -> Optional[WorkflowGroundTruth
 
 
 # ---------------------------------------------------------------------------
-# Step-unit stakeholder-visible truth requirements
+# Stakeholder Truth (structured, step-unit, per scenario)
 #
-# These are the facts the evaluator grades that the stakeholder KNOWS about a
-# specific step (so the user simulator must be able to answer them when asked).
-# They are expressed **per step** (by concept) and per axis — not as a keyword
-# search over the whole scenario — so completeness is judged step by step.
-#
-# The scenario provides them as *known* information; difficulty comes from the
-# stakeholder not volunteering them, never from the simulator not knowing them.
-# A structural test asserts the scenario's ``known_info`` covers every entry
-# here, and that the ground truth never requires a truth the stakeholder cannot
-# answer.
+# These are the facts the stakeholder can answer when asked, expressed per step
+# (by concept) and per axis. The evaluator grades against them structurally;
+# the user simulator must be able to answer them (checked by
+# ``missing_from_instructions``).
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
-class StepTruthRequirement:
-    """A fact the stakeholder knows about one specific ground-truth step.
+class StakeholderObservation:
+    """A stakeholder's stated observation for an axis.
 
-    ``step_concept`` ties the requirement to a step; ``key`` names the axis;
-    ``signals`` are substrings that must appear in the scenario's ``known_info``
-    so the simulator can truthfully answer a question about this fact.
+    ``result`` is the state the stakeholder can confirm: for rationale
+    ``FACT`` / ``BELIEF`` / ``UNKNOWN``; for owner/evidence/removal ``KNOWN`` /
+    ``UNKNOWN`` / ``NONE_FOUND``. ``value`` is an optional concrete value /
+    belief label.
     """
 
-    step_concept: str
-    key: str
-    signals: tuple[str, ...]
+    result: str
+    value: Optional[str] = None
 
 
-def stakeholder_step_truth_requirements() -> list[StepTruthRequirement]:
-    """Facts the stakeholder knows, keyed by step (concept) and axis.
+@dataclass
+class StakeholderStepTruth:
+    """The stakeholder-known facts about one step (by concept)."""
 
-    Every evaluator-graded fact must be answerable from the scenario's
-    ``known_info``; otherwise the agent would be penalised because the
-    simulator *could not* know an answer rather than because it did not
-    volunteer it.
-    """
-    return [
-        # receive_request
-        StepTruthRequirement(
-            "receive_request", "actor", ("sales", "営業", "you", "自分")
-        ),
-        StepTruthRequirement(
-            "receive_request",
-            "writes",
-            ("request", "record the quotation request", "依頼"),
-        ),
-        # check_customer
-        StepTruthRequirement(
-            "check_customer", "actor", ("sales", "営業", "you", "自分")
-        ),
-        StepTruthRequirement(
-            "check_customer",
-            "system",
-            ("crm", "customer relationship management", "CRM"),
-        ),
-        StepTruthRequirement("check_customer", "reads", ("customer", "顧客")),
-        # create_quote
-        StepTruthRequirement(
-            "create_quote", "system", ("quoting", "見積", "見積システム")
-        ),
-        StepTruthRequirement(
-            "create_quote", "reads", ("customer", "顧客", "pricing", "価格", "料金")
-        ),
-        # approve_quote (confirmed rationale)
-        StepTruthRequirement(
-            "approve_quote",
-            "actor",
-            ("manager", "approval", "上司", "承認者", "approver"),
-        ),
-        StepTruthRequirement(
-            "approve_quote", "condition", ("1,000,000", "100万", "over", "exceed", "超")
-        ),
-        StepTruthRequirement(
-            "approve_quote",
-            "rationale",
-            ("credit risk", "credit", "与信", "与信リスク"),
-        ),
-        # send_quote
-        StepTruthRequirement("send_quote", "system", ("email", "メール")),
-        StepTruthRequirement("send_quote", "reads", ("quotation", "quote", "見積")),
-        # month_end_summary (UNKNOWN rationale)
-        StepTruthRequirement(
-            "month_end_summary", "system", ("excel", "spreadsheet", "エクセル", "Excel")
-        ),
-        StepTruthRequirement(
-            "month_end_summary",
-            "condition",
-            ("month-end", "monthly", "month end", "月末"),
-        ),
-        StepTruthRequirement(
-            "month_end_summary",
-            "rationale_unknown",
-            (
-                "do not know",
-                "does not know",
-                "not know why",
-                "知りません",
-                "理由は知らない",
-                "理由は分からない",
+    concept: str
+    actor: Optional[str] = None
+    system: Optional[str] = None
+    reads: list[str] = field(default_factory=list)
+    writes: list[str] = field(default_factory=list)
+    condition: Optional[str] = None
+    rationale: Optional[StakeholderObservation] = None
+    owner: Optional[StakeholderObservation] = None
+    evidence: Optional[StakeholderObservation] = None
+    removal: Optional[StakeholderObservation] = None
+
+
+@dataclass
+class StakeholderTruth:
+    scenario_id: str
+    steps: dict[str, StakeholderStepTruth]
+
+
+def _quotation_stakeholder_truth() -> StakeholderTruth:
+    return StakeholderTruth(
+        scenario_id="quotation_workflow_1",
+        steps={
+            "receive_request": StakeholderStepTruth(
+                concept="receive_request", actor="sales", writes=["request"]
             ),
-        ),
-    ]
+            "check_customer": StakeholderStepTruth(
+                concept="check_customer",
+                actor="sales",
+                system="crm",
+                reads=["customer"],
+            ),
+            "create_quote": StakeholderStepTruth(
+                concept="create_quote",
+                actor="sales",
+                system="quoting",
+                reads=["customer", "pricing"],
+                writes=["quote"],
+            ),
+            "approve_quote": StakeholderStepTruth(
+                concept="approve_quote",
+                actor="manager",
+                system="quoting",
+                reads=["quote"],
+                writes=["approval"],
+                condition="1,000,000",
+                rationale=StakeholderObservation(result="FACT", value="credit risk"),
+            ),
+            "send_quote": StakeholderStepTruth(
+                concept="send_quote",
+                actor="sales",
+                system="email",
+                reads=["quote"],
+                writes=["sent_quote"],
+            ),
+            "month_end_summary": StakeholderStepTruth(
+                concept="month_end_summary",
+                actor="sales",
+                system="excel",
+                reads=["quote"],
+                writes=["excel_summary"],
+                condition="month-end",
+                rationale=StakeholderObservation(result="UNKNOWN"),
+                owner=StakeholderObservation(result="UNKNOWN", value="accounting"),
+                evidence=StakeholderObservation(result="NONE_FOUND"),
+                removal=StakeholderObservation(result="UNKNOWN"),
+            ),
+        },
+    )
 
 
-def missing_stakeholder_truth(
-    known_info: str, scenario_id: Optional[str] = None
-) -> list[StepTruthRequirement]:
-    """Return the stakeholder-truth requirements the scenario cannot answer.
+_STAKEHOLDER_TRUTHS: dict[str, StakeholderTruth] = {
+    "quotation_workflow_1": _quotation_stakeholder_truth(),
+}
 
-    Used by the completeness tests: an empty result means the stakeholder can
-    truthfully answer every fact the evaluator grades for this scenario. The
-    optional ``scenario_id`` can restrict the check to a scenario's steps, but
-    the quotation scenario is the only task scenario with an agent-visible task.
+
+def get_stakeholder_truth(scenario_id: Optional[str]) -> Optional[StakeholderTruth]:
+    """Return the structured Stakeholder Truth for a scenario (or None)."""
+    canonical = canonical_scenario_id(scenario_id)
+    if canonical is None:
+        return None
+    return _STAKEHOLDER_TRUTHS.get(canonical)
+
+
+# ---------------------------------------------------------------------------
+# Structural completeness (evaluator-required fields vs Stakeholder Truth)
+# ---------------------------------------------------------------------------
+
+
+def required_truth_axes(gt_step: GTStep) -> list[str]:
+    """The axes the evaluator grades for a step that the stakeholder must know."""
+    axes = ["actor"]
+    if gt_step.system:
+        axes.append("system")
+    if gt_step.reads:
+        axes.append("reads")
+    if gt_step.writes:
+        axes.append("writes")
+    if gt_step.condition:
+        axes.append("condition")
+    if gt_step.necessity is not None:
+        axes.append("rationale")
+        if gt_step.necessity.questionable:
+            axes.extend(["owner", "evidence", "removal"])
+    return axes
+
+
+def stakeholder_truth_completeness(
+    scenario_id: Optional[str],
+    stakeholder_truth: Optional[StakeholderTruth] = None,
+) -> list[tuple[str, str]]:
+    """Return ``(step_concept, axis)`` pairs the scenario's Stakeholder Truth
+    is missing for axes the evaluator requires.
+
+    This is a **structural** per-step comparison: a value appearing in another
+    step's truth can never satisfy a missing axis here. An empty result means
+    the evaluator requires nothing the stakeholder could not know.
+
+    ``stakeholder_truth`` may be overridden (e.g. a modified copy) to test
+    completeness failure; by default the scenario's own structured truth is used.
     """
-    known_l = (known_info or "").lower()
-    missing: list[StepTruthRequirement] = []
-    for req in stakeholder_step_truth_requirements():
-        if not any(sig.lower() in known_l for sig in req.signals):
-            missing.append(req)
+    gt = get_ground_truth(scenario_id)
+    st = (
+        stakeholder_truth
+        if stakeholder_truth is not None
+        else get_stakeholder_truth(scenario_id)
+    )
+    if gt is None or st is None:
+        return []
+    missing: list[tuple[str, str]] = []
+    for gs in gt.steps:
+        present: set[str] = set()
+        t = st.steps.get(gs.concept)
+        if t is not None:
+            if t.actor is not None:
+                present.add("actor")
+            if t.system is not None:
+                present.add("system")
+            if t.reads:
+                present.add("reads")
+            if t.writes:
+                present.add("writes")
+            if t.condition is not None:
+                present.add("condition")
+            if t.rationale is not None:
+                present.add("rationale")
+            if t.owner is not None:
+                present.add("owner")
+            if t.evidence is not None:
+                present.add("evidence")
+            if t.removal is not None:
+                present.add("removal")
+        for axis in required_truth_axes(gs):
+            if axis not in present:
+                missing.append((gs.concept, axis))
+    return missing
+
+
+# ---------------------------------------------------------------------------
+# Simulator-answerability consistency (Stakeholder Truth vs instructions text)
+#
+# Guarantees we never create a state where the evaluator has truth the user
+# simulator cannot answer. The simulator prompt (known_info + unknown_info +
+# task_instructions) must be able to produce every Stakeholder Truth value.
+# ---------------------------------------------------------------------------
+
+_UNKNOWN_SIGNALS = (
+    "do not know",
+    "does not know",
+    "don't know",
+    "not know why",
+    "知りません",
+    "知らない",
+    "理由は分からない",
+    "理由は知らない",
+    "分かりません",
+)
+_NO_FINDINGS_SIGNALS = (
+    "no documentation",
+    "no evidence",
+    "no formal evidence",
+    "文書もありません",
+    "文書",
+    "根拠はない",
+)
+
+
+def missing_from_instructions(
+    scenario_id: Optional[str], instructions_text: str
+) -> list[str]:
+    """Return labels of Stakeholder Truth values the instructions cannot answer.
+
+    ``instructions_text`` is the concatenated simulator-facing instructions
+    (known_info + unknown_info + task_instructions). Each stakeholder-known value
+    must be expressible from it (using alias / concept expansion), and each
+    ``UNKNOWN`` / ``NONE_FOUND`` observation must have a matching explicit
+    unknown / no-findings signal.
+    """
+    st = get_stakeholder_truth(scenario_id)
+    if st is None:
+        return []
+    known_l = (instructions_text or "").lower()
+    missing: list[str] = []
+
+    def check(value: Optional[str], axis: str, label: str) -> None:
+        if not value:
+            return
+        signals = value_signals(value, axis)
+        if not any(s in known_l for s in signals):
+            missing.append(label)
+
+    def check_unknown(result: str, label: str) -> None:
+        if result == "UNKNOWN" and not any(s in known_l for s in _UNKNOWN_SIGNALS):
+            missing.append(label)
+        elif result == "NONE_FOUND" and not any(
+            s in known_l for s in _NO_FINDINGS_SIGNALS
+        ):
+            missing.append(label)
+
+    for concept, t in st.steps.items():
+        check(t.actor, "actor", f"{concept}.actor")
+        check(t.system, "system", f"{concept}.system")
+        for r in t.reads:
+            check(r, "data", f"{concept}.reads")
+        for w in t.writes:
+            check(w, "data", f"{concept}.writes")
+        check(t.condition, "data", f"{concept}.condition")
+        if t.rationale is not None:
+            check(t.rationale.value, "data", f"{concept}.rationale.value")
+            if t.rationale.result in ("UNKNOWN", "NONE_FOUND"):
+                check_unknown(
+                    t.rationale.result, f"{concept}.rationale.{t.rationale.result}"
+                )
+        if t.owner is not None:
+            check(t.owner.value, "data", f"{concept}.owner.value")
+            if t.owner.result in ("UNKNOWN", "NONE_FOUND"):
+                check_unknown(t.owner.result, f"{concept}.owner.{t.owner.result}")
+        if t.evidence is not None:
+            check(t.evidence.value, "data", f"{concept}.evidence.value")
+            if t.evidence.result in ("UNKNOWN", "NONE_FOUND"):
+                check_unknown(
+                    t.evidence.result, f"{concept}.evidence.{t.evidence.result}"
+                )
+        if t.removal is not None:
+            check(t.removal.value, "data", f"{concept}.removal.value")
+            if t.removal.result in ("UNKNOWN", "NONE_FOUND"):
+                check_unknown(t.removal.result, f"{concept}.removal.{t.removal.result}")
     return missing
