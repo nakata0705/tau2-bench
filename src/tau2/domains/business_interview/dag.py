@@ -22,7 +22,7 @@ per node.
 
 from typing import Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from tau2.environment.db import DB
 
@@ -54,6 +54,15 @@ class InferredValue(BaseModel):
     @property
     def is_set(self) -> bool:
         return self.value is not None
+
+    @property
+    def asserted(self) -> bool:
+        """True if this is an active claim (a value asserted with confidence > 0).
+
+        A value with ``confidence == 0`` is treated as unknown/unasserted: it is
+        not evidence-backed and does not satisfy a known expectation.
+        """
+        return self.value is not None and self.confidence > 0
 
 
 class Necessity(BaseModel):
@@ -126,8 +135,10 @@ class Observation(BaseModel):
     """A single immutable thing the stakeholder said during the interview.
 
     An Observation is independent evidence, not a Node. Multiple observations may
-    be attached to the same Node.
+    be attached to the same Node. Observations are immutable once recorded.
     """
+
+    model_config = ConfigDict(frozen=True)
 
     id: str
     source_id: str = Field(description="Who said it (e.g. the stakeholder).")
@@ -205,6 +216,8 @@ class BusinessDAG(BaseModel):
             errors.append("start_node_id must be set")
         elif self.start_node_id not in self.nodes:
             errors.append(f"start node not found: {self.start_node_id}")
+        if not self.end_node_ids:
+            errors.append("end_node_ids must declare at least one end node")
         for eid in self.end_node_ids:
             if eid not in self.nodes:
                 errors.append(f"end node not found: {eid}")

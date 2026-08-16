@@ -68,6 +68,22 @@ There is no Step / Transition / Branch-specific evaluator. Confidence /
 provenance are stored, validated, and surfaced in diagnostics (no calibration
 scoring).
 
+### Evidence gate
+
+Every asserted claim (a value with confidence > 0) must be **traceable to a
+recorded Observation**: node / attribute (action/actor/system/reads/writes) /
+edge / predicate / known-necessity provenance. Metrics:
+
+- `node_evidence_coverage`, `attribute_provenance_coverage`
+- `edge_evidence_coverage`, `predicate_provenance_coverage`
+- `necessity_provenance_coverage`, `invalid_observation_reference_count`
+- `evidence_pass`
+
+`quality_pass` requires `structural_pass AND necessity_pass AND evidence_pass`.
+Unknown (unset) values need no provenance; a value with confidence 0 is treated
+as unasserted. Dangling observation references are rejected by the tools and
+fail the evidence gate.
+
 ## Stakeholder filter (`stakeholder.py`)
 
 A stakeholder is a `StakeholderFilter` over the single Truth DAG: which nodes /

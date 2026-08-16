@@ -52,6 +52,21 @@ class InterviewTools(ToolKitBase):
             raise ValueError(f"edge not found: {edge_id}")
         return dag.edges[edge_id]
 
+    def _require_node_ref(self, node_id: str) -> None:
+        if node_id not in self._dag().nodes:
+            raise ValueError(f"node not found: {node_id}")
+
+    def _require_observation(self, observation_id: Optional[str]) -> None:
+        """Reject a reference to an observation that does not exist.
+
+        ``None`` is allowed (provenance may be added later); a non-None id must
+        refer to a recorded observation.
+        """
+        if observation_id is None:
+            return
+        if not any(o.id == observation_id for o in self.db.observations):
+            raise ValueError(f"observation not found: {observation_id}")
+
     @staticmethod
     def _iv(
         value: Optional[str],
@@ -93,6 +108,10 @@ class InterviewTools(ToolKitBase):
     def start_inference(self, name: str = "") -> str:
         """Start building the inferred business DAG.
 
+        This is destructive: it discards any previous inferred DAG and any
+        recorded observations, and resets the interview. Call it once at the
+        beginning of the inference.
+
         Args:
             name: Optional name for the DAG.
 
@@ -100,7 +119,10 @@ class InterviewTools(ToolKitBase):
             A confirmation message.
         """
         self.db.dag = BusinessDAG(id="dag", name=name)
-        return "Inference started."
+        self.db.observations = []
+        self.db.interview_complete = False
+        self.db.summary = None
+        return "Inference started (previous DAG and observations discarded)."
 
     @is_tool(ToolType.WRITE)
     def record_observation(
@@ -120,7 +142,7 @@ class InterviewTools(ToolKitBase):
             locale: Optional language tag.
 
         Returns:
-            The new observation id.
+            The new observation id (to reference when attaching/recording).
         """
         obs = Observation(
             id=f"o{len(self.db.observations) + 1}",
@@ -130,7 +152,7 @@ class InterviewTools(ToolKitBase):
             locale=locale,
         )
         self.db.observations.append(obs)
-        return f"Recorded observation {obs.id}."
+        return obs.id
 
     @is_tool(ToolType.WRITE)
     def add_node(
@@ -165,6 +187,7 @@ class InterviewTools(ToolKitBase):
         dag = self._dag()
         if node_id in dag.nodes:
             raise ValueError(f"node already exists: {node_id}")
+        self._require_observation(observation_id)
         dag.nodes[node_id] = Node(
             id=node_id,
             action=self._iv(action, confidence, observation_id),
@@ -208,6 +231,7 @@ class InterviewTools(ToolKitBase):
             A confirmation message.
         """
         node = self._node(node_id)
+        self._require_observation(observation_id)
         conf = confidence if confidence is not None else 1.0
         if action is not None:
             node.action = self._set_value(node.action, action, conf, observation_id)
@@ -238,12 +262,14 @@ class InterviewTools(ToolKitBase):
         evidence_confidence: Optional[float] = None,
         removal_confidence: Optional[float] = None,
         observation_id: Optional[str] = None,
+        unset: Optional[list[str]] = None,
     ) -> str:
         """Record why a node is needed (a node property).
 
         Each necessity property is an integrated estimate with its own
         confidence and observation provenance. Leave a property unset (None) to
-        record that the necessity is unknown / not asserted.
+        record that the necessity is unknown / not asserted. Pass ``unset`` to
+        reset a previously recorded property back to unset.
 
         Args:
             node_id: The node this necessity concerns.
@@ -253,12 +279,19 @@ class InterviewTools(ToolKitBase):
             removal_impact: What happens if removed (optional).
             *_confidence: Per-property confidence in [0, 1] (default 1.0).
             observation_id: Observation supporting this necessity (optional).
+            unset: List of property names (rationale/owner/evidence/removal_impact)
+                to reset to unset (optional).
 
         Returns:
             A confirmation message.
         """
         node = self._node(node_id)
+        self._require_observation(observation_id)
         nec = node.necessity if node.necessity is not None else Necessity()
+        if unset:
+            for p in unset:
+                if p in ("rationale", "owner", "evidence", "removal_impact"):
+                    setattr(nec, p, InferredValue())
         if rationale is not None:
             nec.rationale = self._set_value(
                 nec.rationale,
@@ -324,6 +357,9 @@ class InterviewTools(ToolKitBase):
         dag = self._dag()
         if edge_id in dag.edges:
             raise ValueError(f"edge already exists: {edge_id}")
+        self._require_observation(observation_id)
+        self._require_node_ref(from_node)
+        self._require_node_ref(to_node)
         dag.edges[edge_id] = Edge(
             id=edge_id,
             from_node=from_node,
@@ -342,6 +378,7 @@ class InterviewTools(ToolKitBase):
         from_node: Optional[str] = None,
         to_node: Optional[str] = None,
         predicate: Optional[str] = None,
+        clear_predicate: bool = False,
         confidence: Optional[float] = None,
         observation_id: Optional[str] = None,
     ) -> str:
@@ -352,6 +389,7 @@ class InterviewTools(ToolKitBase):
             from_node: New source (optional).
             to_node: New destination (optional).
             predicate: New predicate (optional).
+            clear_predicate: If True, remove the predicate (unconditional).
             confidence: Confidence for updated values [0, 1].
             observation_id: Observation supporting this edge (optional).
 
@@ -359,12 +397,17 @@ class InterviewTools(ToolKitBase):
             A confirmation message.
         """
         edge = self._edge(edge_id)
+        self._require_observation(observation_id)
         conf = confidence if confidence is not None else 1.0
         if from_node is not None:
+            self._require_node_ref(from_node)
             edge.from_node = from_node
         if to_node is not None:
+            self._require_node_ref(to_node)
             edge.to_node = to_node
-        if predicate is not None:
+        if clear_predicate:
+            edge.predicate = None
+        elif predicate is not None:
             cur = edge.predicate if edge.predicate is not None else InferredValue()
             edge.predicate = self._set_value(cur, predicate, conf, observation_id)
         if observation_id:
@@ -377,6 +420,7 @@ class InterviewTools(ToolKitBase):
     def attach_observation(self, node_id: str, observation_id: str) -> str:
         """Attach an observation to a node (multiple observations per node ok)."""
         node = self._node(node_id)
+        self._require_observation(observation_id)
         node.observation_ids = list(
             dict.fromkeys(node.observation_ids + [observation_id])
         )
@@ -391,8 +435,11 @@ class InterviewTools(ToolKitBase):
         """Set the DAG's start and end node ids."""
         dag = self._dag()
         if start_node_id is not None:
+            self._require_node_ref(start_node_id)
             dag.start_node_id = start_node_id
         if end_node_ids is not None:
+            for eid in end_node_ids:
+                self._require_node_ref(eid)
             dag.end_node_ids = list(end_node_ids)
         return "Set DAG endpoints."
 
@@ -420,6 +467,13 @@ class InterviewTools(ToolKitBase):
         if sc is None:
             return False
         return evaluate(self.db, sc.truth, sc.spec).necessity_pass
+
+    def assert_evidence_backed(self, scenario_id: str) -> bool:
+        """True if every asserted claim is traceable to a recorded Observation."""
+        sc = get_scenario(scenario_id)
+        if sc is None:
+            return False
+        return evaluate(self.db, sc.truth, sc.spec).evidence_pass
 
     # ------------------------------------------------------------- diagnostics
 

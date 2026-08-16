@@ -105,34 +105,60 @@ def _build(
     ja: bool = False,
     ids: tuple = ("a", "b", "c", "d", "e", "f"),
     edge_ids: tuple = ("e1", "e2", "e3", "e4", "e5", "e6"),
+    evidence: bool = True,
 ):
-    """Build the correct quotation DAG using (possibly arbitrary) ids."""
+    """Build the correct quotation DAG using (possibly arbitrary) ids.
+
+    With ``evidence=True`` each claim is recorded as an Observation and the node /
+    edge / necessity carries its provenance (the evidence-backed path). With
+    ``evidence=False`` the same topology is built but with no provenance (used to
+    prove the evidence gate rejects un-evidenced DAGs).
+    """
     i1, i2, i3, i4, i5, i6 = ids
     actions = _JA_ACTIONS if ja else [t[1] for t in _TRUTH_NODES]
-    for (sid, _, actor, system, reads, writes), action in zip(_TRUTH_NODES, actions):
-        tools.add_node(
-            {"a": i1, "b": i2, "c": i3, "d": i4, "e": i5, "f": i6}[sid],
-            action,
-            actor=actor,
-            system=system,
-            reads=reads,
-            writes=writes,
-        )
-    tools.set_node_necessity(
-        i4, rationale="与信リスク管理のため" if ja else "for credit risk management"
-    )
-    tools.set_node_necessity(i6)  # all unknown
-    te1, te2, te3, te4, te5, te6 = edge_ids
-    tools.add_edge(te1, i1, i2)
-    tools.add_edge(te2, i2, i3)
-    tools.add_edge(
-        te3, i3, i4, predicate="100万円超" if ja else "amount over 1,000,000"
-    )
-    tools.add_edge(
-        te4, i3, i5, predicate="100万円以下" if ja else "amount at or below 1,000,000"
-    )
-    tools.add_edge(te5, i4, i5)
-    tools.add_edge(te6, i3, i6, predicate="月末" if ja else "month-end")
+    node_data = list(zip(_TRUTH_NODES, actions))
+    node_map = {"a": i1, "b": i2, "c": i3, "d": i4, "e": i5, "f": i6}
+    edge_defs = [
+        (edge_ids[0], i1, i2, None),
+        (edge_ids[1], i2, i3, None),
+        (edge_ids[2], i3, i4, "100万円超" if ja else "amount over 1,000,000"),
+        (edge_ids[3], i3, i5, "100万円以下" if ja else "amount at or below 1,000,000"),
+        (edge_ids[4], i4, i5, None),
+        (edge_ids[5], i3, i6, "月末" if ja else "month-end"),
+    ]
+    rationale = "与信リスク管理のため" if ja else "for credit risk management"
+
+    if evidence:
+        for k, ((sid, _, actor, system, reads, writes), action) in enumerate(node_data):
+            tools.record_observation(f"node statement {sid}")
+            tools.add_node(
+                node_map[sid],
+                action,
+                actor=actor,
+                system=system,
+                reads=reads,
+                writes=writes,
+                observation_id=f"o{k + 1}",
+            )
+        tools.set_node_necessity(i4, rationale=rationale, observation_id="o4")
+        for k, (eid, frm, to, pred) in enumerate(edge_defs, start=7):
+            tools.record_observation(f"edge statement {eid}")
+            tools.add_edge(eid, frm, to, predicate=pred, observation_id=f"o{k}")
+    else:
+        for (sid, _, actor, system, reads, writes), action in node_data:
+            tools.add_node(
+                node_map[sid],
+                action,
+                actor=actor,
+                system=system,
+                reads=reads,
+                writes=writes,
+            )
+        tools.set_node_necessity(i4, rationale=rationale)
+        for eid, frm, to, pred in edge_defs:
+            tools.add_edge(eid, frm, to, predicate=pred)
+
+    tools.set_node_necessity(i6)  # month-end necessity unknown
     tools.set_dag_endpoints(start_node_id=i1, end_node_ids=[i5, i6])
     tools.finish_interview()
 
@@ -398,6 +424,37 @@ def test_W_wrong_predicate_lowers_predicate_correctness():
     assert res.structural_pass is False
 
 
+def test_wrong_actor_system_data_fail_structural():
+    tools = _tools()
+    _build(tools)
+    tools.db.dag.nodes["d"].actor = InferredValue(value="sales", confidence=1.0)
+    tools.db.dag.nodes["e"].system = InferredValue(value="excel", confidence=1.0)
+    tools.db.dag.nodes["c"].reads = [InferredValue(value="tax_ledger", confidence=1.0)]
+    tools.db.dag.nodes["c"].writes = [
+        InferredValue(value="quarterly_report", confidence=1.0)
+    ]
+    res = _eval(tools)
+    assert res.actor_correctness < 1.0
+    assert res.system_correctness < 1.0
+    assert res.read_correctness < 1.0
+    assert res.write_correctness < 1.0
+    assert res.structural_pass is False
+
+
+def test_confidence_zero_asserted_value_treated_as_unasserted():
+    """A value with confidence 0 is not an active claim: it does not count as
+    evidence-backed and does not satisfy a known necessity."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    # approve rationale kept but confidence set to 0 -> treated as unasserted
+    tools.db.dag.nodes["d"].necessity.rationale.confidence = 0.0
+    res = _eval(tools)
+    assert res.necessity_correctness < 1.0  # known necessity not satisfied
+    assert res.necessity_pass is False
+    # a confidence-0 value is not an asserted claim, so it does not need coverage
+    assert res.necessity_provenance_coverage == 1.0
+
+
 def test_X_branch_evaluated_as_multiple_outgoing_edges():
     tools = _tools()
     _build(tools)
@@ -589,6 +646,129 @@ def test_observation_provenance_present():
     assert tools.db.dag.nodes["a"].action.observation_ids == [o1]
 
 
+def test_empty_end_node_ids_invalid():
+    dag = BusinessDAG(
+        nodes={"a": Node(id="a", action=InferredValue(value="x"))},
+        edges={},
+        start_node_id="a",
+        end_node_ids=[],
+    )
+    assert not dag.is_valid
+    assert any("at least one end" in e for e in dag.validate())
+
+
+def test_undeclared_ends_cannot_get_full_structural_score():
+    """Correct topology but no declared end nodes -> not structurally complete."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    tools.db.dag.end_node_ids = []  # agent never declared ends
+    res = _eval(tools)
+    assert res.dag_valid is False
+    assert res.end_precision == 0.0
+    assert res.structural_pass is False
+
+
+def test_declared_endpoints_must_match_truth_not_just_sinks():
+    """Declaring the wrong end nodes fails even if the topology is correct."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    # correct sinks but wrong declared end set (declares 'c' instead of 'e')
+    tools.db.dag.end_node_ids = ["c", "f"]
+    res = _eval(tools)
+    assert res.end_recall < 1.0 or res.end_precision < 1.0
+    assert res.structural_pass is False
+
+
+def test_perfect_dag_with_zero_observations_fails_evidence_gate():
+    tools = _tools()
+    _build(tools, evidence=False)  # correct DAG, but no recorded observations
+    res = _eval(tools)
+    assert res.structural_pass is True
+    assert res.evidence_pass is False
+    assert res.node_evidence_coverage == 0.0
+    assert res.edge_evidence_coverage == 0.0
+    assert res.quality_pass is False
+
+
+def test_valid_observation_backed_dag_passes():
+    tools = _tools()
+    _build(tools, evidence=True)
+    res = _eval(tools)
+    assert res.evidence_pass is True
+    assert res.node_evidence_coverage == 1.0
+    assert res.attribute_provenance_coverage == 1.0
+    assert res.edge_evidence_coverage == 1.0
+    assert res.predicate_provenance_coverage == 1.0
+    assert res.necessity_provenance_coverage == 1.0
+    assert res.invalid_observation_reference_count == 0
+    assert res.quality_pass is True
+
+
+def test_nonexistent_observation_ref_rejected_by_tool():
+    tools = _tools()
+    tools.start_inference("Q")
+    with pytest.raises(ValueError):
+        tools.add_node("n1", "receive request", observation_id="does_not_exist")
+    tools.record_observation("we receive requests")
+    tools.add_node("n1", "receive request", observation_id="o1")
+    with pytest.raises(ValueError):
+        tools.update_node("n1", actor="sales", observation_id="fake")
+    with pytest.raises(ValueError):
+        tools.attach_observation("n1", "ghost")
+    with pytest.raises(ValueError):
+        tools.add_edge("e1", "n1", "ghost_node")
+
+
+def test_node_attribute_without_provenance_fails():
+    tools = _tools()
+    _build(tools, evidence=True)
+    tools.db.dag.nodes["a"].action.observation_ids = []  # claim without provenance
+    res = _eval(tools)
+    assert res.attribute_provenance_coverage < 1.0
+    assert res.evidence_pass is False
+
+
+def test_edge_without_provenance_fails():
+    tools = _tools()
+    _build(tools, evidence=True)
+    tools.db.dag.edges["e1"].observation_ids = []
+    res = _eval(tools)
+    assert res.edge_evidence_coverage < 1.0
+    assert res.evidence_pass is False
+
+
+def test_predicate_without_provenance_fails():
+    tools = _tools()
+    _build(tools, evidence=True)
+    tools.db.dag.edges["e3"].predicate.observation_ids = []
+    res = _eval(tools)
+    assert res.predicate_provenance_coverage < 1.0
+    assert res.evidence_pass is False
+
+
+def test_known_necessity_without_provenance_fails():
+    tools = _tools()
+    _build(tools, evidence=True)
+    tools.db.dag.nodes["d"].necessity.rationale.observation_ids = []
+    res = _eval(tools)
+    assert res.necessity_provenance_coverage < 1.0
+    assert res.evidence_pass is False
+
+
+def test_unrelated_observation_alone_does_not_pass_evidence():
+    """Attaching an unrelated observation to a node does not give its attributes
+    provenance."""
+    tools = _tools()
+    _build(tools, evidence=False)  # no attribute provenance
+    tools.record_observation("some unrelated statement")
+    tools.attach_observation("a", "o1")
+    res = _eval(tools)
+    # only node 'a' gained node-level evidence; claims still lack provenance
+    assert res.node_evidence_coverage < 1.0
+    assert res.attribute_provenance_coverage < 1.0
+    assert res.evidence_pass is False
+
+
 # ---------------------------------------------------------------------------
 # End-to-end EnvironmentEvaluator reward
 # ---------------------------------------------------------------------------
@@ -634,11 +814,14 @@ def test_evaluator_rewards_full_reconstruction():
         "assert_finish_interview": True,
         "assert_dag_reconstructed": True,
         "assert_necessity_handled": True,
+        "assert_evidence_backed": True,
     }
     diag = reward_info.info["diagnostics"]
     assert diag["node_recall"] == 1.0
     assert diag["edge_recall"] == 1.0
     assert diag["quality_pass"] is True
+    assert diag["evidence_pass"] is True
+    assert diag["invalid_observation_reference_count"] == 0
 
 
 def test_evaluator_detects_missing_node():
@@ -646,7 +829,7 @@ def test_evaluator_detects_missing_node():
 
     task = [t for t in get_tasks() if t.id == SCENARIO][0]
     keep = []
-    drop_ids = {"inf_9", "inf_10", "inf_18", "inf_20"}  # drop approve node + its refs
+    drop_ids = {"inf_9", "inf_10", "inf_21", "inf_25"}  # approve node + its refs
     for a in task.evaluation_criteria.actions:
         if a.action_id not in drop_ids:
             keep.append((a.name, a.arguments))
