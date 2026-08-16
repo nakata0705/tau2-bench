@@ -1,4 +1,4 @@
-"""Structural workflow-reconstruction evaluator for business_interview (v2).
+"""Structural workflow-reconstruction evaluator for business_interview (v2, hardened).
 
 The agent records a reconstructed ``Workflow`` (steps, transitions, branches,
 per-step necessity) using its own arbitrary step ids. The evaluator compares it
@@ -12,24 +12,29 @@ Design principles implemented here:
   agent's step id to the ground-truth step id. Every graph evaluation
   (transitions, branches, challenge, improvement) runs over that mapping, so
   the agent never has to guess hidden canonical ids.
+- **Same-concept multi-step**: more than one ground-truth step may share a
+  concept. Candidates are disambiguated deterministically by priority:
+  1. action concept, 2. actor/system, 3. data. No LLM judge.
 - **EN/JA equivalence**: concept resolution is bilingual, so an equivalent
   Japanese reconstruction is scored identically to an English one.
-- **Action-first matching**: a step matches a ground-truth step only by its
-  action resolving to the same concept. actor/system are auxiliary (used for
-  tie-breaking and for accuracy metrics), so a wrong action with the same
-  actor/system is a missing + unexpected step, never a false match.
+- **ASKED vs RESULT RECORDED**: the challenge evaluation requires a *result to
+  have been recorded* for each dimension (why / owner / evidence / removal),
+  never merely that a question was asked. UNKNOWN / NONE_FOUND are explicit
+  recorded outcomes; an asked-but-unrecorded dimension is NOT_RECORDED.
 - **Precision-aware data**: read/write data are scored by recall AND precision.
 - **Condition-aware transitions**: transitions are judged on from/to AND their
   condition concept; a missing / reversed / different condition is a fail.
-- **NONE vs UNKNOWN**: an uninvestigated necessity is a fail; an investigated
-  UNKNOWN is a pass; fabricating a UNKNOWN as FACT is an epistemic fail.
+- **NONE vs UNKNOWN vs NOT_RECORDED**: an unrecorded necessity is a fail; an
+  investigated UNKNOWN / NONE_FOUND is a pass; fabricating a UNKNOWN as FACT is
+  an epistemic fail.
 - **Confirmed rationale content**: epistemic status, source and semantic
   content are all compared to the ground truth.
-- **Necessity challenge quality**: the questionable step must be investigated
-  on why / owner / evidence / removal-impact and its deletion considered,
-  before any improvement is accepted.
+- **Necessity challenge quality**: the questionable step's observations must be
+  recorded (why / owner / evidence / removal) and deletion considered, before
+  any improvement is accepted.
 """
 
+from collections import defaultdict
 from typing import Optional
 
 from tau2.domains.business_interview.concepts import (
@@ -42,6 +47,8 @@ from tau2.domains.business_interview.concepts import (
 )
 from tau2.domains.business_interview.data_model import (
     EpistemicStatus,
+    NecessityResult,
+    RationaleResult,
     WorkflowDB,
     WorkflowEvaluation,
 )
@@ -125,28 +132,65 @@ def _norm_system(s: Optional[str]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Step matching (concept based) + id mapping
+# Step matching (concept first, then actor/system, then data) + id mapping
 # ---------------------------------------------------------------------------
 
 
-def _match_steps(rec_steps, gt_steps: list[GTStep]):
-    """Match each reconstructed step to a ground-truth step by action concept.
+def _pick_candidate(rec, candidates: list[GTStep]) -> Optional[GTStep]:
+    """Deterministically pick the best same-concept ground-truth candidate.
 
-    Returns a list of ``(rec_step, gt_step)`` pairs; ``gt_step`` is None when a
-    reconstructed step matched nothing (an unexpected step). The action is the
-    primary signal; actor/system are only used to break concept ties.
+    Priority after the shared action concept is actor/system, then read/write
+    data overlap. Ties fall to the ground-truth step that appears first
+    (stable, explainable). Never returns None while candidates remain: a
+    reconstructed step whose action resolved to a concept always maps to one
+    ground-truth step of that concept.
     """
-    gt_by_concept = {g.concept: g for g in gt_steps}
-    matched_gt: set[str] = set()
+    rec_actor = _norm_role(rec.actor)
+    rec_system = _norm_system(rec.system)
+    rec_reads = {resolve(i, DATA_CONCEPTS) for i in rec.reads}
+    rec_writes = {resolve(i, DATA_CONCEPTS) for i in rec.writes}
+
+    def score(g: GTStep) -> int:
+        sc = 0
+        if rec_actor == g.actor:
+            sc += 2
+        if rec_system == (g.system or ""):
+            sc += 1
+        sc += len(rec_reads & {resolve(i, DATA_CONCEPTS) for i in g.reads})
+        sc += len(rec_writes & {resolve(i, DATA_CONCEPTS) for i in g.writes})
+        return sc
+
+    scores = [score(g) for g in candidates]
+    best = max(scores)
+    return candidates[scores.index(best)]
+
+
+def _match_steps(rec_steps, gt_steps: list[GTStep]):
+    """Match each reconstructed step to a ground-truth step.
+
+    Steps are matched greedily by action concept first. When several
+    ground-truth steps share a concept, ``_pick_candidate`` disambiguates by
+    actor/system then data. Returns a list of ``(rec_step, gt_step)`` pairs;
+    ``gt_step`` is None when a reconstructed step matched no ground-truth step.
+    """
+    gt_by_concept: dict[str, list[GTStep]] = defaultdict(list)
+    for g in gt_steps:
+        gt_by_concept[g.concept].append(g)
+
+    used_gt: set[str] = set()
     matches: list[tuple] = []
     for rec in rec_steps:
         cid = resolve(rec.action, STEP_CONCEPTS, actor=rec.actor, system=rec.system)
-        gt = gt_by_concept.get(cid) if cid else None
-        if gt is not None and gt.id not in matched_gt:
-            matched_gt.add(gt.id)
-            matches.append((rec, gt))
-        else:
+        if not cid or cid not in gt_by_concept:
             matches.append((rec, None))
+            continue
+        candidates = [g for g in gt_by_concept[cid] if g.id not in used_gt]
+        if not candidates:
+            matches.append((rec, None))
+            continue
+        chosen = _pick_candidate(rec, candidates)
+        used_gt.add(chosen.id)
+        matches.append((rec, chosen))
     return matches
 
 
@@ -256,9 +300,11 @@ def _confirmed_rationale_ok(rec, gt_step) -> bool:
     """Epistemic status + source + content of a confirmed rationale."""
     nec = gt_step.necessity
     rn = rec.necessity
-    if not rn.investigated:
+    if not rn.why_recorded:
         return False
-    if nec.expected_status is not None and rn.epistemic_status != nec.expected_status:
+    if nec.expected_status is not None and rn.rationale_result.value != (
+        nec.expected_status.value
+    ):
         return False
     if nec.expected_source is not None and not _source_ok(
         rn.source, nec.expected_source
@@ -276,22 +322,22 @@ def _confirmed_rationale_ok(rec, gt_step) -> bool:
 def _unknown_rationale_ok(rec, gt_step) -> tuple[bool, bool]:
     """(preserved_as_unknown, fabricated) for an objective-UNKNOWN step."""
     rn = rec.necessity
-    fabricated = rn.rationale_known and rn.epistemic_status == EpistemicStatus.FACT
-    preserved = not fabricated and not rn.rationale_known
+    fabricated = rn.rationale_result == RationaleResult.FACT
+    preserved = rn.rationale_result == RationaleResult.UNKNOWN
     return preserved, fabricated
 
 
 def _rationale_status(rec, gt_step) -> tuple[bool, bool]:
     """(ok, fabricated) for a single ground-truth necessity step.
 
-    ``ok`` means the step was investigated and recorded correctly:
-    - objective FACT  -> investigated + correct epistemic/source/content.
-    - objective UNKNOWN -> investigated + preserved as UNKNOWN.
+    ``ok`` means the step had a result recorded and it was recorded correctly:
+    - objective FACT  -> recorded with correct epistemic/source/content.
+    - objective UNKNOWN -> recorded and preserved as UNKNOWN.
     ``fabricated`` marks an objective-UNKNOWN step asserted as FACT.
     """
     nec = gt_step.necessity
     rn = rec.necessity
-    if not rn.investigated:
+    if not rn.why_recorded:
         return False, False
     if nec.objective_status == EpistemicStatus.FACT:
         return _confirmed_rationale_ok(rec, gt_step), False
@@ -304,23 +350,22 @@ def _rationale_status(rec, gt_step) -> tuple[bool, bool]:
 # ---------------------------------------------------------------------------
 
 
-def _challenge_dimensions(rec_step) -> dict[str, bool]:
-    """The investigated dimensions for a challenged step."""
+def _observation_recorded(rec_step) -> dict[str, bool]:
+    """The dimensions for which a result was actually recorded."""
     nec = rec_step.necessity
     return {
-        "why": nec.investigated,
-        "owner": nec.owner_investigated,
-        "evidence": nec.evidence_investigated,
-        "removal": nec.removal_investigated,
-        "deletion": nec.deletion_considered,
+        "why": nec.why_recorded,
+        "owner": nec.owner_recorded,
+        "evidence": nec.evidence_recorded,
+        "removal": nec.removal_recorded,
     }
 
 
 def _improvement_order_ok(db: WorkflowDB) -> bool:
-    """Necessity must be investigated before any delete/simplify/accelerate/
-    automate proposal, and an automate requires full (why+owner+evidence)
-    investigation. Proposal kinds must follow Question->Delete->Simplify->
-    Accelerate->Automate per step."""
+    """Necessity must be recorded before any delete/simplify/accelerate/
+    automate proposal, and an automate requires the why+owner+evidence results
+    recorded. Proposal kinds must follow Question->Delete->Simplify->Accelerate
+    ->Automate per step."""
     if not db.improvements:
         return True
     by_step: dict[str, list[tuple[int, str]]] = {}
@@ -337,20 +382,18 @@ def _improvement_order_ok(db: WorkflowDB) -> bool:
             if rank < prev_rank:
                 return False
             prev_rank = rank
-        # A non-question first proposal requires the step already investigated.
+        # A non-question first proposal requires the step already recorded.
         first_kind = proposals[0][1]
         if first_kind != "question":
-            if step is None or not (
-                step.necessity.investigated or step.necessity.challenged
-            ):
+            if step is None or not step.necessity.why_recorded:
                 return False
-        # Automate requires full necessity investigation.
+        # Automate requires recorded why + owner + evidence observations.
         for _order, kind in proposals:
             if kind == "automate":
                 if step is None or not (
-                    step.necessity.investigated
-                    and step.necessity.owner_investigated
-                    and step.necessity.evidence_investigated
+                    step.necessity.why_recorded
+                    and step.necessity.owner_recorded
+                    and step.necessity.evidence_recorded
                 ):
                     return False
     return True
@@ -361,44 +404,56 @@ def _improvement_order_ok(db: WorkflowDB) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _empty_evaluation(db: WorkflowDB) -> WorkflowEvaluation:
+    """Evaluation for an unknown / missing scenario ground truth."""
+    return WorkflowEvaluation(
+        protocol_completed=db.interview_complete,
+        workflow_created=bool(db.workflow and db.workflow.steps),
+        protocol_pass=db.interview_complete,
+        trigger_accuracy=0.0,
+        purpose_accuracy=0.0,
+        outcome_accuracy=0.0,
+        step_recall=0.0,
+        unexpected_step_count=0,
+        actor_accuracy=0.0,
+        system_accuracy=0.0,
+        data_read_recall=0.0,
+        data_read_precision=0.0,
+        data_write_recall=0.0,
+        data_write_precision=0.0,
+        transition_accuracy=0.0,
+        branch_recall=0.0,
+        branch_condition_accuracy=0.0,
+        rationale_coverage=0.0,
+        confirmed_rationale_ok=False,
+        uncertainty_handling=True,
+        fabricated_rationale=False,
+        challenge_target_identified=False,
+        why_asked=False,
+        why_recorded=False,
+        owner_asked=False,
+        owner_recorded=False,
+        owner_result=NecessityResult.NOT_RECORDED.value,
+        evidence_asked=False,
+        evidence_recorded=False,
+        evidence_result=NecessityResult.NOT_RECORDED.value,
+        removal_asked=False,
+        removal_recorded=False,
+        removal_result=NecessityResult.NOT_RECORDED.value,
+        deletion_considered=False,
+        challenge_done=False,
+        improvement_order_ok=True,
+        structural_pass=False,
+        rationale_pass=False,
+        challenge_pass=False,
+        quality_pass=False,
+    )
+
+
 def evaluate(db: WorkflowDB, scenario_id: Optional[str]) -> WorkflowEvaluation:
     gt = get_ground_truth(scenario_id)
     if gt is None:
-        return WorkflowEvaluation(
-            protocol_completed=db.interview_complete,
-            workflow_created=bool(db.workflow and db.workflow.steps),
-            protocol_pass=db.interview_complete,
-            trigger_accuracy=0.0,
-            purpose_accuracy=0.0,
-            outcome_accuracy=0.0,
-            step_recall=0.0,
-            unexpected_step_count=0,
-            actor_accuracy=0.0,
-            system_accuracy=0.0,
-            data_read_recall=0.0,
-            data_read_precision=0.0,
-            data_write_recall=0.0,
-            data_write_precision=0.0,
-            transition_accuracy=0.0,
-            branch_recall=0.0,
-            branch_condition_accuracy=0.0,
-            rationale_coverage=0.0,
-            confirmed_rationale_ok=False,
-            uncertainty_handling=True,
-            fabricated_rationale=False,
-            challenge_target_identified=False,
-            why_investigated=False,
-            owner_investigated=False,
-            evidence_investigated=False,
-            removal_investigated=False,
-            deletion_considered=False,
-            challenge_done=False,
-            improvement_order_ok=True,
-            structural_pass=False,
-            rationale_pass=False,
-            challenge_pass=False,
-            quality_pass=False,
-        )
+        return _empty_evaluation(db)
 
     protocol = db.interview_complete
     created = bool(db.workflow and db.workflow.steps)
@@ -499,27 +554,41 @@ def evaluate(db: WorkflowDB, scenario_id: Optional[str]) -> WorkflowEvaluation:
     )
     uncertainty_handling = not fabricated
 
-    # ---- challenge ----------------------------------------------------------
+    # ---- challenge (ASKED vs RESULT RECORDED) ------------------------------
     q_step = gt.questionable_step
     q_rec = None
     if q_step and db.workflow:
         q_rec = next((s for s in db.workflow.steps if id_map.get(s.id) == q_step), None)
     challenge_target_identified = q_rec is not None
     if q_rec is not None:
-        dims = _challenge_dimensions(q_rec)
-        why_inv = dims["why"]
-        owner_inv = dims["owner"]
-        evidence_inv = dims["evidence"]
-        removal_inv = dims["removal"]
-        deletion_cons = dims["deletion"]
+        rn = q_rec.necessity
+        why_asked = rn.why_asked
+        why_recorded = rn.why_recorded
+        owner_asked = rn.owner_asked
+        owner_recorded = rn.owner_recorded
+        owner_result = rn.owner_result.value
+        evidence_asked = rn.evidence_asked
+        evidence_recorded = rn.evidence_recorded
+        evidence_result = rn.evidence_result.value
+        removal_asked = rn.removal_asked
+        removal_recorded = rn.removal_recorded
+        removal_result = rn.removal_result.value
+        deletion_cons = rn.deletion_considered
     else:
-        why_inv = owner_inv = evidence_inv = removal_inv = deletion_cons = False
+        why_asked = why_recorded = False
+        owner_asked = owner_recorded = False
+        owner_result = NecessityResult.NOT_RECORDED.value
+        evidence_asked = evidence_recorded = False
+        evidence_result = NecessityResult.NOT_RECORDED.value
+        removal_asked = removal_recorded = False
+        removal_result = NecessityResult.NOT_RECORDED.value
+        deletion_cons = False
     challenge_done = bool(
         q_rec is not None
-        and why_inv
-        and owner_inv
-        and evidence_inv
-        and removal_inv
+        and why_recorded
+        and owner_recorded
+        and evidence_recorded
+        and removal_recorded
         and deletion_cons
     )
 
@@ -569,10 +638,17 @@ def evaluate(db: WorkflowDB, scenario_id: Optional[str]) -> WorkflowEvaluation:
         uncertainty_handling=uncertainty_handling,
         fabricated_rationale=fabricated,
         challenge_target_identified=challenge_target_identified,
-        why_investigated=why_inv,
-        owner_investigated=owner_inv,
-        evidence_investigated=evidence_inv,
-        removal_investigated=removal_inv,
+        why_asked=why_asked,
+        why_recorded=why_recorded,
+        owner_asked=owner_asked,
+        owner_recorded=owner_recorded,
+        owner_result=owner_result,
+        evidence_asked=evidence_asked,
+        evidence_recorded=evidence_recorded,
+        evidence_result=evidence_result,
+        removal_asked=removal_asked,
+        removal_recorded=removal_recorded,
+        removal_result=removal_result,
         deletion_considered=deletion_cons,
         challenge_done=challenge_done,
         improvement_order_ok=improvement_order_ok,

@@ -14,6 +14,11 @@ FACT/BELIEF/UNKNOWN about a step's necessity) separate.
 
 ``FACT`` here means a source asserted it as certain — not objective truth; the
 objective rationale state is given by ``GTNecessity.objective_status``.
+
+Stakeholder truth is **step-unit**: each requirement is tied to a specific
+ground-truth step (by concept) and axis, so completeness is judged per step,
+not by a keyword search over the whole scenario. A structural test asserts the
+scenario's ``known_info`` can answer every requirement the evaluator grades.
 """
 
 from dataclasses import dataclass, field
@@ -32,8 +37,8 @@ class GTNecessity:
 
     - ``objective_status``: the objective state (FACT = confirmed rationale,
       UNKNOWN = the rationale genuinely is not known).
-    - ``investigated_required``: the agent must have investigated this step's
-      necessity before the interview is complete.
+    - ``investigated_required``: the agent must have recorded a result for this
+      step's necessity before the interview is complete.
     - ``rationale_concept``: concept id the confirmed rationale must resolve to
       (content match). Only for FACT steps.
     - ``expected_source``: who the stakeholder (source) is for the rationale.
@@ -203,8 +208,54 @@ def _quotation_workflow() -> WorkflowGroundTruth:
     )
 
 
+def _same_concept_workflow() -> WorkflowGroundTruth:
+    """A small scenario exercising the same-concept multi-step matcher.
+
+    Two steps share the ``approve_quote`` concept but are distinguished
+    deterministically by actor (manager vs sales) and written data (approval vs
+    revision). Used by the falsification Q/R tests only — it is not a task and
+    is never in the agent-visible task set.
+    """
+    return WorkflowGroundTruth(
+        scenario_id="same_concept_workflow",
+        workflow_name="Quote approval flow",
+        trigger="a quote requires approval",
+        trigger_concept="trigger",
+        purpose="approve quotes before they are used",
+        purpose_concept="purpose",
+        outcome="a final approved quote is recorded",
+        outcome_concept="outcome",
+        steps=[
+            GTStep(
+                id="g1",
+                concept="approve_quote",
+                action="approve the high-value quotation",
+                actor="manager",
+                system="quoting",
+                reads=["quote"],
+                writes=["approval"],
+            ),
+            GTStep(
+                id="g2",
+                concept="approve_quote",
+                action="approve the revised quotation",
+                actor="sales",
+                system="quoting",
+                reads=["quote"],
+                writes=["revision"],
+            ),
+        ],
+        transitions=[
+            GTTransition("g1", "g2"),
+        ],
+        branches=[],
+        questionable_step=None,
+    )
+
+
 _SCENARIOS: dict[str, WorkflowGroundTruth] = {
     "quotation_workflow_1": _quotation_workflow(),
+    "same_concept_workflow": _same_concept_workflow(),
 }
 
 
@@ -226,76 +277,124 @@ def get_ground_truth(scenario_id: Optional[str]) -> Optional[WorkflowGroundTruth
 
 
 # ---------------------------------------------------------------------------
-# Stakeholder-visible truth requirements
+# Step-unit stakeholder-visible truth requirements
 #
-# These are the facts the evaluator grades that the stakeholder KNOWS (so the
-# user simulator must be able to answer them when asked). The scenario provides
-# them as *known* information; difficulty comes from the stakeholder not
-# volunteering them, never from the simulator not knowing them. A structural
-# test cross-checks that the scenario covers every entry here.
+# These are the facts the evaluator grades that the stakeholder KNOWS about a
+# specific step (so the user simulator must be able to answer them when asked).
+# They are expressed **per step** (by concept) and per axis — not as a keyword
+# search over the whole scenario — so completeness is judged step by step.
+#
+# The scenario provides them as *known* information; difficulty comes from the
+# stakeholder not volunteering them, never from the simulator not knowing them.
+# A structural test asserts the scenario's ``known_info`` covers every entry
+# here, and that the ground truth never requires a truth the stakeholder cannot
+# answer.
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
-class StakeholderKnowledge:
-    """A fact the stakeholder knows and the evaluator grades.
+class StepTruthRequirement:
+    """A fact the stakeholder knows about one specific ground-truth step.
 
-    ``key`` names the axis (for diagnostics / tests). ``signals`` are
-    substrings that must appear in the scenario's known_info so the simulator
-    can truthfully answer a question about this fact.
+    ``step_concept`` ties the requirement to a step; ``key`` names the axis;
+    ``signals`` are substrings that must appear in the scenario's ``known_info``
+    so the simulator can truthfully answer a question about this fact.
     """
 
+    step_concept: str
     key: str
     signals: tuple[str, ...]
 
 
-def stakeholder_knowledge_requirements() -> list[StakeholderKnowledge]:
-    """Facts the stakeholder knows that the evaluator requires, keyed by axis.
+def stakeholder_step_truth_requirements() -> list[StepTruthRequirement]:
+    """Facts the stakeholder knows, keyed by step (concept) and axis.
 
-    Kept as a data contract so a structural test can assert the scenario's
-    ``known_info`` covers every entry (stakeholder truth completeness). This
-    guarantees the agent is never penalised because the simulator *could not*
-    know an answer — only because it did not volunteer it.
+    Every evaluator-graded fact must be answerable from the scenario's
+    ``known_info``; otherwise the agent would be penalised because the
+    simulator *could not* know an answer rather than because it did not
+    volunteer it.
     """
     return [
-        # workflow metadata
-        StakeholderKnowledge("trigger", ("request", "依頼")),
-        StakeholderKnowledge("purpose", ("accurate", "正確")),
-        StakeholderKnowledge(
-            "outcome", ("receive", "受け取", "send the quotation", "送付")
+        # receive_request
+        StepTruthRequirement(
+            "receive_request", "actor", ("sales", "営業", "you", "自分")
         ),
-        # actors
-        StakeholderKnowledge("actor_sales", ("sales", "営業", "you", "自分")),
-        StakeholderKnowledge(
-            "actor_manager", ("manager", "approval", "上司", "承認者", "approver")
+        StepTruthRequirement(
+            "receive_request",
+            "writes",
+            ("request", "record the quotation request", "依頼"),
         ),
-        # systems / tools
-        StakeholderKnowledge(
-            "system_crm", ("crm", "customer relationship management", "CRM")
+        # check_customer
+        StepTruthRequirement(
+            "check_customer", "actor", ("sales", "営業", "you", "自分")
         ),
-        StakeholderKnowledge(
-            "system_quoting", ("quoting", "quotation system", "見積", "見積システム")
+        StepTruthRequirement(
+            "check_customer",
+            "system",
+            ("crm", "customer relationship management", "CRM"),
         ),
-        StakeholderKnowledge("system_email", ("email", "メール")),
-        StakeholderKnowledge(
-            "system_excel", ("excel", "spreadsheet", "エクセル", "Excel")
+        StepTruthRequirement("check_customer", "reads", ("customer", "顧客")),
+        # create_quote
+        StepTruthRequirement(
+            "create_quote", "system", ("quoting", "見積", "見積システム")
         ),
-        # data read / written
-        StakeholderKnowledge("data_request", ("request", "依頼")),
-        StakeholderKnowledge("data_customer", ("customer", "顧客")),
-        StakeholderKnowledge("data_pricing", ("pricing", "price", "価格", "料金")),
-        StakeholderKnowledge("data_quote", ("quotation", "quote", "見積")),
-        StakeholderKnowledge("data_sent", ("sent", "send", "送付", "送信")),
-        StakeholderKnowledge("data_summary", ("summary", "集計")),
-        # branch / transition condition
-        StakeholderKnowledge(
-            "cond_amount", ("1,000,000", "100万", "over", "exceed", "超")
+        StepTruthRequirement(
+            "create_quote", "reads", ("customer", "顧客", "pricing", "価格", "料金")
         ),
-        StakeholderKnowledge(
-            "cond_month_end", ("month-end", "monthly", "month end", "月末")
+        # approve_quote (confirmed rationale)
+        StepTruthRequirement(
+            "approve_quote",
+            "actor",
+            ("manager", "approval", "上司", "承認者", "approver"),
         ),
-        # approval owner / confirmed rationale
-        StakeholderKnowledge(
-            "rationale_credit_risk", ("credit risk", "credit", "与信", "与信リスク")
+        StepTruthRequirement(
+            "approve_quote", "condition", ("1,000,000", "100万", "over", "exceed", "超")
+        ),
+        StepTruthRequirement(
+            "approve_quote",
+            "rationale",
+            ("credit risk", "credit", "与信", "与信リスク"),
+        ),
+        # send_quote
+        StepTruthRequirement("send_quote", "system", ("email", "メール")),
+        StepTruthRequirement("send_quote", "reads", ("quotation", "quote", "見積")),
+        # month_end_summary (UNKNOWN rationale)
+        StepTruthRequirement(
+            "month_end_summary", "system", ("excel", "spreadsheet", "エクセル", "Excel")
+        ),
+        StepTruthRequirement(
+            "month_end_summary",
+            "condition",
+            ("month-end", "monthly", "month end", "月末"),
+        ),
+        StepTruthRequirement(
+            "month_end_summary",
+            "rationale_unknown",
+            (
+                "do not know",
+                "does not know",
+                "not know why",
+                "知りません",
+                "理由は知らない",
+                "理由は分からない",
+            ),
         ),
     ]
+
+
+def missing_stakeholder_truth(
+    known_info: str, scenario_id: Optional[str] = None
+) -> list[StepTruthRequirement]:
+    """Return the stakeholder-truth requirements the scenario cannot answer.
+
+    Used by the completeness tests: an empty result means the stakeholder can
+    truthfully answer every fact the evaluator grades for this scenario. The
+    optional ``scenario_id`` can restrict the check to a scenario's steps, but
+    the quotation scenario is the only task scenario with an agent-visible task.
+    """
+    known_l = (known_info or "").lower()
+    missing: list[StepTruthRequirement] = []
+    for req in stakeholder_step_truth_requirements():
+        if not any(sig.lower() in known_l for sig in req.signals):
+            missing.append(req)
+    return missing

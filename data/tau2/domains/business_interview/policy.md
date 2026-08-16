@@ -49,10 +49,14 @@ or an internal convention — ask:
 - What evidence supports that requirement?
 - What happens if this step were removed?
 
-Record your necessity questions with `challenge_step`. Record who requires the
-step and the evidence with `record_necessity_detail`. Use `set_step_rationale`
-for a reason the interviewee asserts as certain (FACT) or gives as their
-opinion (BELIEF); use `set_step_unknown` when they do not know.
+Record your necessity questions with `challenge_step`. Record the answers you
+receive with `record_necessity_detail` (who requires the step / evidence /
+removal impact, with a state of KNOWN / UNKNOWN / NONE_FOUND) and with
+`set_step_rationale` / `set_step_unknown` (why). Asking a question is not the
+same as recording the answer: an answer only counts once it is recorded.
+Record UNKNOWN when the interviewee does not know, and NONE_FOUND when you
+investigated and nothing exists — never leave a dimension blank as if it were
+answered.
 
 ## Improvement order
 

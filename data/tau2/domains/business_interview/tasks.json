@@ -3,7 +3,7 @@
     "id": "quotation_workflow_1",
     "description": {
       "purpose": "Interview a sales employee to reconstruct their quotation workflow as a graph (steps, actors, systems, data, transitions, branches), capture each step's necessity (one confirmed rationale, one UNKNOWN rationale), and question the necessity of a questionable legacy step before considering improvements.",
-      "notes": "Ground truth (evaluator-only, in domain code): 6 steps (receive request, check customer in CRM, create quote in quoting system, approve high-value quote [credit risk, confirmed], send quote, month-end Excel summary to Accounting [UNKNOWN rationale, questionable legacy]). One branch (amount threshold) and one conditional path (month-end). The stakeholder knows the workflow but never volunteers the conditional steps/branches or rationales unless asked; does not know why the month-end Excel step exists (only a vague belief that Accounting needs it, no evidence). Reward is a product of env_assertions (finish + structural reconstruction + rationale handling + necessity challenge); detailed metrics are in diagnostics."
+      "notes": "Ground truth (evaluator-only, in domain code): 6 steps (receive request, check customer in CRM, create quote in quoting system, approve high-value quote [credit risk, confirmed], send quote, month-end Excel summary to Accounting [UNKNOWN rationale, questionable legacy]). One branch (amount threshold) and one conditional path (month-end). The stakeholder knows the workflow but never volunteers the conditional steps/branches or rationales unless asked; does not know why the month-end Excel step exists (only a vague belief that Accounting needs it, no evidence). Reward is a product of env_assertions (finish + structural reconstruction + rationale handling + necessity challenge); detailed metrics are in diagnostics. Asking a necessity question (challenge_step) is separate from recording the answer: owner/evidence/removal answers are recorded via record_necessity_detail and count only when a result is recorded (KNOWN / UNKNOWN / NONE_FOUND)."
     },
     "user_scenario": {
       "persona": "You are a sales employee who has worked at the company for a few years. You are friendly, cooperative, and pragmatic. You answer questions plainly and truthfully in everyday business language. You are not familiar with business-analysis terminology and you never speculate or make things up.",
@@ -12,7 +12,7 @@
         "reason_for_call": "You have been asked to take part in a short interview about how quotations are prepared in your team.",
         "known_info": "You receive quotation requests from customers and prepare quotations, which you send to the customer by email. The normal flow is: you record the quotation request, check the customer's information in the CRM, and create the quotation in the quoting system, using the customer and pricing information. For quotations over 1,000,000 yen, approval by a manager is required before the quotation is sent, and this approval is for credit risk management. Separately, at month-end, you also send a summary of the quotation information to the Accounting team as an Excel file; you do not know why that month-end Excel step is done. The purpose of the whole process is to produce an accurate quotation, and it ends when the customer receives the completed quotation.",
         "unknown_info": "You do not know why the month-end Excel summary is sent to Accounting. Nobody ever told you the reason and there is no documentation. You have only a vague impression that Accounting needs it, but you are not sure and have no formal evidence.",
-        "task_instructions": "Answer the interviewer's questions truthfully and helpfully. Describe the normal quotation workflow when asked. Do NOT volunteer the high-value approval branch or the month-end Excel step on your own: only mention them if the interviewer asks about exceptions, special cases, conditions, thresholds, amounts, approvals, month-end processing, or similar. If asked why the high-value approval is needed, say it is for credit risk management. If asked why the month-end Excel step is done, say you do not know the reason; you have only a vague impression that Accounting needs it, but you are not certain and have no documentation. Never invent, guess, or speculate about anything you do not know. Do not end the conversation yourself. If the interviewer asks whether you have anything else to add, or summarizes what you described, answer truthfully and briefly but keep the conversation open. Only when the interviewer explicitly states that the interview is complete or finished should you reply briefly and end your message with ###STOP###."
+        "task_instructions": "Answer the interviewer's questions truthfully and helpfully. Describe the normal quotation workflow when asked. Do NOT volunteer the high-value approval branch or the month-end Excel step on your own: only mention them if the interviewer asks about exceptions, special cases, conditions, thresholds, amounts, approvals, month-end processing, or similar. If asked why the high-value approval is needed, say it is for credit risk management. If asked why the month-end Excel step is done, say you do not know the reason; you have only a vague impression that Accounting needs it, but you are not certain and have no documentation. If asked who requires the month-end Excel step, say you are not sure — it seems to be Accounting but you cannot confirm. If asked what evidence supports it, say there is no documentation or formal evidence. If asked what would happen if the month-end Excel step were removed, say you do not know. Never invent, guess, or speculate about anything you do not know. Do not end the conversation yourself. If the interviewer asks whether you have anything else to add, or summarizes what you described, answer truthfully and briefly but keep the conversation open. Only when the interviewer explicitly states that the interview is complete or finished should you reply briefly and end your message with ###STOP###."
       }
     },
     "initial_state": {
@@ -269,6 +269,20 @@
         },
         {
           "action_id": "wf_21",
+          "name": "record_necessity_detail",
+          "arguments": {
+            "step_id": "s6",
+            "owner": "accounting (uncertain)",
+            "owner_state": "UNKNOWN",
+            "evidence": "no documentation",
+            "evidence_state": "NONE_FOUND",
+            "removal_impact": "unknown",
+            "removal_state": "UNKNOWN"
+          },
+          "info": "Reference: record the owner / evidence / removal observations for the legacy step."
+        },
+        {
+          "action_id": "wf_22",
           "name": "finish_interview",
           "arguments": {
             "summary": "Reconstructed the quotation workflow including the approval branch and the questionable month-end Excel step."
@@ -305,7 +319,7 @@
           "arguments": {
             "scenario_id": "quotation_workflow_1"
           },
-          "message": "The questionable legacy step must be challenged with the correct improvement order."
+          "message": "The questionable legacy step's observations must be recorded with the correct improvement order."
         }
       ],
       "reward_basis": [
@@ -317,7 +331,7 @@
     "id": "quotation_workflow_1_ja",
     "description": {
       "purpose": "営業担当者にヒアリングし、見積作成ワークフローをグラフ（Step・actor・system・data・遷移・分岐）として復元し、各 Step の必要性（確認済み rationale 1件・UNKNOWN rationale 1件）を把握し、疑わしいレガシー Step の必要性を改善提案より先に問う。日本語シナリオ。",
-      "notes": "Ground truth（evaluator-only、domain コード側）: 6 Step（依頼受付、CRM顧客確認、見積システムで見積作成、高額承認[与信管理・確認済み]、顧客送付、月末の経理向けExcel集計[UNKNOWN・疑わしいレガシー]）。分岐1（金額閾値）と条件パス1（月末）。stakeholder は通常フローを知るが、条件付き Step・分岐・rationale を尋ねられない限り自発的に話さない。月末Excelの理由は知らない（「経理が必要らしい」という曖昧な印象のみ・証拠なし）。reward は env_assertions（finish + 構造復元 + rationale 処理 + necessity challenge）の積。詳細は diagnostics。",
+      "notes": "Ground truth（evaluator-only、domain コード側）: 6 Step（依頼受付、CRM顧客確認、見積システムで見積作成、高額承認[与信管理・確認済み]、顧客送付、月末の経理向けExcel集計[UNKNOWN・疑わしいレガシー]）。分岐1（金額閾値）と条件パス1（月末）。stakeholder は通常フローを知るが、条件付き Step・分岐・rationale を尋ねられない限り自発的に話さない。月末Excelの理由は知らない（「経理が必要らしい」という曖昧な印象のみ・証拠なし）。reward は env_assertions（finish + 構造復元 + rationale 処理 + necessity challenge）の積。詳細は diagnostics。necessity 質問（challenge_step）と回答記録（record_necessity_detail）は分離され、owner/evidence/removal は結果（KNOWN / UNKNOWN / NONE_FOUND）を記録して初めて有効。",
       "relevant_policies": null
     },
     "user_scenario": {
@@ -327,7 +341,7 @@
         "reason_for_call": "あなたは、チームで見積書がどのように作成されているかについての短いインタビューに参加するよう依頼されました。",
         "known_info": "あなたは営業担当者です。顧客から見積依頼を受け、見積書を準備して、メールで顧客に送付しています。通常の流れは、見積依頼を記録し、CRMで顧客情報を確認し、見積システムで顧客情報と価格情報を使って見積書を作成する、というものです。100万円を超える見積書については、送付前に上司（管理者）の承認が必要で、この承認は与信リスク管理のためのものです。また別途、月末のみ、見積情報の集計をExcelファイルとして経理チームに送っていますが、この月末のExcel処理がなぜ行われるのかは知りません。このプロセス全体の目的は正確な見積書を作ることです。",
         "unknown_info": "月末のExcel集計を経理に送る理由は知りません。誰も理由を教えてくれたことはなく、文書もありません。経理が必要らしいという曖昧な印象はありますが、確かではなく、正式な根拠はありません。",
-        "task_instructions": "インタビュアーの質問に、正直かつ協力的に答えてください。通常の見積ワークフローを聞かれたら説明してください。高額承認の分岐や月末のExcel Stepについては、自分からは話さないでください。インタビュアーが例外、特別なケース、条件、しきい値、金額、承認、月末の処理などについて尋ねた場合にのみ触れてください。高額承認がなぜ必要なのか理由を尋ねられたら、与信リスク管理のためだと答えてください。月末のExcel処理がなぜ行われるのか理由を尋ねられたら、理由は分からないと答え、経理が必要らしいという曖昧な印象はあるが確かではなく文書もないと正直に答えてください。知らないことについて推測したりでっち上げたりしないでください。自分から会話を終わらせないでください。インタビュアーが他に付け加えることはあるかと尋ねたり、説明を要約したりした場合は、正直に簡潔に答えますが、会話は続けます。インタビュアーが明確にインタビューが完了した／終了したと述べた場合にのみ、短く返答し、メッセージの最後に###STOP###を付けて終了してください。"
+        "task_instructions": "インタビュアーの質問に、正直かつ協力的に答えてください。通常の見積ワークフローを聞かれたら説明してください。高額承認の分岐や月末のExcel Stepについては、自分からは話さないでください。インタビュアーが例外、特別なケース、条件、しきい値、金額、承認、月末の処理などについて尋ねた場合にのみ触れてください。高額承認がなぜ必要なのか理由を尋ねられたら、与信リスク管理のためだと答えてください。月末のExcel処理がなぜ行われるのか理由を尋ねられたら、理由は分からないと答え、経理が必要らしいという曖昧な印象はあるが確かではなく文書もないと正直に答えてください。月末のExcel Stepを誰が要求しているか尋ねられたら、確かではないが経理だと思われると答えてください。根拠を尋ねられたら、文書や正式な根拠はないと答えてください。もしこの月末Excel Stepを削除したらどうなるか尋ねられたら、分からないと答えてください。知らないことについて推測したりでっち上げたりしないでください。自分から会話を終わらせないでください。インタビュアーが他に付け加えることはあるかと尋ねたり、説明を要約したりした場合は、正直に簡潔に答えますが、会話は続けます。インタビュアーが明確にインタビューが完了した／終了したと述べた場合にのみ、短く返答し、メッセージの最後に###STOP###を付けて終了してください。"
       }
     },
     "initial_state": {
@@ -584,6 +598,20 @@
         },
         {
           "action_id": "wf_21",
+          "name": "record_necessity_detail",
+          "arguments": {
+            "step_id": "s6",
+            "owner": "accounting (uncertain)",
+            "owner_state": "UNKNOWN",
+            "evidence": "no documentation",
+            "evidence_state": "NONE_FOUND",
+            "removal_impact": "unknown",
+            "removal_state": "UNKNOWN"
+          },
+          "info": "Reference: record the owner / evidence / removal observations for the legacy step."
+        },
+        {
+          "action_id": "wf_22",
           "name": "finish_interview",
           "arguments": {
             "summary": "Reconstructed the quotation workflow including the approval branch and the questionable month-end Excel step."
@@ -620,7 +648,7 @@
           "arguments": {
             "scenario_id": "quotation_workflow_1_ja"
           },
-          "message": "The questionable legacy step must be challenged with the correct improvement order."
+          "message": "The questionable legacy step's observations must be recorded with the correct improvement order."
         }
       ],
       "reward_basis": [

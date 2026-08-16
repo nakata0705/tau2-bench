@@ -5,6 +5,8 @@ from tau2.domains.business_interview.data_model import (
     Branch,
     EpistemicStatus,
     Improvement,
+    NecessityResult,
+    RationaleResult,
     Transition,
     Workflow,
     WorkflowDB,
@@ -14,13 +16,25 @@ from tau2.domains.business_interview.semantic import evaluate
 from tau2.environment.toolkit import ToolKitBase, ToolType, is_tool
 
 
+def _parse_necessity_result(value: Optional[str]) -> NecessityResult:
+    try:
+        return NecessityResult(str(value).strip().upper())
+    except ValueError:
+        return NecessityResult.KNOWN
+
+
 class InterviewTools(ToolKitBase):
     """Tools for reconstructing a workflow during a business interview.
 
     The agent builds a ``Workflow`` (steps, transitions, branches) from what the
-    stakeholder says, and records each step's necessity (rationale / UNKNOWN /
-    owner / evidence) and any necessity challenge. The evaluator compares the
-    reconstructed workflow against the evaluator-only ground truth.
+    stakeholder says, and records each step's necessity. **Asking a question
+    (``challenge_step``) is separate from recording the answer** — the answer
+    must be recorded via ``record_necessity_detail`` / ``set_step_rationale`` /
+    ``set_step_unknown`` for it to count. An asked-but-unrecorded dimension is
+    treated as NOT_RECORDED, never as UNKNOWN / NONE_FOUND.
+
+    The evaluator compares the reconstructed workflow against the evaluator-only
+    ground truth.
     """
 
     db: WorkflowDB
@@ -167,11 +181,12 @@ class InterviewTools(ToolKitBase):
         epistemic_status: str = EpistemicStatus.FACT.value,
         source: Optional[str] = None,
     ) -> str:
-        """Record why a step is needed.
+        """Record the reason a step is needed (the result of asking "why").
 
-        Use epistemic_status="FACT" only for reasons the interviewee asserted as
-        certain, "BELIEF" for their opinion/guess, and "UNKNOWN" if they do not
-        know. Never promote a guess to a fact.
+        This records the answer the interviewee gave. Use epistemic_status="FACT"
+        only for reasons the interviewee asserted as certain, "BELIEF" for their
+        opinion/guess, and "UNKNOWN" if they do not know. Never promote a guess
+        to a fact.
 
         Args:
             step_id: The step this rationale concerns.
@@ -184,16 +199,18 @@ class InterviewTools(ToolKitBase):
         """
         status = self._parse_status(epistemic_status) or EpistemicStatus.FACT
         s = self._step(step_id)
-        s.necessity.investigated = True
-        s.necessity.rationale_known = status != EpistemicStatus.UNKNOWN
+        s.necessity.why_asked = True
+        s.necessity.rationale_result = RationaleResult(status.value)
         s.necessity.rationale = content
         s.necessity.source = source
-        s.necessity.epistemic_status = status
         return f"Rationale recorded for {step_id}."
 
     @is_tool(ToolType.WRITE)
     def set_step_unknown(self, step_id: str, note: Optional[str] = None) -> str:
-        """Record that the reason for a step is unknown (not guessed).
+        """Record that the reason for a step is unknown (the result of asking "why").
+
+        Use this when the interviewee confirmed they do not know why the step is
+        done. This is an explicit UNKNOWN result — it is not a guess.
 
         Args:
             step_id: The step whose necessity is unknown.
@@ -203,17 +220,15 @@ class InterviewTools(ToolKitBase):
             A confirmation message.
         """
         s = self._step(step_id)
-        s.necessity.investigated = True
-        s.necessity.rationale_known = False
+        s.necessity.why_asked = True
+        s.necessity.rationale_result = RationaleResult.UNKNOWN
         s.necessity.rationale = note
-        s.necessity.epistemic_status = EpistemicStatus.UNKNOWN
         return f"UNKNOWN rationale recorded for {step_id}."
 
     @is_tool(ToolType.WRITE)
     def challenge_step(self, step_id: str, dimension: str, question: str) -> str:
-        """Investigate a step's necessity along one dimension.
+        """Ask (investigate) one necessity question about a step.
 
-        Call this separately for each necessity question you ask about a step.
         ``dimension`` is one of:
           - "why":      why is this step needed?
           - "owner":    who requires it / who owns it?
@@ -221,9 +236,11 @@ class InterviewTools(ToolKitBase):
           - "removal":  what happens if this step is removed?
           - "deletion": is the step a candidate for deletion / simplification?
 
-        Record the answer via record_necessity_detail / set_step_rationale /
-        set_step_unknown. An investigated "no owner" / "no evidence" / "reason
-        unknown" is a valid finding; recording an UNKNOWN as a FACT is not.
+        Asking a question is NOT enough: record the answer separately with
+        ``record_necessity_detail`` (owner / evidence / removal), or
+        ``set_step_rationale`` / ``set_step_unknown`` (why). An investigated
+        "no owner" / "no evidence" / "reason unknown" is a valid recorded
+        finding; an asked question with no recorded answer counts as nothing.
 
         Args:
             step_id: The step whose necessity you are questioning.
@@ -237,13 +254,13 @@ class InterviewTools(ToolKitBase):
         s.necessity.challenged = True
         dimension = (dimension or "").strip().lower()
         if dimension == "why":
-            s.necessity.investigated = True
+            s.necessity.why_asked = True
         elif dimension == "owner":
-            s.necessity.owner_investigated = True
+            s.necessity.owner_asked = True
         elif dimension == "evidence":
-            s.necessity.evidence_investigated = True
+            s.necessity.evidence_asked = True
         elif dimension == "removal":
-            s.necessity.removal_investigated = True
+            s.necessity.removal_asked = True
         elif dimension == "deletion":
             s.necessity.deletion_considered = True
         if question:
@@ -253,44 +270,66 @@ class InterviewTools(ToolKitBase):
                 k in q for k in ("delet", "remov", "eliminat", "necessary", "needed")
             ):
                 s.necessity.deletion_candidate = True
-        return f"Necessity challenge recorded for {step_id} ({dimension})."
+        return f"Necessity question recorded for {step_id} ({dimension})."
 
     @is_tool(ToolType.WRITE)
     def record_necessity_detail(
         self,
         step_id: str,
         owner: Optional[str] = None,
+        owner_state: Optional[str] = None,
         evidence: Optional[str] = None,
+        evidence_state: Optional[str] = None,
         removal_impact: Optional[str] = None,
+        removal_state: Optional[str] = None,
         requirement_type: Optional[str] = None,
     ) -> str:
-        """Record who requires a step and what evidence supports it.
+        """Record the answers to the necessity questions (owner / evidence /
+        removal).
 
-        An empty / "none found" owner or evidence is still a valid recorded
-        investigation — what matters is that the question was asked and the
-        finding recorded truthfully.
+        ``owner_state`` / ``evidence_state`` / ``removal_state`` are one of:
+          - "KNOWN"      — a concrete value was found.
+          - "UNKNOWN"    — the interviewee said they do not know.
+          - "NONE_FOUND" — investigated and nothing exists / no one / no evidence.
+
+        When a state is omitted but a value is given, the state defaults to
+        "KNOWN". Distinguish "I asked and there is nothing" (NONE_FOUND) and
+        "I asked and they do not know" (UNKNOWN) from "I did not record an
+        answer" — an unrecorded dimension counts as nothing.
 
         Args:
             step_id: The step this concerns.
-            owner: Who requires / owns this requirement (optional; may be "none").
-            evidence: The evidence for the requirement (optional; may be "none").
+            owner: Who requires / owns this requirement (optional).
+            owner_state: KNOWN / UNKNOWN / NONE_FOUND for the owner finding.
+            evidence: The evidence for the requirement (optional).
+            evidence_state: KNOWN / UNKNOWN / NONE_FOUND for the evidence finding.
             removal_impact: What happens if the step is removed (optional).
+            removal_state: KNOWN / UNKNOWN / NONE_FOUND for the removal finding.
             requirement_type: e.g. customer / regulatory / internal (optional).
 
         Returns:
             A confirmation message.
         """
         s = self._step(step_id)
-        if owner is not None:
-            s.necessity.owner_investigated = True
-            s.necessity.owner = owner
-            if s.necessity.source is None:
-                s.necessity.source = owner
-        if evidence is not None:
-            s.necessity.evidence_investigated = True
-            s.necessity.evidence = evidence
-        if removal_impact is not None:
-            s.necessity.removal_investigated = True
+        if owner is not None or owner_state is not None:
+            s.necessity.owner_asked = True
+            s.necessity.owner_result = _parse_necessity_result(owner_state or "KNOWN")
+            if owner is not None:
+                s.necessity.owner = owner
+        if evidence is not None or evidence_state is not None:
+            s.necessity.evidence_asked = True
+            s.necessity.evidence_result = _parse_necessity_result(
+                evidence_state or "KNOWN"
+            )
+            if evidence is not None:
+                s.necessity.evidence = evidence
+        if removal_impact is not None or removal_state is not None:
+            s.necessity.removal_asked = True
+            s.necessity.removal_result = _parse_necessity_result(
+                removal_state or "KNOWN"
+            )
+            if removal_impact is not None:
+                s.necessity.removal_impact = removal_impact
         if requirement_type is not None:
             s.necessity.requirement_type = requirement_type
         return f"Necessity detail recorded for {step_id}."
@@ -303,7 +342,7 @@ class InterviewTools(ToolKitBase):
 
         Follow the improvement order: question the requirement, then delete /
         simplify, then accelerate, then automate / AI. Only propose automation
-        after the step's necessity has been questioned.
+        after the step's necessity has been questioned and recorded.
 
         Args:
             step_id: The step the idea concerns (optional).
@@ -329,7 +368,8 @@ class InterviewTools(ToolKitBase):
         """Mark the interview as complete and close it.
 
         Call this once you have covered the workflow, its branches, each step's
-        necessity, and questioned questionable steps.
+        necessity, and recorded the answers to the necessity questions for
+        questionable steps.
 
         Args:
             summary: Optional short summary of the interview.
@@ -361,8 +401,8 @@ class InterviewTools(ToolKitBase):
         return evaluate(self.db, scenario_id).rationale_pass
 
     def assert_necessity_challenged(self, scenario_id: str) -> bool:
-        """True if the questionable legacy step was challenged with correct
-        improvement order."""
+        """True if the questionable step's observations were all recorded with
+        correct improvement order."""
         return evaluate(self.db, scenario_id).challenge_pass
 
     # ------------------------------------------------------------------ diagnostics

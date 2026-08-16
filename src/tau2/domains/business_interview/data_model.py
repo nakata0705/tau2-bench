@@ -1,15 +1,37 @@
-"""Workflow-first data model for the business_interview domain (v2).
+"""Workflow-first data model for the business_interview domain (v2, hardened).
 
 The central concept is a reconstructed *workflow graph*, not a bag of facts.
 The agent records the business process it learns as a Workflow made of Steps,
 Transitions and Branches. Each Step carries its structural attributes (actor,
 system, reads, writes, condition) and its *necessity* (why the step is needed,
-who requires it, what evidence exists, and whether it was challenged).
+who requires it, what evidence exists, what happens if removed, and whether it
+was challenged).
 
-Epistemic information (a source's FACT / BELIEF / UNKNOWN about a step's
-necessity) is a secondary layer attached to a Step's ``Necessity``. ``FACT``
-means the source asserted it as certain — it is NOT objective truth; objective
-correctness is judged by the evaluator against the benchmark ground truth.
+Design principles of the hardened model:
+
+- **ASKED vs RESULT RECORDED are separate axes.** A question being asked
+  (``*_asked``) is never conflated with an answer being recorded (the
+  ``*_result`` / ``rationale_result`` fields). The benchmark evaluates whether
+  a *result was recorded*, not merely whether a question was posed.
+
+- **UNKNOWN is an explicit recorded outcome.** ``UNKNOWN`` means the
+  stakeholder was asked and confirmed they do not know — and that outcome was
+  recorded. An unasked / unanswered dimension is ``NOT_RECORDED``, never
+  ``UNKNOWN``. ``NONE_FOUND`` means the investigation happened and nothing
+  exists.
+
+- **Observations vs analyst assessment.** ``why`` / ``owner`` / ``evidence`` /
+  ``removal`` are *observations* obtained from the stakeholder and recorded via
+  ``record_necessity_detail`` / ``set_step_rationale`` / ``set_step_unknown``.
+  ``deletion_considered`` / ``deletion_candidate`` are the analyst's own
+  assessment and are recorded separately. ``challenge_pass`` requires the
+  necessary observations to be recorded.
+
+- **No hidden canonical ids and no ``concept -> single step`` constraint.** The
+  agent uses its own step ids and its own action text; the evaluator resolves
+  actions to language-independent *concepts* and supports multiple steps
+  sharing the same concept, distinguishing them deterministically by
+  actor/system, then data.
 """
 
 from enum import Enum
@@ -36,88 +58,82 @@ class EpistemicStatus(str, Enum):
     UNKNOWN = "UNKNOWN"
 
 
+class RationaleResult(str, Enum):
+    """The recorded outcome of the "why is this step needed?" investigation.
+
+    - ``NOT_RECORDED``: the question was not asked or no answer was recorded.
+    - ``FACT``: a reason was recorded as asserted certain.
+    - ``BELIEF``: a reason was recorded as the stakeholder's opinion / guess.
+    - ``UNKNOWN``: the stakeholder confirmed they do not know, recorded as such.
+    """
+
+    NOT_RECORDED = "NOT_RECORDED"
+    FACT = "FACT"
+    BELIEF = "BELIEF"
+    UNKNOWN = "UNKNOWN"
+
+
+class NecessityResult(str, Enum):
+    """The recorded outcome of an owner / evidence / removal investigation.
+
+    - ``NOT_RECORDED``: not asked or no answer recorded.
+    - ``KNOWN``: a concrete value was found and recorded.
+    - ``UNKNOWN``: the stakeholder confirmed they do not know (recorded).
+    - ``NONE_FOUND``: investigated; nothing exists / no one / no evidence.
+    """
+
+    NOT_RECORDED = "NOT_RECORDED"
+    KNOWN = "KNOWN"
+    UNKNOWN = "UNKNOWN"
+    NONE_FOUND = "NONE_FOUND"
+
+
 class Necessity(BaseModel):
     """Why a step is needed and how strongly it is grounded.
 
-    Captures the answers to the necessity questions a good BA asks, with an
-    explicit *investigation* vs *outcome* split so that "the agent did not ask"
-    is never confused with "the agent asked and got UNKNOWN / NONE".
+    The model separates *ASKED* from *RESULT RECORDED* on every necessity
+    dimension:
 
-    Investigation flags record *that a question was asked* (whether or not a
-    concrete answer exists); the found values (``owner`` / ``evidence``) may be
-    empty even when the flag is true — an investigated empty result is a valid
-    finding.
+    - ``*_asked`` flags record that a question was posed (from ``challenge_step``).
+    - ``*_result`` / ``rationale_result`` fields record the outcome that was
+      explicitly recorded. A result may be ``NOT_RECORDED`` even when the
+      question was asked — an asked-but-unanswered dimension is never treated
+      as ``UNKNOWN`` / ``NONE_FOUND``.
 
-    - why is this step needed?    (``investigated`` + ``rationale`` / ``epistemic_status``)
-    - who requires it?            (``owner_investigated`` + ``owner``)
-    - what is the evidence?       (``evidence_investigated`` + ``evidence``)
-    - what happens if removed?    (``removal_investigated``)
-    - can it be deleted/simplified?  (``deletion_considered``)
-
-    ``epistemic_status`` is how the source presented the rationale (FACT /
-    BELIEF / UNKNOWN); it is separate from the objective state the evaluator
-    holds in the ground truth.
+    ``deletion_considered`` / ``deletion_candidate`` are the analyst's own
+    assessment (separate from the stakeholder observations).
     """
 
-    # --- investigation flags (was the question asked?) ---------------------
-    investigated: bool = Field(
+    # --- ASKED (was the question posed to the stakeholder?) -----------------
+    why_asked: bool = Field(
         default=False,
-        description=(
-            "True if the 'why is this step needed?' question was asked and its "
-            "result recorded (including a recorded UNKNOWN)."
-        ),
+        description="True if the 'why is this step needed?' question was asked.",
     )
-    owner_investigated: bool = Field(
+    owner_asked: bool = Field(
         default=False,
-        description="True if who-requires-it / owner was asked (value may be none).",
+        description="True if who-requires-it / owner was asked.",
     )
-    evidence_investigated: bool = Field(
+    evidence_asked: bool = Field(
         default=False,
-        description="True if supporting evidence was asked about (value may be none).",
+        description="True if supporting evidence was asked about.",
     )
-    removal_investigated: bool = Field(
+    removal_asked: bool = Field(
         default=False,
-        description="True if 'what happens if this step is removed?' was asked.",
+        description="True if 'what happens if removed?' was asked.",
     )
+
+    # --- analyst assessment (NOT a stakeholder observation) -----------------
     deletion_considered: bool = Field(
         default=False,
-        description="True if deletion/simplification of this step was considered.",
+        description="True if deletion/simplification of this step was considered (analyst assessment).",
     )
-
-    # --- rationale / why ----------------------------------------------------
-    rationale_known: bool = Field(
+    deletion_candidate: bool = Field(
         default=False,
-        description="True if a rationale for the step's necessity was stated.",
-    )
-    rationale: Optional[str] = Field(
-        default=None,
-        description="The stated reason the step is needed (paraphrase OK).",
-    )
-    source: Optional[str] = Field(
-        default=None,
-        description="Who stated the rationale (the stakeholder).",
-    )
-    epistemic_status: Optional[EpistemicStatus] = Field(
-        default=None,
         description=(
-            "How the source presented the rationale: FACT (asserted as certain), "
-            "BELIEF (opinion/guess), or UNKNOWN (not known)."
+            "True if the agent identified the step as a candidate for deletion / "
+            "simplification (questioned before automating)."
         ),
     )
-
-    # --- owner / evidence found values --------------------------------------
-    owner: Optional[str] = Field(
-        default=None, description="Who requires / owns the requirement (may be none)."
-    )
-    evidence: Optional[str] = Field(
-        default=None, description="Evidence for the requirement (may be none)."
-    )
-    requirement_type: Optional[str] = Field(
-        default=None,
-        description="Optional type of the requirement (e.g. 'customer', 'regulatory', 'internal').",
-    )
-
-    # --- challenge -----------------------------------------------------------
     challenged: bool = Field(
         default=False,
         description="True if the agent questioned this step's necessity.",
@@ -129,13 +145,68 @@ class Necessity(BaseModel):
             "'who requires it?', 'what if removed?')."
         ),
     )
-    deletion_candidate: bool = Field(
-        default=False,
-        description=(
-            "True if the agent identified the step as a candidate for deletion / "
-            "simplification (questioned before automating)."
-        ),
+
+    # --- why / rationale observation ----------------------------------------
+    rationale_result: RationaleResult = Field(
+        default=RationaleResult.NOT_RECORDED,
+        description="The recorded outcome of the why-investigation.",
     )
+    rationale: Optional[str] = Field(
+        default=None,
+        description="The stated reason the step is needed (paraphrase OK).",
+    )
+    source: Optional[str] = Field(
+        default=None,
+        description="Who stated the rationale (the stakeholder).",
+    )
+
+    # --- owner observation ---------------------------------------------------
+    owner_result: NecessityResult = Field(
+        default=NecessityResult.NOT_RECORDED,
+        description="The recorded outcome of the owner investigation.",
+    )
+    owner: Optional[str] = Field(
+        default=None, description="Who requires / owns the requirement (may be none)."
+    )
+
+    # --- evidence observation ------------------------------------------------
+    evidence_result: NecessityResult = Field(
+        default=NecessityResult.NOT_RECORDED,
+        description="The recorded outcome of the evidence investigation.",
+    )
+    evidence: Optional[str] = Field(
+        default=None, description="Evidence for the requirement (may be none)."
+    )
+
+    # --- removal-impact observation ------------------------------------------
+    removal_result: NecessityResult = Field(
+        default=NecessityResult.NOT_RECORDED,
+        description="The recorded outcome of the removal-impact investigation.",
+    )
+    removal_impact: Optional[str] = Field(
+        default=None, description="What happens if the step is removed (may be none)."
+    )
+    requirement_type: Optional[str] = Field(
+        default=None,
+        description="Optional type of the requirement (e.g. 'customer', 'regulatory', 'internal').",
+    )
+
+    # --- convenience ----------------------------------------------------------
+    @property
+    def why_recorded(self) -> bool:
+        return self.rationale_result != RationaleResult.NOT_RECORDED
+
+    @property
+    def owner_recorded(self) -> bool:
+        return self.owner_result != NecessityResult.NOT_RECORDED
+
+    @property
+    def evidence_recorded(self) -> bool:
+        return self.evidence_result != NecessityResult.NOT_RECORDED
+
+    @property
+    def removal_recorded(self) -> bool:
+        return self.removal_result != NecessityResult.NOT_RECORDED
 
 
 class WorkflowStep(BaseModel):
@@ -218,6 +289,10 @@ class WorkflowEvaluation(BaseModel):
     step ids never leak into the score.
 
     Accuracy metrics are fractions in [0,1] over the ground-truth items.
+
+    Challenge diagnostics separate the *asked* axis from the *result recorded*
+    axis for each dimension, so a failure reason is human-readable (e.g.
+    ``owner_asked: true`` / ``owner_recorded: false``).
     """
 
     protocol_completed: bool = Field(
@@ -279,7 +354,7 @@ class WorkflowEvaluation(BaseModel):
 
     # --- rationale / uncertainty ---------------------------------------------
     rationale_coverage: float = Field(
-        description="Fraction of ground-truth necessity steps fully handled (investigated + correct)."
+        description="Fraction of ground-truth necessity steps fully handled (recorded + correct)."
     )
     confirmed_rationale_ok: bool = Field(
         description="True if the confirmed rationale's epistemic status, source and content all match."
@@ -291,30 +366,51 @@ class WorkflowEvaluation(BaseModel):
         description="True if a rationale was asserted as FACT for a step whose objective rationale is UNKNOWN."
     )
 
-    # --- necessity challenge (investigation dimensions) ----------------------
+    # --- necessity challenge (ASKED vs RESULT RECORDED per dimension) --------
     challenge_target_identified: bool = Field(
         description="True if the questionable step was found among the reconstructed steps."
     )
-    why_investigated: bool = Field(
-        description="True if the rationale/why of the questionable step was investigated."
+    why_asked: bool = Field(
+        description="True if the 'why' of the questionable step was asked."
     )
-    owner_investigated: bool = Field(
-        description="True if the owner / who-requires-it of the questionable step was investigated."
+    why_recorded: bool = Field(
+        description="True if a 'why' result was recorded for the questionable step."
     )
-    evidence_investigated: bool = Field(
-        description="True if evidence for the questionable step was investigated."
+    owner_asked: bool = Field(
+        description="True if the owner of the questionable step was asked."
     )
-    removal_investigated: bool = Field(
-        description="True if removal-impact of the questionable step was investigated."
+    owner_recorded: bool = Field(
+        description="True if an owner result was recorded for the questionable step."
+    )
+    owner_result: str = Field(
+        description="Recorded owner outcome (KNOWN / UNKNOWN / NONE_FOUND / NOT_RECORDED)."
+    )
+    evidence_asked: bool = Field(
+        description="True if evidence for the questionable step was asked."
+    )
+    evidence_recorded: bool = Field(
+        description="True if an evidence result was recorded for the questionable step."
+    )
+    evidence_result: str = Field(
+        description="Recorded evidence outcome (KNOWN / UNKNOWN / NONE_FOUND / NOT_RECORDED)."
+    )
+    removal_asked: bool = Field(
+        description="True if removal-impact of the questionable step was asked."
+    )
+    removal_recorded: bool = Field(
+        description="True if a removal result was recorded for the questionable step."
+    )
+    removal_result: str = Field(
+        description="Recorded removal outcome (KNOWN / UNKNOWN / NONE_FOUND / NOT_RECORDED)."
     )
     deletion_considered: bool = Field(
-        description="True if deletion of the questionable step was considered."
+        description="True if deletion of the questionable step was considered (analyst assessment)."
     )
     challenge_done: bool = Field(
-        description="True if the questionable legacy step was fully challenged on all dimensions."
+        description="True if every required observation was recorded and deletion was considered."
     )
     improvement_order_ok: bool = Field(
-        description="True if necessity was investigated before proposing delete/simplify/accelerate/automate."
+        description="True if necessity was recorded before proposing delete/simplify/accelerate/automate."
     )
 
     # --- gates ---------------------------------------------------------------
@@ -325,7 +421,7 @@ class WorkflowEvaluation(BaseModel):
         description="True if confirmed rationale captured correctly and UNKNOWN preserved (no fabrication)."
     )
     challenge_pass: bool = Field(
-        description="True if the questionable step was fully challenged with correct improvement order."
+        description="True if the questionable step's observations were all recorded with correct improvement order."
     )
     protocol_pass: bool = Field(
         description="Equal to protocol_completed (named for protocol-vs-quality comparison)."

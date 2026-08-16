@@ -69,10 +69,10 @@ ids):
 | `add_step(step_id, action, actor?, system?, reads?, writes?, condition?)` | Record a step |
 | `connect_steps(from_step, to_step, condition?)` | Record a transition / conditional path |
 | `add_branch(from_step, condition, paths)` | Record an explicit branch |
-| `set_step_rationale(step_id, content, epistemic_status, source?)` | Record why a step is needed (FACT/BELIEF) |
-| `set_step_unknown(step_id, note?)` | Record an UNKNOWN necessity (marks investigated) |
-| `challenge_step(step_id, dimension, question)` | Investigate one necessity dimension (why / owner / evidence / removal / deletion) |
-| `record_necessity_detail(step_id, owner?, evidence?, removal_impact?, requirement_type?)` | Record who requires / evidence / removal impact |
+| `set_step_rationale(step_id, content, epistemic_status, source?)` | Record the "why" result (FACT / BELIEF / UNKNOWN) |
+| `set_step_unknown(step_id, note?)` | Record an explicit UNKNOWN "why" result |
+| `challenge_step(step_id, dimension, question)` | **Ask** one necessity question (why / owner / evidence / removal / deletion). Asking alone records nothing — the answer must be recorded separately. |
+| `record_necessity_detail(step_id, owner?, owner_state?, evidence?, evidence_state?, removal_impact?, removal_state?, requirement_type?)` | **Record** the owner / evidence / removal observation results (KNOWN / UNKNOWN / NONE_FOUND) |
 | `propose_improvement(step_id?, kind, note?)` | Record an improvement (order-aware) |
 | `finish_interview(summary?)` | Close the interview |
 
@@ -103,28 +103,38 @@ independent. All granular metrics are surfaced via `get_eval_diagnostics`:
 - `transition_accuracy` (from/to **and** condition)
 - `branch_recall`, `branch_condition_accuracy`
 - `rationale_coverage`, `confirmed_rationale_ok`, `uncertainty_handling`, `fabricated_rationale`
-- `challenge_target_identified`, `why_investigated`, `owner_investigated`,
-  `evidence_investigated`, `removal_investigated`, `deletion_considered`,
-  `challenge_done`, `improvement_order_ok`
+- `challenge_target_identified`, `why_asked` / `why_recorded`, `owner_asked` / `owner_recorded` / `owner_result`, `evidence_asked` / `evidence_recorded` / `evidence_result`, `removal_asked` / `removal_recorded` / `removal_result`, `deletion_considered`, `challenge_done`, `improvement_order_ok`
 
 ## Necessity / challenge model
 
-Each step carries a `Necessity` with an explicit **investigation vs outcome**
-split so that "the agent did not ask" is never confused with "the agent asked
-and got UNKNOWN / NONE":
+Each step carries a `Necessity` that **separates ASKED from RESULT RECORDED** on
+every necessity dimension. The benchmark evaluates whether a *result was
+recorded*, not merely whether a question was posed.
 
-- `investigated` — the "why is this needed?" question was asked and its result
-  recorded (including a recorded UNKNOWN).
-- `owner_investigated` / `evidence_investigated` / `removal_investigated` /
-  `deletion_considered` — the corresponding necessity question was asked
-  (regardless of whether a concrete answer exists).
-- `rationale` / `epistemic_status` / `source` / `owner` / `evidence` — the found
-  values. An investigated "no owner" / "no evidence" / "reason unknown" is a
-  valid finding; recording an UNKNOWN as a FACT is an epistemic fail.
+- `why_asked` / `owner_asked` / `evidence_asked` / `removal_asked` — the question
+  was posed (set by `challenge_step`). Asking alone records nothing.
+- `rationale_result` (FACT / BELIEF / UNKNOWN / NOT_RECORDED) — the recorded
+  "why" outcome (`set_step_rationale` / `set_step_unknown`).
+- `owner_result` / `evidence_result` / `removal_result` (KNOWN / UNKNOWN /
+  NONE_FOUND / NOT_RECORDED) — the recorded observation outcomes
+  (`record_necessity_detail`).
+- `deletion_considered` / `deletion_candidate` — the **analyst's own assessment**, kept separate from the stakeholder observations.
 
-`FACT` means the source asserted it as certain — it is **not** objective truth;
-the objective rationale state and the expected rationale content / source are in
-the ground truth.
+`UNKNOWN` means the stakeholder was asked and confirmed they do not know, and
+that was recorded. `NONE_FOUND` means it was investigated and nothing exists.
+An asked-but-unrecorded dimension is `NOT_RECORDED` — it is **never** treated as
+`UNKNOWN` / `NONE_FOUND`. `challenge_pass` requires every required observation
+(why / owner / evidence / removal) to be recorded **and** deletion to be
+considered. `FACT` means the source asserted it as certain — it is **not**
+objective truth; recording an UNKNOWN as a FACT is an epistemic fail.
+
+## Same-concept multi-step matching
+
+More than one ground-truth step may share an action concept. Step matching
+resolves a reconstructed step to a concept, then disambiguates same-concept
+candidates deterministically by priority: **1. action concept, 2. actor/system,
+3. data**. No LLM judge, no hidden step ids. A `same_concept_workflow` scenario
+(not a task) exercises this in the falsification tests.
 
 ## Running
 
@@ -142,10 +152,11 @@ uv run pytest tests/test_domains/test_business_interview/
 ```
 
 The tests cover the workflow tools, leakage-free agent-visible context,
-stakeholder truth completeness, arbitrary step-id canonicalisation, NONE vs
-UNKNOWN separation, confirmed-rationale content/source/status evaluation, EN/JA
-semantic equivalence, precision-aware data, condition-aware transitions, and the
-workflow falsification suite A-R.
+step-unit stakeholder truth completeness, ASKED vs RESULT RECORDED, the
+UNKNOWN / NOT_RECORDED / NONE_FOUND distinction, arbitrary step-id
+canonicalisation, same-concept multi-step matching, confirmed-rationale
+content/source/status evaluation, EN/JA semantic equivalence, precision-aware
+data, condition-aware transitions, and the workflow falsification suite A-V.
 
 ## Design notes
 
