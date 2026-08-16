@@ -1,14 +1,12 @@
-"""Scenario-local, language-independent concepts for business_interview (v2).
+"""Language-independent concepts for business_interview (v3).
 
-The benchmark is not a hidden-id guessing game and not a surface-language
-matching game: an equivalent English or Japanese reconstruction must be
-evaluated identically. To achieve that, the evaluator resolves free-text
-action / condition / metadata / rationale strings to a bounded set of
-*concepts* using bilingual signal keywords.
+Concepts are **evaluator-only annotations** — they are not domain objects and are
+not stored on nodes. They let the evaluator decide that a Truth Node such as
+"approve high-value quotation" and an Agent Node such as "100万円超の見積を営業部長が承認"
+denote the same thing, so an equivalent EN or JA reconstruction is scored
+identically and agent-assigned node ids never leak into the score.
 
-The agent is never asked to output a concept id. Only the evaluator uses these
-concepts (evaluator-only, in domain code). Resolution is deterministic
-(substring signal scoring), so no LLM judge is needed and EN/JA are equivalent.
+Resolution is deterministic (bilingual substring signal scoring); no LLM judge.
 """
 
 from dataclasses import dataclass
@@ -17,14 +15,6 @@ from typing import Optional
 
 @dataclass(frozen=True)
 class Concept:
-    """A bounded semantic target that free text is resolved against.
-
-    ``primary`` signals are the defining keywords (typically the verb /
-    action word) and are weighted double. ``context`` signals add supporting
-    evidence (object, tool, role). ``actor`` / ``system`` are used only to
-    break ties between equally-scored concepts — never to force a match.
-    """
-
     id: str
     primary: list[str]
     context: list[str] = ()
@@ -33,10 +23,10 @@ class Concept:
 
 
 # ---------------------------------------------------------------------------
-# Step concepts (the 6 actions of the quotation workflow)
+# Node concepts (the 6 actions of the quotation workflow)
 # ---------------------------------------------------------------------------
 
-STEP_CONCEPTS = [
+NODE_CONCEPTS = [
     Concept(
         "receive_request",
         ["receive", "request", "intake", "受け付", "受付", "依頼を受け"],
@@ -81,7 +71,7 @@ STEP_CONCEPTS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Read/write data-item concepts (for recall + precision scoring)
+# Read/write data-item concepts
 # ---------------------------------------------------------------------------
 
 DATA_CONCEPTS = [
@@ -95,57 +85,32 @@ DATA_CONCEPTS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Transition / branch condition concepts
+# Edge predicate concepts (control-flow conditions)
 # ---------------------------------------------------------------------------
 
-CONDITION_CONCEPTS = [
+PREDICATE_CONCEPTS = [
     Concept(
-        "cond_amount_over",
+        "pred_amount_over",
         ["over", "above", "exceed", "greater", "more than", "超", "超過"],
         ["amount", "1,000,000", "100万", "百万", "高額", "金額"],
     ),
     Concept(
-        "cond_amount_below",
+        "pred_amount_below",
         ["below", "under", "less than", "at or below", "以下", "未満"],
         ["amount", "1,000,000", "100万", "百万", "金額"],
     ),
     Concept(
-        "cond_month_end",
+        "pred_month_end",
         ["month", "month-end", "monthly", "月末"],
         ["summary", "accounting", "excel", "経理"],
-    ),
-    Concept(
-        "cond_threshold",
-        ["threshold", "閾値", "しきい値"],
-        ["amount", "金額"],
     ),
 ]
 
 # ---------------------------------------------------------------------------
-# Workflow metadata concepts (trigger / purpose / outcome)
+# Necessity value concepts
 # ---------------------------------------------------------------------------
 
-METADATA_CONCEPTS = {
-    "trigger": Concept(
-        "trigger", ["request", "依頼"], ["customer", "quotation", "見積"]
-    ),
-    "purpose": Concept(
-        "purpose",
-        ["accurate", "正確"],
-        ["produce", "create", "quotation", "見積", "作成"],
-    ),
-    "outcome": Concept(
-        "outcome",
-        ["receive", "receives", "受け取", "受け渡し"],
-        ["customer", "quotation", "見積", "completed", "完了"],
-    ),
-}
-
-# ---------------------------------------------------------------------------
-# Confirmed-rationale content concepts
-# ---------------------------------------------------------------------------
-
-RATIONALE_CONCEPTS = {
+NECESSITY_CONCEPTS = {
     "credit_risk": Concept(
         "credit_risk",
         ["credit", "与信"],
@@ -163,8 +128,7 @@ def resolve(
     """Resolve free text to the id of the best-matching concept, or None.
 
     Scoring is ``2 * primary_hits + context_hits`` (substring, case-insensitive).
-    A concept must score > 0 to be a candidate. ``actor`` / ``system`` only
-    break ties between equally-scored concepts.
+    ``actor`` / ``system`` only break ties between equally-scored concepts.
     """
     if not text:
         return None
@@ -185,7 +149,7 @@ def resolve(
     if actor:
         a = actor.strip().lower()
         for c in candidates:
-            if c.actor and c.actor in a or (a and c.actor and a in c.actor):
+            if (c.actor and c.actor in a) or (a and c.actor and a in c.actor):
                 return c.id
     if system:
         s = system.strip().lower()
@@ -193,14 +157,3 @@ def resolve(
             if c.system and c.system in s:
                 return c.id
     return candidates[0].id
-
-
-def resolve_exact(
-    text: Optional[str], concepts: list[Concept], expected_id: str
-) -> bool:
-    """True if free text resolves to exactly ``expected_id``."""
-    return resolve(text, concepts) == expected_id
-
-
-def resolve_metadata(text: Optional[str], expected_key: str) -> bool:
-    return resolve_exact(text, list(METADATA_CONCEPTS.values()), expected_key)

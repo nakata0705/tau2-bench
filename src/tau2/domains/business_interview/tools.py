@@ -1,430 +1,430 @@
+"""Agent tools for the evidence-backed DAG business_interview benchmark (v3).
+
+The agent records **Observations** (immutable evidence) and builds / updates an
+inferred **BusinessDAG**: create node, update node, attach observation, add /
+update edge, set necessity (node property with per-property confidence and
+provenance), and set DAG endpoints. Asking a question is recorded as an
+Observation; there is no Step / Transition / Branch and no asked/challenged
+state in the final DAG.
+"""
+
 from typing import Optional
 
 from tau2.data_model.tasks import Task
-from tau2.domains.business_interview.data_model import (
-    Branch,
-    EpistemicStatus,
-    Improvement,
-    NecessityResult,
-    RationaleResult,
-    Transition,
-    Workflow,
-    WorkflowDB,
-    WorkflowStep,
+from tau2.domains.business_interview.dag import (
+    BusinessDAG,
+    Edge,
+    InferredValue,
+    InterviewDB,
+    Necessity,
+    Node,
+    Observation,
 )
-from tau2.domains.business_interview.semantic import evaluate
+from tau2.domains.business_interview.evaluation import evaluate
+from tau2.domains.business_interview.scenario import get_scenario
 from tau2.environment.toolkit import ToolKitBase, ToolType, is_tool
 
 
-def _parse_necessity_result(value: Optional[str]) -> NecessityResult:
-    try:
-        return NecessityResult(str(value).strip().upper())
-    except ValueError:
-        return NecessityResult.KNOWN
-
-
 class InterviewTools(ToolKitBase):
-    """Tools for reconstructing a workflow during a business interview.
+    """Tools to infer the business DAG from stakeholder observations."""
 
-    The agent builds a ``Workflow`` (steps, transitions, branches) from what the
-    stakeholder says, and records each step's necessity. **Asking a question
-    (``challenge_step``) is separate from recording the answer** — the answer
-    must be recorded via ``record_necessity_detail`` / ``set_step_rationale`` /
-    ``set_step_unknown`` for it to count. An asked-but-unrecorded dimension is
-    treated as NOT_RECORDED, never as UNKNOWN / NONE_FOUND.
+    db: InterviewDB
 
-    The evaluator compares the reconstructed workflow against the evaluator-only
-    ground truth.
-    """
-
-    db: WorkflowDB
-
-    def __init__(self, db: WorkflowDB) -> None:
+    def __init__(self, db: InterviewDB) -> None:
         super().__init__(db)
 
+    # ------------------------------------------------------------- helpers
+
+    def _dag(self) -> BusinessDAG:
+        if self.db.dag is None:
+            self.db.dag = BusinessDAG(id="dag", name="")
+        return self.db.dag
+
+    def _node(self, node_id: str) -> Node:
+        dag = self._dag()
+        if node_id not in dag.nodes:
+            raise ValueError(f"node not found: {node_id}")
+        return dag.nodes[node_id]
+
+    def _edge(self, edge_id: str) -> Edge:
+        dag = self._dag()
+        if edge_id not in dag.edges:
+            raise ValueError(f"edge not found: {edge_id}")
+        return dag.edges[edge_id]
+
     @staticmethod
-    def _parse_status(status: Optional[str]) -> Optional[EpistemicStatus]:
-        if status is None:
-            return None
-        try:
-            return EpistemicStatus(str(status).strip().upper())
-        except ValueError:
-            return None
+    def _iv(
+        value: Optional[str],
+        confidence: float = 1.0,
+        observation_id: Optional[str] = None,
+    ) -> InferredValue:
+        return InferredValue(
+            value=value,
+            confidence=confidence,
+            observation_ids=[observation_id] if observation_id else [],
+        )
 
-    def _step(self, step_id: str) -> WorkflowStep:
-        if self.db.workflow is None:
-            raise ValueError("No workflow created yet; call create_workflow first.")
-        for s in self.db.workflow.steps:
-            if s.id == step_id:
-                return s
-        raise ValueError(f"Step not found: {step_id}")
+    @classmethod
+    def _set_value(
+        cls,
+        current: InferredValue,
+        value: str,
+        confidence: float,
+        observation_id: Optional[str],
+    ) -> InferredValue:
+        """Set a value while accumulating observation provenance.
 
-    # ------------------------------------------------------------------ tools
+        If ``current`` already carried a value, its observation_ids are kept and
+        the new observation is merged in (multiple observations can support one
+        attribute).
+        """
+        ids = list(current.observation_ids) if current.value is not None else []
+        if observation_id:
+            ids.append(observation_id)
+        return InferredValue(
+            value=value,
+            confidence=confidence,
+            observation_ids=list(dict.fromkeys(ids)),
+        )
+
+    # ------------------------------------------------------------- tools
 
     @is_tool(ToolType.WRITE)
-    def create_workflow(
-        self,
-        name: str,
-        trigger: Optional[str] = None,
-        purpose: Optional[str] = None,
-        outcome: Optional[str] = None,
-    ) -> str:
-        """Create the workflow being studied.
-
-        Call this once you have confirmed the scope of the current process.
+    def start_inference(self, name: str = "") -> str:
+        """Start building the inferred business DAG.
 
         Args:
-            name: A short name for the workflow.
-            trigger: What starts the workflow (optional).
-            purpose: Why the workflow exists (optional).
-            outcome: The intended outcome (optional).
+            name: Optional name for the DAG.
 
         Returns:
             A confirmation message.
         """
-        self.db.workflow = Workflow(
-            id="wf", name=name, trigger=trigger, purpose=purpose, outcome=outcome
-        )
-        return "Workflow created."
+        self.db.dag = BusinessDAG(id="dag", name=name)
+        return "Inference started."
 
     @is_tool(ToolType.WRITE)
-    def add_step(
+    def record_observation(
         self,
-        step_id: str,
+        text: str,
+        source_id: str = "stakeholder",
+        locale: Optional[str] = None,
+    ) -> str:
+        """Record an observation (something the stakeholder said).
+
+        Observations are immutable evidence. Record each statement the
+        stakeholder makes, then attach it to the node it supports.
+
+        Args:
+            text: What the stakeholder said.
+            source_id: Who said it (default 'stakeholder').
+            locale: Optional language tag.
+
+        Returns:
+            The new observation id.
+        """
+        obs = Observation(
+            id=f"o{len(self.db.observations) + 1}",
+            source_id=source_id,
+            text=text,
+            order=len(self.db.observations),
+            locale=locale,
+        )
+        self.db.observations.append(obs)
+        return f"Recorded observation {obs.id}."
+
+    @is_tool(ToolType.WRITE)
+    def add_node(
+        self,
+        node_id: str,
         action: str,
         actor: Optional[str] = None,
         system: Optional[str] = None,
         reads: Optional[list[str]] = None,
         writes: Optional[list[str]] = None,
-        condition: Optional[str] = None,
+        confidence: float = 1.0,
+        observation_id: Optional[str] = None,
     ) -> str:
-        """Record a step in the workflow.
+        """Add a node to the inferred DAG.
+
+        Only create a node when no existing node corresponds to the
+        observation; otherwise update the existing node.
 
         Args:
-            step_id: Your own short identifier for this step (e.g. "s1").
-            action: What is done in this step.
-            actor: Who performs it (role/person).
-            system: Which system / tool is used (optional).
-            reads: Data this step reads (optional).
-            writes: Data this step creates / writes (optional).
-            condition: When / under what condition the step happens (optional).
+            node_id: Your own identifier for this node.
+            action: What is done in this node (natural language).
+            actor: Who performs it (optional).
+            system: Which system / tool (optional).
+            reads: Data this node reads (optional).
+            writes: Data this node writes (optional).
+            confidence: Confidence in the recorded attributes [0, 1].
+            observation_id: Observation supporting this node (optional).
 
         Returns:
             A confirmation message.
         """
-        if self.db.workflow is None:
-            self.db.workflow = Workflow(id="wf", name="")
-        step = WorkflowStep(
-            id=step_id,
-            action=action,
-            actor=actor,
-            system=system,
-            reads=list(reads or []),
-            writes=list(writes or []),
-            condition=condition,
+        dag = self._dag()
+        if node_id in dag.nodes:
+            raise ValueError(f"node already exists: {node_id}")
+        dag.nodes[node_id] = Node(
+            id=node_id,
+            action=self._iv(action, confidence, observation_id),
+            actor=self._iv(actor, confidence, observation_id)
+            if actor is not None
+            else InferredValue(),
+            system=self._iv(system, confidence, observation_id)
+            if system is not None
+            else InferredValue(),
+            reads=[self._iv(r, confidence, observation_id) for r in (reads or [])],
+            writes=[self._iv(w, confidence, observation_id) for w in (writes or [])],
+            observation_ids=[observation_id] if observation_id else [],
         )
-        self.db.workflow.steps = [s for s in self.db.workflow.steps if s.id != step_id]
-        self.db.workflow.steps.append(step)
-        return f"Step recorded ({step_id})."
+        return f"Added node {node_id}."
 
     @is_tool(ToolType.WRITE)
-    def connect_steps(
-        self, from_step: str, to_step: str, condition: Optional[str] = None
-    ) -> str:
-        """Record that one step is followed by another.
-
-        Use a ``condition`` when the next step depends on a condition (this is
-        how conditional paths and branches are captured).
-
-        Args:
-            from_step: The preceding step id.
-            to_step: The following step id.
-            condition: Optional condition under which this transition happens.
-
-        Returns:
-            A confirmation message.
-        """
-        if self.db.workflow is None:
-            raise ValueError("No workflow created yet; call create_workflow first.")
-        self.db.workflow.transitions.append(
-            Transition(from_step=from_step, to_step=to_step, condition=condition)
-        )
-        return f"Transition recorded ({from_step} -> {to_step})."
-
-    @is_tool(ToolType.WRITE)
-    def add_branch(self, from_step: str, condition: str, paths: list[str]) -> str:
-        """Record an explicit branch: a step whose next step depends on a condition.
-
-        Use this when the flow diverges (e.g. different handling based on a
-        condition).
-
-        Args:
-            from_step: The step at which the flow diverges.
-            condition: The branching condition.
-            paths: The possible next step ids.
-
-        Returns:
-            A confirmation message.
-        """
-        if self.db.workflow is None:
-            raise ValueError("No workflow created yet; call create_workflow first.")
-        self.db.workflow.branches.append(
-            Branch(from_step=from_step, condition=condition, paths=list(paths))
-        )
-        return f"Branch recorded ({from_step})."
-
-    @is_tool(ToolType.WRITE)
-    def set_step_rationale(
+    def update_node(
         self,
-        step_id: str,
-        content: str,
-        epistemic_status: str = EpistemicStatus.FACT.value,
-        source: Optional[str] = None,
+        node_id: str,
+        action: Optional[str] = None,
+        actor: Optional[str] = None,
+        system: Optional[str] = None,
+        reads: Optional[list[str]] = None,
+        writes: Optional[list[str]] = None,
+        confidence: Optional[float] = None,
+        observation_id: Optional[str] = None,
     ) -> str:
-        """Record the reason a step is needed (the result of asking "why").
-
-        This records the answer the interviewee gave. Use epistemic_status="FACT"
-        only for reasons the interviewee asserted as certain, "BELIEF" for their
-        opinion/guess, and "UNKNOWN" if they do not know. Never promote a guess
-        to a fact.
+        """Update an existing node with new attribute values / evidence.
 
         Args:
-            step_id: The step this rationale concerns.
-            content: The stated reason the step is needed.
-            epistemic_status: "FACT", "BELIEF", or "UNKNOWN".
-            source: Who stated this rationale (optional).
+            node_id: The node to update.
+            action: New action text (optional).
+            actor: New actor (optional).
+            system: New system (optional).
+            reads: New read data list (optional).
+            writes: New write data list (optional).
+            confidence: Confidence for the updated attributes [0, 1] (default 1.0).
+            observation_id: Observation supporting this update (optional).
 
         Returns:
             A confirmation message.
         """
-        status = self._parse_status(epistemic_status) or EpistemicStatus.FACT
-        s = self._step(step_id)
-        s.necessity.why_asked = True
-        s.necessity.rationale_result = RationaleResult(status.value)
-        s.necessity.rationale = content
-        s.necessity.source = source
-        return f"Rationale recorded for {step_id}."
-
-    @is_tool(ToolType.WRITE)
-    def set_step_unknown(self, step_id: str, note: Optional[str] = None) -> str:
-        """Record that the reason for a step is unknown (the result of asking "why").
-
-        Use this when the interviewee confirmed they do not know why the step is
-        done. This is an explicit UNKNOWN result — it is not a guess.
-
-        Args:
-            step_id: The step whose necessity is unknown.
-            note: Optional note (e.g. who does not know).
-
-        Returns:
-            A confirmation message.
-        """
-        s = self._step(step_id)
-        s.necessity.why_asked = True
-        s.necessity.rationale_result = RationaleResult.UNKNOWN
-        s.necessity.rationale = note
-        return f"UNKNOWN rationale recorded for {step_id}."
-
-    @is_tool(ToolType.WRITE)
-    def challenge_step(self, step_id: str, dimension: str, question: str) -> str:
-        """Ask (investigate) one necessity question about a step.
-
-        ``dimension`` is one of:
-          - "why":      why is this step needed?
-          - "owner":    who requires it / who owns it?
-          - "evidence": what evidence supports the requirement?
-          - "removal":  what happens if this step is removed?
-          - "deletion": is the step a candidate for deletion / simplification?
-
-        Asking a question is NOT enough: record the answer separately with
-        ``record_necessity_detail`` (owner / evidence / removal), or
-        ``set_step_rationale`` / ``set_step_unknown`` (why). An investigated
-        "no owner" / "no evidence" / "reason unknown" is a valid recorded
-        finding; an asked question with no recorded answer counts as nothing.
-
-        Args:
-            step_id: The step whose necessity you are questioning.
-            dimension: One of why / owner / evidence / removal / deletion.
-            question: The necessity question you asked.
-
-        Returns:
-            A confirmation message.
-        """
-        s = self._step(step_id)
-        s.necessity.challenged = True
-        dimension = (dimension or "").strip().lower()
-        if dimension == "why":
-            s.necessity.why_asked = True
-        elif dimension == "owner":
-            s.necessity.owner_asked = True
-        elif dimension == "evidence":
-            s.necessity.evidence_asked = True
-        elif dimension == "removal":
-            s.necessity.removal_asked = True
-        elif dimension == "deletion":
-            s.necessity.deletion_considered = True
-        if question:
-            s.necessity.challenges.append(question)
-            q = question.strip().lower()
-            if any(
-                k in q for k in ("delet", "remov", "eliminat", "necessary", "needed")
-            ):
-                s.necessity.deletion_candidate = True
-        return f"Necessity question recorded for {step_id} ({dimension})."
-
-    @is_tool(ToolType.WRITE)
-    def record_necessity_detail(
-        self,
-        step_id: str,
-        owner: Optional[str] = None,
-        owner_state: Optional[str] = None,
-        evidence: Optional[str] = None,
-        evidence_state: Optional[str] = None,
-        removal_impact: Optional[str] = None,
-        removal_state: Optional[str] = None,
-        requirement_type: Optional[str] = None,
-    ) -> str:
-        """Record the answers to the necessity questions (owner / evidence /
-        removal).
-
-        ``owner_state`` / ``evidence_state`` / ``removal_state`` are one of:
-          - "KNOWN"      — a concrete value was found.
-          - "UNKNOWN"    — the interviewee said they do not know.
-          - "NONE_FOUND" — investigated and nothing exists / no one / no evidence.
-
-        When a state is omitted but a value is given, the state defaults to
-        "KNOWN". Distinguish "I asked and there is nothing" (NONE_FOUND) and
-        "I asked and they do not know" (UNKNOWN) from "I did not record an
-        answer" — an unrecorded dimension counts as nothing.
-
-        Args:
-            step_id: The step this concerns.
-            owner: Who requires / owns this requirement (optional).
-            owner_state: KNOWN / UNKNOWN / NONE_FOUND for the owner finding.
-            evidence: The evidence for the requirement (optional).
-            evidence_state: KNOWN / UNKNOWN / NONE_FOUND for the evidence finding.
-            removal_impact: What happens if the step is removed (optional).
-            removal_state: KNOWN / UNKNOWN / NONE_FOUND for the removal finding.
-            requirement_type: e.g. customer / regulatory / internal (optional).
-
-        Returns:
-            A confirmation message.
-        """
-        s = self._step(step_id)
-        if owner is not None or owner_state is not None:
-            owner_res = _parse_necessity_result(owner_state or "KNOWN")
-            if owner_res == NecessityResult.KNOWN and not (owner or "").strip():
-                raise ValueError("owner_state=KNOWN requires a non-empty owner value.")
-            s.necessity.owner_asked = True
-            s.necessity.owner_result = owner_res
-            if owner is not None:
-                s.necessity.owner = owner
-        if evidence is not None or evidence_state is not None:
-            evidence_res = _parse_necessity_result(evidence_state or "KNOWN")
-            if evidence_res == NecessityResult.KNOWN and not (evidence or "").strip():
-                raise ValueError(
-                    "evidence_state=KNOWN requires a non-empty evidence value."
-                )
-            s.necessity.evidence_asked = True
-            s.necessity.evidence_result = evidence_res
-            if evidence is not None:
-                s.necessity.evidence = evidence
-        if removal_impact is not None or removal_state is not None:
-            removal_res = _parse_necessity_result(removal_state or "KNOWN")
-            if (
-                removal_res == NecessityResult.KNOWN
-                and not (removal_impact or "").strip()
-            ):
-                raise ValueError(
-                    "removal_state=KNOWN requires a non-empty removal_impact value."
-                )
-            s.necessity.removal_asked = True
-            s.necessity.removal_result = removal_res
-            if removal_impact is not None:
-                s.necessity.removal_impact = removal_impact
-        if requirement_type is not None:
-            s.necessity.requirement_type = requirement_type
-        return f"Necessity detail recorded for {step_id}."
-
-    @is_tool(ToolType.WRITE)
-    def propose_improvement(
-        self, step_id: Optional[str], kind: str, note: str = ""
-    ) -> str:
-        """Record an improvement idea.
-
-        Follow the improvement order: question the requirement, then delete /
-        simplify, then accelerate, then automate / AI. Only propose automation
-        after the step's necessity has been questioned and recorded.
-
-        Args:
-            step_id: The step the idea concerns (optional).
-            kind: One of "question", "delete", "simplify", "accelerate", "automate".
-            note: The idea.
-
-        Returns:
-            A confirmation message.
-        """
-        kind = kind.strip().lower()
-        self.db.improvements.append(
-            Improvement(
-                step_id=step_id,
-                kind=kind,
-                note=note,
-                order=len(self.db.improvements),
+        node = self._node(node_id)
+        conf = confidence if confidence is not None else 1.0
+        if action is not None:
+            node.action = self._set_value(node.action, action, conf, observation_id)
+        if actor is not None:
+            node.actor = self._set_value(node.actor, actor, conf, observation_id)
+        if system is not None:
+            node.system = self._set_value(node.system, system, conf, observation_id)
+        if reads is not None:
+            node.reads = [self._iv(r, conf, observation_id) for r in reads]
+        if writes is not None:
+            node.writes = [self._iv(w, conf, observation_id) for w in writes]
+        if observation_id:
+            node.observation_ids = list(
+                dict.fromkeys(node.observation_ids + [observation_id])
             )
+        return f"Updated node {node_id}."
+
+    @is_tool(ToolType.WRITE)
+    def set_node_necessity(
+        self,
+        node_id: str,
+        rationale: Optional[str] = None,
+        owner: Optional[str] = None,
+        evidence: Optional[str] = None,
+        removal_impact: Optional[str] = None,
+        rationale_confidence: Optional[float] = None,
+        owner_confidence: Optional[float] = None,
+        evidence_confidence: Optional[float] = None,
+        removal_confidence: Optional[float] = None,
+        observation_id: Optional[str] = None,
+    ) -> str:
+        """Record why a node is needed (a node property).
+
+        Each necessity property is an integrated estimate with its own
+        confidence and observation provenance. Leave a property unset (None) to
+        record that the necessity is unknown / not asserted.
+
+        Args:
+            node_id: The node this necessity concerns.
+            rationale: Why the node is needed (optional).
+            owner: Who requires it (optional).
+            evidence: Evidence supporting it (optional).
+            removal_impact: What happens if removed (optional).
+            *_confidence: Per-property confidence in [0, 1] (default 1.0).
+            observation_id: Observation supporting this necessity (optional).
+
+        Returns:
+            A confirmation message.
+        """
+        node = self._node(node_id)
+        nec = node.necessity if node.necessity is not None else Necessity()
+        if rationale is not None:
+            nec.rationale = self._set_value(
+                nec.rationale,
+                rationale,
+                rationale_confidence if rationale_confidence is not None else 1.0,
+                observation_id,
+            )
+        if owner is not None:
+            nec.owner = self._set_value(
+                nec.owner,
+                owner,
+                owner_confidence if owner_confidence is not None else 1.0,
+                observation_id,
+            )
+        if evidence is not None:
+            nec.evidence = self._set_value(
+                nec.evidence,
+                evidence,
+                evidence_confidence if evidence_confidence is not None else 1.0,
+                observation_id,
+            )
+        if removal_impact is not None:
+            nec.removal_impact = self._set_value(
+                nec.removal_impact,
+                removal_impact,
+                removal_confidence if removal_confidence is not None else 1.0,
+                observation_id,
+            )
+        node.necessity = nec
+        if observation_id:
+            node.observation_ids = list(
+                dict.fromkeys(node.observation_ids + [observation_id])
+            )
+        return f"Set necessity for node {node_id}."
+
+    @is_tool(ToolType.WRITE)
+    def add_edge(
+        self,
+        edge_id: str,
+        from_node: str,
+        to_node: str,
+        predicate: Optional[str] = None,
+        confidence: float = 1.0,
+        observation_id: Optional[str] = None,
+    ) -> str:
+        """Add a directed edge between two nodes.
+
+        Use ``predicate`` for a control-flow condition (e.g. 'amount over
+        1,000,000'). Leave it None for unconditional flow. A conditional branch
+        is expressed as multiple outgoing edges with different predicates.
+
+        Args:
+            edge_id: Your own identifier for this edge.
+            from_node: Source node id.
+            to_node: Destination node id.
+            predicate: Optional control-flow condition.
+            confidence: Confidence in the edge [0, 1].
+            observation_id: Observation supporting this edge (optional).
+
+        Returns:
+            A confirmation message.
+        """
+        dag = self._dag()
+        if edge_id in dag.edges:
+            raise ValueError(f"edge already exists: {edge_id}")
+        dag.edges[edge_id] = Edge(
+            id=edge_id,
+            from_node=from_node,
+            to_node=to_node,
+            predicate=self._iv(predicate, confidence, observation_id)
+            if predicate is not None
+            else None,
+            observation_ids=[observation_id] if observation_id else [],
         )
-        return f"Improvement recorded ({kind})."
+        return f"Added edge {edge_id}."
+
+    @is_tool(ToolType.WRITE)
+    def update_edge(
+        self,
+        edge_id: str,
+        from_node: Optional[str] = None,
+        to_node: Optional[str] = None,
+        predicate: Optional[str] = None,
+        confidence: Optional[float] = None,
+        observation_id: Optional[str] = None,
+    ) -> str:
+        """Update an edge's endpoints or predicate.
+
+        Args:
+            edge_id: The edge to update.
+            from_node: New source (optional).
+            to_node: New destination (optional).
+            predicate: New predicate (optional).
+            confidence: Confidence for updated values [0, 1].
+            observation_id: Observation supporting this edge (optional).
+
+        Returns:
+            A confirmation message.
+        """
+        edge = self._edge(edge_id)
+        conf = confidence if confidence is not None else 1.0
+        if from_node is not None:
+            edge.from_node = from_node
+        if to_node is not None:
+            edge.to_node = to_node
+        if predicate is not None:
+            cur = edge.predicate if edge.predicate is not None else InferredValue()
+            edge.predicate = self._set_value(cur, predicate, conf, observation_id)
+        if observation_id:
+            edge.observation_ids = list(
+                dict.fromkeys(edge.observation_ids + [observation_id])
+            )
+        return f"Updated edge {edge_id}."
+
+    @is_tool(ToolType.WRITE)
+    def attach_observation(self, node_id: str, observation_id: str) -> str:
+        """Attach an observation to a node (multiple observations per node ok)."""
+        node = self._node(node_id)
+        node.observation_ids = list(
+            dict.fromkeys(node.observation_ids + [observation_id])
+        )
+        return f"Attached {observation_id} to node {node_id}."
+
+    @is_tool(ToolType.WRITE)
+    def set_dag_endpoints(
+        self,
+        start_node_id: Optional[str] = None,
+        end_node_ids: Optional[list[str]] = None,
+    ) -> str:
+        """Set the DAG's start and end node ids."""
+        dag = self._dag()
+        if start_node_id is not None:
+            dag.start_node_id = start_node_id
+        if end_node_ids is not None:
+            dag.end_node_ids = list(end_node_ids)
+        return "Set DAG endpoints."
 
     @is_tool(ToolType.WRITE)
     def finish_interview(self, summary: Optional[str] = None) -> str:
-        """Mark the interview as complete and close it.
-
-        Call this once you have covered the workflow, its branches, each step's
-        necessity, and recorded the answers to the necessity questions for
-        questionable steps.
-
-        Args:
-            summary: Optional short summary of the interview.
-
-        Returns:
-            A confirmation message.
-        """
+        """Mark the interview complete."""
         self.db.interview_complete = True
         if summary:
             self.db.summary = summary
-        return "Interview marked as complete."
+        return "Interview marked complete."
 
-    # ------------------------------------------------------------------ assertions
-    # These are used by the task's env_assertions (reward) and are NOT exposed
-    # to the agent as tools.
+    # ------------------------------------------------------------- assertions
 
     def assert_finish_interview(self) -> bool:
-        """True if the agent called finish_interview (protocol)."""
         return self.db.interview_complete
 
-    def assert_workflow_reconstructed(self, scenario_id: str) -> bool:
-        """True if the reconstructed workflow structurally matches the ground
-        truth (steps + transitions + branches + actor/system/data)."""
-        return evaluate(self.db, scenario_id).structural_pass
+    def assert_dag_reconstructed(self, scenario_id: str) -> bool:
+        sc = get_scenario(scenario_id)
+        if sc is None:
+            return False
+        return evaluate(self.db, sc.truth, sc.spec).structural_pass
 
-    def assert_rationale_handled(self, scenario_id: str) -> bool:
-        """True if confirmed rationale was captured and UNKNOWN preserved (no
-        fabrication)."""
-        return evaluate(self.db, scenario_id).rationale_pass
+    def assert_necessity_handled(self, scenario_id: str) -> bool:
+        sc = get_scenario(scenario_id)
+        if sc is None:
+            return False
+        return evaluate(self.db, sc.truth, sc.spec).necessity_pass
 
-    def assert_necessity_challenged(self, scenario_id: str) -> bool:
-        """True if the questionable step's observations were all recorded with
-        correct improvement order."""
-        return evaluate(self.db, scenario_id).challenge_pass
-
-    # ------------------------------------------------------------------ diagnostics
+    # ------------------------------------------------------------- diagnostics
 
     def get_eval_diagnostics(self, task: Optional[Task] = None) -> Optional[dict]:
-        """Return the workflow-reconstruction diagnostics as JSON.
-
-        Consumed by the generic EnvironmentEvaluator hook and attached to the
-        run's additional info alongside the scalar reward.
-        """
-        scenario_id = task.id if task is not None else None
-        evaluation = evaluate(self.db, scenario_id)
-        return evaluation.model_dump(mode="json")
+        sc = get_scenario(task.id if task is not None else None)
+        if sc is None:
+            return None
+        return evaluate(self.db, sc.truth, sc.spec).model_dump(mode="json")
