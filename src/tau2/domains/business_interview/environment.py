@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Optional
 
 from tau2.data_model.tasks import Task
-from tau2.domains.business_interview.data_model import InterviewDB
+from tau2.domains.business_interview.data_model import WorkflowDB
 from tau2.domains.business_interview.tools import InterviewTools
 from tau2.domains.business_interview.utils import (
     BUSINESS_INTERVIEW_POLICY_PATH,
@@ -18,7 +18,7 @@ def get_environment(solo_mode: bool = False) -> Environment:
     There is no pre-existing data: the database only accumulates what the
     interviewing agent records via the interview tools.
     """
-    db = InterviewDB()
+    db = WorkflowDB()
     tools = InterviewTools(db)
     with open(BUSINESS_INTERVIEW_POLICY_PATH, "r") as fp:
         policy = fp.read()

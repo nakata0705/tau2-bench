@@ -1,25 +1,25 @@
 [
   {
-    "id": "quotation_process_interview_1",
+    "id": "quotation_workflow_1",
     "description": {
-      "purpose": "Interview a sales employee about the current quotation process. The agent must discover the normal process (quotations created in the core business system), discover the month-end Excel exception, record that the reason for the exception is unknown (uncertainty, not a guess), and avoid introducing unsupported facts.",
-      "notes": "Ground truth: (1) the sales employee creates quotations; (2) the normal process uses the core business system; (3) at month-end only, the sales employee sends an Excel file to Accounting as an exception process; (4) the sales employee does not know why the month-end Excel process is necessary. The stakeholder never volunteers the exception unless asked, and answers 'I don't know' when asked for the reason. Evaluation is fully structural (env assertions over the recorded findings); no LLM judge is required."
+      "purpose": "Interview a sales employee to reconstruct their quotation workflow as a graph (steps, actors, systems, data, transitions, branches), capture each step's necessity (one confirmed rationale, one UNKNOWN rationale), and question the necessity of a questionable legacy step before considering improvements.",
+      "notes": "Ground truth (evaluator-only, in domain code): 6 steps (receive request, check customer in CRM, create quote in quoting system, approve high-value quote [credit risk, confirmed], send quote, month-end Excel summary to Accounting [UNKNOWN rationale, questionable legacy]). One branch (amount threshold) and one conditional path (month-end). The stakeholder knows the workflow but never volunteers the conditional steps/branches or rationales unless asked; does not know why the month-end Excel step exists (only a vague belief that Accounting needs it, no evidence). Reward is a product of env_assertions (finish + structural reconstruction + rationale handling + necessity challenge); detailed metrics are in diagnostics."
     },
     "user_scenario": {
       "persona": "You are a sales employee who has worked at the company for a few years. You are friendly, cooperative, and pragmatic. You answer questions plainly and truthfully in everyday business language. You are not familiar with business-analysis terminology and you never speculate or make things up.",
       "instructions": {
         "domain": "business_interview",
-        "reason_for_call": "You have been asked to take part in a short interview about how quotations are created in your team.",
-        "known_info": "You personally create the quotations that customers receive. The normal process is: you enter the quotation into the core business system and the quotation is handled there. Separately, at month-end only, you also send an Excel file with quotation information to the Accounting team.",
-        "unknown_info": "You do not know why the month-end Excel file is necessary. Nobody ever told you the reason, and you have never needed to think about it.",
-        "task_instructions": "Answer the interviewer's questions truthfully and helpfully. Describe the normal quotation process (who creates quotations and which system is used) when asked about it. Do NOT bring up the month-end Excel file on your own: only mention it if the interviewer asks about exceptions, special cases, variations, month-end processing, or something similar. If the interviewer asks why the month-end Excel file is sent to Accounting, say honestly that you do not know the reason. Never invent, guess, or speculate about anything you do not know. Do not end the conversation yourself. If the interviewer asks whether you have anything else to add, or summarizes what you described, answer truthfully and briefly but keep the conversation open: a wrap-up question or a summary does not close the interview. Only when the interviewer explicitly states that the interview is complete or finished (for example, 'the interview is complete' or 'that's everything I needed, thank you') should you reply briefly and end your message with ###STOP###."
+        "reason_for_call": "You have been asked to take part in a short interview about how quotations are prepared in your team.",
+        "known_info": "You receive quotation requests from customers and prepare quotations. The normal flow is: you record the quotation request, check the customer's information in the CRM, and create the quotation in the quoting system. For quotations over 1,000,000 yen, an approval is required before the quotation is sent, and you know this approval is for credit risk management. Separately, at month-end, you also send a summary of the quotation information to the Accounting team as an Excel file; you do not know why that month-end Excel step is done.",
+        "unknown_info": "You do not know why the month-end Excel summary is sent to Accounting. Nobody ever told you the reason and there is no documentation. You have only a vague impression that Accounting needs it, but you are not sure and have no formal evidence.",
+        "task_instructions": "Answer the interviewer's questions truthfully and helpfully. Describe the normal quotation workflow when asked. Do NOT volunteer the high-value approval branch or the month-end Excel step on your own: only mention them if the interviewer asks about exceptions, special cases, conditions, thresholds, amounts, approvals, month-end processing, or similar. If asked why the high-value approval is needed, say it is for credit risk management. If asked why the month-end Excel step is done, say you do not know the reason; you have only a vague impression that Accounting needs it, but you are not certain and have no documentation. Never invent, guess, or speculate about anything you do not know. Do not end the conversation yourself. If the interviewer asks whether you have anything else to add, or summarizes what you described, answer truthfully and briefly but keep the conversation open. Only when the interviewer explicitly states that the interview is complete or finished should you reply briefly and end your message with ###STOP###."
       }
     },
     "initial_state": {
       "message_history": [
         {
           "role": "assistant",
-          "content": "Hello, I'm a business analyst and I'd like to interview you about how your team creates quotations. Is now a good time?",
+          "content": "Hello, I'm a business analyst and I'd like to interview you about how your team prepares quotations. Is now a good time?",
           "turn_idx": 0
         },
         {
@@ -32,34 +32,205 @@
     "evaluation_criteria": {
       "actions": [
         {
-          "action_id": "bi_1",
-          "name": "record_fact",
+          "action_id": "wf_1",
+          "name": "create_workflow",
           "arguments": {
-            "content": "The sales employee creates quotations in the core business system."
+            "name": "Quotation creation",
+            "trigger": "customer requests a quotation",
+            "purpose": "produce an accurate quotation",
+            "outcome": "customer receives a quotation"
           },
-          "info": "Reference: record the normal process fact."
+          "info": "Reference: create the workflow."
         },
         {
-          "action_id": "bi_2",
-          "name": "record_exception",
+          "action_id": "wf_2",
+          "name": "add_step",
           "arguments": {
-            "content": "At month-end only, the sales employee sends an Excel file to Accounting."
+            "step_id": "s1",
+            "action": "receive quotation request",
+            "actor": "sales",
+            "writes": [
+              "request"
+            ]
           },
-          "info": "Reference: record the month-end exception."
+          "info": "Reference: record step 1."
         },
         {
-          "action_id": "bi_3",
-          "name": "record_uncertainty",
+          "action_id": "wf_3",
+          "name": "add_step",
           "arguments": {
-            "content": "The sales employee does not know why the month-end Excel file is necessary."
+            "step_id": "s2",
+            "action": "check customer information in the CRM",
+            "actor": "sales",
+            "system": "crm",
+            "reads": [
+              "customer"
+            ]
           },
-          "info": "Reference: record the unknown reason as an uncertainty."
+          "info": "Reference: record step 2."
         },
         {
-          "action_id": "bi_4",
+          "action_id": "wf_4",
+          "name": "add_step",
+          "arguments": {
+            "step_id": "s3",
+            "action": "create quotation in the quoting system",
+            "actor": "sales",
+            "system": "quoting",
+            "reads": [
+              "customer",
+              "pricing"
+            ],
+            "writes": [
+              "quote"
+            ]
+          },
+          "info": "Reference: record step 3."
+        },
+        {
+          "action_id": "wf_5",
+          "name": "add_step",
+          "arguments": {
+            "step_id": "s4",
+            "action": "approve high-value quotation",
+            "actor": "manager",
+            "system": "quoting",
+            "reads": [
+              "quote"
+            ],
+            "writes": [
+              "approval"
+            ],
+            "condition": "amount over 1,000,000"
+          },
+          "info": "Reference: record the approval branch step."
+        },
+        {
+          "action_id": "wf_6",
+          "name": "add_step",
+          "arguments": {
+            "step_id": "s5",
+            "action": "send quotation to customer",
+            "actor": "sales",
+            "system": "email",
+            "reads": [
+              "quote"
+            ],
+            "writes": [
+              "sent_quote"
+            ]
+          },
+          "info": "Reference: record step 5."
+        },
+        {
+          "action_id": "wf_7",
+          "name": "add_step",
+          "arguments": {
+            "step_id": "s6",
+            "action": "send quotation summary to accounting at month-end",
+            "actor": "sales",
+            "system": "excel",
+            "reads": [
+              "quote"
+            ],
+            "writes": [
+              "excel_summary"
+            ],
+            "condition": "month-end"
+          },
+          "info": "Reference: record the conditional legacy step."
+        },
+        {
+          "action_id": "wf_8",
+          "name": "connect_steps",
+          "arguments": {
+            "from_step": "s1",
+            "to_step": "s2"
+          },
+          "info": "Reference: connect steps."
+        },
+        {
+          "action_id": "wf_9",
+          "name": "connect_steps",
+          "arguments": {
+            "from_step": "s2",
+            "to_step": "s3"
+          },
+          "info": "Reference: connect steps."
+        },
+        {
+          "action_id": "wf_10",
+          "name": "connect_steps",
+          "arguments": {
+            "from_step": "s3",
+            "to_step": "s4",
+            "condition": "amount over 1,000,000"
+          },
+          "info": "Reference: connect branch edge."
+        },
+        {
+          "action_id": "wf_11",
+          "name": "connect_steps",
+          "arguments": {
+            "from_step": "s3",
+            "to_step": "s5",
+            "condition": "amount at or below 1,000,000"
+          },
+          "info": "Reference: connect branch edge."
+        },
+        {
+          "action_id": "wf_12",
+          "name": "connect_steps",
+          "arguments": {
+            "from_step": "s4",
+            "to_step": "s5"
+          },
+          "info": "Reference: connect steps."
+        },
+        {
+          "action_id": "wf_13",
+          "name": "connect_steps",
+          "arguments": {
+            "from_step": "s5",
+            "to_step": "s6",
+            "condition": "month-end"
+          },
+          "info": "Reference: connect conditional edge."
+        },
+        {
+          "action_id": "wf_14",
+          "name": "set_step_rationale",
+          "arguments": {
+            "step_id": "s4",
+            "content": "for credit risk management",
+            "epistemic_status": "FACT",
+            "source": "sales"
+          },
+          "info": "Reference: record the confirmed rationale."
+        },
+        {
+          "action_id": "wf_15",
+          "name": "set_step_unknown",
+          "arguments": {
+            "step_id": "s6",
+            "note": "the stakeholder does not know why"
+          },
+          "info": "Reference: preserve the UNKNOWN rationale."
+        },
+        {
+          "action_id": "wf_16",
+          "name": "challenge_step",
+          "arguments": {
+            "step_id": "s6",
+            "question": "is this month-end Excel step actually necessary?"
+          },
+          "info": "Reference: question the legacy step."
+        },
+        {
+          "action_id": "wf_17",
           "name": "finish_interview",
           "arguments": {
-            "summary": "Normal quotation process uses the core business system; at month-end an Excel file is sent to Accounting; the reason for the month-end Excel file is unknown to the sales employee."
+            "summary": "Reconstructed the quotation workflow including the approval branch and the questionable month-end Excel step."
           },
           "info": "Reference: finish the interview."
         }
@@ -67,59 +238,33 @@
       "env_assertions": [
         {
           "env_type": "assistant",
-          "func_name": "assert_fact_recorded",
-          "arguments": {
-            "all_of": [
-              "quotation",
-              "system"
-            ]
-          },
-          "message": "A fact about the normal quotation process (quotation + core business system) must be recorded."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_exception_recorded",
-          "arguments": {
-            "all_of": [
-              "excel",
-              "accounting",
-              "month"
-            ]
-          },
-          "message": "The month-end Excel exception (Excel + Accounting + month) must be recorded as an exception."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_uncertainty_recorded",
-          "arguments": {
-            "all_of": [
-              "month",
-              "excel"
-            ],
-            "any_of": [
-              "reason",
-              "why",
-              "unknown",
-              "not know",
-              "don't know",
-              "doesn't know",
-              "unsure",
-              "no idea"
-            ]
-          },
-          "message": "The unknown reason for the month-end Excel process must be recorded as an uncertainty."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_no_unsupported_rationale",
-          "arguments": {},
-          "message": "No finding about the month-end exception may assert a rationale the interviewee never provided."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_interview_complete",
+          "func_name": "assert_finish_interview",
           "arguments": {},
           "message": "The interview must be finished via finish_interview."
+        },
+        {
+          "env_type": "assistant",
+          "func_name": "assert_workflow_reconstructed",
+          "arguments": {
+            "scenario_id": "quotation_workflow_1"
+          },
+          "message": "The workflow must be reconstructed with all steps, actors, systems, data, transitions and branches matching the ground truth."
+        },
+        {
+          "env_type": "assistant",
+          "func_name": "assert_rationale_handled",
+          "arguments": {
+            "scenario_id": "quotation_workflow_1"
+          },
+          "message": "The confirmed rationale must be captured and the UNKNOWN rationale preserved (no fabricated rationale)."
+        },
+        {
+          "env_type": "assistant",
+          "func_name": "assert_necessity_challenged",
+          "arguments": {
+            "scenario_id": "quotation_workflow_1"
+          },
+          "message": "The questionable legacy step must be challenged with the correct improvement order."
         }
       ],
       "reward_basis": [
@@ -128,10 +273,10 @@
     }
   },
   {
-    "id": "quotation_process_interview_1_ja",
+    "id": "quotation_workflow_1_ja",
     "description": {
-      "purpose": "Interview a sales employee about the current quotation process. The agent must discover the normal process (quotations created in the core business system), discover the month-end Excel exception, record that the reason for the exception is unknown (uncertainty, not a guess), and avoid introducing unsupported facts. 日本語シナリオ: 月末Excelの理由がUNKNOWN。",
-      "notes": "Ground truth: (1) the sales employee creates quotations; (2) the normal process uses the core business system; (3) at month-end only, the sales employee sends an Excel file to Accounting as an exception process; (4) the sales employee does not know why the month-end Excel process is necessary. The stakeholder never volunteers the exception unless asked, and answers 'I don't know' when asked for the reason. Evaluation is fully structural (env assertions over the recorded findings); no LLM judge is required. このタスクは日本語で実施されます。評価はバイリンガル（英語/日本語）で行われます。",
+      "purpose": "営業担当者にヒアリングし、見積作成ワークフローをグラフ（Step・actor・system・data・遷移・分岐）として復元し、各 Step の必要性（確認済み rationale 1件・UNKNOWN rationale 1件）を把握し、疑わしいレガシー Step の必要性を改善提案より先に問う。日本語シナリオ。",
+      "notes": "Ground truth（evaluator-only、domain コード側）: 6 Step（依頼受付、CRM顧客確認、見積システムで見積作成、高額承認[与信管理・確認済み]、顧客送付、月末の経理向けExcel集計[UNKNOWN・疑わしいレガシー]）。分岐1（金額閾値）と条件パス1（月末）。stakeholder は通常フローを知るが、条件付き Step・分岐・rationale を尋ねられない限り自発的に話さない。月末Excelの理由は知らない（「経理が必要らしい」という曖昧な印象のみ・証拠なし）。reward は env_assertions（finish + 構造復元 + rationale 処理 + necessity challenge）の積。詳細は diagnostics。",
       "relevant_policies": null
     },
     "user_scenario": {
@@ -139,9 +284,9 @@
       "instructions": {
         "domain": "business_interview",
         "reason_for_call": "あなたは、チームで見積書がどのように作成されているかについての短いインタビューに参加するよう依頼されました。",
-        "known_info": "顧客が受け取る見積書は、あなたが作成しています。通常のプロセスは、見積書を基幹業務システムに入力し、そこで処理されるというものです。別途、月末のみ、見積書情報をまとめたExcelファイルを経理チームに送っています。",
-        "unknown_info": "月末のExcelファイルがなぜ必要なのか、あなたは知りません。誰も理由を教えてくれたことはなく、考えたこともありません。",
-        "task_instructions": "インタビュアーの質問に、正直かつ協力的に答えてください。通常の見積書プロセス（誰が作成し、どのシステムを使うか）を聞かれたら説明してください。月末のExcelファイルについては、自分からは話さないでください。インタビュアーが例外、特別なケース、ばらつき、月末の処理などについて尋ねた場合にのみ触れてください。月末のExcelファイルがなぜ経理に送られるのか理由を尋ねられたら、理由は分からないと正直に答え、推測しないでください。知らないことについて推測したり、でっち上げたりしないでください。自分から会話を終わらせないでください。インタビュアーが他に付け加えることはあるかと尋ねたり、説明を要約したりした場合は、正直に簡潔に答えますが、会話は続けます。インタビュアーが明確にインタビューが完了した／終了したと述べた場合にのみ、短く返答し、メッセージの最後に###STOP###を付けて終了してください。"
+        "known_info": "顧客から見積依頼を受け、見積書を準備しています。通常の流れは、見積依頼を記録し、CRMで顧客情報を確認し、見積システムで見積書を作成する、というものです。100万円を超える見積書については、送付前に承認が必要で、この承認は与信リスク管理のためのものだと知っています。また別途、月末のみ、見積情報の集計をExcelファイルとして経理チームに送っていますが、この月末のExcel処理がなぜ行われるのかは知りません。",
+        "unknown_info": "月末のExcel集計を経理に送る理由は知りません。誰も理由を教えてくれたことはなく、文書もありません。経理が必要らしいという曖昧な印象はありますが、確かではなく、正式な根拠はありません。",
+        "task_instructions": "インタビュアーの質問に、正直かつ協力的に答えてください。通常の見積ワークフローを聞かれたら説明してください。高額承認の分岐や月末のExcel Stepについては、自分からは話さないでください。インタビュアーが例外、特別なケース、条件、しきい値、金額、承認、月末の処理などについて尋ねた場合にのみ触れてください。高額承認がなぜ必要なのか理由を尋ねられたら、与信リスク管理のためだと答えてください。月末のExcel処理がなぜ行われるのか理由を尋ねられたら、理由は分からないと答え、経理が必要らしいという曖昧な印象はあるが確かではなく文書もないと正直に答えてください。知らないことについて推測したりでっち上げたりしないでください。自分から会話を終わらせないでください。インタビュアーが他に付け加えることはあるかと尋ねたり、説明を要約したりした場合は、正直に簡潔に答えますが、会話は続けます。インタビュアーが明確にインタビューが完了した／終了したと述べた場合にのみ、短く返答し、メッセージの最後に###STOP###を付けて終了してください。"
       }
     },
     "initial_state": {
@@ -161,458 +306,205 @@
     "evaluation_criteria": {
       "actions": [
         {
-          "action_id": "bi_1",
-          "name": "record_fact",
+          "action_id": "wf_1",
+          "name": "create_workflow",
           "arguments": {
-            "content": "The sales employee creates quotations in the core business system."
+            "name": "Quotation creation",
+            "trigger": "customer requests a quotation",
+            "purpose": "produce an accurate quotation",
+            "outcome": "customer receives a quotation"
           },
-          "info": "Reference: record the normal process fact."
+          "info": "Reference: create the workflow."
         },
         {
-          "action_id": "bi_2",
-          "name": "record_exception",
+          "action_id": "wf_2",
+          "name": "add_step",
           "arguments": {
-            "content": "At month-end only, the sales employee sends an Excel file to Accounting."
-          },
-          "info": "Reference: record the month-end exception."
-        },
-        {
-          "action_id": "bi_3",
-          "name": "record_uncertainty",
-          "arguments": {
-            "content": "The sales employee does not know why the month-end Excel file is necessary."
-          },
-          "info": "Reference: record the unknown reason as an uncertainty."
-        },
-        {
-          "action_id": "bi_4",
-          "name": "finish_interview",
-          "arguments": {
-            "summary": "Normal quotation process uses the core business system; at month-end an Excel file is sent to Accounting; the reason for the month-end Excel file is unknown to the sales employee."
-          },
-          "info": "Reference: finish the interview."
-        }
-      ],
-      "env_assertions": [
-        {
-          "env_type": "assistant",
-          "func_name": "assert_fact_recorded",
-          "arguments": {
-            "all_of": [
-              "quotation",
-              "system"
+            "step_id": "s1",
+            "action": "receive quotation request",
+            "actor": "sales",
+            "writes": [
+              "request"
             ]
           },
-          "message": "A fact about the normal quotation process (quotation + core business system) must be recorded."
+          "info": "Reference: record step 1."
         },
         {
-          "env_type": "assistant",
-          "func_name": "assert_exception_recorded",
+          "action_id": "wf_3",
+          "name": "add_step",
           "arguments": {
-            "all_of": [
-              "excel",
-              "accounting",
-              "month"
+            "step_id": "s2",
+            "action": "check customer information in the CRM",
+            "actor": "sales",
+            "system": "crm",
+            "reads": [
+              "customer"
             ]
           },
-          "message": "The month-end Excel exception (Excel + Accounting + month) must be recorded as an exception."
+          "info": "Reference: record step 2."
         },
         {
-          "env_type": "assistant",
-          "func_name": "assert_uncertainty_recorded",
+          "action_id": "wf_4",
+          "name": "add_step",
           "arguments": {
-            "all_of": [
-              "month",
-              "excel"
+            "step_id": "s3",
+            "action": "create quotation in the quoting system",
+            "actor": "sales",
+            "system": "quoting",
+            "reads": [
+              "customer",
+              "pricing"
             ],
-            "any_of": [
-              "reason",
-              "why",
-              "unknown",
-              "not know",
-              "don't know",
-              "doesn't know",
-              "unsure",
-              "no idea"
+            "writes": [
+              "quote"
             ]
           },
-          "message": "The unknown reason for the month-end Excel process must be recorded as an uncertainty."
+          "info": "Reference: record step 3."
         },
         {
-          "env_type": "assistant",
-          "func_name": "assert_no_unsupported_rationale",
-          "arguments": {},
-          "message": "No finding about the month-end exception may assert a rationale the interviewee never provided."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_interview_complete",
-          "arguments": {},
-          "message": "The interview must be finished via finish_interview."
-        }
-      ],
-      "reward_basis": [
-        "ENV_ASSERTION"
-      ]
-    }
-  },
-  {
-    "id": "quotation_belief_uncertainty_1",
-    "description": {
-      "purpose": "Interview a sales employee about the current quotation process, where the stakeholder holds a belief (rather than a certainty) about why a month-end Excel exception exists. The agent must discover the normal process and the month-end Excel exception, keep the stakeholder's belief a belief (not promote it to fact), and leave the real reason as an uncertainty.",
-      "notes": "Ground truth: (1) the sales employee creates quotations; (2) the normal process uses the core business system; (3) at month-end only, the sales employee sends an Excel file to Accounting as an exception process; (4) the sales employee THINKS the exception may be due to the Accounting team's circumstances, but is NOT certain; (5) the real reason for the month-end Excel process is unconfirmed/unknown. The stakeholder volunteers the exception only when asked about exceptions/variations/month-end, answers 'I'm not sure but I think ...' (a hedged belief) when asked for the reason, and makes clear they do not know for certain. The agent must: discover the exception, not promote the belief to fact (recording it with epistemic_status=BELIEF is ideal), and record the unknown reason as an uncertainty. Evaluation is structural via env assertions plus multi-axis diagnostics; no LLM judge."
-    },
-    "user_scenario": {
-      "persona": "You are a sales employee who has worked at the company for a few years. You are friendly, cooperative, and pragmatic. You answer questions plainly and truthfully in everyday business language. You are not familiar with business-analysis terminology. You are honest about the limits of what you know and never state a guess as a confirmed fact.",
-      "instructions": {
-        "domain": "business_interview",
-        "reason_for_call": "You have been asked to take part in a short interview about how quotations are created in your team.",
-        "known_info": "You personally create the quotations that customers receive. The normal process is: you enter the quotation into the core business system and the quotation is handled there. Separately, at month-end only, you also send an Excel file with quotation information to the Accounting team. You have a vague impression that the month-end Excel file is related to some need on the Accounting team's side, but that is just your own guess.",
-        "unknown_info": "You do not actually know the real reason the month-end Excel file is sent to Accounting. Nobody ever told you, and you are not certain. You only have a guess that it is probably due to the Accounting team's circumstances, but you do not know for sure.",
-        "task_instructions": "Answer the interviewer's questions truthfully and helpfully. Describe the normal quotation process (who creates quotations and which system is used) when asked. Do NOT bring up the month-end Excel file on your own: only mention it if the interviewer asks about exceptions, special cases, variations, month-end processing, or something similar. If the interviewer asks why the month-end Excel file is sent to Accounting, be honest: say you are not certain, but you think it may be due to some need on the Accounting team's side. Make clear that this is just your impression and that you do not know the exact reason. Never present your impression as a confirmed fact, and never invent other reasons. Do not end the conversation yourself. If the interviewer asks whether you have anything else to add, or summarizes what you described, answer truthfully and briefly but keep the conversation open: a wrap-up question or a summary does not close the interview. Only when the interviewer explicitly states that the interview is complete or finished should you reply briefly and end your message with ###STOP###."
-      }
-    },
-    "initial_state": {
-      "message_history": [
-        {
-          "role": "assistant",
-          "content": "Hello, I'm a business analyst and I'd like to interview you about how your team creates quotations. Is now a good time?",
-          "turn_idx": 0
-        },
-        {
-          "role": "user",
-          "content": "Sure, that's fine. What would you like to know?",
-          "turn_idx": 1
-        }
-      ]
-    },
-    "evaluation_criteria": {
-      "actions": [
-        {
-          "action_id": "bi2_1",
-          "name": "record_fact",
+          "action_id": "wf_5",
+          "name": "add_step",
           "arguments": {
-            "content": "The sales employee creates quotations in the core business system."
-          },
-          "info": "Reference: record the normal process fact."
-        },
-        {
-          "action_id": "bi2_2",
-          "name": "record_exception",
-          "arguments": {
-            "content": "At month-end only, the sales employee sends an Excel file to Accounting."
-          },
-          "info": "Reference: record the month-end exception."
-        },
-        {
-          "action_id": "bi2_3",
-          "name": "record_uncertainty",
-          "arguments": {
-            "content": "The sales employee is not certain why the month-end Excel file is sent to Accounting; the real reason is unknown."
-          },
-          "info": "Reference: record the unknown real reason as an uncertainty."
-        },
-        {
-          "action_id": "bi2_4",
-          "name": "record_fact",
-          "arguments": {
-            "content": "The sales employee thinks the month-end Excel file may be due to the Accounting team's circumstances, but is not sure.",
-            "epistemic_status": "BELIEF"
-          },
-          "info": "Reference: record the stakeholder's belief as a belief, not a fact."
-        },
-        {
-          "action_id": "bi2_5",
-          "name": "finish_interview",
-          "arguments": {
-            "summary": "Normal quotation process uses the core business system; at month-end an Excel file is sent to Accounting; the sales employee believes it may relate to Accounting's needs but does not know the real reason."
-          },
-          "info": "Reference: finish the interview."
-        }
-      ],
-      "env_assertions": [
-        {
-          "env_type": "assistant",
-          "func_name": "assert_fact_recorded",
-          "arguments": {
-            "all_of": [
-              "quotation",
-              "system"
-            ]
-          },
-          "message": "A fact about the normal quotation process (quotation + core business system) must be recorded."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_exception_recorded",
-          "arguments": {
-            "all_of": [
-              "excel",
-              "accounting",
-              "month"
-            ]
-          },
-          "message": "The month-end Excel exception (Excel + Accounting + month) must be recorded as an exception."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_uncertainty_recorded",
-          "arguments": {
-            "all_of": [
-              "month",
-              "excel"
+            "step_id": "s4",
+            "action": "approve high-value quotation",
+            "actor": "manager",
+            "system": "quoting",
+            "reads": [
+              "quote"
             ],
-            "any_of": [
-              "reason",
-              "why",
-              "unknown",
-              "not know",
-              "don't know",
-              "doesn't know",
-              "unsure",
-              "no idea"
-            ]
-          },
-          "message": "The unknown real reason for the month-end Excel process must be recorded as an uncertainty."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_no_unsupported_rationale",
-          "arguments": {},
-          "message": "The stakeholder's belief must not be promoted to a fact, and no invented rationale may be recorded for the month-end exception."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_interview_complete",
-          "arguments": {},
-          "message": "The interview must be finished via finish_interview."
-        }
-      ],
-      "reward_basis": [
-        "ENV_ASSERTION"
-      ]
-    }
-  },
-  {
-    "id": "quotation_belief_uncertainty_1_ja",
-    "description": {
-      "purpose": "Interview a sales employee about the current quotation process, where the stakeholder holds a belief (rather than a certainty) about why a month-end Excel exception exists. The agent must discover the normal process and the month-end Excel exception, keep the stakeholder's belief a belief (not promote it to fact), and leave the real reason as an uncertainty. 日本語シナリオ: stakeholder が月末Excelの理由についてhedged beliefを持つ。",
-      "notes": "Ground truth: (1) the sales employee creates quotations; (2) the normal process uses the core business system; (3) at month-end only, the sales employee sends an Excel file to Accounting as an exception process; (4) the sales employee THINKS the exception may be due to the Accounting team's circumstances, but is NOT certain; (5) the real reason for the month-end Excel process is unconfirmed/unknown. The stakeholder volunteers the exception only when asked about exceptions/variations/month-end, answers 'I'm not sure but I think ...' (a hedged belief) when asked for the reason, and makes clear they do not know for certain. The agent must: discover the exception, not promote the belief to fact (recording it with epistemic_status=BELIEF is ideal), and record the unknown reason as an uncertainty. Evaluation is structural via env assertions plus multi-axis diagnostics; no LLM judge. このタスクは日本語で実施されます。評価はバイリンガル（英語/日本語）で行われます。",
-      "relevant_policies": null
-    },
-    "user_scenario": {
-      "persona": "あなたは数年間この会社で働いている営業担当者です。友好的で協力的で、実務的です。日常のビジネス用語で、はっきりと正直に質問に答えます。ビジネスアナリシスの専門用語には詳しくありません。自分が知っていることの限界について正直であり、推測を確定した事実として述べることはありません。会話全体は日本語で行ってください。",
-      "instructions": {
-        "domain": "business_interview",
-        "reason_for_call": "あなたは、チームで見積書がどのように作成されているかについての短いインタビューに参加するよう依頼されました。",
-        "known_info": "顧客が受け取る見積書は、あなたが作成しています。通常のプロセスは、見積書を基幹業務システムに入力し、そこで処理されるというものです。別途、月末のみ、見積書情報をまとめたExcelファイルを経理チームに送っています。月末のExcelファイルは経理側の何らかの都合に関係しているという漠然とした印象はありますが、それはあくまであなた自身の推測です。",
-        "unknown_info": "月末のExcelファイルが経理に送られる本当の理由は、実際には知りません。誰も教えてくれたことはなく、確信もありません。経理側の都合によるのだろうという推測はある程度ありますが、確実には分かりません。",
-        "task_instructions": "インタビュアーの質問に、正直かつ協力的に答えてください。通常の見積書プロセス（誰が作成し、どのシステムを使うか）を聞かれたら説明してください。月末のExcelファイルについては、自分からは話さないでください。インタビュアーが例外、特別なケース、ばらつき、月末の処理などについて尋ねた場合にのみ触れてください。月末のExcelファイルがなぜ経理に送られるのか理由を尋ねられたら、確信はないが、経理側の何らかの都合によるかもしれないと思う、と正直に答えてください。それはただのあなたの印象であり、正確な理由は分からない、と明確にしてください。あなたの印象を確定した事実として述べず、他の理由をでっち上げないでください。自分から会話を終わらせないでください。インタビュアーが他に付け加えることはあるかと尋ねたり、説明を要約したりした場合は、正直に簡潔に答えますが、会話は続けます。インタビュアーが明確にインタビューが完了した／終了したと述べた場合にのみ、短く返答し、メッセージの最後に###STOP###を付けて終了してください。"
-      }
-    },
-    "initial_state": {
-      "message_history": [
-        {
-          "role": "assistant",
-          "content": "お世話になっております。私はビジネスアナリストの田中と申します。御社のチームでの見積書の作成プロセスについてお話を伺いたいのですが、今よろしいでしょうか？",
-          "turn_idx": 0
-        },
-        {
-          "role": "user",
-          "content": "はい、大丈夫です。何を知りたいですか？",
-          "turn_idx": 1
-        }
-      ]
-    },
-    "evaluation_criteria": {
-      "actions": [
-        {
-          "action_id": "bi2_1",
-          "name": "record_fact",
-          "arguments": {
-            "content": "The sales employee creates quotations in the core business system."
-          },
-          "info": "Reference: record the normal process fact."
-        },
-        {
-          "action_id": "bi2_2",
-          "name": "record_exception",
-          "arguments": {
-            "content": "At month-end only, the sales employee sends an Excel file to Accounting."
-          },
-          "info": "Reference: record the month-end exception."
-        },
-        {
-          "action_id": "bi2_3",
-          "name": "record_uncertainty",
-          "arguments": {
-            "content": "The sales employee is not certain why the month-end Excel file is sent to Accounting; the real reason is unknown."
-          },
-          "info": "Reference: record the unknown real reason as an uncertainty."
-        },
-        {
-          "action_id": "bi2_4",
-          "name": "record_fact",
-          "arguments": {
-            "content": "The sales employee thinks the month-end Excel file may be due to the Accounting team's circumstances, but is not sure.",
-            "epistemic_status": "BELIEF"
-          },
-          "info": "Reference: record the stakeholder's belief as a belief, not a fact."
-        },
-        {
-          "action_id": "bi2_5",
-          "name": "finish_interview",
-          "arguments": {
-            "summary": "Normal quotation process uses the core business system; at month-end an Excel file is sent to Accounting; the sales employee believes it may relate to Accounting's needs but does not know the real reason."
-          },
-          "info": "Reference: finish the interview."
-        }
-      ],
-      "env_assertions": [
-        {
-          "env_type": "assistant",
-          "func_name": "assert_fact_recorded",
-          "arguments": {
-            "all_of": [
-              "quotation",
-              "system"
-            ]
-          },
-          "message": "A fact about the normal quotation process (quotation + core business system) must be recorded."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_exception_recorded",
-          "arguments": {
-            "all_of": [
-              "excel",
-              "accounting",
-              "month"
-            ]
-          },
-          "message": "The month-end Excel exception (Excel + Accounting + month) must be recorded as an exception."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_uncertainty_recorded",
-          "arguments": {
-            "all_of": [
-              "month",
-              "excel"
+            "writes": [
+              "approval"
             ],
-            "any_of": [
-              "reason",
-              "why",
-              "unknown",
-              "not know",
-              "don't know",
-              "doesn't know",
-              "unsure",
-              "no idea"
+            "condition": "amount over 1,000,000"
+          },
+          "info": "Reference: record the approval branch step."
+        },
+        {
+          "action_id": "wf_6",
+          "name": "add_step",
+          "arguments": {
+            "step_id": "s5",
+            "action": "send quotation to customer",
+            "actor": "sales",
+            "system": "email",
+            "reads": [
+              "quote"
+            ],
+            "writes": [
+              "sent_quote"
             ]
           },
-          "message": "The unknown real reason for the month-end Excel process must be recorded as an uncertainty."
+          "info": "Reference: record step 5."
         },
         {
-          "env_type": "assistant",
-          "func_name": "assert_no_unsupported_rationale",
-          "arguments": {},
-          "message": "The stakeholder's belief must not be promoted to a fact, and no invented rationale may be recorded for the month-end exception."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_interview_complete",
-          "arguments": {},
-          "message": "The interview must be finished via finish_interview."
-        }
-      ],
-      "reward_basis": [
-        "ENV_ASSERTION"
-      ]
-    }
-  },
-  {
-    "id": "quotation_multi_exception_1",
-    "description": {
-      "purpose": "Interview a sales employee about the current quotation process, where a single stakeholder describes TWO distinct exceptions with different epistemic rationales: the month-end Excel hand-off whose reason is UNKNOWN, and a high-value-quote additional confirmation whose reason is a confirmed FACT (credit risk management). The agent must discover both exceptions, preserve the month-end reason as UNKNOWN (never invent one), and capture the high-value reason as a FACT without downgrading it to UNKNOWN. The evaluator must attribute each rationale to the correct topic and not conflate the two.",
-      "notes": "Ground truth: (1) the sales employee creates quotations; (2) the normal process uses the core business system; (3) exception A (topic=month_end_excel): at month-end only, the sales employee sends an Excel file to Accounting, and the reason for this is UNKNOWN even to the sales employee; (4) exception B (topic=high_value_quote): for quotations over 1,000,000 yen, an additional confirmation is performed, and the sales employee KNOWS the reason is credit risk management (confirmed FACT). The stakeholder volunteers neither exception unless asked about exceptions / special cases / variations / month-end / large amounts. When asked for the month-end reason the stakeholder says they do not know and does not guess; when asked for the high-value reason the stakeholder states it is for credit risk management. Evaluation is fully structural via canonical-topic env assertions plus multi-axis diagnostics; no LLM judge. Findings are attributed to topics via the canonical topic identifier (record_fact/exception/uncertainty topic=...), which is the language-independent identity used for evaluation.",
-      "relevant_policies": "business_interview policy: distinguish facts from assumptions; investigate meaningful exceptions; clarify uncertainty instead of guessing; attribute each finding to the correct business element (topic)."
-    },
-    "user_scenario": {
-      "persona": "You are a sales employee who has worked at the company for a few years. You are friendly, cooperative, and pragmatic. You answer questions plainly and truthfully in everyday business language. You are not familiar with business-analysis terminology and you never speculate or make things up.",
-      "instructions": {
-        "domain": "business_interview",
-        "reason_for_call": "You have been asked to take part in a short interview about how quotations are created in your team.",
-        "known_info": "You personally create the quotations that customers receive. The normal process is: you enter the quotation into the core business system and the quotation is handled there. Separately, at month-end only, you also send an Excel file with quotation information to the Accounting team; you do not know why this month-end Excel hand-off is done, nobody ever told you. Also, for quotations over 1,000,000 yen, an additional confirmation is required before the quotation is finalized. You know the additional confirmation is required for credit-risk management. This was explicitly explained to you as the official reason, and you are certain of it.",
-        "unknown_info": "You do not know why the month-end Excel file is sent to Accounting. Nobody ever told you the reason, and you have never needed to think about it.",
-        "task_instructions": "Answer the interviewer's questions truthfully and helpfully. Describe the normal quotation process (who creates quotations and which system is used) when asked about it. Do NOT bring up either exception on your own: only mention the month-end Excel file if the interviewer asks about exceptions, special cases, variations, month-end processing, or something similar; only mention the large-quotation additional confirmation if the interviewer asks about exceptions, special cases, conditions, thresholds, large amounts, or something similar. If the interviewer asks why the month-end Excel file is sent to Accounting, say honestly that you do not know the reason and do not guess. If the interviewer asks why the additional confirmation for quotations over 1,000,000 yen is done, say it is for credit risk management. Never invent, guess, or speculate about anything you do not know, and never claim a known reason is unknown. Do not end the conversation yourself. If the interviewer asks whether you have anything else to add, or summarizes what you described, answer truthfully and briefly but keep the conversation open: a wrap-up question or a summary does not close the interview. Only when the interviewer explicitly states that the interview is complete or finished (for example, 'the interview is complete' or 'that's everything I needed, thank you') should you reply briefly and end your message with ###STOP###."
-      }
-    },
-    "initial_state": {
-      "message_history": [
-        {
-          "role": "assistant",
-          "content": "Hello, I'm a business analyst and I'd like to interview you about how your team creates quotations. Is now a good time?",
-          "turn_idx": 0
-        },
-        {
-          "role": "user",
-          "content": "Sure, that's fine. What would you like to know?",
-          "turn_idx": 1
-        }
-      ]
-    },
-    "evaluation_criteria": {
-      "actions": [
-        {
-          "action_id": "bi3_1",
-          "name": "record_fact",
+          "action_id": "wf_7",
+          "name": "add_step",
           "arguments": {
-            "content": "The sales employee creates quotations in the core business system."
+            "step_id": "s6",
+            "action": "send quotation summary to accounting at month-end",
+            "actor": "sales",
+            "system": "excel",
+            "reads": [
+              "quote"
+            ],
+            "writes": [
+              "excel_summary"
+            ],
+            "condition": "month-end"
           },
-          "info": "Reference: record the normal process fact."
+          "info": "Reference: record the conditional legacy step."
         },
         {
-          "action_id": "bi3_2",
-          "name": "record_exception",
+          "action_id": "wf_8",
+          "name": "connect_steps",
           "arguments": {
-            "content": "At month-end only, the sales employee sends an Excel file to Accounting.",
-            "topic": "month_end_excel"
+            "from_step": "s1",
+            "to_step": "s2"
           },
-          "info": "Reference: record the month-end Excel exception (topic=month_end_excel)."
+          "info": "Reference: connect steps."
         },
         {
-          "action_id": "bi3_3",
-          "name": "record_uncertainty",
+          "action_id": "wf_9",
+          "name": "connect_steps",
           "arguments": {
-            "content": "The sales employee does not know why the month-end Excel file is sent to Accounting.",
-            "topic": "month_end_excel"
+            "from_step": "s2",
+            "to_step": "s3"
           },
-          "info": "Reference: record the unknown month-end reason as an uncertainty (topic=month_end_excel)."
+          "info": "Reference: connect steps."
         },
         {
-          "action_id": "bi3_4",
-          "name": "record_exception",
+          "action_id": "wf_10",
+          "name": "connect_steps",
           "arguments": {
-            "content": "For quotations over 1,000,000 yen, an additional confirmation is performed before finalizing.",
-            "topic": "high_value_quote"
+            "from_step": "s3",
+            "to_step": "s4",
+            "condition": "amount over 1,000,000"
           },
-          "info": "Reference: record the high-value-quote exception (topic=high_value_quote)."
+          "info": "Reference: connect branch edge."
         },
         {
-          "action_id": "bi3_5",
-          "name": "record_fact",
+          "action_id": "wf_11",
+          "name": "connect_steps",
           "arguments": {
-            "content": "The additional confirmation for quotations over 1,000,000 yen is for credit risk management.",
-            "topic": "high_value_quote"
+            "from_step": "s3",
+            "to_step": "s5",
+            "condition": "amount at or below 1,000,000"
           },
-          "info": "Reference: record the high-value-quote rationale as a FACT (topic=high_value_quote, credit risk)."
+          "info": "Reference: connect branch edge."
         },
         {
-          "action_id": "bi3_6",
+          "action_id": "wf_12",
+          "name": "connect_steps",
+          "arguments": {
+            "from_step": "s4",
+            "to_step": "s5"
+          },
+          "info": "Reference: connect steps."
+        },
+        {
+          "action_id": "wf_13",
+          "name": "connect_steps",
+          "arguments": {
+            "from_step": "s5",
+            "to_step": "s6",
+            "condition": "month-end"
+          },
+          "info": "Reference: connect conditional edge."
+        },
+        {
+          "action_id": "wf_14",
+          "name": "set_step_rationale",
+          "arguments": {
+            "step_id": "s4",
+            "content": "for credit risk management",
+            "epistemic_status": "FACT",
+            "source": "sales"
+          },
+          "info": "Reference: record the confirmed rationale."
+        },
+        {
+          "action_id": "wf_15",
+          "name": "set_step_unknown",
+          "arguments": {
+            "step_id": "s6",
+            "note": "the stakeholder does not know why"
+          },
+          "info": "Reference: preserve the UNKNOWN rationale."
+        },
+        {
+          "action_id": "wf_16",
+          "name": "challenge_step",
+          "arguments": {
+            "step_id": "s6",
+            "question": "is this month-end Excel step actually necessary?"
+          },
+          "info": "Reference: question the legacy step."
+        },
+        {
+          "action_id": "wf_17",
           "name": "finish_interview",
           "arguments": {
-            "summary": "Normal quotation process uses the core business system; at month-end an Excel file is sent to Accounting (reason unknown); quotations over 1,000,000 yen require an additional confirmation for credit risk management."
+            "summary": "Reconstructed the quotation workflow including the approval branch and the questionable month-end Excel step."
           },
           "info": "Reference: finish the interview."
         }
@@ -620,212 +512,33 @@
       "env_assertions": [
         {
           "env_type": "assistant",
-          "func_name": "assert_fact_recorded",
-          "arguments": {
-            "all_of": [
-              "quotation",
-              "system"
-            ]
-          },
-          "message": "A fact about the normal quotation process (quotation + core business system) must be recorded."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_topic_exception_discovered",
-          "arguments": {
-            "topic": "month_end_excel"
-          },
-          "message": "The month-end Excel exception (topic=month_end_excel) must be discovered and recorded."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_topic_exception_discovered",
-          "arguments": {
-            "topic": "high_value_quote"
-          },
-          "message": "The high-value-quote exception (topic=high_value_quote) must be discovered and recorded."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_topic_rationale",
-          "arguments": {
-            "topic": "month_end_excel",
-            "expected_status": "UNKNOWN"
-          },
-          "message": "The month-end Excel reason must be preserved as UNKNOWN (not invented)."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_topic_rationale",
-          "arguments": {
-            "topic": "high_value_quote",
-            "expected_status": "FACT",
-            "rationale_value": "credit_risk"
-          },
-          "message": "The high-value-quote reason (credit risk management) must be captured as a FACT."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_no_unsupported_rationale",
-          "arguments": {},
-          "message": "No exception finding may assert an unsupported rationale (the month-end reason is unknown and must not be invented or belief-promoted)."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_interview_complete",
+          "func_name": "assert_finish_interview",
           "arguments": {},
           "message": "The interview must be finished via finish_interview."
-        }
-      ],
-      "reward_basis": [
-        "ENV_ASSERTION"
-      ]
-    }
-  },
-  {
-    "id": "quotation_multi_exception_1_ja",
-    "description": {
-      "purpose": "Interview a sales employee about the current quotation process, where a single stakeholder describes TWO distinct exceptions with different epistemic rationales: the month-end Excel hand-off whose reason is UNKNOWN, and a high-value-quote additional confirmation whose reason is a confirmed FACT (credit risk management). The agent must discover both exceptions, preserve the month-end reason as UNKNOWN (never invent one), and capture the high-value reason as a FACT without downgrading it to UNKNOWN. The evaluator must attribute each rationale to the correct topic and not conflate the two. 日本語シナリオ: 月末Excel(UNKNOWN)と高額見積(FACT credit risk)の2例外。",
-      "notes": "Ground truth: (1) the sales employee creates quotations; (2) the normal process uses the core business system; (3) exception A (topic=month_end_excel): at month-end only, the sales employee sends an Excel file to Accounting, and the reason for this is UNKNOWN even to the sales employee; (4) exception B (topic=high_value_quote): for quotations over 1,000,000 yen, an additional confirmation is performed, and the sales employee KNOWS the reason is credit risk management (confirmed FACT). The stakeholder volunteers neither exception unless asked about exceptions / special cases / variations / month-end / large amounts. When asked for the month-end reason the stakeholder says they do not know and does not guess; when asked for the high-value reason the stakeholder states it is for credit risk management. Evaluation is fully structural via canonical-topic env assertions plus multi-axis diagnostics; no LLM judge. Findings are attributed to topics via the canonical topic identifier (record_fact/exception/uncertainty topic=...), which is the language-independent identity used for evaluation. このタスクは日本語で実施されます。評価はバイリンガル（英語/日本語）で行われます。",
-      "relevant_policies": "business_interview policy: distinguish facts from assumptions; investigate meaningful exceptions; clarify uncertainty instead of guessing; attribute each finding to the correct business element (topic)."
-    },
-    "user_scenario": {
-      "persona": "あなたは数年間この会社で働いている営業担当者です。友好的で協力的で、実務的です。日常のビジネス用語で、はっきりと正直に質問に答えます。ビジネスアナリシスの専門用語には詳しくありません。分からないことについて推測したり、でっち上げたりしません。会話全体は日本語で行ってください。",
-      "instructions": {
-        "domain": "business_interview",
-        "reason_for_call": "あなたは、チームで見積書がどのように作成されているかについての短いインタビューに参加するよう依頼されました。",
-        "known_info": "顧客が受け取る見積書は、あなたが作成しています。通常のプロセスは、見積書を基幹業務システムに入力し、そこで処理されるというものです。別途、月末のみ、見積書情報をまとめたExcelファイルを経理チームに送っていますが、なぜこの月末のExcel送付が行われるのかは分かりません。誰も教えてくれたことはありません。また、100万円を超える見積書については、確定前に追加確認が必要です。この追加確認は与信リスク管理のために行うものだと正式に説明を受けており、その理由は把握しています。",
-        "unknown_info": "月末のExcelファイルがなぜ経理に送られるのか、あなたは知りません。誰も理由を教えてくれたことはなく、考えたこともありません。",
-        "task_instructions": "インタビュアーの質問に、正直かつ協力的に答えてください。通常の見積書プロセス（誰が作成し、どのシステムを使うか）を聞かれたら説明してください。どちらの例外も自分からは話さないでください。月末のExcelファイルは、インタビュアーが例外、特別なケース、ばらつき、月末の処理などについて尋ねた場合にのみ触れてください。大口見積の追加確認は、例外、特別なケース、条件、しきい値、大口の金額などについて尋ねた場合にのみ触れてください。月末のExcelファイルがなぜ経理に送られるのか理由を尋ねられたら、理由は分からないと正直に答え、推測しないでください。100万円を超える見積書の追加確認がなぜ行われるのか理由を尋ねられたら、与信リスク管理のためだと答えてください。知らないことについて推測したりでっち上げたりせず、既知の理由を不明だと偽らないでください。自分から会話を終わらせないでください。インタビュアーが他に付け加えることはあるかと尋ねたり、説明を要約したりした場合は、正直に簡潔に答えますが、会話は続けます。インタビュアーが明確にインタビューが完了した／終了したと述べた場合にのみ、短く返答し、メッセージの最後に###STOP###を付けて終了してください。"
-      }
-    },
-    "initial_state": {
-      "message_history": [
-        {
-          "role": "assistant",
-          "content": "お世話になっております。私はビジネスアナリストの田中と申します。御社のチームでの見積書の作成プロセスについてお話を伺いたいのですが、今よろしいでしょうか？",
-          "turn_idx": 0
-        },
-        {
-          "role": "user",
-          "content": "はい、大丈夫です。何を知りたいですか？",
-          "turn_idx": 1
-        }
-      ]
-    },
-    "evaluation_criteria": {
-      "actions": [
-        {
-          "action_id": "bi3_1",
-          "name": "record_fact",
-          "arguments": {
-            "content": "The sales employee creates quotations in the core business system."
-          },
-          "info": "Reference: record the normal process fact."
-        },
-        {
-          "action_id": "bi3_2",
-          "name": "record_exception",
-          "arguments": {
-            "content": "At month-end only, the sales employee sends an Excel file to Accounting.",
-            "topic": "month_end_excel"
-          },
-          "info": "Reference: record the month-end Excel exception (topic=month_end_excel)."
-        },
-        {
-          "action_id": "bi3_3",
-          "name": "record_uncertainty",
-          "arguments": {
-            "content": "The sales employee does not know why the month-end Excel file is sent to Accounting.",
-            "topic": "month_end_excel"
-          },
-          "info": "Reference: record the unknown month-end reason as an uncertainty (topic=month_end_excel)."
-        },
-        {
-          "action_id": "bi3_4",
-          "name": "record_exception",
-          "arguments": {
-            "content": "For quotations over 1,000,000 yen, an additional confirmation is performed before finalizing.",
-            "topic": "high_value_quote"
-          },
-          "info": "Reference: record the high-value-quote exception (topic=high_value_quote)."
-        },
-        {
-          "action_id": "bi3_5",
-          "name": "record_fact",
-          "arguments": {
-            "content": "The additional confirmation for quotations over 1,000,000 yen is for credit risk management.",
-            "topic": "high_value_quote"
-          },
-          "info": "Reference: record the high-value-quote rationale as a FACT (topic=high_value_quote, credit risk)."
-        },
-        {
-          "action_id": "bi3_6",
-          "name": "finish_interview",
-          "arguments": {
-            "summary": "Normal quotation process uses the core business system; at month-end an Excel file is sent to Accounting (reason unknown); quotations over 1,000,000 yen require an additional confirmation for credit risk management."
-          },
-          "info": "Reference: finish the interview."
-        }
-      ],
-      "env_assertions": [
-        {
-          "env_type": "assistant",
-          "func_name": "assert_fact_recorded",
-          "arguments": {
-            "all_of": [
-              "quotation",
-              "system"
-            ]
-          },
-          "message": "A fact about the normal quotation process (quotation + core business system) must be recorded."
         },
         {
           "env_type": "assistant",
-          "func_name": "assert_topic_exception_discovered",
+          "func_name": "assert_workflow_reconstructed",
           "arguments": {
-            "topic": "month_end_excel"
+            "scenario_id": "quotation_workflow_1_ja"
           },
-          "message": "The month-end Excel exception (topic=month_end_excel) must be discovered and recorded."
+          "message": "The workflow must be reconstructed with all steps, actors, systems, data, transitions and branches matching the ground truth."
         },
         {
           "env_type": "assistant",
-          "func_name": "assert_topic_exception_discovered",
+          "func_name": "assert_rationale_handled",
           "arguments": {
-            "topic": "high_value_quote"
+            "scenario_id": "quotation_workflow_1_ja"
           },
-          "message": "The high-value-quote exception (topic=high_value_quote) must be discovered and recorded."
+          "message": "The confirmed rationale must be captured and the UNKNOWN rationale preserved (no fabricated rationale)."
         },
         {
           "env_type": "assistant",
-          "func_name": "assert_topic_rationale",
+          "func_name": "assert_necessity_challenged",
           "arguments": {
-            "topic": "month_end_excel",
-            "expected_status": "UNKNOWN"
+            "scenario_id": "quotation_workflow_1_ja"
           },
-          "message": "The month-end Excel reason must be preserved as UNKNOWN (not invented)."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_topic_rationale",
-          "arguments": {
-            "topic": "high_value_quote",
-            "expected_status": "FACT",
-            "rationale_value": "credit_risk"
-          },
-          "message": "The high-value-quote reason (credit risk management) must be captured as a FACT."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_no_unsupported_rationale",
-          "arguments": {},
-          "message": "No exception finding may assert an unsupported rationale (the month-end reason is unknown and must not be invented or belief-promoted)."
-        },
-        {
-          "env_type": "assistant",
-          "func_name": "assert_interview_complete",
-          "arguments": {},
-          "message": "The interview must be finished via finish_interview."
+          "message": "The questionable legacy step must be challenged with the correct improvement order."
         }
       ],
       "reward_basis": [
