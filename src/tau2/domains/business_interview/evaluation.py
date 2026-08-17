@@ -1,25 +1,24 @@
-"""Evaluator for the open-world business_interview benchmark (v4).
+"""Evaluator for the open-world business_interview benchmark (v5 — simple).
 
-The agent's inferred ``BusinessDAG`` (open-world: free-text actions, optional
-generic primitives, agent-discovered ``DiscoveredConcept``s) is compared to the
-scenario Truth DAG — both use the same ``BusinessDAG`` class.
+The agent's inferred ``BusinessDAG`` (open-world free-text actions, optional
+generic primitives, authentic Observation provenance) is compared to the scenario
+Truth DAG — both use the same ``BusinessDAG`` class.
 
 **Benchmark vs production separation.** In production there is no ground truth;
 here a hidden ground truth exists and only the evaluator uses it to score
 deterministically. Scenario-specific domain concepts live in a **hidden
-scenario-local ``EvaluationSpec``** (evaluator-only), NOT in the global resolver.
-The global resolver holds only reusable generic primitives.
+scenario-local ``EvaluationSpec``** (evaluator-only). The global resolver holds
+only reusable generic primitives (unknown operations resolve to ``unclassified``).
 
-Metrics cover: structure (node/edge recall + precision, declared start/end),
+Metrics cover structure (node/edge recall + precision, declared start/end),
 predicate/actor/system/read/write correctness, necessity correctness,
-**primitive correctness** (separate from domain-concept correctness),
-**concept discovery** (discovered concept recall/precision, fabricated concepts,
-duplicates), evidence-backedness + Observation authenticity, and **claim-level
-evidence relevance** (SUPPORTED / CONTRADICTED / UNKNOWN).
+**primitive correctness** (diagnostic; ``unclassified`` is not a failure),
+evidence-backedness + Observation authenticity, and **claim-level evidence
+relevance** (each claim is evaluated independently against its own value:
+action / primitive / actor / system / each read / each write / edge relation /
+predicate / necessity properties).
 """
 
-import re
-from collections import defaultdict
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -28,7 +27,7 @@ from tau2.domains.business_interview.aliases import norm_role, norm_system
 from tau2.domains.business_interview.concepts import resolve_primitive
 from tau2.domains.business_interview.dag import BusinessDAG, InferredValue, InterviewDB
 
-_TOKEN_RE = re.compile(r"[a-z0-9]+")
+_TOKEN_RE = __import__("re").compile(r"[a-z0-9]+")
 
 _NECESSITY_PROPS = ("rationale", "owner", "evidence", "removal_impact")
 
@@ -46,12 +45,7 @@ class TruthNodeSpec(BaseModel):
 
 
 class EvaluationSpec(BaseModel):
-    """Evaluator-only, scenario-local annotations (hidden from the agent).
-
-    ``truth_nodes`` maps each Truth node id to its hidden spec (expressions +
-    expected primitive). ``predicate_expressions`` maps a Truth edge predicate
-    value to its hidden EN/JA aliases for deterministic matching.
-    """
+    """Evaluator-only, scenario-local annotations (hidden from the agent)."""
 
     truth_nodes: dict[str, TruthNodeSpec] = Field(default_factory=dict)
     predicate_expressions: dict[str, list[str]] = Field(default_factory=dict)
@@ -81,13 +75,6 @@ class EvaluationResult(BaseModel):
     fabricated_node_count: int
     fabricated_edge_count: int
     fabricated_necessity: bool
-
-    # concept discovery
-    discovered_concept_recall: float
-    discovered_concept_precision: float
-    fabricated_concept_count: int
-    duplicate_concept_count: int
-    concept_discovery_pass: bool
 
     # evidence-backedness
     node_evidence_coverage: float
@@ -123,11 +110,6 @@ def _tokens(text: Optional[str]) -> set[str]:
 
 
 def _match_score(text: Optional[str], spec: TruthNodeSpec) -> int:
-    """Deterministic match score of free text against a hidden TruthNodeSpec.
-
-    Uses token overlap with each expression plus a substring-containment bonus,
-    so a correct unknown concept found under a different wording still matches.
-    """
     if not text:
         return 0
     t = text.lower()
@@ -161,11 +143,7 @@ def _pick_tiebreak(agent_node, cands: list[str], truth: BusinessDAG) -> str:
 
 
 def _match_nodes(agent: BusinessDAG, truth: BusinessDAG, spec: EvaluationSpec):
-    """Map agent node id -> truth node id using the hidden EvaluationSpec.
-
-    Greedy best-match by expression overlap; arbitrary agent node ids and
-    equivalent EN/JA / paraphrased expressions are handled by the hidden spec.
-    """
+    """Map agent node id -> truth node id using the hidden EvaluationSpec."""
     used: set[str] = set()
     mapping: dict[str, str] = {}
     for nid, node in agent.nodes.items():
@@ -196,10 +174,6 @@ def _match_nodes(agent: BusinessDAG, truth: BusinessDAG, spec: EvaluationSpec):
 def _data_recall(agent_items, truth_items) -> float:
     if not truth_items:
         return 1.0 if not agent_items else 0.0
-    gt_tok = [_tokens(i) for i in truth_items if i]
-    if not gt_tok:
-        return 0.0
-    [_tokens(i) for i in agent_items if i]
     hits = 0
     for gi in range(len(truth_items)):
         if not truth_items[gi]:
@@ -278,7 +252,8 @@ def _necessity_value_ok(aval: str, tval: str, spec: EvaluationSpec) -> bool:
 
 def _iter_node_inferred(node):
     yield node.action
-    if node.primitive is not None:
+    # an 'unclassified' primitive is a sentinel (unknown operation), not a claim
+    if node.primitive is not None and node.primitive.value != "unclassified":
         yield node.primitive
     yield node.actor
     yield node.system
@@ -363,188 +338,188 @@ def _evidence_metrics(
 # ---------------------------------------------------------------------------
 
 
-def _node_signal_strings(node) -> list[str]:
-    signals = [node.action.value]
-    if node.primitive is not None:
-        signals.append(node.primitive.value)
-    signals.append(node.actor.value)
-    signals.append(node.system.value)
-    for r in node.reads:
-        signals.append(r.value)
-    for w in node.writes:
-        signals.append(w.value)
-    if node.necessity is not None:
-        for p in _NECESSITY_PROPS:
-            signals.append(getattr(node.necessity, p).value)
-    return [s for s in signals if s]
-
-
 _NEGATION = (
     "not ",
     " no ",
     "never",
     "doesn't",
     "don't",
-    " ない",
     " no evidence",
     "no such",
+    "しない",
+    " ない",
+    "なし",
+)
+_RELATION_WORDS = (
+    "after",
+    "then",
+    "followed by",
+    "before",
+    "next",
+    "subsequently",
+    "次に",
+    "後に",
+    "その後",
+    "の後",
+    "それから",
+)
+_DIRECTION_UP = (
+    "over",
+    "above",
+    "exceed",
+    "exceeds",
+    "more than",
+    "greater than",
+    "超",
+    "超過",
+    "以上",
+)
+_DIRECTION_DOWN = (
+    "below",
+    "under",
+    "less than",
+    "at or below",
+    "以下",
+    "未満",
 )
 
 
-def _observation_relevant(obs_text: str, signals: list[str]) -> bool:
-    ot = (obs_text or "").lower()
-    obs_tokens = _tokens(obs_text)
-    for s in signals:
-        if not s:
-            continue
-        sl = s.lower()
-        if sl in ot:
-            return True
-        if obs_tokens & _tokens(s):
-            return True
-    return False
+def _is_negated(text: str) -> bool:
+    return any(n in text for n in _NEGATION)
 
 
-def _observation_contradicts(obs_text: str, signals: list[str]) -> bool:
-    ot = (obs_text or "").lower()
-    if not any(n in ot for n in _NEGATION):
+def _mentions(text: str, value: Optional[str]) -> bool:
+    """True if ``value`` (substring or a shared token) appears in ``text``."""
+    if not value:
         return False
-    obs_tokens = _tokens(obs_text)
-    for s in signals:
-        if not s:
-            continue
-        if s.lower() in ot or (obs_tokens & _tokens(s)):
-            return True
+    vl = value.lower()
+    if vl in text:
+        return True
+    return bool(_tokens(value) & _tokens(text))
+
+
+def _relation_supported(text: str, from_action, to_action) -> bool:
+    if not (from_action and to_action):
+        return False
+    if not any(w in text for w in _RELATION_WORDS):
+        return False
+    return _mentions(text, from_action) and _mentions(text, to_action)
+
+
+def _predicate_supported(text: str, claim_value: Optional[str]) -> bool:
+    cv = (claim_value or "").lower()
+    if not cv:
+        return False
+    if cv in text:
+        return True
+    up = any(w in cv for w in _DIRECTION_UP)
+    down = any(w in cv for w in _DIRECTION_DOWN)
+    if up and any(w in text for w in _DIRECTION_UP):
+        return True
+    if down and any(w in text for w in _DIRECTION_DOWN):
+        return True
     return False
 
 
-def _claim_status(
-    claim_value: Optional[str], node_signals: list[str], obs_ids: list[str], obs_by_id
+def support(
+    obs_text: str, claim_kind: str, claim_value: Optional[str], context=None
 ) -> str:
-    """SUPPORTED / CONTRADICTED / UNKNOWN for one claim's evidence.
+    """SUPPORTED / CONTRADICTED / UNKNOWN for one observation vs one claim.
 
-    A claim is SUPPORTED if at least one of its observations is relevant to the
-    node; CONTRADICTED if any observation explicitly negates a node signal;
-    UNKNOWN otherwise (not automatically a failure).
+    Each claim is matched against its **own** value (actor against the actor
+    value, system against the system value, predicate against the predicate
+    itself, etc.); the node-wide signal set is not reused. CONTRADICTED wins
+    over SUPPORTED when the observation is both relevant and negated.
     """
-    if not obs_ids:
+    ot = (obs_text or "").lower()
+    if claim_kind == "primitive":
+        if not claim_value or claim_value == "unclassified":
+            return "UNKNOWN"
+        if resolve_primitive(obs_text) == claim_value:
+            return "SUPPORTED"
         return "UNKNOWN"
-    relevant = False
-    contradicted = False
+    if claim_kind == "edge":
+        ctx = context or {}
+        ok = _relation_supported(ot, ctx.get("from_action"), ctx.get("to_action"))
+    elif claim_kind == "predicate":
+        ok = _predicate_supported(ot, claim_value)
+    else:
+        ok = _mentions(ot, claim_value)
+    if not ok:
+        return "UNKNOWN"
+    return "CONTRADICTED" if _is_negated(ot) else "SUPPORTED"
+
+
+def _obs_ids_supported(
+    obs_ids: list[str], claim_kind: str, claim_value: Optional[str], context, obs_by_id
+) -> bool:
+    if not obs_ids:
+        return False
     for oid in obs_ids:
         obs = obs_by_id.get(oid)
         if obs is None:
             continue
-        if _observation_relevant(obs.text, node_signals):
-            relevant = True
-        if _observation_contradicts(obs.text, node_signals):
-            contradicted = True
-    if contradicted and not relevant:
-        return "CONTRADICTED"
-    return "SUPPORTED" if relevant else "UNKNOWN"
-
-
-def _claim_entries(node):
-    entries = [("node.action", node.action)]
-    if node.primitive is not None:
-        entries.append(("node.primitive", node.primitive))
-    for i, r in enumerate(node.reads):
-        entries.append((f"node.reads[{i}]", r))
-    for i, w in enumerate(node.writes):
-        entries.append((f"node.writes[{i}]", w))
-    if node.necessity is not None:
-        for p in _NECESSITY_PROPS:
-            entries.append((f"node.necessity.{p}", getattr(node.necessity, p)))
-    return entries
+        if support(obs.text, claim_kind, claim_value, context) == "SUPPORTED":
+            return True
+    return False
 
 
 def _relevance_pass(agent: BusinessDAG, obs_by_id) -> bool:
-    """Every asserted claim must be supported by relevant authentic evidence.
+    """Every asserted claim must have at least one SUPPORTED provenance.
 
-    A claim with only clearly-unrelated observations (no shared signal with the
-    node) is rejected (poisoning / partial-poisoning exploit). Unknown relevance
-    without observations is handled by the evidence gate (asserted claims need
-    provenance), and heavy paraphrase sharing any node signal still passes.
+    Claims are evaluated independently: action, primitive (unless
+    ``unclassified``), actor, system, each read, each write, each necessity
+    property, edge relation, and predicate. An unrelated / partially-poisoned
+    observation cannot support a claim it does not actually mention.
     """
     for node in agent.nodes.values():
-        signals = _node_signal_strings(node)
-        for key, iv in _claim_entries(node):
+        claims = [
+            ("action", node.action, "action", None),
+            ("actor", node.actor, "actor", None),
+            ("system", node.system, "system", None),
+        ]
+        if node.primitive is not None and node.primitive.asserted:
+            claims.append(("primitive", node.primitive, "primitive", None))
+        for i, r in enumerate(node.reads):
+            claims.append((f"read[{i}]", r, "read", None))
+        for i, w in enumerate(node.writes):
+            claims.append((f"write[{i}]", w, "write", None))
+        if node.necessity is not None:
+            for p in _NECESSITY_PROPS:
+                claims.append(
+                    (f"necessity.{p}", getattr(node.necessity, p), "necessity", None)
+                )
+        for _name, iv, kind, ctx in claims:
             if not iv.asserted:
                 continue
-            status = _claim_status(iv.value, signals, iv.observation_ids, obs_by_id)
-            if status != "SUPPORTED":
+            if iv.value == "unclassified":
+                continue  # sentinel for an unknown primitive; not a claim to fail
+            if not _obs_ids_supported(
+                iv.observation_ids, kind, iv.value, ctx, obs_by_id
+            ):
                 return False
-        for edge in agent.edges.values():
-            pass  # edge/predicate relevance handled below
-    # edges and predicates
+
     for edge in agent.edges.values():
-        signals = []
-        for nid in (edge.from_node, edge.to_node):
-            n = agent.nodes.get(nid)
-            if n is not None:
-                signals.extend(_node_signal_strings(n))
-        if edge.observation_ids:
-            if (
-                _claim_status(None, signals, edge.observation_ids, obs_by_id)
-                != "SUPPORTED"
-            ):
-                return False
-        if edge.predicate is not None and edge.predicate.asserted:
-            if (
-                _claim_status(
-                    edge.predicate.value,
-                    signals,
-                    edge.predicate.observation_ids,
-                    obs_by_id,
-                )
-                != "SUPPORTED"
-            ):
-                return False
-    # discovered concepts
-    for cid, concept in agent.concepts.items():
-        if not concept.observation_ids:
-            continue
-        sig = [concept.label, concept.description] + list(concept.aliases)
-        sig = [s for s in sig if s]
-        if _claim_status(None, sig, concept.observation_ids, obs_by_id) != "SUPPORTED":
+        fa = agent.nodes.get(edge.from_node)
+        ta = agent.nodes.get(edge.to_node)
+        ctx = {
+            "from_action": fa.action.value if fa else None,
+            "to_action": ta.action.value if ta else None,
+        }
+        if edge.observation_ids and not _obs_ids_supported(
+            edge.observation_ids, "edge", None, ctx, obs_by_id
+        ):
             return False
+        if edge.predicate is not None and edge.predicate.asserted:
+            if not _obs_ids_supported(
+                edge.predicate.observation_ids,
+                "predicate",
+                edge.predicate.value,
+                None,
+                obs_by_id,
+            ):
+                return False
     return True
-
-
-# ---------------------------------------------------------------------------
-# Concept discovery
-# ---------------------------------------------------------------------------
-
-
-def _concept_target(text: str, spec: EvaluationSpec) -> Optional[str]:
-    scored = [
-        (tid, _match_score(text, spec.truth_nodes[tid])) for tid in spec.truth_nodes
-    ]
-    scored = [(t, s) for t, s in scored if s > 0]
-    if not scored:
-        return None
-    return max(scored, key=lambda x: x[1])[0]
-
-
-def _concept_discovery_metrics(agent: BusinessDAG, spec: EvaluationSpec):
-    target_counts: dict[str, int] = defaultdict(int)
-    fabricated = 0
-    matched = 0
-    total = len(agent.concepts)
-    for concept in agent.concepts.values():
-        text = concept.label
-        aliases = " ".join(concept.aliases)
-        target = _concept_target(text + " " + aliases, spec)
-        if target is None:
-            fabricated += 1
-        else:
-            matched += 1
-            target_counts[target] += 1
-    discovered_truth = len(target_counts)
-    recall = discovered_truth / len(spec.truth_nodes) if spec.truth_nodes else 1.0
-    precision = matched / total if total else 1.0
-    duplicate = sum(max(0, c - 1) for c in target_counts.values())
-    return recall, precision, fabricated, duplicate
 
 
 def _all_referenced_observation_ids(agent: BusinessDAG) -> set[str]:
@@ -560,8 +535,6 @@ def _all_referenced_observation_ids(agent: BusinessDAG) -> set[str]:
         ids.update(edge.observation_ids)
         if edge.predicate is not None:
             ids.update(edge.predicate.observation_ids)
-    for concept in agent.concepts.values():
-        ids.update(concept.observation_ids)
     return ids
 
 
@@ -694,7 +667,7 @@ def evaluate(
                     nec_hits += 1
     necessity_correctness = nec_hits / nec_total if nec_total else 1.0
 
-    # ---- primitive correctness ---------------------------------------------
+    # ---- primitive correctness (diagnostic) --------------------------------
     primitive_hits = primitive_total = 0
     for anid, tnid in mapping.items():
         expected = spec.truth_nodes[tnid].primitive
@@ -703,25 +676,13 @@ def evaluate(
         ap = agent.nodes[anid].primitive
         if ap is None or not ap.asserted:
             continue
+        resolved = resolve_primitive(ap.value)
+        if resolved == "unclassified":
+            continue  # valid open-world state; not penalized
         primitive_total += 1
-        if resolve_primitive(ap.value) == expected:
+        if resolved == expected:
             primitive_hits += 1
     primitive_correctness = primitive_hits / primitive_total if primitive_total else 1.0
-
-    # ---- concept discovery -------------------------------------------------
-    (
-        discovered_concept_recall,
-        discovered_concept_precision,
-        fabricated_concept_count,
-        duplicate_concept_count,
-    ) = _concept_discovery_metrics(agent, spec)
-    concept_discovery_pass = bool(
-        discovered_concept_recall == 1.0
-        and discovered_concept_precision == 1.0
-        and fabricated_concept_count == 0
-        and duplicate_concept_count == 0
-        and all(c.observation_ids for c in agent.concepts.values())
-    )
 
     # ---- observation authenticity -------------------------------------------
     all_obs_ids = {o.id for o in db.observations}
@@ -793,7 +754,6 @@ def evaluate(
         and evidence_pass
         and provenance_authenticity_pass
         and relevance_pass
-        and concept_discovery_pass
     )
 
     return EvaluationResult(
@@ -818,11 +778,6 @@ def evaluate(
         fabricated_node_count=fabricated_node_count,
         fabricated_edge_count=fabricated_edge_count,
         fabricated_necessity=fabricated_necessity,
-        discovered_concept_recall=discovered_concept_recall,
-        discovered_concept_precision=discovered_concept_precision,
-        fabricated_concept_count=fabricated_concept_count,
-        duplicate_concept_count=duplicate_concept_count,
-        concept_discovery_pass=concept_discovery_pass,
         node_evidence_coverage=node_evidence_coverage,
         attribute_provenance_coverage=attribute_provenance_coverage,
         edge_evidence_coverage=edge_evidence_coverage,

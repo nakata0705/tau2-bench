@@ -19,13 +19,11 @@ reconstruct the current process.
    cannot invent an Observation's text, source, or turn. Use
    `list_stakeholder_messages` to see statements and turn indices, then
    `observe_turn(turn_idx)` to capture one (its id is your provenance reference).
-3. **Discover concepts openly.** Use `discover_concept` to record unknown domain
-   concepts in your own terms (a label, aliases, and the observations that
-   support them). A new observation for the same concept is merged into it —
-   never create a duplicate. You may optionally label a node's generic operation
-   (`primitive`: create / check / approve / send / receive / record / update /
-   transform / ...); if you cannot tell the operation, leave it unset rather than
-   guess.
+3. **Use open-world actions and generic primitives.** Express what is done in
+   the stakeholder's own words (free text). Optionally label the node's generic
+   operation (`primitive`: create / check / approve / send / receive / record /
+   update / transform / ...). If you cannot safely classify the operation, set
+   `primitive="unclassified"` — a normal open-world state, not a failure.
 4. **Ask one focused question at a time**, in plain business language, and
    follow up on what the interviewee says.
 5. **Ask about conditions, branches and exceptions.** Express each conditional
@@ -52,8 +50,6 @@ ontology):
 
 - `start_inference` — begin an inferred DAG.
 - `list_stakeholder_messages` / `observe_turn` — capture authentic Observations.
-- `discover_concept` — record an unknown domain concept (label + aliases +
-  provenance).
 - `add_node` / `update_node` — add a node, or update an existing node's action /
   primitive / actor / system / reads / writes with a new observation.
 - `add_edge` / `update_edge` — connect nodes; put a control-flow condition on the

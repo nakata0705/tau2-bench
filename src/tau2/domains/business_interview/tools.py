@@ -13,7 +13,6 @@ from typing import Optional
 from tau2.data_model.tasks import Task
 from tau2.domains.business_interview.dag import (
     BusinessDAG,
-    DiscoveredConcept,
     Edge,
     InferredValue,
     InterviewDB,
@@ -187,7 +186,6 @@ class InterviewTools(ToolKitBase):
         node_id: str,
         action: str,
         primitive: Optional[str] = None,
-        concept_id: Optional[str] = None,
         actor: Optional[str] = None,
         system: Optional[str] = None,
         reads: Optional[list[str]] = None,
@@ -203,8 +201,8 @@ class InterviewTools(ToolKitBase):
         Args:
             node_id: Your own identifier for this node.
             action: What is done in this node (open-world natural language).
-            primitive: Optional generic operation (create/check/approve/...).
-            concept_id: Optional reference to a DiscoveredConcept in the DAG.
+            primitive: Optional generic operation (create/check/approve/... or
+                'unclassified').
             actor: Who performs it (optional).
             system: Which system / tool (optional).
             reads: Data this node reads (optional).
@@ -219,15 +217,12 @@ class InterviewTools(ToolKitBase):
         if node_id in dag.nodes:
             raise ValueError(f"node already exists: {node_id}")
         self._require_observation(observation_id)
-        if concept_id is not None and concept_id not in dag.concepts:
-            raise ValueError(f"discovered concept not found: {concept_id}")
         dag.nodes[node_id] = Node(
             id=node_id,
             action=self._iv(action, confidence, observation_id),
             primitive=self._iv(primitive, confidence, observation_id)
             if primitive is not None
             else None,
-            concept_id=concept_id,
             actor=self._iv(actor, confidence, observation_id)
             if actor is not None
             else InferredValue(),
@@ -246,7 +241,6 @@ class InterviewTools(ToolKitBase):
         node_id: str,
         action: Optional[str] = None,
         primitive: Optional[str] = None,
-        concept_id: Optional[str] = None,
         actor: Optional[str] = None,
         system: Optional[str] = None,
         reads: Optional[list[str]] = None,
@@ -260,7 +254,6 @@ class InterviewTools(ToolKitBase):
             node_id: The node to update.
             action: New action text (optional).
             primitive: New generic primitive (optional).
-            concept_id: New DiscoveredConcept reference (optional).
             actor: New actor (optional).
             system: New system (optional).
             reads: New read data list (optional).
@@ -273,9 +266,6 @@ class InterviewTools(ToolKitBase):
         """
         node = self._node(node_id)
         self._require_observation(observation_id)
-        dag = self._dag()
-        if concept_id is not None and concept_id not in dag.concepts:
-            raise ValueError(f"discovered concept not found: {concept_id}")
         conf = confidence if confidence is not None else 1.0
         if action is not None:
             node.action = self._set_value(node.action, action, conf, observation_id)
@@ -286,8 +276,6 @@ class InterviewTools(ToolKitBase):
                 conf,
                 observation_id,
             )
-        if concept_id is not None:
-            node.concept_id = concept_id
         if actor is not None:
             node.actor = self._set_value(node.actor, actor, conf, observation_id)
         if system is not None:
@@ -478,58 +466,6 @@ class InterviewTools(ToolKitBase):
             dict.fromkeys(node.observation_ids + [observation_id])
         )
         return f"Attached {observation_id} to node {node_id}."
-
-    @is_tool(ToolType.WRITE)
-    def discover_concept(
-        self,
-        concept_id: str,
-        label: str,
-        description: Optional[str] = None,
-        aliases: Optional[list[str]] = None,
-        confidence: float = 1.0,
-        observation_id: Optional[str] = None,
-    ) -> str:
-        """Discover (or merge into) an open-world domain concept.
-
-        Concepts are not from any fixed ontology: the agent discovers them from
-        the interview. New observations for the same concept are merged into the
-        existing concept (aliases and provenance accumulate).
-
-        Args:
-            concept_id: Your own identifier for this concept.
-            label: The concept's canonical label.
-            description: Optional description.
-            aliases: Optional alternative expressions.
-            confidence: Confidence in the concept [0, 1].
-            observation_id: Observation supporting this concept (optional).
-
-        Returns:
-            The concept id.
-        """
-        dag = self._dag()
-        self._require_observation(observation_id)
-        if concept_id in dag.concepts:
-            c = dag.concepts[concept_id]
-            c.label = label
-            if description:
-                c.description = description
-            if aliases:
-                c.aliases = list(dict.fromkeys(list(c.aliases) + list(aliases)))
-            c.confidence = confidence
-            if observation_id:
-                c.observation_ids = list(
-                    dict.fromkeys(list(c.observation_ids) + [observation_id])
-                )
-            return f"Merged into concept {concept_id}."
-        dag.concepts[concept_id] = DiscoveredConcept(
-            id=concept_id,
-            label=label,
-            description=description,
-            aliases=list(aliases or []),
-            observation_ids=[observation_id] if observation_id else [],
-            confidence=confidence,
-        )
-        return f"Discovered concept {concept_id}."
 
     @is_tool(ToolType.WRITE)
     def set_dag_endpoints(

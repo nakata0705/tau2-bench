@@ -24,6 +24,7 @@ _PRIMITIVES: list[tuple[str, tuple[str, ...]]] = [
             "produce",
             "make",
             "prepare",
+            "作る",
             "作成",
             "生成",
             "作成する",
@@ -32,12 +33,28 @@ _PRIMITIVES: list[tuple[str, tuple[str, ...]]] = [
     ),
     (
         "check",
-        ("check", "verify", "validate", "confirm", "inspect", "照会", "確認", "検証"),
+        (
+            "check",
+            "verify",
+            "validate",
+            "confirm",
+            "inspect",
+            "照会",
+            "確認",
+            "確認する",
+            "検証",
+        ),
     ),
-    ("approve", ("approve", "authorize", "sanction", "承認", "許可", "認可")),
+    (
+        "approve",
+        ("approve", "authorize", "sanction", "承認", "承認する", "許可", "認可"),
+    ),
     ("reject", ("reject", "decline", "refuse", "却下", "拒否")),
-    ("send", ("send", "deliver", "transmit", "dispatch", "送付", "送信", "発送")),
-    ("receive", ("receive", "intake", "accept", "受領", "受け付", "受付")),
+    (
+        "send",
+        ("send", "deliver", "transmit", "dispatch", "送る", "送付", "送信", "発送"),
+    ),
+    ("receive", ("receive", "intake", "accept", "受領", "受け付", "受け取る", "受付")),
     ("record", ("record", "log", "enter", "register", "記録", "登録")),
     ("update", ("update", "edit", "modify", "change", "更新", "変更")),
     ("transform", ("transform", "convert", "process", "変換", "加工")),
@@ -48,14 +65,15 @@ _PRIMITIVES: list[tuple[str, tuple[str, ...]]] = [
 ]
 
 
-def resolve_primitive(text: Optional[str]) -> Optional[str]:
-    """Guess an abstract generic primitive from free text, or None if unknown.
+def resolve_primitive(text: Optional[str]) -> str:
+    """Guess an abstract generic primitive from free text.
 
-    Returns the best-scoring primitive id (substring signal scoring) or None,
-    so that an unseen operation never fails the agent.
+    Returns the best-scoring primitive id, or ``"unclassified"`` when no known
+    primitive can be safely determined. ``"unclassified"`` is a normal
+    open-world state, not a failure.
     """
     if not text:
-        return None
+        return "unclassified"
     t = text.lower()
     scored: list[tuple[int, str]] = []
     for pid, signals in _PRIMITIVES:
@@ -63,7 +81,7 @@ def resolve_primitive(text: Optional[str]) -> Optional[str]:
         if hits > 0:
             scored.append((hits, pid))
     if not scored:
-        return None
+        return "unclassified"
     best = max(h for h, _ in scored)
     cands = sorted(p for h, p in scored if h == best)
     return cands[0]

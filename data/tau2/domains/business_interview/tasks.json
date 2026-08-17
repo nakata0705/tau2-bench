@@ -49,22 +49,11 @@
         },
         {
           "action_id": "inf_3",
-          "name": "discover_concept",
-          "arguments": {
-            "concept_id": "ca",
-            "label": "receive quotation request",
-            "observation_id": "obs_3"
-          },
-          "info": "Reference: discover concept ca."
-        },
-        {
-          "action_id": "inf_4",
           "name": "add_node",
           "arguments": {
             "node_id": "a",
             "action": "receive quotation request",
             "primitive": "receive",
-            "concept_id": "ca",
             "actor": "sales",
             "reads": [],
             "writes": [
@@ -75,7 +64,7 @@
           "info": "Reference: node a."
         },
         {
-          "action_id": "inf_5",
+          "action_id": "inf_4",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 7
@@ -83,23 +72,12 @@
           "info": "Reference: capture stakeholder turn 7."
         },
         {
-          "action_id": "inf_6",
-          "name": "discover_concept",
-          "arguments": {
-            "concept_id": "cb",
-            "label": "check customer information in the CRM",
-            "observation_id": "obs_7"
-          },
-          "info": "Reference: discover concept cb."
-        },
-        {
-          "action_id": "inf_7",
+          "action_id": "inf_5",
           "name": "add_node",
           "arguments": {
             "node_id": "b",
             "action": "check customer information in the CRM",
             "primitive": "check",
-            "concept_id": "cb",
             "actor": "sales",
             "reads": [
               "customer"
@@ -111,7 +89,7 @@
           "info": "Reference: node b."
         },
         {
-          "action_id": "inf_8",
+          "action_id": "inf_6",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 11
@@ -119,23 +97,12 @@
           "info": "Reference: capture stakeholder turn 11."
         },
         {
-          "action_id": "inf_9",
-          "name": "discover_concept",
-          "arguments": {
-            "concept_id": "cc",
-            "label": "create quotation in the quoting system",
-            "observation_id": "obs_11"
-          },
-          "info": "Reference: discover concept cc."
-        },
-        {
-          "action_id": "inf_10",
+          "action_id": "inf_7",
           "name": "add_node",
           "arguments": {
             "node_id": "c",
             "action": "create quotation in the quoting system",
             "primitive": "create",
-            "concept_id": "cc",
             "actor": "sales",
             "reads": [
               "customer",
@@ -150,7 +117,7 @@
           "info": "Reference: node c."
         },
         {
-          "action_id": "inf_11",
+          "action_id": "inf_8",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 15
@@ -158,23 +125,12 @@
           "info": "Reference: capture stakeholder turn 15."
         },
         {
-          "action_id": "inf_12",
-          "name": "discover_concept",
-          "arguments": {
-            "concept_id": "cd",
-            "label": "approve high-value quotation",
-            "observation_id": "obs_15"
-          },
-          "info": "Reference: discover concept cd."
-        },
-        {
-          "action_id": "inf_13",
+          "action_id": "inf_9",
           "name": "add_node",
           "arguments": {
             "node_id": "d",
             "action": "approve high-value quotation",
             "primitive": "approve",
-            "concept_id": "cd",
             "actor": "manager",
             "reads": [
               "quote"
@@ -188,7 +144,7 @@
           "info": "Reference: node d."
         },
         {
-          "action_id": "inf_14",
+          "action_id": "inf_10",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 19
@@ -196,23 +152,12 @@
           "info": "Reference: capture stakeholder turn 19."
         },
         {
-          "action_id": "inf_15",
-          "name": "discover_concept",
-          "arguments": {
-            "concept_id": "ce",
-            "label": "send quotation to customer",
-            "observation_id": "obs_19"
-          },
-          "info": "Reference: discover concept ce."
-        },
-        {
-          "action_id": "inf_16",
+          "action_id": "inf_11",
           "name": "add_node",
           "arguments": {
             "node_id": "e",
             "action": "send quotation to customer",
             "primitive": "send",
-            "concept_id": "ce",
             "actor": "sales",
             "reads": [
               "quote"
@@ -226,7 +171,7 @@
           "info": "Reference: node e."
         },
         {
-          "action_id": "inf_17",
+          "action_id": "inf_12",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 23
@@ -234,23 +179,12 @@
           "info": "Reference: capture stakeholder turn 23."
         },
         {
-          "action_id": "inf_18",
-          "name": "discover_concept",
-          "arguments": {
-            "concept_id": "cf",
-            "label": "send quotation summary to accounting at month-end",
-            "observation_id": "obs_23"
-          },
-          "info": "Reference: discover concept cf."
-        },
-        {
-          "action_id": "inf_19",
+          "action_id": "inf_13",
           "name": "add_node",
           "arguments": {
             "node_id": "f",
             "action": "send quotation summary to accounting at month-end",
             "primitive": "send",
-            "concept_id": "cf",
             "actor": "sales",
             "reads": [
               "quote"
@@ -264,7 +198,7 @@
           "info": "Reference: node f."
         },
         {
-          "action_id": "inf_20",
+          "action_id": "inf_14",
           "name": "set_node_necessity",
           "arguments": {
             "node_id": "d",
@@ -274,7 +208,7 @@
           "info": "Reference: approval necessity."
         },
         {
-          "action_id": "inf_21",
+          "action_id": "inf_15",
           "name": "set_node_necessity",
           "arguments": {
             "node_id": "f"
@@ -282,7 +216,7 @@
           "info": "Reference: month-end necessity unknown."
         },
         {
-          "action_id": "inf_22",
+          "action_id": "inf_16",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 27
@@ -290,7 +224,7 @@
           "info": "Reference: capture stakeholder turn 27."
         },
         {
-          "action_id": "inf_23",
+          "action_id": "inf_17",
           "name": "add_edge",
           "arguments": {
             "edge_id": "e1",
@@ -301,7 +235,7 @@
           "info": "Reference: edge e1."
         },
         {
-          "action_id": "inf_24",
+          "action_id": "inf_18",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 31
@@ -309,7 +243,7 @@
           "info": "Reference: capture stakeholder turn 31."
         },
         {
-          "action_id": "inf_25",
+          "action_id": "inf_19",
           "name": "add_edge",
           "arguments": {
             "edge_id": "e2",
@@ -320,7 +254,7 @@
           "info": "Reference: edge e2."
         },
         {
-          "action_id": "inf_26",
+          "action_id": "inf_20",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 35
@@ -328,7 +262,7 @@
           "info": "Reference: capture stakeholder turn 35."
         },
         {
-          "action_id": "inf_27",
+          "action_id": "inf_21",
           "name": "add_edge",
           "arguments": {
             "edge_id": "e3",
@@ -340,7 +274,7 @@
           "info": "Reference: edge e3."
         },
         {
-          "action_id": "inf_28",
+          "action_id": "inf_22",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 39
@@ -348,7 +282,7 @@
           "info": "Reference: capture stakeholder turn 39."
         },
         {
-          "action_id": "inf_29",
+          "action_id": "inf_23",
           "name": "add_edge",
           "arguments": {
             "edge_id": "e4",
@@ -360,7 +294,7 @@
           "info": "Reference: edge e4."
         },
         {
-          "action_id": "inf_30",
+          "action_id": "inf_24",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 43
@@ -368,7 +302,7 @@
           "info": "Reference: capture stakeholder turn 43."
         },
         {
-          "action_id": "inf_31",
+          "action_id": "inf_25",
           "name": "add_edge",
           "arguments": {
             "edge_id": "e5",
@@ -379,7 +313,7 @@
           "info": "Reference: edge e5."
         },
         {
-          "action_id": "inf_32",
+          "action_id": "inf_26",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 47
@@ -387,7 +321,7 @@
           "info": "Reference: capture stakeholder turn 47."
         },
         {
-          "action_id": "inf_33",
+          "action_id": "inf_27",
           "name": "add_edge",
           "arguments": {
             "edge_id": "e6",
@@ -399,7 +333,7 @@
           "info": "Reference: edge e6."
         },
         {
-          "action_id": "inf_34",
+          "action_id": "inf_28",
           "name": "set_dag_endpoints",
           "arguments": {
             "start_node_id": "a",
@@ -411,7 +345,7 @@
           "info": "Reference: endpoints."
         },
         {
-          "action_id": "inf_35",
+          "action_id": "inf_29",
           "name": "finish_interview",
           "arguments": {
             "summary": "Inferred the quotation DAG."
@@ -507,22 +441,11 @@
         },
         {
           "action_id": "inf_3",
-          "name": "discover_concept",
-          "arguments": {
-            "concept_id": "ca",
-            "label": "receive quotation request",
-            "observation_id": "obs_3"
-          },
-          "info": "Reference: discover concept ca."
-        },
-        {
-          "action_id": "inf_4",
           "name": "add_node",
           "arguments": {
             "node_id": "a",
             "action": "receive quotation request",
             "primitive": "receive",
-            "concept_id": "ca",
             "actor": "sales",
             "reads": [],
             "writes": [
@@ -533,7 +456,7 @@
           "info": "Reference: node a."
         },
         {
-          "action_id": "inf_5",
+          "action_id": "inf_4",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 7
@@ -541,23 +464,12 @@
           "info": "Reference: capture stakeholder turn 7."
         },
         {
-          "action_id": "inf_6",
-          "name": "discover_concept",
-          "arguments": {
-            "concept_id": "cb",
-            "label": "check customer information in the CRM",
-            "observation_id": "obs_7"
-          },
-          "info": "Reference: discover concept cb."
-        },
-        {
-          "action_id": "inf_7",
+          "action_id": "inf_5",
           "name": "add_node",
           "arguments": {
             "node_id": "b",
             "action": "check customer information in the CRM",
             "primitive": "check",
-            "concept_id": "cb",
             "actor": "sales",
             "reads": [
               "customer"
@@ -569,7 +481,7 @@
           "info": "Reference: node b."
         },
         {
-          "action_id": "inf_8",
+          "action_id": "inf_6",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 11
@@ -577,23 +489,12 @@
           "info": "Reference: capture stakeholder turn 11."
         },
         {
-          "action_id": "inf_9",
-          "name": "discover_concept",
-          "arguments": {
-            "concept_id": "cc",
-            "label": "create quotation in the quoting system",
-            "observation_id": "obs_11"
-          },
-          "info": "Reference: discover concept cc."
-        },
-        {
-          "action_id": "inf_10",
+          "action_id": "inf_7",
           "name": "add_node",
           "arguments": {
             "node_id": "c",
             "action": "create quotation in the quoting system",
             "primitive": "create",
-            "concept_id": "cc",
             "actor": "sales",
             "reads": [
               "customer",
@@ -608,7 +509,7 @@
           "info": "Reference: node c."
         },
         {
-          "action_id": "inf_11",
+          "action_id": "inf_8",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 15
@@ -616,23 +517,12 @@
           "info": "Reference: capture stakeholder turn 15."
         },
         {
-          "action_id": "inf_12",
-          "name": "discover_concept",
-          "arguments": {
-            "concept_id": "cd",
-            "label": "approve high-value quotation",
-            "observation_id": "obs_15"
-          },
-          "info": "Reference: discover concept cd."
-        },
-        {
-          "action_id": "inf_13",
+          "action_id": "inf_9",
           "name": "add_node",
           "arguments": {
             "node_id": "d",
             "action": "approve high-value quotation",
             "primitive": "approve",
-            "concept_id": "cd",
             "actor": "manager",
             "reads": [
               "quote"
@@ -646,7 +536,7 @@
           "info": "Reference: node d."
         },
         {
-          "action_id": "inf_14",
+          "action_id": "inf_10",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 19
@@ -654,23 +544,12 @@
           "info": "Reference: capture stakeholder turn 19."
         },
         {
-          "action_id": "inf_15",
-          "name": "discover_concept",
-          "arguments": {
-            "concept_id": "ce",
-            "label": "send quotation to customer",
-            "observation_id": "obs_19"
-          },
-          "info": "Reference: discover concept ce."
-        },
-        {
-          "action_id": "inf_16",
+          "action_id": "inf_11",
           "name": "add_node",
           "arguments": {
             "node_id": "e",
             "action": "send quotation to customer",
             "primitive": "send",
-            "concept_id": "ce",
             "actor": "sales",
             "reads": [
               "quote"
@@ -684,7 +563,7 @@
           "info": "Reference: node e."
         },
         {
-          "action_id": "inf_17",
+          "action_id": "inf_12",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 23
@@ -692,23 +571,12 @@
           "info": "Reference: capture stakeholder turn 23."
         },
         {
-          "action_id": "inf_18",
-          "name": "discover_concept",
-          "arguments": {
-            "concept_id": "cf",
-            "label": "send quotation summary to accounting at month-end",
-            "observation_id": "obs_23"
-          },
-          "info": "Reference: discover concept cf."
-        },
-        {
-          "action_id": "inf_19",
+          "action_id": "inf_13",
           "name": "add_node",
           "arguments": {
             "node_id": "f",
             "action": "send quotation summary to accounting at month-end",
             "primitive": "send",
-            "concept_id": "cf",
             "actor": "sales",
             "reads": [
               "quote"
@@ -722,7 +590,7 @@
           "info": "Reference: node f."
         },
         {
-          "action_id": "inf_20",
+          "action_id": "inf_14",
           "name": "set_node_necessity",
           "arguments": {
             "node_id": "d",
@@ -732,7 +600,7 @@
           "info": "Reference: approval necessity."
         },
         {
-          "action_id": "inf_21",
+          "action_id": "inf_15",
           "name": "set_node_necessity",
           "arguments": {
             "node_id": "f"
@@ -740,7 +608,7 @@
           "info": "Reference: month-end necessity unknown."
         },
         {
-          "action_id": "inf_22",
+          "action_id": "inf_16",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 27
@@ -748,7 +616,7 @@
           "info": "Reference: capture stakeholder turn 27."
         },
         {
-          "action_id": "inf_23",
+          "action_id": "inf_17",
           "name": "add_edge",
           "arguments": {
             "edge_id": "e1",
@@ -759,7 +627,7 @@
           "info": "Reference: edge e1."
         },
         {
-          "action_id": "inf_24",
+          "action_id": "inf_18",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 31
@@ -767,7 +635,7 @@
           "info": "Reference: capture stakeholder turn 31."
         },
         {
-          "action_id": "inf_25",
+          "action_id": "inf_19",
           "name": "add_edge",
           "arguments": {
             "edge_id": "e2",
@@ -778,7 +646,7 @@
           "info": "Reference: edge e2."
         },
         {
-          "action_id": "inf_26",
+          "action_id": "inf_20",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 35
@@ -786,7 +654,7 @@
           "info": "Reference: capture stakeholder turn 35."
         },
         {
-          "action_id": "inf_27",
+          "action_id": "inf_21",
           "name": "add_edge",
           "arguments": {
             "edge_id": "e3",
@@ -798,7 +666,7 @@
           "info": "Reference: edge e3."
         },
         {
-          "action_id": "inf_28",
+          "action_id": "inf_22",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 39
@@ -806,7 +674,7 @@
           "info": "Reference: capture stakeholder turn 39."
         },
         {
-          "action_id": "inf_29",
+          "action_id": "inf_23",
           "name": "add_edge",
           "arguments": {
             "edge_id": "e4",
@@ -818,7 +686,7 @@
           "info": "Reference: edge e4."
         },
         {
-          "action_id": "inf_30",
+          "action_id": "inf_24",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 43
@@ -826,7 +694,7 @@
           "info": "Reference: capture stakeholder turn 43."
         },
         {
-          "action_id": "inf_31",
+          "action_id": "inf_25",
           "name": "add_edge",
           "arguments": {
             "edge_id": "e5",
@@ -837,7 +705,7 @@
           "info": "Reference: edge e5."
         },
         {
-          "action_id": "inf_32",
+          "action_id": "inf_26",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 47
@@ -845,7 +713,7 @@
           "info": "Reference: capture stakeholder turn 47."
         },
         {
-          "action_id": "inf_33",
+          "action_id": "inf_27",
           "name": "add_edge",
           "arguments": {
             "edge_id": "e6",
@@ -857,7 +725,7 @@
           "info": "Reference: edge e6."
         },
         {
-          "action_id": "inf_34",
+          "action_id": "inf_28",
           "name": "set_dag_endpoints",
           "arguments": {
             "start_node_id": "a",
@@ -869,7 +737,7 @@
           "info": "Reference: endpoints."
         },
         {
-          "action_id": "inf_35",
+          "action_id": "inf_29",
           "name": "finish_interview",
           "arguments": {
             "summary": "Inferred the quotation DAG."
@@ -947,7 +815,7 @@
     "evaluation_criteria": {
       "actions": [
         {
-          "action_id": "lab_1",
+          "action_id": "inf_1",
           "name": "start_inference",
           "arguments": {
             "name": "Lab sample conditioning"
@@ -955,7 +823,7 @@
           "info": "start."
         },
         {
-          "action_id": "lab_2",
+          "action_id": "inf_2",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 1
@@ -963,23 +831,12 @@
           "info": "observe."
         },
         {
-          "action_id": "lab_3",
-          "name": "discover_concept",
-          "arguments": {
-            "concept_id": "c_n1",
-            "label": "specimen accession",
-            "observation_id": "obs_1"
-          },
-          "info": "concept."
-        },
-        {
-          "action_id": "lab_4",
+          "action_id": "inf_3",
           "name": "add_node",
           "arguments": {
             "node_id": "n1",
             "action": "specimen accession",
             "primitive": "receive",
-            "concept_id": "c_n1",
             "actor": "lab tech",
             "reads": [
               "sample"
@@ -992,7 +849,7 @@
           "info": "node."
         },
         {
-          "action_id": "lab_5",
+          "action_id": "inf_4",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 4
@@ -1000,23 +857,12 @@
           "info": "observe."
         },
         {
-          "action_id": "lab_6",
-          "name": "discover_concept",
-          "arguments": {
-            "concept_id": "c_n2",
-            "label": "chamber seasoning",
-            "observation_id": "obs_4"
-          },
-          "info": "concept."
-        },
-        {
-          "action_id": "lab_7",
+          "action_id": "inf_5",
           "name": "add_node",
           "arguments": {
             "node_id": "n2",
             "action": "chamber seasoning",
             "primitive": "create",
-            "concept_id": "c_n2",
             "actor": "lab tech",
             "system": "environment chamber",
             "writes": [
@@ -1027,7 +873,7 @@
           "info": "node."
         },
         {
-          "action_id": "lab_8",
+          "action_id": "inf_6",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 7
@@ -1035,23 +881,12 @@
           "info": "observe."
         },
         {
-          "action_id": "lab_9",
-          "name": "discover_concept",
-          "arguments": {
-            "concept_id": "c_n3",
-            "label": "conditioning cycle",
-            "observation_id": "obs_7"
-          },
-          "info": "concept."
-        },
-        {
-          "action_id": "lab_10",
+          "action_id": "inf_7",
           "name": "add_node",
           "arguments": {
             "node_id": "n3",
             "action": "conditioning cycle",
             "primitive": "transform",
-            "concept_id": "c_n3",
             "actor": "lab tech",
             "system": "environment chamber",
             "reads": [
@@ -1065,7 +900,7 @@
           "info": "node."
         },
         {
-          "action_id": "lab_11",
+          "action_id": "inf_8",
           "name": "observe_turn",
           "arguments": {
             "turn_idx": 10
@@ -1073,23 +908,12 @@
           "info": "observe."
         },
         {
-          "action_id": "lab_12",
-          "name": "discover_concept",
-          "arguments": {
-            "concept_id": "c_n4",
-            "label": "approve conditioned batch",
-            "observation_id": "obs_10"
-          },
-          "info": "concept."
-        },
-        {
-          "action_id": "lab_13",
+          "action_id": "inf_9",
           "name": "add_node",
           "arguments": {
             "node_id": "n4",
             "action": "approve conditioned batch",
             "primitive": "approve",
-            "concept_id": "c_n4",
             "actor": "lab supervisor",
             "reads": [
               "conditioned sample"
@@ -1102,7 +926,7 @@
           "info": "node."
         },
         {
-          "action_id": "lab_14",
+          "action_id": "inf_10",
           "name": "add_edge",
           "arguments": {
             "edge_id": "l1",
@@ -1113,7 +937,7 @@
           "info": "edge."
         },
         {
-          "action_id": "lab_15",
+          "action_id": "inf_11",
           "name": "add_edge",
           "arguments": {
             "edge_id": "l2",
@@ -1124,7 +948,7 @@
           "info": "edge."
         },
         {
-          "action_id": "lab_16",
+          "action_id": "inf_12",
           "name": "add_edge",
           "arguments": {
             "edge_id": "l3",
@@ -1135,7 +959,7 @@
           "info": "edge."
         },
         {
-          "action_id": "lab_17",
+          "action_id": "inf_13",
           "name": "set_dag_endpoints",
           "arguments": {
             "start_node_id": "n1",
@@ -1146,7 +970,7 @@
           "info": "endpoints."
         },
         {
-          "action_id": "lab_18",
+          "action_id": "inf_14",
           "name": "finish_interview",
           "arguments": {
             "summary": "Inferred the lab sample-conditioning DAG."
