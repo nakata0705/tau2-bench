@@ -3,7 +3,7 @@
 A benchmark for agents that must **reconstruct an unknown business DAG** from
 authentic stakeholder Observations, using **free-text actions**, optional
 **generic operation primitives** (with an explicit `unclassified` sentinel for
-unknown operations), and **claim-level evidence provenance**. No fixed scenario
+unknown operations), and **evidence-backed provenance**. No fixed scenario
 ontology is required of the agent.
 
 ## Core idea
@@ -74,20 +74,29 @@ resolver holds only generic primitives. Metrics:
 - `necessity_correctness`, `fabricated_necessity`
 - `primitive_correctness` (diagnostic; `unclassified` is not penalized)
 
-### Evidence & claim-level relevance
+### Result correctness vs evidence hygiene
 
-Every asserted claim must be traceable to an authentic recorded Observation
-(`evidence_pass` / `provenance_authenticity_pass`), and each claim is evaluated
-**independently** against its own value (`support(observation, claim_kind,
-claim_value) -> SUPPORTED / CONTRADICTED / UNKNOWN`): action, primitive, actor,
-system, each read, each write, edge relation, predicate, and each necessity
-property. An observation that only supports one claim cannot substitute for
-another; an edge needs a relation word + both endpoint actions; a predicate needs
-its own direction/value; an explicit negation is CONTRADICTED (not SUPPORTED).
+Evaluation is split into two orthogonal responsibilities.
 
-`quality_pass` requires `structural AND necessity AND evidence AND
-provenance_authenticity AND relevance`. Unknown (unset) values need no
-provenance; a value with confidence 0 is treated as unasserted.
+**Result correctness** compares the inferred DAG against the hidden Ground Truth
+(exact Ground Truth comparison): node/edge recall + precision, start/end,
+predicate/actor/system/read/write correctness, necessity correctness, and the
+diagnostic primitive correctness. A wrong actor / system / read / write / action
+lowers the corresponding correctness; a wrong edge / predicate / necessity lowers
+its metric.
+
+**Evidence hygiene** (`evidence_pass` / `provenance_authenticity_pass`)
+deterministically guarantees only that every asserted claim references a **real,
+authentic stakeholder Observation** — captured from an actual user message via
+`observe_turn`, not fabricated, and existing. It does **not** re-interpret the
+Observation *text* to decide whether it semantically supports the claim. Because
+the stakeholder may rephrase the same Ground Truth differently on every run, the
+evaluator deliberately does not gate on token / substring / negation semantic
+relevance of the Observation body.
+
+`quality_pass` requires `structural_pass AND necessity_pass AND evidence_pass AND
+provenance_authenticity_pass`. Unknown (unset) values need no provenance; a value
+with confidence 0 is treated as unasserted.
 
 ## Stakeholder filter (`stakeholder.py`)
 
@@ -136,7 +145,9 @@ uv run pytest tests/test_domains/test_business_interview/
 - **Necessity is a node property**; unknown must stay unknown (no fabrication).
 - **Hidden scenario EvaluationSpec is evaluator-only**; the global resolver holds
   only generic primitives.
-- **Claim-level relevance** evaluates each claim against its own value.
-- **No compatibility shims.** DiscoveredConcept / concept discovery are removed;
-  the old Step / Transition / Branch model is removed.
+- **Result correctness is Ground Truth comparison; evidence hygiene only checks
+  Observation references are real & authentic** — the Observation body is not
+  semantically re-interpreted.
+- **No compatibility shims.** DiscoveredConcept / concept discovery / claim-level
+  semantic relevance (`support`, SUPPORTED / CONTRADICTED / UNKNOWN) are removed.
 - **Generic tau2 core unchanged.**

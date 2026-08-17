@@ -2,10 +2,11 @@
 
 The domain centers on free-text actions + optional generic primitives (with an
 explicit ``unclassified`` sentinel for unknown operations) + authentic Observation
-provenance. Claim-level evidence relevance evaluates each claim independently
-(action / primitive / actor / system / read / write / edge relation / predicate /
-necessity property). DiscoveredConcept and concept-discovery evaluation are
-removed.
+provenance. Evaluation separates **result correctness** (inferred DAG vs hidden
+Ground Truth) from **evidence hygiene** (references point at real, authentic
+stakeholder Observations). The evaluator does NOT re-interpret Observation text
+to decide whether it semantically supports a claim. DiscoveredConcept and
+concept-discovery evaluation are removed.
 """
 
 import pytest
@@ -206,29 +207,52 @@ def _build(
     tools.finish_interview()
 
 
-def _poison(tools: InterviewTools, target: str) -> str:
-    """Replace one claim's provenance with a clearly-unrelated Observation."""
-    turn = _ingest(tools, "user", "I like pizza on Fridays.")
-    poison = tools.observe_turn(turn)
+def _wrong_claim(tools: InterviewTools, target: str) -> str:
+    """Make one claim **wrong** while giving it an authentic but unrelated
+    Observation as provenance.
+
+    Evidence hygiene only checks that the referenced Observation is real and
+    authentic; it does not re-interpret its text. A wrong value is therefore
+    expected to pass hygiene but fail Ground Truth correctness.
+    """
+    poison = _claim_obs(tools, "I like pizza on Fridays.")
     dag = tools.db.dag
     if target == "action":
-        dag.nodes["b"].action.observation_ids = [poison]
-    elif target == "primitive":
-        dag.nodes["b"].primitive.observation_ids = [poison]
+        dag.nodes["b"].action = InferredValue(
+            value="perform zebra dance",
+            confidence=1.0,
+            observation_ids=[poison],
+        )
     elif target == "actor":
-        dag.nodes["b"].actor.observation_ids = [poison]
+        dag.nodes["b"].actor = InferredValue(
+            value="manager", confidence=1.0, observation_ids=[poison]
+        )
     elif target == "system":
-        dag.nodes["b"].system.observation_ids = [poison]
+        dag.nodes["b"].system = InferredValue(
+            value="erp", confidence=1.0, observation_ids=[poison]
+        )
     elif target == "read":
-        dag.nodes["b"].reads[0].observation_ids = [poison]
+        dag.nodes["b"].reads[0] = InferredValue(
+            value="wrongdata", confidence=1.0, observation_ids=[poison]
+        )
     elif target == "write":
-        dag.nodes["c"].writes[0].observation_ids = [poison]
+        dag.nodes["c"].writes[0] = InferredValue(
+            value="wrongdata", confidence=1.0, observation_ids=[poison]
+        )
     elif target == "predicate":
-        dag.edges["e3"].predicate.observation_ids = [poison]
+        dag.edges["e3"].predicate = InferredValue(
+            value="a completely wrong condition",
+            confidence=1.0,
+            observation_ids=[poison],
+        )
     elif target == "edge":
-        dag.edges["e1"].observation_ids = [poison]
+        # rewire e5 (d->e) to (b->e): keeps the DAG valid, but is wrong vs truth.
+        dag.edges["e5"].from_node = "b"
+        dag.edges["e5"].to_node = "e"
     elif target == "necessity":
-        dag.nodes["d"].necessity.rationale.observation_ids = [poison]
+        dag.nodes["d"].necessity.rationale = InferredValue(
+            value="a wrong reason", confidence=1.0, observation_ids=[poison]
+        )
     return poison
 
 
@@ -303,20 +327,10 @@ def test_unknown_operation_with_unclassified_is_valid():
     )
     res = _eval(tools)
     assert res.quality_pass is True  # unclassified is a normal state, not a failure
-    assert res.relevance_pass is True
-
-
-def test_correct_action_wrong_known_primitive_lowers_diagnostic():
-    tools = _tools()
-    _build(tools, evidence=True)
-    tools.db.dag.nodes["c"].primitive = InferredValue(value="approve", confidence=1.0)
-    res = _eval(tools)
-    assert res.primitive_correctness < 1.0
-    assert res.node_recall == 1.0  # domain concept still correct
 
 
 # ---------------------------------------------------------------------------
-# Valid full DAG + per-claim relevance
+# Valid full DAG + result correctness vs evidence hygiene
 # ---------------------------------------------------------------------------
 
 
@@ -325,16 +339,17 @@ def test_valid_full_dag_passes():
     _build(tools, evidence=True)
     res = _eval(tools)
     assert res.quality_pass is True
-    assert res.relevance_pass is True
     assert res.evidence_pass is True
+    assert res.provenance_authenticity_pass is True
     assert res.structural_pass is True
 
 
-def test_per_claim_poisoning_fails():
-    """Poisoning any single claim's provenance makes relevance fail."""
+def test_wrong_claim_passes_evidence_hygiene_but_fails_ground_truth():
+    """A wrong claim backed by an authentic-but-unrelated Observation passes
+    evidence hygiene (references are real & authentic) but fails Ground Truth
+    correctness comparison."""
     for target in (
         "action",
-        "primitive",
         "actor",
         "system",
         "read",
@@ -345,63 +360,94 @@ def test_per_claim_poisoning_fails():
     ):
         tools = _tools()
         _build(tools, evidence=True)
-        _poison(tools, target)
+        _wrong_claim(tools, target)
         res = _eval(tools)
-        assert res.relevance_pass is False, f"target={target}"
+        assert res.provenance_authenticity_pass is True, target
+        assert res.evidence_pass is True, target  # hygiene passes
+        assert res.quality_pass is False, target  # wrong value caught vs GT
 
 
-def test_correct_action_evidence_cannot_substitute_actor():
+def test_wrong_action_drops_node_correctness():
     tools = _tools()
     _build(tools, evidence=True)
-    # actor claim gets an action-only observation (no actor mention)
-    oid = _claim_obs(tools, "We check the customer in the CRM.")
-    tools.db.dag.nodes["b"].actor = InferredValue(
-        value="sales", confidence=1.0, observation_ids=[oid]
-    )
+    _wrong_claim(tools, "action")
     res = _eval(tools)
-    assert res.relevance_pass is False
+    assert res.node_recall < 1.0
+    assert res.node_precision < 1.0
+    assert res.quality_pass is False
 
 
-def test_from_node_evidence_alone_cannot_support_edge():
+def test_wrong_actor_drops_actor_correctness():
     tools = _tools()
     _build(tools, evidence=True)
-    oid = _claim_obs(tools, "We check the customer in the CRM.")
-    tools.db.dag.edges["e1"].observation_ids = [oid]  # only mentions from-node action
+    _wrong_claim(tools, "actor")
     res = _eval(tools)
-    assert res.relevance_pass is False
+    assert res.actor_correctness < 1.0
+    assert res.quality_pass is False
 
 
-def test_node_evidence_alone_cannot_support_predicate():
+def test_wrong_system_drops_system_correctness():
     tools = _tools()
     _build(tools, evidence=True)
-    oid = _claim_obs(tools, "We create the quotation.")
-    tools.db.dag.edges["e3"].predicate = InferredValue(
-        value="amount over 1,000,000", confidence=1.0, observation_ids=[oid]
-    )
+    _wrong_claim(tools, "system")
     res = _eval(tools)
-    assert res.relevance_pass is False
+    assert res.system_correctness < 1.0
+    assert res.quality_pass is False
 
 
-def test_explicit_negation_is_contradicted():
+def test_wrong_read_drops_read_correctness():
     tools = _tools()
     _build(tools, evidence=True)
-    oid = _claim_obs(tools, "We do not approve high-value quotations.")
-    tools.db.dag.nodes["d"].action = InferredValue(
-        value="approve high-value quotation", confidence=1.0, observation_ids=[oid]
-    )
+    _wrong_claim(tools, "read")
     res = _eval(tools)
-    assert res.relevance_pass is False  # negation -> CONTRADICTED, not SUPPORTED
+    assert res.read_correctness < 1.0
+    assert res.quality_pass is False
 
 
-def test_unrelated_evidence_is_unsupported():
+def test_wrong_write_drops_write_correctness():
     tools = _tools()
     _build(tools, evidence=True)
-    oid = _claim_obs(tools, "I like pizza.")
-    tools.db.dag.nodes["b"].actor = InferredValue(
-        value="sales", confidence=1.0, observation_ids=[oid]
-    )
+    _wrong_claim(tools, "write")
     res = _eval(tools)
-    assert res.relevance_pass is False
+    assert res.write_correctness < 1.0
+    assert res.quality_pass is False
+
+
+def test_wrong_predicate_drops_predicate_correctness():
+    tools = _tools()
+    _build(tools, evidence=True)
+    _wrong_claim(tools, "predicate")
+    res = _eval(tools)
+    assert res.predicate_correctness < 1.0
+    assert res.quality_pass is False
+
+
+def test_wrong_edge_drops_edge_correctness():
+    tools = _tools()
+    _build(tools, evidence=True)
+    _wrong_claim(tools, "edge")
+    res = _eval(tools)
+    assert res.edge_recall < 1.0 or res.edge_precision < 1.0
+    assert res.quality_pass is False
+
+
+def test_wrong_necessity_drops_necessity_correctness():
+    tools = _tools()
+    _build(tools, evidence=True)
+    _wrong_claim(tools, "necessity")
+    res = _eval(tools)
+    assert res.necessity_correctness < 1.0
+    assert res.necessity_pass is False
+    assert res.quality_pass is False
+
+
+def test_correct_action_wrong_known_primitive_lowers_diagnostic():
+    tools = _tools()
+    _build(tools, evidence=True)
+    tools.db.dag.nodes["c"].primitive = InferredValue(value="approve", confidence=1.0)
+    res = _eval(tools)
+    assert res.primitive_correctness < 1.0
+    assert res.node_recall == 1.0  # domain concept still correct
 
 
 # ---------------------------------------------------------------------------
@@ -451,7 +497,6 @@ def test_en_ja_equivalent():
         "necessity_correctness",
         "primitive_correctness",
         "quality_pass",
-        "relevance_pass",
     ):
         assert getattr(ren, f) == getattr(rja, f), f
 
@@ -584,7 +629,6 @@ def test_non_quotation_lab_scenario_full_pass():
     res = evaluate(tools.db, sc.truth, sc.spec)
     assert res.quality_pass is True
     assert res.node_recall == 1.0
-    assert res.relevance_pass is True
 
 
 def test_lab_unknown_primitive_unclassified_valid():
@@ -775,7 +819,6 @@ def test_evaluator_rewards_full_reconstruction():
     }
     diag = reward_info.info["diagnostics"]
     assert diag["quality_pass"] is True
-    assert diag["relevance_pass"] is True
 
 
 def test_evaluator_detects_missing_node():

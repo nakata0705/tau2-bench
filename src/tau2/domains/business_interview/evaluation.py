@@ -13,10 +13,16 @@ only reusable generic primitives (unknown operations resolve to ``unclassified``
 Metrics cover structure (node/edge recall + precision, declared start/end),
 predicate/actor/system/read/write correctness, necessity correctness,
 **primitive correctness** (diagnostic; ``unclassified`` is not a failure),
-evidence-backedness + Observation authenticity, and **claim-level evidence
-relevance** (each claim is evaluated independently against its own value:
-action / primitive / actor / system / each read / each write / edge relation /
-predicate / necessity properties).
+and **evidence hygiene** (evidence-backedness + Observation authenticity).
+
+**Result correctness vs evidence hygiene.** Result correctness compares the
+inferred DAG against the hidden Ground Truth and is computed by exact Ground
+Truth comparison. Evidence hygiene deterministically guarantees only that each
+asserted claim references a *real, authentic stakeholder Observation* (captured
+from an actual user message, not fabricated). The evaluator never re-interprets
+Observation *text* to decide whether it semantically supports a claim — the
+natural language of the stakeholder is expected to vary, and measuring whether
+an Observation's wording matches a claim is out of scope.
 """
 
 from typing import Optional
@@ -90,9 +96,6 @@ class EvaluationResult(BaseModel):
     invalid_observation_source_count: int
     orphan_observation_count: int
     provenance_authenticity_pass: bool
-
-    # claim-level evidence relevance
-    relevance_pass: bool
 
     structural_pass: bool
     necessity_pass: bool
@@ -334,192 +337,8 @@ def _evidence_metrics(
 
 
 # ---------------------------------------------------------------------------
-# Claim-level evidence relevance (SUPPORTED / CONTRADICTED / UNKNOWN)
+# Evidence hygiene (Observation provenance analysis)
 # ---------------------------------------------------------------------------
-
-
-_NEGATION = (
-    "not ",
-    " no ",
-    "never",
-    "doesn't",
-    "don't",
-    " no evidence",
-    "no such",
-    "しない",
-    " ない",
-    "なし",
-)
-_RELATION_WORDS = (
-    "after",
-    "then",
-    "followed by",
-    "before",
-    "next",
-    "subsequently",
-    "次に",
-    "後に",
-    "その後",
-    "の後",
-    "それから",
-)
-_DIRECTION_UP = (
-    "over",
-    "above",
-    "exceed",
-    "exceeds",
-    "more than",
-    "greater than",
-    "超",
-    "超過",
-    "以上",
-)
-_DIRECTION_DOWN = (
-    "below",
-    "under",
-    "less than",
-    "at or below",
-    "以下",
-    "未満",
-)
-
-
-def _is_negated(text: str) -> bool:
-    return any(n in text for n in _NEGATION)
-
-
-def _mentions(text: str, value: Optional[str]) -> bool:
-    """True if ``value`` (substring or a shared token) appears in ``text``."""
-    if not value:
-        return False
-    vl = value.lower()
-    if vl in text:
-        return True
-    return bool(_tokens(value) & _tokens(text))
-
-
-def _relation_supported(text: str, from_action, to_action) -> bool:
-    if not (from_action and to_action):
-        return False
-    if not any(w in text for w in _RELATION_WORDS):
-        return False
-    return _mentions(text, from_action) and _mentions(text, to_action)
-
-
-def _predicate_supported(text: str, claim_value: Optional[str]) -> bool:
-    cv = (claim_value or "").lower()
-    if not cv:
-        return False
-    if cv in text:
-        return True
-    up = any(w in cv for w in _DIRECTION_UP)
-    down = any(w in cv for w in _DIRECTION_DOWN)
-    if up and any(w in text for w in _DIRECTION_UP):
-        return True
-    if down and any(w in text for w in _DIRECTION_DOWN):
-        return True
-    return False
-
-
-def support(
-    obs_text: str, claim_kind: str, claim_value: Optional[str], context=None
-) -> str:
-    """SUPPORTED / CONTRADICTED / UNKNOWN for one observation vs one claim.
-
-    Each claim is matched against its **own** value (actor against the actor
-    value, system against the system value, predicate against the predicate
-    itself, etc.); the node-wide signal set is not reused. CONTRADICTED wins
-    over SUPPORTED when the observation is both relevant and negated.
-    """
-    ot = (obs_text or "").lower()
-    if claim_kind == "primitive":
-        if not claim_value or claim_value == "unclassified":
-            return "UNKNOWN"
-        if resolve_primitive(obs_text) == claim_value:
-            return "SUPPORTED"
-        return "UNKNOWN"
-    if claim_kind == "edge":
-        ctx = context or {}
-        ok = _relation_supported(ot, ctx.get("from_action"), ctx.get("to_action"))
-    elif claim_kind == "predicate":
-        ok = _predicate_supported(ot, claim_value)
-    else:
-        ok = _mentions(ot, claim_value)
-    if not ok:
-        return "UNKNOWN"
-    return "CONTRADICTED" if _is_negated(ot) else "SUPPORTED"
-
-
-def _obs_ids_supported(
-    obs_ids: list[str], claim_kind: str, claim_value: Optional[str], context, obs_by_id
-) -> bool:
-    if not obs_ids:
-        return False
-    for oid in obs_ids:
-        obs = obs_by_id.get(oid)
-        if obs is None:
-            continue
-        if support(obs.text, claim_kind, claim_value, context) == "SUPPORTED":
-            return True
-    return False
-
-
-def _relevance_pass(agent: BusinessDAG, obs_by_id) -> bool:
-    """Every asserted claim must have at least one SUPPORTED provenance.
-
-    Claims are evaluated independently: action, primitive (unless
-    ``unclassified``), actor, system, each read, each write, each necessity
-    property, edge relation, and predicate. An unrelated / partially-poisoned
-    observation cannot support a claim it does not actually mention.
-    """
-    for node in agent.nodes.values():
-        claims = [
-            ("action", node.action, "action", None),
-            ("actor", node.actor, "actor", None),
-            ("system", node.system, "system", None),
-        ]
-        if node.primitive is not None and node.primitive.asserted:
-            claims.append(("primitive", node.primitive, "primitive", None))
-        for i, r in enumerate(node.reads):
-            claims.append((f"read[{i}]", r, "read", None))
-        for i, w in enumerate(node.writes):
-            claims.append((f"write[{i}]", w, "write", None))
-        if node.necessity is not None:
-            for p in _NECESSITY_PROPS:
-                claims.append(
-                    (f"necessity.{p}", getattr(node.necessity, p), "necessity", None)
-                )
-        for _name, iv, kind, ctx in claims:
-            if not iv.asserted:
-                continue
-            if iv.value == "unclassified":
-                continue  # sentinel for an unknown primitive; not a claim to fail
-            if not _obs_ids_supported(
-                iv.observation_ids, kind, iv.value, ctx, obs_by_id
-            ):
-                return False
-
-    for edge in agent.edges.values():
-        fa = agent.nodes.get(edge.from_node)
-        ta = agent.nodes.get(edge.to_node)
-        ctx = {
-            "from_action": fa.action.value if fa else None,
-            "to_action": ta.action.value if ta else None,
-        }
-        if edge.observation_ids and not _obs_ids_supported(
-            edge.observation_ids, "edge", None, ctx, obs_by_id
-        ):
-            return False
-        if edge.predicate is not None and edge.predicate.asserted:
-            if not _obs_ids_supported(
-                edge.predicate.observation_ids,
-                "predicate",
-                edge.predicate.value,
-                None,
-                obs_by_id,
-            ):
-                return False
-    return True
 
 
 def _all_referenced_observation_ids(agent: BusinessDAG) -> set[str]:
@@ -699,7 +518,6 @@ def evaluate(
         else:
             invalid_observation_source_count += 1
     authentic_observation_count = len(authentic_obs_ids)
-    obs_by_id = {o.id: o for o in db.observations}
     orphan_observation_count = sum(
         1 for o in db.observations if o.id not in _all_referenced_observation_ids(agent)
     )
@@ -726,9 +544,6 @@ def evaluate(
         and necessity_provenance_coverage == 1.0
     )
 
-    # ---- claim-level relevance ---------------------------------------------
-    relevance_pass = _relevance_pass(agent, obs_by_id)
-
     # ---- gates -------------------------------------------------------------
     structural_pass = bool(
         dag_created
@@ -753,7 +568,6 @@ def evaluate(
         and necessity_pass
         and evidence_pass
         and provenance_authenticity_pass
-        and relevance_pass
     )
 
     return EvaluationResult(
@@ -789,7 +603,6 @@ def evaluate(
         invalid_observation_source_count=invalid_observation_source_count,
         orphan_observation_count=orphan_observation_count,
         provenance_authenticity_pass=provenance_authenticity_pass,
-        relevance_pass=relevance_pass,
         structural_pass=structural_pass,
         necessity_pass=necessity_pass,
         protocol_pass=protocol_pass,
