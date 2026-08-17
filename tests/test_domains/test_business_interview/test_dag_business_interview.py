@@ -477,6 +477,36 @@ def test_nonexistent_observation_ref_rejected():
         tools.add_node("n1", "receive request", observation_id="does_not_exist")
 
 
+def test_fabricated_observation_reference_fails_authenticity():
+    """A DAG claim referencing an observation id that does not exist fails the
+    evidence-hygiene gate (invalid reference)."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    tools.db.dag.nodes["b"].actor.observation_ids.append("obs_fabricated")
+    res = _eval(tools)
+    assert res.invalid_observation_reference_count >= 1
+    assert res.provenance_authenticity_pass is False
+    assert res.evidence_pass is False
+    assert res.quality_pass is False
+
+
+def test_fabricated_observation_source_fails_authenticity():
+    """An Observation that was never captured from a stakeholder message is not
+    authentic; a claim referencing it fails evidence hygiene."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    fake = dagmod.Observation(
+        id="obs_fake", source_id="stakeholder", text="made up", order=999, turn=999
+    )
+    tools.db.observations.append(fake)
+    tools.db.dag.nodes["b"].actor.observation_ids.append("obs_fake")
+    res = _eval(tools)
+    assert res.invalid_observation_source_count >= 1
+    assert res.provenance_authenticity_pass is False
+    assert res.evidence_pass is False
+    assert res.quality_pass is False
+
+
 def test_en_ja_equivalent():
     en = _tools()
     _build(en, ja=False)

@@ -117,6 +117,14 @@ This directly confirms the objective's key requirement: *wrong claim + authentic
 but unrelated Observation -> evidence hygiene passes, but claim correctness fails
 via Ground Truth comparison*.
 
+Fabricated-evidence coverage (evidence-hygiene gate) added:
+- `test_fabricated_observation_reference_fails_authenticity` — a DAG claim
+  referencing an observation id that does not exist fails
+  `provenance_authenticity_pass` / `evidence_pass` / `quality_pass`.
+- `test_fabricated_observation_source_fails_authenticity` — an Observation that
+  was never captured from a stakeholder message is not authentic; a claim
+  referencing it fails evidence hygiene.
+
 ## Remaining limitations
 
 - Result-correctness matching still uses a hidden scenario-local `EvaluationSpec`
@@ -137,10 +145,11 @@ via Ground Truth comparison*.
 
 ## Verification results
 
-- `uv run pytest tests/test_domains/test_business_interview/` -> **33 passed**.
+- `uv run pytest tests/test_domains/test_business_interview/` -> **35 passed**.
   (Includes quotation EN/JA, `lab_sample_flow`, arbitrary node IDs, reference
   trajectory reward 1.0 via `test_evaluator_rewards_full_reconstruction`,
-  evidence/authenticity regressions, and the new wrong-claim tests.)
+  evidence/authenticity regressions, the new wrong-claim tests, and the
+  fabricated-evidence tests.)
 - `make check-all` (ruff lint + format) -> **passed**.
 - `uv run python -m py_compile` on the changed modules -> **OK**.
 - `make test` (core) -> **262 passed, 1 xpassed**; a single unrelated flaky
