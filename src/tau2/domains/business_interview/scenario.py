@@ -356,18 +356,32 @@ def lab_sample_spec() -> EvaluationSpec:
 
 
 def lab_sample_filter() -> StakeholderFilter:
+    """The lab technician. Can state the actors, the environment-chamber system,
+    and the raw specimen/sample input, but the GT read/write artifacts
+    (``accessioned sample``, ``seasoned chamber``, ``conditioned sample``,
+    ``batch approval``) are benchmark-derived state/artifact conventions that the
+    stakeholder never names. They are therefore hidden: the correct agent
+    behavior is to leave them unset (epistemic restraint), not to invent them.
+
+    Decisions (vs lab known_info):
+    - n1 specimen accession: actor visible, reads=[sample] visible (specimen
+      arrives), writes=[accessioned sample] hidden (derived label).
+    - n2 chamber seasoning: actor + system (environment chamber) visible,
+      writes=[seasoned chamber] hidden (derived state).
+    - n3 conditioning cycle: actor + system visible, reads/writes hidden
+      (derived ``accessioned/conditioned sample`` labels).
+    - n4 approve batch: actor (lab supervisor) visible, reads/writes hidden
+      (derived ``conditioned sample`` / ``batch approval`` labels).
+    """
     return StakeholderFilter(
         name="lab tech",
         visible_node_ids=["n1", "n2", "n3", "n4"],
         visible_edge_ids=["l1", "l2", "l3"],
         visible_node_attributes={
-            # The lab known_info provides a defensible basis for every read/write
-            # artifact the GT models (sample, accessioned/conditioned sample,
-            # seasoned chamber, batch approval), so all axes are visible.
-            "n1": ["actor", "system", "reads", "writes"],
-            "n2": ["actor", "system", "reads", "writes"],
-            "n3": ["actor", "system", "reads", "writes"],
-            "n4": ["actor", "system", "reads", "writes"],
+            "n1": ["actor", "reads"],
+            "n2": ["actor", "system"],
+            "n3": ["actor", "system"],
+            "n4": ["actor"],
         },
         visible_necessity={},
     )

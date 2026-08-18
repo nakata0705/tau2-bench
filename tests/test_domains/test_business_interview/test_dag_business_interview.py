@@ -104,8 +104,9 @@ def _tools() -> InterviewTools:
 
 
 def _eval(tools: InterviewTools, scenario: str = SCENARIO):
+    """Evaluate under the scenario's stakeholder visibility (runtime behavior)."""
     sc = get_scenario(scenario)
-    return evaluate(tools.db, sc.truth, sc.spec)
+    return evaluate(tools.db, sc.truth, sc.spec, sc.stakeholder)
 
 
 def _ingest(tools: InterviewTools, role: str = "user", content: str = "") -> int:
@@ -140,7 +141,12 @@ def _build(
     edge_ids: tuple = ("e1", "e2", "e3", "e4", "e5", "e6"),
     evidence: bool = True,
 ):
-    """Build the correct quotation DAG with a quality_pass-quality provenance.
+    """Build the correct quotation DAG with a quality_pass-quality provenance,
+    asserting only **stakeholder-visible** attributes (per the sales
+    StakeholderFilter) so the build matches actual runtime behavior.
+
+    Hidden attributes (ap system/reads/writes, sq reads/writes, me reads) are
+    left unset — the correct epistemic-restraint behavior.
 
     With ``evidence=True`` each node gets one rich authentic Observation that
     supports all its claims, and each edge an Observation that supports the
@@ -151,6 +157,18 @@ def _build(
     actions = _JA_ACTIONS if ja else [t[1] for t in _TRUTH_NODES]
     node_data = list(zip(_TRUTH_NODES, actions))
     node_map = {"a": i1, "b": i2, "c": i3, "d": i4, "e": i5, "f": i6}
+    sc = get_scenario(JA_SCENARIO if ja else SCENARIO)
+    visible_by_sid = {
+        sid: sc.stakeholder.visible_attributes_for(tid)
+        for sid, tid in {
+            "a": "r",
+            "b": "cc",
+            "c": "cq",
+            "d": "ap",
+            "e": "sq",
+            "f": "me",
+        }.items()
+    }
     edge_defs = [
         (edge_ids[0], i1, i2, None),
         (edge_ids[1], i2, i3, None),
@@ -167,14 +185,15 @@ def _build(
             oid = _claim_obs(
                 tools, _node_obs_text(action, actor, system, reads, writes)
             )
+            vis = visible_by_sid[sid]
             tools.add_node(
                 node_map[sid],
                 action,
                 primitive=_PRIM_BY_SID[sid],
-                actor=actor,
-                system=system,
-                reads=reads,
-                writes=writes,
+                actor=actor if "actor" in vis else None,
+                system=system if "system" in vis else None,
+                reads=reads if "reads" in vis else None,
+                writes=writes if "writes" in vis else None,
                 observation_id=oid,
             )
         doid = _claim_obs(tools, f"The approval is {rationale}.")
@@ -190,14 +209,15 @@ def _build(
             tools.add_edge(eid, frm, to, predicate=pred, observation_id=eoid)
     else:
         for (sid, _, actor, system, reads, writes), action in node_data:
+            vis = visible_by_sid[sid]
             tools.add_node(
                 node_map[sid],
                 action,
                 primitive=_PRIM_BY_SID[sid],
-                actor=actor,
-                system=system,
-                reads=reads,
-                writes=writes,
+                actor=actor if "actor" in vis else None,
+                system=system if "system" in vis else None,
+                reads=reads if "reads" in vis else None,
+                writes=writes if "writes" in vis else None,
             )
         tools.set_node_necessity(i4, rationale=rationale)
         tools.set_node_necessity(i6)
@@ -579,9 +599,18 @@ def test_declared_endpoints_must_match():
 
 
 def _build_lab(tools: InterviewTools):
+    """Build a lab DAG asserting ONLY stakeholder-visible lab attributes (per
+    the lab StakeholderFilter) with evidence text grounded in the actual
+    lab_sample_flow known_info (not benchmark-derived artifact names).
+
+    Hidden derived read/write artifacts (accessioned sample, seasoned chamber,
+    conditioned sample, batch approval) are left unset.
+    """
     tools.start_inference("lab")
     _ingest(tools, "assistant", "Hello.")
     nodes = [
+        # (sid, action, prim, actor, system, reads, writes, evidence_text)
+        # n1: actor + reads (sample) visible; derived write hidden.
         (
             "n1",
             "specimen accession",
@@ -589,38 +618,41 @@ def _build_lab(tools: InterviewTools):
             "lab tech",
             None,
             ["sample"],
-            ["accessioned sample"],
-            "The lab tech receives the specimen during specimen accession. It reads sample. It writes accessioned sample.",
+            None,
+            "When a specimen arrives, I accession it (record it as received).",
         ),
+        # n2: actor + system visible; derived write hidden.
         (
             "n2",
             "chamber seasoning",
             "create",
             "lab tech",
             "environment chamber",
-            [],
-            ["seasoned chamber"],
-            "The lab tech prepares the chamber during chamber seasoning. It uses the environment chamber. It writes seasoned chamber.",
+            None,
+            None,
+            "I season the environment chamber to prepare it.",
         ),
+        # n3: actor + system visible; derived reads/writes hidden.
         (
             "n3",
             "conditioning cycle",
             "transform",
             "lab tech",
             "environment chamber",
-            ["accessioned sample"],
-            ["conditioned sample"],
-            "The lab tech processes samples during the conditioning cycle. It uses the environment chamber. It reads accessioned sample. It writes conditioned sample.",
+            None,
+            None,
+            "I run a conditioning cycle that processes the samples inside the chamber.",
         ),
+        # n4: actor visible; derived reads/writes hidden.
         (
             "n4",
             "approve conditioned batch",
             "approve",
             "lab supervisor",
             None,
-            ["conditioned sample"],
-            ["batch approval"],
-            "The lab supervisor approves the conditioned batch. It reads conditioned sample. It writes batch approval.",
+            None,
+            None,
+            "Finally, the lab supervisor approves the conditioned batch before it is released.",
         ),
     ]
     for sid, action, prim, actor, system, reads, writes, text in nodes:
@@ -664,8 +696,7 @@ def _build_lab(tools: InterviewTools):
 def test_non_quotation_lab_scenario_full_pass():
     tools = _tools()
     _build_lab(tools)
-    sc = get_scenario(LAB_SCENARIO)
-    res = evaluate(tools.db, sc.truth, sc.spec)
+    res = _eval(tools, LAB_SCENARIO)
     assert res.quality_pass is True
     assert res.node_recall == 1.0
 
@@ -676,8 +707,7 @@ def test_lab_unknown_primitive_unclassified_valid():
     tools.db.dag.nodes["n2"].primitive = InferredValue(
         value="unclassified", confidence=1.0
     )
-    sc = get_scenario(LAB_SCENARIO)
-    assert evaluate(tools.db, sc.truth, sc.spec).quality_pass is True
+    assert _eval(tools, LAB_SCENARIO).quality_pass is True
 
 
 # ---------------------------------------------------------------------------
@@ -1466,76 +1496,17 @@ def test_coarse_node_refinement_end_to_end_valid():
 
 # ---------------------------------------------------------------------------
 # Stakeholder-visibility contract (scoring aligned with known_info)
+#
+# The normal ``_build`` / ``_eval`` helpers above are already stakeholder-aware:
+# ``_build`` asserts only stakeholder-visible quotation attributes and ``_eval``
+# evaluates under the scenario's StakeholderFilter. These tests pin the contract.
 # ---------------------------------------------------------------------------
-
-
-def _build_faithful_contract(tools: InterviewTools, ja: bool = False):
-    """Build a quotation DAG that asserts ONLY stakeholder-knowable attributes
-    (per the sales StakeholderFilter), with authentic Observation provenance.
-
-    Hidden attributes (ap system/reads/writes, sq reads/writes, me reads) are
-    left unset — the correct epistemic-restraint behavior.
-    """
-    actions = _JA_ACTIONS if ja else [t[1] for t in _TRUTH_NODES]
-    node_data = list(zip(_TRUTH_NODES, actions))
-    # per-node visible axes for the quotation sales stakeholder
-    sc = get_scenario(JA_SCENARIO if ja else SCENARIO)
-    visible_by_sid = {
-        sid: sc.stakeholder.visible_attributes_for(tid)
-        for sid, tid in {
-            "a": "r",
-            "b": "cc",
-            "c": "cq",
-            "d": "ap",
-            "e": "sq",
-            "f": "me",
-        }.items()
-    }
-    node_map = {"a": "a", "b": "b", "c": "c", "d": "d", "e": "e", "f": "f"}
-    _ingest(tools, "assistant", "Hello.")
-    for (sid, _, actor, system, reads, writes), action in node_data:
-        vis = visible_by_sid[sid]
-        oid = _claim_obs(tools, _node_obs_text(action, actor, system, reads, writes))
-        tools.add_node(
-            node_map[sid],
-            action,
-            primitive=_PRIM_BY_SID[sid],
-            actor=actor if "actor" in vis else None,
-            system=system if "system" in vis else None,
-            reads=reads if "reads" in vis else None,
-            writes=writes if "writes" in vis else None,
-            observation_id=oid,
-        )
-    rationale = "与信リスク管理のため" if ja else "for credit risk management"
-    doid = _claim_obs(tools, f"The approval is {rationale}.")
-    tools.set_node_necessity("d", rationale=rationale, observation_id=doid)
-    tools.set_node_necessity("f")
-    action_by_sid = {sid: action for (sid, _, _, _, _, _), action in node_data}
-    for eid, frm, to, pred in [
-        ("e1", "a", "b", None),
-        ("e2", "b", "c", None),
-        ("e3", "c", "d", "100万円超" if ja else "amount over 1,000,000"),
-        ("e4", "c", "e", "100万円以下" if ja else "amount at or below 1,000,000"),
-        ("e5", "d", "e", None),
-        ("e6", "c", "f", "月末" if ja else "month-end"),
-    ]:
-        fa, ta = action_by_sid[frm], action_by_sid[to]
-        etext = f"After {fa}, we {ta}." + (f" when {pred}." if pred else "")
-        eoid = _claim_obs(tools, etext)
-        tools.add_edge(eid, frm, to, predicate=pred, observation_id=eoid)
-    tools.set_dag_endpoints(start_node_id="a", end_node_ids=["e", "f"])
-    tools.finish_interview()
-
-
-def _eval_contract(tools: InterviewTools, scenario: str = SCENARIO):
-    sc = get_scenario(scenario)
-    return evaluate(tools.db, sc.truth, sc.spec, sc.stakeholder)
 
 
 def test_faithful_contract_reconstruction_achieves_structural_pass():
     tools = _tools()
-    _build_faithful_contract(tools)
-    res = _eval_contract(tools)
+    _build(tools)
+    res = _eval(tools)
     assert res.structural_pass is True
     assert res.actor_correctness == 1.0
     assert res.system_correctness == 1.0
@@ -1548,8 +1519,8 @@ def test_faithful_contract_reconstruction_achieves_structural_pass():
 
 def test_leaving_ap_system_and_unsupported_reads_writes_unset_is_correct():
     tools = _tools()
-    _build_faithful_contract(tools)
-    res = _eval_contract(tools)
+    _build(tools)
+    res = _eval(tools)
     # ap.system, ap.reads, ap.writes, sq.reads, sq.writes, me.reads are hidden;
     # leaving them unset is correct, so each axis scores 1.0.
     assert res.system_correctness == 1.0
@@ -1559,36 +1530,36 @@ def test_leaving_ap_system_and_unsupported_reads_writes_unset_is_correct():
 
 def test_asserting_hidden_ap_system_is_incorrect():
     tools = _tools()
-    _build_faithful_contract(tools)
+    _build(tools)
     # Asserting ap.system=quoting (which equals the hidden Truth) is STILL wrong:
     # the stakeholder cannot know it, so epistemic restraint is required.
     tools.db.dag.nodes["d"].system = InferredValue(
         value="quoting", confidence=1.0, observation_ids=["obs_x"]
     )
-    res = _eval_contract(tools)
+    res = _eval(tools)
     assert res.system_correctness < 1.0
     assert res.structural_pass is False
 
 
 def test_asserting_hidden_ap_reads_is_incorrect():
     tools = _tools()
-    _build_faithful_contract(tools)
+    _build(tools)
     tools.db.dag.nodes["d"].reads = [
         InferredValue(value="quote", confidence=1.0, observation_ids=["obs_x"])
     ]
-    res = _eval_contract(tools)
+    res = _eval(tools)
     assert res.read_correctness < 1.0
     assert res.structural_pass is False
 
 
 def test_wrong_visible_attribute_still_fails():
     tools = _tools()
-    _build_faithful_contract(tools)
+    _build(tools)
     # cq.system IS visible; a wrong value must still fail.
     tools.db.dag.nodes["c"].system = InferredValue(
         value="erp", confidence=1.0, observation_ids=["obs_x"]
     )
-    res = _eval_contract(tools)
+    res = _eval(tools)
     assert res.system_correctness < 1.0
     assert res.structural_pass is False
 
@@ -1597,8 +1568,8 @@ def test_contract_preserves_topology_predicate_necessity_evidence():
     # Topology / predicates / necessity / evidence requirements are unchanged:
     # the faithful-contract build still passes all gates.
     tools = _tools()
-    _build_faithful_contract(tools)
-    res = _eval_contract(tools)
+    _build(tools)
+    res = _eval(tools)
     assert res.node_recall == 1.0
     assert res.node_precision == 1.0
     assert res.edge_recall == 1.0
@@ -1612,11 +1583,11 @@ def test_contract_preserves_topology_predicate_necessity_evidence():
 
 def test_contract_en_ja_equivalent():
     en = _tools()
-    _build_faithful_contract(en, ja=False)
+    _build(en, ja=False)
     ja = _tools()
-    _build_faithful_contract(ja, ja=True)
-    ren = _eval_contract(en, SCENARIO)
-    rja = _eval_contract(ja, JA_SCENARIO)
+    _build(ja, ja=True)
+    ren = _eval(en, SCENARIO)
+    rja = _eval(ja, JA_SCENARIO)
     for attr in (
         "structural_pass",
         "actor_correctness",
@@ -1631,15 +1602,159 @@ def test_contract_en_ja_equivalent():
 
 
 def test_contract_lab_sample_flow_still_works():
-    # Lab known_info provides a defensible basis for every GT read/write
-    # artifact, so all axes are visible and the existing faithful build passes
-    # under the same visibility-aware evaluator.
+    # The lab known_info grounds actor/system and the raw sample input, but the
+    # GT read/write artifacts (accessioned sample, seasoned chamber, conditioned
+    # sample, batch approval) are hidden derived labels. A faithful build that
+    # asserts only visible attrs must pass under the same visibility-aware
+    # evaluator.
     tools = _tools()
     _build_lab(tools)
-    res = _eval_contract(tools, LAB_SCENARIO)
+    res = _eval(tools, LAB_SCENARIO)
     assert res.quality_pass is True
     assert res.structural_pass is True
     assert res.actor_correctness == 1.0
     assert res.system_correctness == 1.0
     assert res.read_correctness == 1.0
     assert res.write_correctness == 1.0
+
+
+def test_lab_faithful_known_info_reconstruction_passes():
+    """A faithful lab reconstruction that asserts only stakeholder-supported
+    attributes (per known_info) achieves structural_pass."""
+    tools = _tools()
+    _build_lab(tools)
+    res = _eval(tools, LAB_SCENARIO)
+    assert res.structural_pass is True
+    assert res.quality_pass is True
+
+
+def test_lab_hidden_derived_attr_left_unset_is_correct():
+    """Hidden derived lab artifacts (seasoned chamber, conditioned sample,
+    batch approval, accessioned sample as write) left unset are correct."""
+    tools = _tools()
+    _build_lab(tools)
+    res = _eval(tools, LAB_SCENARIO)
+    assert res.write_correctness == 1.0
+    assert res.read_correctness == 1.0
+    # verify hidden writes really are unset in the faithful build
+    assert tools.db.dag.nodes["n2"].writes == []
+    assert tools.db.dag.nodes["n4"].writes == []
+
+
+def test_lab_asserting_hidden_derived_attr_is_penalized():
+    """Asserting a hidden derived lab artifact (e.g. n2 writes "seasoned
+    chamber") is penalized even though it equals the hidden Truth."""
+    tools = _tools()
+    _build_lab(tools)
+    tools.db.dag.nodes["n2"].writes = [
+        InferredValue(
+            value="seasoned chamber", confidence=1.0, observation_ids=["obs_x"]
+        )
+    ]
+    res = _eval(tools, LAB_SCENARIO)
+    assert res.write_correctness < 1.0
+    assert res.structural_pass is False
+
+
+def test_lab_visible_facts_still_required():
+    """Genuinely visible lab facts remain required: a wrong actor or a missing
+    environment-chamber system must still fail."""
+    # wrong actor on a visible node (pick a value that does not normalize to
+    # the correct "manager"/"lab supervisor" role)
+    tools = _tools()
+    _build_lab(tools)
+    dag = tools.db.dag
+    assert dag is not None
+    dag.nodes["n4"].actor = InferredValue(
+        value="quality intern", confidence=1.0, observation_ids=["obs_x"]
+    )
+    assert _eval(tools, LAB_SCENARIO).actor_correctness < 1.0
+    # missing environment-chamber system on n2 (visible)
+    tools2 = _tools()
+    _build_lab(tools2)
+    dag2 = tools2.db.dag
+    assert dag2 is not None
+    dag2.nodes["n2"].system = InferredValue()
+    assert _eval(tools2, LAB_SCENARIO).system_correctness < 1.0
+
+
+def test_lab_topology_and_open_world_behavior_still_pass():
+    """Topology and open-world primitive behavior remain intact under the lab
+    visibility contract."""
+    tools = _tools()
+    _build_lab(tools)
+    res = _eval(tools, LAB_SCENARIO)
+    assert res.node_recall == 1.0
+    assert res.node_precision == 1.0
+    assert res.edge_recall == 1.0
+    assert res.edge_precision == 1.0
+    assert res.predicate_correctness == 1.0
+    assert res.necessity_pass is True
+    assert res.evidence_pass is True
+    assert res.structural_pass is True
+    # open-world: unclassified primitive remains valid (no primitive axis gating)
+    dag = tools.db.dag
+    assert dag is not None
+    dag.nodes["n2"].primitive = InferredValue(value="unclassified", confidence=1.0)
+    assert _eval(tools, LAB_SCENARIO).quality_pass is True
+
+
+def test_default_evaluate_without_stakeholder_is_explicit_all_visible():
+    """INTENTIONAL default-contract test.
+
+    ``evaluate(db, truth, spec)`` WITHOUT a stakeholder keeps the generic
+    backwards-compatible default: every attribute is treated as visible (old
+    all-visible contract). This is the ONLY test that intentionally exercises
+    the default path; normal scenario evaluation must go through ``_eval``
+    (stakeholder-aware).
+
+    We build a FULL DAG (every Truth attribute asserted, including the ones the
+    sales stakeholder cannot know): under the default all-visible contract it
+    passes, while under the stakeholder contract the hidden-attribute assertions
+    are penalized.
+    """
+    tools = _tools()
+    tools.start_inference("q")
+    _ingest(tools, "assistant", "Hello.")
+    for sid, action, actor, system, reads, writes in [
+        (t[0], t[1], t[2], t[3], t[4], t[5]) for t in _TRUTH_NODES
+    ]:
+        oid = _claim_obs(tools, _node_obs_text(action, actor, system, reads, writes))
+        tools.add_node(
+            sid,
+            action,
+            primitive=_PRIM_BY_SID[sid],
+            actor=actor,
+            system=system,
+            reads=reads,
+            writes=writes,
+            observation_id=oid,
+        )
+    doid = _claim_obs(tools, "The approval is for credit risk management.")
+    tools.set_node_necessity(
+        "d", rationale="for credit risk management", observation_id=doid
+    )
+    tools.set_node_necessity("f")
+    for eid, frm, to, pred in [
+        ("e1", "a", "b", None),
+        ("e2", "b", "c", None),
+        ("e3", "c", "d", "amount over 1,000,000"),
+        ("e4", "c", "e", "amount at or below 1,000,000"),
+        ("e5", "d", "e", None),
+        ("e6", "c", "f", "month-end"),
+    ]:
+        etext = f"After {frm}, we {to}." + (f" when {pred}." if pred else "")
+        eoid = _claim_obs(tools, etext)
+        tools.add_edge(eid, frm, to, predicate=pred, observation_id=eoid)
+    tools.set_dag_endpoints(start_node_id="a", end_node_ids=["e", "f"])
+    tools.finish_interview()
+
+    sc = get_scenario(SCENARIO)
+    assert sc is not None
+    # default (no stakeholder): all attributes visible -> full DAG passes.
+    res = evaluate(tools.db, sc.truth, sc.spec)
+    assert res.structural_pass is True
+    # contrast: under the stakeholder contract the same full DAG FAILS because
+    # hidden attributes (ap system/reads/writes, sq reads/writes, me reads)
+    # are asserted instead of left unset.
+    assert _eval(tools).structural_pass is False

@@ -170,7 +170,9 @@ def run_once(run_index: int, seed: int) -> dict:
         truth_dag = scenario.truth
         spec_dump = scenario.spec.model_dump(mode="json")
         eval_result = (
-            evaluate(db, scenario.truth, scenario.spec).model_dump(mode="json")
+            evaluate(
+                db, scenario.truth, scenario.spec, scenario.stakeholder
+            ).model_dump(mode="json")
             if db is not None
             else None
         )

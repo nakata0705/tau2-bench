@@ -1,8 +1,9 @@
-"""Re-evaluate saved business_interview smoke artifacts with the current matcher.
+"""Re-evaluate saved business_interview smoke artifacts with the current matcher
+and the stakeholder-aware visibility contract.
 
 Used to demonstrate the node-matching fix: compares the node/edge recall recorded
-in each artifact (old matcher) against a fresh evaluate() run (new matcher) on the
-same saved final DAG.
+in each artifact (old matcher) against a fresh evaluate() run (new matcher, with
+Scenario.stakeholder visibility) on the same saved final DAG.
 
 Not part of the test suite / CI — a manual diagnostic helper.
 """
@@ -12,10 +13,15 @@ import json
 
 from tau2.domains.business_interview.dag import BusinessDAG, InterviewDB
 from tau2.domains.business_interview.evaluation import evaluate
-from tau2.domains.business_interview.scenario import quotation_spec, quotation_truth
+from tau2.domains.business_interview.scenario import (
+    quotation_sales_filter,
+    quotation_spec,
+    quotation_truth,
+)
 
 TRUTH = quotation_truth()
 SPEC = quotation_spec()
+STAKEHOLDER = quotation_sales_filter()
 
 
 def _cv(x):
@@ -42,7 +48,11 @@ def main():
     for p in sorted(
         glob.glob("artifacts/business_interview_real_llm/run_*_seed*.json")
     ):
-        d = json.load(open(p))
+        try:
+            with open(p) as fh:
+                d = json.load(fh)
+        except (OSError, json.JSONDecodeError) as exc:
+            raise SystemExit(f"cannot read {p}: {exc}")
         name = p.split("/")[-1]
         old = d["evaluator_metrics"] or {}
         fdag = dict(d["final_dag"])
@@ -58,7 +68,7 @@ def main():
             observations=[],
             interview_complete=bool(d["interview_complete"]),
         )
-        new = evaluate(db, TRUTH, SPEC)
+        new = evaluate(db, TRUTH, SPEC, STAKEHOLDER)
         print(
             f"{name:26} {old.get('node_recall', 0):>9.3f} {new.node_recall:>9.3f} "
             f"{old.get('edge_recall', 0):>9.3f} {new.edge_recall:>9.3f}  {d['termination_reason']}"

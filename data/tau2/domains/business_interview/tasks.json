@@ -809,9 +809,6 @@
             "reads": [
               "sample"
             ],
-            "writes": [
-              "accessioned sample"
-            ],
             "observation_id": "obs_1"
           },
           "info": "node."
@@ -833,9 +830,6 @@
             "primitive": "create",
             "actor": "lab tech",
             "system": "environment chamber",
-            "writes": [
-              "seasoned chamber"
-            ],
             "observation_id": "obs_4"
           },
           "info": "node."
@@ -857,12 +851,6 @@
             "primitive": "transform",
             "actor": "lab tech",
             "system": "environment chamber",
-            "reads": [
-              "accessioned sample"
-            ],
-            "writes": [
-              "conditioned sample"
-            ],
             "observation_id": "obs_7"
           },
           "info": "node."
@@ -883,12 +871,6 @@
             "action": "approve conditioned batch",
             "primitive": "approve",
             "actor": "lab supervisor",
-            "reads": [
-              "conditioned sample"
-            ],
-            "writes": [
-              "batch approval"
-            ],
             "observation_id": "obs_10"
           },
           "info": "node."

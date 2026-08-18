@@ -47,7 +47,7 @@ resolver; they live in the hidden `EvaluationSpec`.
 ## Agent tools
 
 | Tool | Purpose |
-|------|---------|
+| ------ | --------- |
 | `start_inference(name?)` | Begin an inferred DAG (destructive to prior DAG + captured Observations) |
 | `list_stakeholder_messages()` | See the stakeholder statements by stable id (`sm_1`, ...) |
 | `observe_latest_stakeholder_message()` | Return the id of the most recent stakeholder message (`sm_N`) |
@@ -113,7 +113,6 @@ known-unknown handling: a fabricated necessity claim is still penalized.
 `evaluate(db, truth, spec, stakeholder)` receives the stakeholder visibility; the
 `InterviewTools` assertion hooks pass `scenario.stakeholder` automatically.
 
-
 **Evidence hygiene** (`evidence_pass` / `provenance_authenticity_pass`)
 deterministically guarantees only that every asserted claim references a **real,
 authentic stakeholder Observation** — captured from an actual user message via
@@ -153,6 +152,15 @@ stakeholder filter(s). Bundled:
   chamber seasoning → conditioning cycle → approve conditioned batch) proving
   the design is not quotation-specific; its unknown domain expressions live only
   in the hidden `EvaluationSpec`.
+
+  **Visibility (same epistemic-restraint principle as quotation):** the lab
+  stakeholder can state actors, the environment-chamber system, and the raw
+  specimen/sample input (n1 reads), but the GT read/write artifacts
+  (`accessioned sample`, `seasoned chamber`, `conditioned sample`, `batch
+  approval`) are **benchmark-derived artifact/state names** the stakeholder
+  never uses — they are hidden, so a faithful agent leaves them unset. Derived
+  GT artifacts need not be stakeholder-visible; the full Truth DAG remains the
+  author's process model.
 
 ## Running
 
