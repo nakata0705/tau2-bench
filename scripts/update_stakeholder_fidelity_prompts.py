@@ -7,11 +7,49 @@ existing progressive-disclosure / unknown / ###STOP### behavior and add:
   - plausible != known / no common-sense gap-filling (no unsupported facts)
   - no false denial of known facts + negative-answer re-check
   - "not asked yet" != "does not exist"
+  - terminology agreements: honor explicit interviewer-proposed names that
+    accurately refer to Known info, without creating new facts or revealing
+    hidden GT vocabulary
 """
 
 import json
 
 _PATH = "data/tau2/domains/business_interview/tasks.json"
+
+# Shared terminology-agreement block (EN / JA). Kept in sync with tasks.json.
+EN_TERMINOLOGY = """## Terminology agreements
+Speak naturally, in your own everyday words. You do NOT need to use any special
+labels, and you should never invent or reveal any internal system names or
+official document names that are not in your Known info.
+
+However, if the interviewer explicitly proposes a name for something and asks
+you to confirm that it refers to something in your Known info, you may agree
+when it accurately refers to that thing. Once you have agreed, use that agreed
+term consistently for the rest of the interview when referring to that thing.
+
+- Agreeing on a name does NOT create any new business fact. Only the facts in
+  your Known info are true.
+- Only agree when the proposed name really refers to something in your Known
+  info. If you are not sure whether two things are the same, say you do not
+  know instead of agreeing.
+- Never agree to a name for something that is not in your Known info.
+- Never reveal hidden or official labels the interviewer does not already use.
+- Do not change your wording just because you think the interviewer prefers a
+  different label; only an explicit agreement matters.
+- Pronouns are fine. You can keep saying "I" or "we" — you do not need to
+  replace them with a role name."""
+
+JA_TERMINOLOGY = """## 用語の合意
+自分の日常的な言葉で自然に話してください。特別なラベルを使う必要はありません。Known infoにない内部システム名や正式な書類名を発明したり、明かしたりしてはいけません。
+
+ただし、インタビュアーが何かの名前を明示的に提案し、それが自分のKnown infoにある何かを指しているか確認を求めてきた場合、その名前が正しくその物を指しているなら同意して構いません。一度同意したら、その後のインタビューではその物を指すときに合意した用語を一貫して使ってください。
+
+- 名前への同意は新しい業務事実を作り出しません。Known infoにある事実だけが真実です。
+- 提案された名前が本当にKnown infoにある何かを指している場合にのみ同意してください。二つの物が同じかどうか確信が持てない場合は、同意せず「分からない」と言ってください。
+- Known infoにない物の名前には決して同意しないでください。
+- インタビュアーがまだ使っていない隠れた正式ラベルを明かさないでください。
+- インタビュアーが別のラベルを好むと思っただけでは言い回しを変えないでください。明示的な合意だけが有効です。
+- 代名詞は問題ありません。「私」や「私たち」と言い続けて構いません。役割名に置き換える必要はありません。"""
 
 EN_QUOTATION = """Answer the interviewer's questions truthfully and helpfully, as a stakeholder.
 
@@ -71,15 +109,35 @@ NEW = {
     "lab_sample_flow": EN_LAB,
 }
 
-with open(_PATH) as f:
-    data = json.load(f)
+
+def _insert_terminology(prompt: str, terminology: str) -> str:
+    """Insert the terminology-agreement block just before the Conversation
+    section so the shared rules stay in one place."""
+    marker = "## Conversation" if "## Conversation" in prompt else "## 会話"
+    return prompt.replace(marker, terminology + "\n\n" + marker)
+
+
+NEW = {
+    "quotation_workflow_1": _insert_terminology(EN_QUOTATION, EN_TERMINOLOGY),
+    "quotation_workflow_1_ja": _insert_terminology(JA_QUOTATION, JA_TERMINOLOGY),
+    "lab_sample_flow": _insert_terminology(EN_LAB, EN_TERMINOLOGY),
+}
+
+try:
+    with open(_PATH) as f:
+        data = json.load(f)
+except (OSError, json.JSONDecodeError) as exc:
+    raise SystemExit(f"cannot read {_PATH}: {exc}")
 
 for t in data:
     tid = t["id"]
     if tid in NEW:
         t["user_scenario"]["instructions"]["task_instructions"] = NEW[tid]
 
-with open(_PATH, "w") as f:
-    json.dump(data, f, ensure_ascii=False, indent=2)
+try:
+    with open(_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+except OSError as exc:
+    raise SystemExit(f"cannot write {_PATH}: {exc}")
 
 print("updated task_instructions for:", sorted(NEW))

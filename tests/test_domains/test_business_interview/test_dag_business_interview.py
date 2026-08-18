@@ -973,6 +973,11 @@ def _task_instructions(task_id: str) -> str:
     return task.user_scenario.instructions.task_instructions or ""
 
 
+def _task_instructions_norm(task_id: str) -> str:
+    """task_instructions with whitespace collapsed (line-wrapped fragments)."""
+    return " ".join(_task_instructions(task_id).split()).lower()
+
+
 def _task_scenario_str(task_id: str) -> str:
     task = next(t for t in get_tasks() if t.id == task_id)
     return str(task.user_scenario).lower()
@@ -1037,6 +1042,149 @@ def test_stakeholder_instructions_lab_present():
     assert "answer only from your known info" in ti
     assert "plausible does not mean known" in ti
     assert "never invent anything you do not know" in ti
+
+
+# ---------------------------------------------------------------------------
+# Terminology alignment contract (Agent policy + stakeholder instructions)
+# ---------------------------------------------------------------------------
+
+
+def _policy() -> str:
+    return " ".join(BUSINESS_INTERVIEW_POLICY_PATH.read_text().split()).lower()
+
+
+def test_agent_policy_requires_terminology_establishment():
+    """The Agent policy must instruct terminology discipline: identify concepts,
+    use the stakeholder's own terms, establish stable labels, clarify, and use
+    one agreed term consistently."""
+    p = _policy().lower()
+    assert "terminology discipline" in p
+    assert "shared working vocabulary" in p
+    assert "use the stakeholder's own terminology by default" in p
+    assert "establish stable labels early" in p
+    assert "may refer to the same concept" in p
+    assert "one agreed term consistently" in p
+    assert "do not invent synonyms" in p
+    assert "do not repeatedly re-confirm" in p
+
+
+def test_agent_policy_does_not_hardcode_domain_terms():
+    """Terminology discipline must stay domain-independent: no quotation or lab
+    business-object names hard-coded as *labels to adopt*. The "seasoned
+    chamber" example is allowed ONLY as a forbidden-invention example (the
+    objective requires the policy to warn against inventing it)."""
+    p = _policy().lower()
+    for banned in ("quotation", "quote", "sales", "crm"):
+        assert banned not in p, f"policy hard-codes domain term: {banned}"
+    # forbidden-example mention is required, not a hard-coded label
+    assert "seasoned chamber" in p
+    assert "must not record an output" in p
+
+
+def test_agent_policy_first_person_role_not_coreference():
+    """The policy must tell the Agent to resolve first-person speech to the
+    business role WITHOUT forcing the stakeholder to stop using "I"."""
+    p = _policy().lower()
+    assert "first-person" in p
+    assert "business role" in p
+    assert "who are you in this process" in p
+    assert "do not make the stakeholder replace" in p
+
+
+def test_agent_policy_no_derived_artifact_invention():
+    """The policy must forbid inventing derived artifacts the stakeholder never
+    names (e.g. "seasoned chamber")."""
+    p = _policy().lower()
+    assert "do not invent derived artifacts" in p
+    assert "environment chamber" in p  # the allowed stable system-name example
+    assert "seasoned chamber" in p  # mentioned only as the forbidden output
+    assert "unless the stakeholder actually names it" in p
+
+
+def test_stakeholder_instructions_require_honoring_agreed_terms():
+    """Stakeholder instructions must require consistent use of explicitly
+    agreed terminology."""
+    ti = _task_instructions_norm(SCENARIO)
+    assert "terminology agreements" in ti
+    assert "explicitly proposes a name" in ti
+    assert "use that agreed term consistently" in ti
+
+
+def test_stakeholder_agreement_cannot_add_facts_outside_known_info():
+    ti = _task_instructions_norm(SCENARIO)
+    assert "agreeing on a name does not create any new business fact" in ti
+    assert "only the facts in your known info are true" in ti
+    assert "only agree when the proposed name really refers" in ti
+
+
+def test_stakeholder_ambiguous_identity_not_silently_accepted():
+    ti = _task_instructions_norm(SCENARIO)
+    assert "if you are not sure whether two things are the same" in ti
+    assert "say you do not know instead of agreeing" in ti
+    assert "never agree to a name for something that is not in your known info" in ti
+
+
+def test_stakeholder_instructions_allow_first_person_speech():
+    ti = _task_instructions_norm(SCENARIO)
+    assert "pronouns are fine" in ti
+    assert 'you can keep saying "i" or "we"' in ti
+    assert "do not need to replace them with a role name" in ti
+
+
+def test_stakeholder_instructions_no_gt_vocabulary_exposure():
+    """The stakeholder instructions must not reveal hidden GT vocabulary; only
+    the known-info vocabulary (approval/credit risk/month-end Excel) may appear."""
+    ti = _task_instructions_norm(SCENARIO)
+    for banned in (
+        "sent_quote",
+        "excel_summary",
+        "quoting system",
+        "month_end_summary",
+        "amount over 1,000,000",
+    ):
+        assert banned not in ti, f"stakeholder instructions expose GT term: {banned}"
+    # natural known-info vocabulary still allowed
+    assert "quotation" in ti or "approval" in ti
+
+
+def test_terminology_contract_en_ja_equivalent():
+    """EN and JA quotation instructions must carry equivalent terminology
+    agreement rules."""
+    en = _task_instructions_norm(SCENARIO)
+    ja = _task_instructions(JA_SCENARIO)
+    assert "## terminology agreements" in _task_instructions(SCENARIO).lower()
+    assert "## 用語の合意" in ja
+    # each language must cover: consistent use after agreement, no new facts,
+    # don't-know on ambiguity, no hidden labels, pronouns ok
+    for fragment in (
+        "use that agreed term consistently",
+        "does not create any new business fact",
+        "say you do not know instead of agreeing",
+        "hidden or official labels",
+        "pronouns are fine",
+    ):
+        assert fragment in en, fragment
+    ja_norm = " ".join(ja.split())
+    for fragment in (
+        "一貫して使って",
+        "新しい業務事実を作り出しません",
+        "「分からない」と言って",
+        "隠れた正式ラベル",
+        "代名詞は問題ありません",
+    ):
+        assert fragment in ja_norm, fragment
+
+
+def test_terminology_contract_applies_to_lab():
+    """lab_sample_flow must receive the same general terminology contract (no
+    quotation-specific wording)."""
+    ti = _task_instructions_norm(LAB_SCENARIO)
+    assert "## terminology agreements" in _task_instructions(LAB_SCENARIO).lower()
+    assert "use that agreed term consistently" in ti
+    assert "does not create any new business fact" in ti
+    assert "pronouns are fine" in ti
+    assert "quotation" not in ti  # lab prompt must not reference quotation
+    assert "quotation_workflow" not in ti
 
 
 # ---------------------------------------------------------------------------

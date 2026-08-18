@@ -113,6 +113,44 @@ known-unknown handling: a fabricated necessity claim is still penalized.
 `evaluate(db, truth, spec, stakeholder)` receives the stakeholder visibility; the
 `InterviewTools` assertion hooks pass `scenario.stakeholder` automatically.
 
+## Terminology alignment (interview behavior)
+
+Terminology is a **conversation-level** concern, not an evaluator concern. The
+intended separation:
+
+1. **Ground Truth** defines the benchmark's concepts/facts (evaluator-only).
+2. **Stakeholder** speaks natural domain language ("I create the quotation").
+3. **Interviewer (Agent)** establishes a **shared working vocabulary** with the
+   stakeholder: identify important roles/systems/objects, use the stakeholder's
+   own terms by default, and briefly confirm stable labels for recurring
+   concepts ("I'll call the document you create 'the order form' — is that the
+   same document you later send?").
+4. **Explicit terminology agreements are respected thereafter**: after the
+   stakeholder confirms a proposed name accurately refers to a known thing,
+   both sides use that term consistently for the rest of the interview.
+5. **Evaluator semantic equivalence is a separate concern** (handled later):
+   agreeing on a term with the stakeholder is *not* a license to relax
+   matching; the evaluator keeps its current deterministic comparison.
+
+Rules of the road:
+
+- The Agent must not silently normalize wording, invent synonyms, or merge
+  concepts the stakeholder has not agreed are the same.
+- The Agent determines the stakeholder's business role from first-person speech
+  ("I check the customer information") and uses the role in the DAG; it does
+  not force the stakeholder to stop using "I".
+- The Agent must not invent derived artifacts the stakeholder never names (e.g.
+  a "seasoned chamber" just because the stakeholder says the chamber is
+  seasoned).
+- The stakeholder only agrees to a proposed name when it accurately refers to
+  something in its `known_info`; agreement never creates new facts, and
+  ambiguous identity is answered with "I don't know", never a silent merge.
+- The stakeholder must not reveal hidden GT vocabulary.
+
+Implementation is prompt/policy behavior only (`policy.md` + task
+`task_instructions`). There is **no** glossary model, ontology, or terminology
+API.
+
 **Evidence hygiene** (`evidence_pass` / `provenance_authenticity_pass`)
 deterministically guarantees only that every asserted claim references a **real,
 authentic stakeholder Observation** — captured from an actual user message via
