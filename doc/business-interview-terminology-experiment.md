@@ -88,9 +88,11 @@ NOT terminology problems and must not be "fixed" by loosening the matcher.
 - Does not show: any scoring improvement (not the goal), and it does **not**
   justify evaluator changes beyond what shipped. The visible `quote↔quotation`
   write mismatch (5/5 runs on seeds 4000–4004; observed again here) was the
-  Goal-3 semantic target and is now resolved by the scenario-local
-  `EvaluationSpec.data_expressions` exact-equivalence layer (see
-  `business-interview-attribute-mismatch-analysis.md` §9).
+  Goal-3 semantic target; the string-matching layer that addressed it has
+  since been **superseded by agent-local data concepts + hidden stakeholder
+  provenance** (see the domain README) — the evaluator now binds agent
+  concept refs to Truth concepts through private claim support and never
+  compares labels.
 
 ## 5. Files
 

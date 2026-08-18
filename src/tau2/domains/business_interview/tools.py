@@ -11,8 +11,12 @@ state in the final DAG.
 from typing import Optional
 
 from tau2.data_model.tasks import Task
+from tau2.domains.business_interview.claims import build_provenance_ledger
 from tau2.domains.business_interview.dag import (
     BusinessDAG,
+    ConceptRef,
+    ConceptTerm,
+    DataConcept,
     Edge,
     InferredValue,
     InterviewDB,
@@ -101,6 +105,175 @@ class InterviewTools(ToolKitBase):
             confidence=confidence,
             observation_ids=list(dict.fromkeys(ids)),
         )
+
+    # ------------------------------------------------------------- data concepts
+
+    def _concept(self, concept_id: str) -> DataConcept:
+        dag = self._dag()
+        if concept_id not in dag.data_concepts:
+            raise ValueError(f"concept not found: {concept_id}")
+        return dag.data_concepts[concept_id]
+
+    @staticmethod
+    def _refs(
+        concept_ids: Optional[list[str]],
+        confidence: float,
+        observation_id: Optional[str],
+    ) -> list[ConceptRef]:
+        return [
+            ConceptRef(
+                concept_id=cid,
+                confidence=confidence,
+                observation_ids=[observation_id] if observation_id else [],
+            )
+            for cid in (concept_ids or [])
+        ]
+
+    def _require_concepts(self, concept_ids: Optional[list[str]]) -> None:
+        for cid in concept_ids or []:
+            self._concept(cid)
+
+    @is_tool(ToolType.WRITE)
+    def create_concept(
+        self,
+        concept_id: str,
+        label: str,
+        observation_id: Optional[str] = None,
+    ) -> str:
+        """Create an agent-local data concept (a business object/artifact).
+
+        Create one concept when you first discover a business object the
+        stakeholder names (a document, artifact, input, output). Use the
+        stakeholder's own wording as the label. You — the interviewer — decide
+        whether different expressions refer to one object; the evaluator never
+        decides that for you.
+
+        Args:
+            concept_id: Your own identifier for this concept (reuse it
+                consistently in node reads/writes).
+            label: The preferred label (stakeholder wording).
+            observation_id: Observation where the object was named (optional;
+                add terms with ``add_concept_term`` for the exact wording).
+
+        Returns:
+            A confirmation message.
+        """
+        dag = self._dag()
+        if concept_id in dag.data_concepts:
+            raise ValueError(f"concept already exists: {concept_id}")
+        self._require_observation(observation_id)
+        dag.data_concepts[concept_id] = DataConcept(
+            id=concept_id,
+            preferred_label=label,
+            terms=[ConceptTerm(text=label, observation_ids=[observation_id])]
+            if observation_id
+            else [],
+        )
+        return f"Created concept {concept_id} (label: {label!r})."
+
+    @is_tool(ToolType.WRITE)
+    def add_concept_term(
+        self,
+        concept_id: str,
+        term: str,
+        observation_id: Optional[str] = None,
+    ) -> str:
+        """Add an observed term to an existing concept.
+
+        When the stakeholder later uses a different wording that you decide
+        refers to the same object, record that wording as another term of the
+        same concept (with the Observation where it was said). The evaluator
+        will then treat this concept as the same local object wherever it is
+        reused — it does not judge your wording.
+
+        Args:
+            concept_id: The concept to extend.
+            term: The observed wording (as the stakeholder said it).
+            observation_id: The Observation containing this wording (optional
+                but recommended).
+
+        Returns:
+            A confirmation message.
+        """
+        concept = self._concept(concept_id)
+        self._require_observation(observation_id)
+        if any(t.text == term for t in concept.terms):
+            if (
+                observation_id
+                and observation_id
+                not in concept.terms[
+                    next(i for i, t in enumerate(concept.terms) if t.text == term)
+                ].observation_ids
+            ):
+                concept.terms[
+                    next(i for i, t in enumerate(concept.terms) if t.text == term)
+                ].observation_ids.append(observation_id)
+            return f"Term {term!r} already recorded on {concept_id}."
+        concept.terms.append(
+            ConceptTerm(text=term, observation_ids=[observation_id])
+            if observation_id
+            else ConceptTerm(text=term)
+        )
+        return f"Added term {term!r} to concept {concept_id}."
+
+    @is_tool(ToolType.WRITE)
+    def merge_concepts(
+        self,
+        target_concept_id: str,
+        source_concept_ids: list[str],
+    ) -> str:
+        """Merge concepts you previously split by mistake.
+
+        If you created two local concepts that turn out to be the same object
+        (the stakeholder confirms they are the same), merge them: every node
+        reads/writes reference is re-pointed to ``target_concept_id`` and the
+        source concepts' terms are folded into the target. The source concepts
+        are removed.
+
+        Args:
+            target_concept_id: The concept to keep.
+            source_concept_ids: The concepts to merge into it (removed).
+
+        Returns:
+            A confirmation message.
+        """
+        dag = self._dag()
+        self._concept(target_concept_id)
+        sources = [self._concept(cid) for cid in source_concept_ids]
+        target = dag.data_concepts[target_concept_id]
+        for src in sources:
+            target.terms.extend(src.terms)
+        for node in dag.nodes.values():
+            for axis in ("reads", "writes"):
+                refs = getattr(node, axis)
+                for ref in refs:
+                    if ref.concept_id in source_concept_ids:
+                        ref.concept_id = target_concept_id
+        for cid in source_concept_ids:
+            del dag.data_concepts[cid]
+        return (
+            f"Merged {', '.join(source_concept_ids)} into {target_concept_id}; "
+            "all references re-pointed."
+        )
+
+    @is_tool(ToolType.READ)
+    def list_concepts(self) -> str:
+        """List your own data concepts (ids, labels, recorded terms).
+
+        This is your working vocabulary — nothing here comes from any hidden
+        ground truth.
+
+        Returns:
+            One line per concept.
+        """
+        dag = self._dag()
+        if not dag.data_concepts:
+            return "(no data concepts yet — create one with create_concept)"
+        lines = []
+        for cid, concept in dag.data_concepts.items():
+            terms = ", ".join(t.text for t in concept.terms) or "(no terms)"
+            lines.append(f"{cid}: {concept.preferred_label!r} [terms: {terms}]")
+        return "\n".join(lines)
 
     # ------------------------------------------------------------- tools
 
@@ -246,8 +419,10 @@ class InterviewTools(ToolKitBase):
                 'unclassified').
             actor: Who performs it (optional).
             system: Which system / tool (optional).
-            reads: Data this node reads (optional).
-            writes: Data this node writes (optional).
+            reads: Data concepts this node reads (optional) — concept ids
+                created with ``create_concept``.
+            writes: Data concepts this node writes (optional) — concept ids
+                created with ``create_concept``.
             confidence: Confidence in the recorded attributes [0, 1].
             observation_id: Observation supporting this node (optional).
 
@@ -258,6 +433,8 @@ class InterviewTools(ToolKitBase):
         if node_id in dag.nodes:
             raise ValueError(f"node already exists: {node_id}")
         self._require_observation(observation_id)
+        self._require_concepts(reads)
+        self._require_concepts(writes)
         dag.nodes[node_id] = Node(
             id=node_id,
             action=self._iv(action, confidence, observation_id),
@@ -270,8 +447,8 @@ class InterviewTools(ToolKitBase):
             system=self._iv(system, confidence, observation_id)
             if system is not None
             else InferredValue(),
-            reads=[self._iv(r, confidence, observation_id) for r in (reads or [])],
-            writes=[self._iv(w, confidence, observation_id) for w in (writes or [])],
+            reads=self._refs(reads, confidence, observation_id),
+            writes=self._refs(writes, confidence, observation_id),
             observation_ids=[observation_id] if observation_id else [],
         )
         return f"Added node {node_id}."
@@ -297,8 +474,8 @@ class InterviewTools(ToolKitBase):
             primitive: New generic primitive (optional).
             actor: New actor (optional).
             system: New system (optional).
-            reads: New read data list (optional).
-            writes: New write data list (optional).
+            reads: New read concept-id list (optional).
+            writes: New write concept-id list (optional).
             confidence: Confidence for the updated attributes [0, 1] (default 1.0).
             observation_id: Observation supporting this update (optional).
 
@@ -307,6 +484,8 @@ class InterviewTools(ToolKitBase):
         """
         node = self._node(node_id)
         self._require_observation(observation_id)
+        self._require_concepts(reads)
+        self._require_concepts(writes)
         conf = confidence if confidence is not None else 1.0
         if action is not None:
             node.action = self._set_value(node.action, action, conf, observation_id)
@@ -322,9 +501,9 @@ class InterviewTools(ToolKitBase):
         if system is not None:
             node.system = self._set_value(node.system, system, conf, observation_id)
         if reads is not None:
-            node.reads = [self._iv(r, conf, observation_id) for r in reads]
+            node.reads = self._refs(reads, conf, observation_id)
         if writes is not None:
-            node.writes = [self._iv(w, conf, observation_id) for w in writes]
+            node.writes = self._refs(writes, conf, observation_id)
         if observation_id:
             node.observation_ids = list(
                 dict.fromkeys(node.observation_ids + [observation_id])
@@ -589,7 +768,7 @@ class InterviewTools(ToolKitBase):
         dag = self._dag()
         if not dag.nodes:
             return "No DAG nodes yet. Call start_inference to begin."
-        errors = dag.validate()
+        errors = dag.structure_errors()
         if not errors:
             return "DAG is structurally valid."
         return "DAG validation errors:\n- " + "\n- ".join(errors)
@@ -617,7 +796,7 @@ class InterviewTools(ToolKitBase):
             raise ValueError(
                 "Cannot finish: no DAG has been built yet. Call start_inference first."
             )
-        errors = dag.validate()
+        errors = dag.structure_errors()
         if errors:
             raise ValueError(
                 "Cannot finish: DAG is structurally invalid.\n- " + "\n- ".join(errors)
@@ -631,8 +810,19 @@ class InterviewTools(ToolKitBase):
 
     def _evaluate(self, sc) -> EvaluationResult:
         """Evaluate against the scenario truth+spec under the scenario's
-        stakeholder visibility."""
-        return evaluate(self.db, sc.truth, sc.spec, sc.stakeholder)
+        stakeholder visibility, using the hidden claim catalog and the hidden
+        stakeholder provenance ledger (both evaluator-only; never exposed to
+        the Agent)."""
+
+        provenance = build_provenance_ledger(self.db, sc.claims, sc.stop_phrases)
+        return evaluate(
+            self.db,
+            sc.truth,
+            sc.spec,
+            sc.stakeholder,
+            claims=sc.claims,
+            provenance=provenance,
+        )
 
     def assert_finish_interview(self) -> bool:
         return self.db.interview_complete

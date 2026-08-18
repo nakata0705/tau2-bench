@@ -1,8 +1,18 @@
-"""Evaluator for the open-world business_interview benchmark (v5 — simple).
+"""Evaluator for the open-world business_interview benchmark (v6 — agent-local concepts).
 
 The agent's inferred ``BusinessDAG`` (open-world free-text actions, optional
 generic primitives, authentic Observation provenance) is compared to the scenario
 Truth DAG — both use the same ``BusinessDAG`` class.
+
+**Reads/writes are agent-local data concepts.** The Agent LLM, not the
+evaluator, interprets stakeholder wording variation: it creates local
+``DataConcept``\ s, attaches observed ``ConceptTerm``\ s, and reuses concept ids
+in ``ConceptRef``\ s. The evaluator binds each agent-local concept to a hidden
+Truth data concept through **hidden stakeholder provenance** (``claims.py``):
+privately, every stakeholder utterance is recorded as supporting the Truth
+claims it expressed; an agent ref grounds a claim only when the Observations it
+cites carry that hidden support. The evaluator never infers semantic support by
+reading Observation text and never compares labels to Ground Truth.
 
 **Benchmark vs production separation.** In production there is no ground truth;
 here a hidden ground truth exists and only the evaluator uses it to score
@@ -11,9 +21,10 @@ scenario-local ``EvaluationSpec``** (evaluator-only). The global resolver holds
 only reusable generic primitives (unknown operations resolve to ``unclassified``).
 
 Metrics cover structure (node/edge recall + precision, declared start/end),
-predicate/actor/system/read/write correctness, necessity correctness,
-**primitive correctness** (diagnostic; ``unclassified`` is not a failure),
-and **evidence hygiene** (evidence-backedness + Observation authenticity).
+predicate/actor/system/read/write correctness, **concept correctness**
+(agent-local concept bindings), necessity correctness, **primitive correctness**
+(diagnostic; ``unclassified`` is not a failure), and **evidence hygiene**
+(evidence-backedness + Observation authenticity).
 
 **Result correctness vs evidence hygiene.** Result correctness compares the
 inferred DAG against the hidden Ground Truth and is computed by exact Ground
@@ -30,8 +41,15 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from tau2.domains.business_interview.aliases import norm_role, norm_system
+from tau2.domains.business_interview.claims import Claim
 from tau2.domains.business_interview.concepts import resolve_primitive
-from tau2.domains.business_interview.dag import BusinessDAG, InferredValue, InterviewDB
+from tau2.domains.business_interview.dag import (
+    BusinessDAG,
+    ConceptRef,
+    ConceptTerm,
+    InferredValue,
+    InterviewDB,
+)
 from tau2.domains.business_interview.stakeholder import StakeholderFilter
 
 _TOKEN_RE = __import__("re").compile(r"[a-z0-9]+")
@@ -54,20 +72,16 @@ class TruthNodeSpec(BaseModel):
 class EvaluationSpec(BaseModel):
     """Evaluator-only, scenario-local annotations (hidden from the agent).
 
-    ``data_expressions`` maps a canonical Ground Truth data value (a read/write
-    value) to the small set of **scenario-local** accepted expressions for the
-    same business concept. It is a narrow, deterministic equivalence layer for
-    **stakeholder-visible** reads/writes only: it never changes the canonical
-    Truth value and it never applies to hidden attributes (a hidden assertion
-    stays incorrect even when its wording matches an expression). A scenario
-    without ``data_expressions`` keeps the baseline token/substring matching
-    exactly.
+    Reads/writes equivalence is NOT expressed here: the Agent LLM creates its
+    own local data concepts and the evaluator binds them to Truth concepts via
+    hidden stakeholder provenance (see ``claims.py``). ``truth_nodes``
+    expressions only help node matching (actions); ``predicate_expressions`` /
+    ``necessity_expressions`` cover edges and necessity values.
     """
 
     truth_nodes: dict[str, TruthNodeSpec] = Field(default_factory=dict)
     predicate_expressions: dict[str, list[str]] = Field(default_factory=dict)
     necessity_expressions: dict[str, list[str]] = Field(default_factory=dict)
-    data_expressions: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class EvaluationResult(BaseModel):
@@ -88,6 +102,8 @@ class EvaluationResult(BaseModel):
     system_correctness: float
     read_correctness: float
     write_correctness: float
+    concept_correctness: float
+    unsupported_concept_ref_count: int
     necessity_correctness: float
     primitive_correctness: float
     fabricated_node_count: int
@@ -366,62 +382,173 @@ def _match_nodes(agent: BusinessDAG, truth: BusinessDAG, spec: EvaluationSpec):
 
 
 # ---------------------------------------------------------------------------
-# Data / predicate / necessity
+# Data concepts: hidden-claim binding (no label comparison, no synonyms)
 # ---------------------------------------------------------------------------
 
 
-def _norm_data_value(value: Optional[str]) -> str:
-    """Case-fold + whitespace normalization only (harmless formatting).
+def _ref_observation_ids(agent: BusinessDAG, ref: ConceptRef) -> set[str]:
+    """Observation ids cited by a ref itself plus its concept's terms.
 
-    Used for read/write concept identity: no tokenization, no stemming, no
-    substring containment. Two labels are the same concept iff their
-    normalized forms are byte-identical.
+    The evaluator inspects ONLY these ids; it never reads Observation text.
     """
-    return " ".join((value or "").lower().split())
+    ids = set(ref.observation_ids)
+    concept = agent.data_concepts.get(ref.concept_id)
+    if concept is not None:
+        for term in concept.terms:
+            ids.update(term.observation_ids)
+    return ids
 
 
-def _data_item_ok(tvalue: str, avalue: str, spec: EvaluationSpec) -> bool:
-    """Concept-identity match for one read/write value (precision-first).
+def _obs_turn(db: InterviewDB, obs_id: str) -> Optional[int]:
+    for obs in db.observations:
+        if obs.id == obs_id:
+            return obs.turn
+    return None
 
-    Contract:
 
-        normalized exact canonical value
-        OR
-        normalized exact scenario-local accepted expression
+def _term_covers(term_text: str, recorded_terms: list[str]) -> bool:
+    """True if the agent's term text matches a recorded surface term (used only
+    to disambiguate observations that express several claims)."""
+    t = " ".join(term_text.lower().split())
+    return any(
+        t == " ".join(rt.lower().split()) or t in rt.lower() or rt.lower() in t
+        for rt in recorded_terms
+    )
 
-    ``spec.data_expressions[tvalue]`` lists **complete labels** that identify
-    the same scenario concept as the canonical Truth value ``tvalue``; a label
-    matches only when its normalized form equals the agent value's normalized
-    form exactly. Shared tokens or substring containment are NEVER used to
-    infer concept identity ("quotation request" / "quotation information" /
-    "price quotation" do not match "quote" unless explicitly declared). The
-    canonical Truth value is never rewritten.
+
+def _bind_ref(
+    agent: BusinessDAG,
+    db: InterviewDB,
+    claims: dict[str, Claim],
+    ledger: dict[int, dict[str, list[str]]],
+    tnid: str,
+    axis: str,
+    ref: ConceptRef,
+) -> list[Claim]:
+    """Bind one agent ConceptRef at a matched Truth node+axis to hidden claims.
+
+    1. Collect the expected claims for this Truth node+axis.
+    2. Inspect only the ref/concept's cited Observation ids; a claim is
+       supported when the hidden provenance ledger records that the cited
+       Observation expressed it.
+    3. If several claims are supported by the same Observation (one utterance
+       can express several facts), disambiguate with the concept's term texts
+       against the recorded surface terms; a concept whose terms match none
+       binds nothing (unsupported).
+
+    Returns the bound claims (empty = unsupported ref).
     """
-    na = _norm_data_value(avalue)
-    if na == _norm_data_value(tvalue):
-        return True
-    for expr in spec.data_expressions.get(tvalue, ()):
-        if na == _norm_data_value(expr):
-            return True
-    return False
+    expected = [c for c in claims.values() if c.node_id == tnid and c.axis == axis]
+    if not expected:
+        return []
+    supported: list[Claim] = []
+    for c in expected:
+        for obs_id in _ref_observation_ids(agent, ref):
+            turn = _obs_turn(db, obs_id)
+            if turn is None:
+                continue
+            if c.id in ledger.get(turn, {}):
+                supported.append(c)
+                break
+    if not supported:
+        return []
+    if len(supported) == 1:
+        return supported
+    # multiple claims supported by the cited observations: keep only the ones
+    # whose recorded surface terms are covered by the concept's own term texts
+    concept = agent.data_concepts.get(ref.concept_id)
+    matched: list[Claim] = []
+    for c in supported:
+        recorded = [
+            t for entry in ledger.values() if c.id in entry for t in entry[c.id]
+        ]
+        if any(
+            _term_covers(term.text, recorded)
+            for term in (concept.terms if concept is not None else [])
+        ):
+            matched.append(c)
+    return matched
 
 
-def _data_recall(
-    agent_items, truth_items, spec: Optional[EvaluationSpec] = None
-) -> float:
-    if spec is None:
-        spec = EvaluationSpec()
-    if not truth_items:
-        return 1.0 if not agent_items else 0.0
-    hits = 0
-    for gi in range(len(truth_items)):
-        if not truth_items[gi]:
-            hits += 1
+def _data_axis_score(
+    agent: BusinessDAG,
+    db: InterviewDB,
+    claims: dict[str, Claim],
+    ledger: dict[int, dict[str, list[str]]],
+    tnid: str,
+    anid: str,
+    axis: str,
+    visible: bool,
+) -> tuple[float, int]:
+    """Score one reads/writes axis of a matched node (concept binding).
+
+    Visible axis: recall over expected hidden claims (each must be grounded by
+    at least one agent ref) times precision over agent refs (each must bind to
+    at least one expected claim). Returns (score, unsupported_ref_count).
+
+    Hidden axis (prior gate): correct only when nothing is asserted.
+    """
+    refs = [r for r in getattr(agent.nodes[anid], axis) if r.asserted]
+    if not visible:
+        return (1.0 if not refs else 0.0), 0
+    expected = [c for c in claims.values() if c.node_id == tnid and c.axis == axis]
+    if not expected:
+        return (1.0 if not refs else 0.0), 0
+    if not refs:
+        return 0.0, 0
+    grounded = {c.id: False for c in expected}
+    valid = 0
+    unsupported = 0
+    for ref in refs:
+        bound = _bind_ref(agent, db, claims, ledger, tnid, axis, ref)
+        if not bound:
+            unsupported += 1
             continue
-        matched = any(_data_item_ok(truth_items[gi], a, spec) for a in agent_items)
-        if matched:
-            hits += 1
-    return hits / len(truth_items)
+        valid += 1
+        for c in bound:
+            grounded[c.id] = True
+    recall = sum(grounded.values()) / len(expected)
+    precision = valid / len(refs)
+    return recall * precision, unsupported
+
+
+def _concept_bindings(
+    agent: BusinessDAG,
+    db: InterviewDB,
+    claims: dict[str, Claim],
+    ledger: dict[int, dict[str, list[str]]],
+    mapping: dict[str, str],
+    stakeholder: Optional[StakeholderFilter],
+) -> tuple[float, dict[str, set[str]], dict[str, set[str]]]:
+    """Concept-level binding integrity across all matched visible slots.
+
+    - one agent-local concept must bind to ONE Truth data concept;
+    - one Truth data concept must be represented by ONE agent concept id
+      (separate ids for the same visible object fail until merged).
+
+    Returns (concept_correctness, agent->truth, truth->agent) maps.
+    """
+    agent_to_truth: dict[str, set[str]] = {}
+    truth_to_agent: dict[str, set[str]] = {}
+    for anid, tnid in mapping.items():
+        visible = (
+            set(("actor", "system", "reads", "writes"))
+            if stakeholder is None
+            else stakeholder.visible_attributes_for(tnid)
+        )
+        for axis in ("reads", "writes"):
+            if axis not in visible:
+                continue
+            for ref in getattr(agent.nodes[anid], axis):
+                if not ref.asserted:
+                    continue
+                for c in _bind_ref(agent, db, claims, ledger, tnid, axis, ref):
+                    agent_to_truth.setdefault(ref.concept_id, set()).add(c.concept_id)
+                    truth_to_agent.setdefault(c.concept_id, set()).add(ref.concept_id)
+    violations = sum(1 for v in agent_to_truth.values() if len(v) > 1) + sum(
+        1 for v in truth_to_agent.values() if len(v) > 1
+    )
+    return (0.0 if violations else 1.0), agent_to_truth, truth_to_agent
 
 
 _PREDICATE_STOP = {
@@ -498,6 +625,16 @@ def _iter_node_inferred(node):
         yield w
 
 
+def _iter_ref_terms(agent: BusinessDAG, node) -> list[ConceptTerm]:
+    """Concept terms cited by a node's reads/writes refs."""
+    out: list[ConceptTerm] = []
+    for ref in list(node.reads) + list(node.writes):
+        concept = agent.data_concepts.get(ref.concept_id)
+        if concept is not None:
+            out.extend(concept.terms)
+    return out
+
+
 def _evidence_metrics(
     agent: BusinessDAG, all_obs_ids: set[str], authentic_obs_ids: set[str]
 ):
@@ -517,7 +654,7 @@ def _evidence_metrics(
             elif i not in authentic_obs_ids:
                 nonauthentic += 1
 
-    def iv_has_valid_ref(iv: InferredValue) -> bool:
+    def iv_has_valid_ref(iv) -> bool:
         return any(o in authentic_obs_ids for o in iv.observation_ids)
 
     for node in agent.nodes.values():
@@ -531,6 +668,9 @@ def _evidence_metrics(
                 attr_total += 1
                 if iv_has_valid_ref(iv):
                     attr_hit += 1
+        # concept terms are supporting evidence of the refs that cite them
+        for term in _iter_ref_terms(agent, node):
+            classify(term.observation_ids)
         if node.necessity is not None:
             for prop in _NECESSITY_PROPS:
                 iv = getattr(node.necessity, prop)
@@ -579,6 +719,8 @@ def _all_referenced_observation_ids(agent: BusinessDAG) -> set[str]:
         ids.update(node.observation_ids)
         for iv in _iter_node_inferred(node):
             ids.update(iv.observation_ids)
+        for term in _iter_ref_terms(agent, node):
+            ids.update(term.observation_ids)
         if node.necessity is not None:
             for p in _NECESSITY_PROPS:
                 ids.update(getattr(node.necessity, p).observation_ids)
@@ -612,41 +754,32 @@ def _attribute_ok(
     spec: EvaluationSpec,
     visible: bool,
 ) -> float:
-    """Score one actor/system/reads/writes axis for one matched node.
+    """Score one actor/system axis for one matched node.
 
     ``visible=True`` (stakeholder can know it): compare the agent value to the
-    Truth value using the current matching behavior.
+    Truth value using role/system normalization.
 
     ``visible=False`` (hidden from the stakeholder): the correct behavior is to
     leave it unset/empty; an asserted/invented value is incorrect. We return 1.0
     for unset and 0.0 for any asserted value (even if it happens to equal the
     hidden Truth).
 
-    ``agent_value``/``truth_value`` are ``InferredValue`` for actor/system and
-    lists of ``InferredValue`` for reads/writes.
+    Reads/writes are scored by ``_data_axis_score`` (concept binding), not here.
     """
-    if axis in ("actor", "system"):
-        if visible:
-            if axis == "actor":
-                return (
-                    1.0
-                    if norm_role(agent_value.value) == norm_role(truth_value.value)
-                    else 0.0
-                )
+    if visible:
+        if axis == "actor":
             return (
                 1.0
-                if norm_system(agent_value.value) == norm_system(truth_value.value)
+                if norm_role(agent_value.value) == norm_role(truth_value.value)
                 else 0.0
             )
-        # hidden: correct only when unset/not asserted
-        return 1.0 if not agent_value.asserted else 0.0
-    # reads / writes
-    if visible:
-        return _data_recall(
-            [v.value for v in agent_value], [v.value for v in truth_value], spec
+        return (
+            1.0
+            if norm_system(agent_value.value) == norm_system(truth_value.value)
+            else 0.0
         )
-    # hidden: correct only when the list has no asserted entry
-    return 1.0 if not any(v.asserted for v in agent_value) else 0.0
+    # hidden: correct only when unset/not asserted
+    return 1.0 if not agent_value.asserted else 0.0
 
 
 def evaluate(
@@ -654,11 +787,23 @@ def evaluate(
     truth: BusinessDAG,
     spec: EvaluationSpec,
     stakeholder: Optional[StakeholderFilter] = None,
+    *,
+    claims: Optional[dict[str, Claim]] = None,
+    provenance: Optional[dict[int, dict[str, list[str]]]] = None,
 ) -> EvaluationResult:
+    """Evaluate the inferred DAG against the hidden Truth.
+
+    ``claims`` is the hidden claim catalog (``Scenario.claims``) and
+    ``provenance`` the hidden stakeholder provenance ledger
+    (``build_provenance_ledger``). Both are evaluator-only; the Agent never
+    sees them. Without provenance, no ConceptRef can ground a Truth claim.
+    """
     agent = db.dag if db.dag is not None else BusinessDAG()
     protocol = db.interview_complete
     dag_created = len(agent.nodes) > 0
     dag_valid = agent.is_valid
+    claims = claims or {}
+    ledger = provenance or {}
 
     # ---- node matching -----------------------------------------------------
     mapping = _match_nodes(agent, truth, spec)
@@ -724,6 +869,7 @@ def evaluate(
 
     # ---- attribute correctness ---------------------------------------------
     actor_hits = system_hits = read_hits = write_hits = 0
+    unsupported_concept_ref_count = 0
     for anid, tnid in mapping.items():
         an = agent.nodes[anid]
         tn = truth.nodes[tnid]
@@ -738,17 +884,25 @@ def evaluate(
         system_hits += _attribute_ok(
             "system", an.system, tn.system, spec, "system" in visible
         )
-        read_hits += _attribute_ok(
-            "reads", an.reads, tn.reads, spec, "reads" in visible
+        read_score, read_unsupported = _data_axis_score(
+            agent, db, claims, ledger, tnid, anid, "reads", "reads" in visible
         )
-        write_hits += _attribute_ok(
-            "writes", an.writes, tn.writes, spec, "writes" in visible
+        write_score, write_unsupported = _data_axis_score(
+            agent, db, claims, ledger, tnid, anid, "writes", "writes" in visible
         )
+        read_hits += read_score
+        write_hits += write_score
+        unsupported_concept_ref_count += read_unsupported + write_unsupported
     nm = len(mapping) or 1
     actor_correctness = actor_hits / nm
     system_correctness = system_hits / nm
     read_correctness = read_hits / nm
     write_correctness = write_hits / nm
+
+    # ---- concept binding integrity ------------------------------------------
+    concept_correctness, agent_to_truth, truth_to_agent = _concept_bindings(
+        agent, db, claims, ledger, mapping, stakeholder
+    )
 
     # ---- necessity correctness ---------------------------------------------
     nec_total = nec_hits = 0
@@ -850,6 +1004,7 @@ def evaluate(
         and system_correctness == 1.0
         and read_correctness == 1.0
         and write_correctness == 1.0
+        and concept_correctness == 1.0
     )
     necessity_pass = necessity_correctness == 1.0 and not fabricated_necessity
     protocol_pass = protocol
@@ -877,6 +1032,8 @@ def evaluate(
         system_correctness=system_correctness,
         read_correctness=read_correctness,
         write_correctness=write_correctness,
+        concept_correctness=concept_correctness,
+        unsupported_concept_ref_count=unsupported_concept_ref_count,
         necessity_correctness=necessity_correctness,
         primitive_correctness=primitive_correctness,
         fabricated_node_count=fabricated_node_count,

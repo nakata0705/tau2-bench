@@ -1,5 +1,13 @@
 # business_interview — Actor / System / Read / Write Mismatch Analysis (visibility-aware, precision-first)
 
+> **SUPERSEDED (2026-08-19).** The string-equivalence scoring analyzed here
+> (`EvaluationSpec.data_expressions`, `_data_recall`) has been **removed** and
+> replaced by **agent-local data concepts + hidden stakeholder provenance**
+> (see `src/tau2/domains/business_interview/README.md` and `claims.py`). The
+> saved seed-4000..4004 artifacts are historical; the new evaluator does not
+> replay them (no compatibility adapters). This report remains as the record
+> of the visibility + precision-first string-matching era.
+
 **Date:** 2026-08-19
 **Branch:** `business-interview`
 **Type:** **Analysis + evaluator changes.** The analysis is based on the

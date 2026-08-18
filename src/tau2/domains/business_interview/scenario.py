@@ -1,15 +1,24 @@
-"""Scenarios for the evidence-backed DAG business_interview benchmark (v3).
+"""Scenarios for the agent-local-concept business_interview benchmark (v4).
 
-A scenario is a **Truth DAG** (a plain ``BusinessDAG``), an evaluator-only
-``EvaluationSpec`` (concepts for semantic matching), and the stakeholder
-filter(s). The Truth DAG and the agent's inferred DAG use the same class.
+A scenario is a **Truth DAG** (a plain ``BusinessDAG`` whose reads/writes are
+``ConceptRef``\\ s into evaluator-only Truth data concepts), an evaluator-only
+``EvaluationSpec`` (concepts for node/edge/necessity matching), the
+stakeholder filter(s), and the **hidden claim catalog** (``claims.py``): the
+private stakeholder fact catalog binding visible Truth read/write concepts to
+the natural surface terms the stakeholder uses.
+
+The Truth DAG and the agent's inferred DAG use the same class; Truth concept
+ids are evaluator-only and need not equal Agent concept ids.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
+from tau2.domains.business_interview.claims import Claim, build_claims
 from tau2.domains.business_interview.dag import (
     BusinessDAG,
+    ConceptRef,
+    DataConcept,
     Edge,
     InferredValue,
     Necessity,
@@ -25,40 +34,67 @@ def _iv(value: Optional[str]) -> InferredValue:
     return InferredValue(value=value)
 
 
+def _ref(concept_id: str) -> ConceptRef:
+    return ConceptRef(concept_id=concept_id, confidence=1.0)
+
+
+def _concept(cid: str, label: str) -> DataConcept:
+    return DataConcept(id=cid, preferred_label=label)
+
+
+# ---------------------------------------------------------------------------
+# quotation_workflow_1
+# ---------------------------------------------------------------------------
+
+
 def quotation_truth() -> BusinessDAG:
-    """The quotation workflow Truth DAG (1 start / 2 ends)."""
+    """The quotation workflow Truth DAG (1 start / 2 ends).
+
+    Reads/writes are ConceptRefs into evaluator-only Truth data concepts;
+    ``tc_quote`` flows through cq.writes / ap.reads / sq.reads / me.reads,
+    but only ``cq.writes`` is stakeholder-visible (see the sales filter).
+    """
     return BusinessDAG(
         id="quotation",
         name="Quotation creation",
+        data_concepts={
+            "tc_request": _concept("tc_request", "request"),
+            "tc_customer": _concept("tc_customer", "customer"),
+            "tc_pricing": _concept("tc_pricing", "pricing"),
+            "tc_quote": _concept("tc_quote", "quote"),
+            "tc_approval": _concept("tc_approval", "approval"),
+            "tc_sent_quote": _concept("tc_sent_quote", "sent_quote"),
+            "tc_excel_summary": _concept("tc_excel_summary", "excel_summary"),
+        },
         nodes={
             "r": Node(
                 id="r",
                 action=_iv("receive quotation request"),
                 actor=_iv("sales"),
-                writes=[_iv("request")],
+                writes=[_ref("tc_request")],
             ),
             "cc": Node(
                 id="cc",
                 action=_iv("check customer information in the CRM"),
                 actor=_iv("sales"),
                 system=_iv("crm"),
-                reads=[_iv("customer")],
+                reads=[_ref("tc_customer")],
             ),
             "cq": Node(
                 id="cq",
                 action=_iv("create quotation in the quoting system"),
                 actor=_iv("sales"),
                 system=_iv("quoting"),
-                reads=[_iv("customer"), _iv("pricing")],
-                writes=[_iv("quote")],
+                reads=[_ref("tc_customer"), _ref("tc_pricing")],
+                writes=[_ref("tc_quote")],
             ),
             "ap": Node(
                 id="ap",
                 action=_iv("approve high-value quotation"),
                 actor=_iv("manager"),
                 system=_iv("quoting"),
-                reads=[_iv("quote")],
-                writes=[_iv("approval")],
+                reads=[_ref("tc_quote")],
+                writes=[_ref("tc_approval")],
                 necessity=Necessity(rationale=_iv("for credit risk management")),
             ),
             "sq": Node(
@@ -66,16 +102,16 @@ def quotation_truth() -> BusinessDAG:
                 action=_iv("send quotation to customer"),
                 actor=_iv("sales"),
                 system=_iv("email"),
-                reads=[_iv("quote")],
-                writes=[_iv("sent_quote")],
+                reads=[_ref("tc_quote")],
+                writes=[_ref("tc_sent_quote")],
             ),
             "me": Node(
                 id="me",
                 action=_iv("send quotation summary to accounting at month-end"),
                 actor=_iv("sales"),
                 system=_iv("excel"),
-                reads=[_iv("quote")],
-                writes=[_iv("excel_summary")],
+                reads=[_ref("tc_quote")],
+                writes=[_ref("tc_excel_summary")],
                 # rationale / owner / evidence / removal all unknown (no value)
                 necessity=Necessity(),
             ),
@@ -108,12 +144,55 @@ def quotation_truth() -> BusinessDAG:
     )
 
 
+# Natural surface terms per visible Truth (node, axis, concept) — the
+# stakeholder's private known-info wording (EN). Keys must match the claims
+# builder's expectations; only visible axes appear.
+QUOTATION_SURFACE_TERMS_EN: dict[tuple[str, str, str], list[str]] = {
+    ("r", "writes", "tc_request"): ["request", "quotation request"],
+    ("cc", "reads", "tc_customer"): [
+        "customer",
+        "customer information",
+        "customer's information",
+    ],
+    ("cq", "reads", "tc_customer"): [
+        "customer",
+        "customer information",
+        "customer's information",
+    ],
+    ("cq", "reads", "tc_pricing"): ["pricing", "pricing information"],
+    ("cq", "writes", "tc_quote"): ["quotation", "quotations"],
+    ("me", "writes", "tc_excel_summary"): [
+        "summary of quotation information",
+        "summary of the quotation information",
+    ],
+}
+
+QUOTATION_SURFACE_TERMS_JA: dict[tuple[str, str, str], list[str]] = {
+    ("r", "writes", "tc_request"): ["見積依頼", "依頼"],
+    ("cc", "reads", "tc_customer"): ["顧客情報", "顧客"],
+    ("cq", "reads", "tc_customer"): ["顧客情報", "顧客"],
+    ("cq", "reads", "tc_pricing"): ["価格情報", "価格"],
+    ("cq", "writes", "tc_quote"): ["見積書", "見積"],
+    ("me", "writes", "tc_excel_summary"): ["見積情報の集計", "月次の集計"],
+}
+
+# Phrases that consume a span without supporting any claim (the simulator
+# knows "quotation information" is not the quote object).
+QUOTATION_STOP_PHRASES: tuple[str, ...] = (
+    "quotation information",
+    "quotation summary",
+    "見積情報",
+)
+
+
 def quotation_spec() -> EvaluationSpec:
     """Hidden, evaluator-only, scenario-local semantic spec.
 
     The expressions are aliases/paraphrases the evaluator uses to match the
-    agent's free-text actions to the Truth nodes; ``primitive`` is the expected
-    generic operation. This metadata is never shown to the agent.
+    agent's free-text **actions** to the Truth nodes; ``primitive`` is the
+    expected generic operation. There is NO read/write equivalence here —
+    reads/writes bind through hidden claim provenance (``claims.py``).
+    This metadata is never shown to the agent.
     """
     return EvaluationSpec(
         truth_nodes={
@@ -214,36 +293,13 @@ def quotation_spec() -> EvaluationSpec:
                 "与信",
             ],
         },
-        # Scenario-local data equivalence (evaluator-only, deterministic,
-        # precision-first). Each key is a canonical Ground Truth read/write
-        # value; the list holds **complete labels** that identify the same
-        # scenario concept, matched by normalized exact equality ONLY (no
-        # token overlap / substring containment). Every expression is grounded
-        # in the stakeholder's observed wording in the saved real-LLM runs:
-        #   quote      <-> quotation           (create-quotation write)
-        #   customer   <-> customer information (CRM check / create reads)
-        #   pricing    <-> pricing information  (create read)
-        #   request    <-> quotation request    (receive write: the request
-        #                                       the customer sends)
-        #   excel_summary <-> summary of quotation information (month-end
-        #                                       summary object)
-        # Near-collisions that are NOT declared stay distinct: quotation
-        # request / quotation information / quotation document / price
-        # quotation / invoice never match "quote"; "customer request" never
-        # matches "customer"; "quotation summary" / "Excel file" never match
-        # "excel_summary". Hidden axes never use this layer (a hidden
-        # assertion stays incorrect no matter its wording).
-        data_expressions={
-            "quote": ["quote", "quotation"],
-            "customer": ["customer", "customer information"],
-            "pricing": ["pricing", "pricing information"],
-            "request": ["request", "quotation request"],
-            "excel_summary": [
-                "excel_summary",
-                "summary of quotation information",
-            ],
-        },
     )
+
+
+def quotation_claims(locale: str = "en") -> dict[str, Claim]:
+    """The hidden claim catalog for the quotation scenario (EN or JA)."""
+    terms = QUOTATION_SURFACE_TERMS_EN if locale == "en" else QUOTATION_SURFACE_TERMS_JA
+    return build_claims(quotation_truth(), quotation_sales_filter(), terms)
 
 
 def quotation_sales_filter() -> StakeholderFilter:
@@ -294,45 +350,61 @@ def quotation_finance_filter() -> StakeholderFilter:
     )
 
 
+# ---------------------------------------------------------------------------
+# lab_sample_flow
+# ---------------------------------------------------------------------------
+
+
 def lab_sample_truth() -> BusinessDAG:
     """A non-quotation Truth DAG (lab sample conditioning).
 
     Demonstrates open-world domain concepts ("specimen accession",
     "chamber seasoning", "conditioning cycle") that are not part of any global
-    ontology.
+    ontology. Derived read/write artifacts are hidden from the stakeholder.
     """
     return BusinessDAG(
         id="lab",
         name="Lab sample conditioning",
+        data_concepts={
+            "tc_sample": _concept("tc_sample", "sample"),
+            "tc_accessioned_sample": _concept(
+                "tc_accessioned_sample", "accessioned sample"
+            ),
+            "tc_seasoned_chamber": _concept("tc_seasoned_chamber", "seasoned chamber"),
+            "tc_conditioned_sample": _concept(
+                "tc_conditioned_sample", "conditioned sample"
+            ),
+            "tc_batch_approval": _concept("tc_batch_approval", "batch approval"),
+        },
         nodes={
             "n1": Node(
                 id="n1",
                 action=_iv("specimen accession"),
                 actor=_iv("lab tech"),
-                reads=[_iv("sample")],
-                writes=[_iv("accessioned sample")],
+                reads=[_ref("tc_sample")],
+                writes=[_ref("tc_accessioned_sample")],
             ),
             "n2": Node(
                 id="n2",
                 action=_iv("chamber seasoning"),
                 actor=_iv("lab tech"),
                 system=_iv("environment chamber"),
-                writes=[_iv("seasoned chamber")],
+                writes=[_ref("tc_seasoned_chamber")],
             ),
             "n3": Node(
                 id="n3",
                 action=_iv("conditioning cycle"),
                 actor=_iv("lab tech"),
                 system=_iv("environment chamber"),
-                reads=[_iv("accessioned sample")],
-                writes=[_iv("conditioned sample")],
+                reads=[_ref("tc_accessioned_sample")],
+                writes=[_ref("tc_conditioned_sample")],
             ),
             "n4": Node(
                 id="n4",
                 action=_iv("approve conditioned batch"),
                 actor=_iv("lab supervisor"),
-                reads=[_iv("conditioned sample")],
-                writes=[_iv("batch approval")],
+                reads=[_ref("tc_conditioned_sample")],
+                writes=[_ref("tc_batch_approval")],
             ),
         },
         edges={
@@ -343,6 +415,15 @@ def lab_sample_truth() -> BusinessDAG:
         start_node_id="n1",
         end_node_ids=["n4"],
     )
+
+
+LAB_SURFACE_TERMS: dict[tuple[str, str, str], list[str]] = {
+    ("n1", "reads", "tc_sample"): ["sample", "specimen"],
+}
+
+
+def lab_sample_claims() -> dict[str, Claim]:
+    return build_claims(lab_sample_truth(), lab_sample_filter(), LAB_SURFACE_TERMS)
 
 
 def lab_sample_spec() -> EvaluationSpec:
@@ -391,16 +472,6 @@ def lab_sample_filter() -> StakeholderFilter:
     ``batch approval``) are benchmark-derived state/artifact conventions that the
     stakeholder never names. They are therefore hidden: the correct agent
     behavior is to leave them unset (epistemic restraint), not to invent them.
-
-    Decisions (vs lab known_info):
-    - n1 specimen accession: actor visible, reads=[sample] visible (specimen
-      arrives), writes=[accessioned sample] hidden (derived label).
-    - n2 chamber seasoning: actor + system (environment chamber) visible,
-      writes=[seasoned chamber] hidden (derived state).
-    - n3 conditioning cycle: actor + system visible, reads/writes hidden
-      (derived ``accessioned/conditioned sample`` labels).
-    - n4 approve batch: actor (lab supervisor) visible, reads/writes hidden
-      (derived ``conditioned sample`` / ``batch approval`` labels).
     """
     return StakeholderFilter(
         name="lab tech",
@@ -422,6 +493,8 @@ class Scenario:
     truth: BusinessDAG
     spec: EvaluationSpec
     stakeholder: StakeholderFilter
+    claims: dict[str, Claim]
+    stop_phrases: tuple[str, ...] = ()
 
 
 _SCENARIOS: dict[str, Scenario] = {
@@ -430,12 +503,15 @@ _SCENARIOS: dict[str, Scenario] = {
         truth=quotation_truth(),
         spec=quotation_spec(),
         stakeholder=quotation_sales_filter(),
+        claims=quotation_claims("en"),
+        stop_phrases=QUOTATION_STOP_PHRASES,
     ),
     "lab_sample_flow": Scenario(
         scenario_id="lab_sample_flow",
         truth=lab_sample_truth(),
         spec=lab_sample_spec(),
         stakeholder=lab_sample_filter(),
+        claims=lab_sample_claims(),
     ),
 }
 
@@ -452,4 +528,10 @@ def get_scenario(scenario_id: Optional[str]) -> Optional[Scenario]:
     canonical = canonical_scenario_id(scenario_id)
     if canonical is None:
         return None
-    return _SCENARIOS.get(canonical)
+    sc = _SCENARIOS.get(canonical)
+    if sc is None:
+        return None
+    if scenario_id is not None and scenario_id.endswith(JA_SCENARIO_SUFFIX):
+        # JA locale: same truth/spec/filter, JA claim catalog
+        return replace(sc, claims=quotation_claims("ja"))
+    return sc

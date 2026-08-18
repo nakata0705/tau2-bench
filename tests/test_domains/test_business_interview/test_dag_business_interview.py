@@ -1,15 +1,19 @@
-"""Tests for the simple open-world DAG business_interview domain (v5).
+"""Tests for the agent-local-concept business_interview domain (v4).
 
 The domain centers on free-text actions + optional generic primitives (with an
 explicit ``unclassified`` sentinel for unknown operations) + authentic Observation
-provenance. Evaluation separates **result correctness** (inferred DAG vs hidden
-Ground Truth) from **evidence hygiene** (references point at real, authentic
-stakeholder Observations). The evaluator does NOT re-interpret Observation text
-to decide whether it semantically supports a claim. DiscoveredConcept and
-concept-discovery evaluation are removed.
+provenance. **Reads/writes are agent-local data concepts**: the Agent LLM creates
+``DataConcept``\ s, attaches observed ``ConceptTerm``\ s, and reuses concept ids
+in ``ConceptRef``\ s; the evaluator binds each local concept to a hidden Truth
+concept through **hidden stakeholder provenance** (claim catalog + per-utterance
+ledger, ``claims.py``). The evaluator never infers semantic support from
+Observation text, never compares labels to Ground Truth, and never rescues a
+hidden assertion. DiscoveredConcept and concept-discovery evaluation are removed.
 """
 
-import pytest
+from typing import Optional
+
+import pytest  # type: ignore[reportMissingImports]
 
 import tau2.domains.business_interview.dag as dagmod
 from tau2.data_model.message import (
@@ -18,9 +22,15 @@ from tau2.data_model.message import (
     ToolMessage,
     UserMessage,
 )
+from tau2.domains.business_interview.claims import (
+    build_provenance_ledger,
+    derive_utterance_claims,
+    validate_ledger,
+)
 from tau2.domains.business_interview.concepts import resolve_primitive
 from tau2.domains.business_interview.dag import (
     BusinessDAG,
+    ConceptRef,
     Edge,
     InferredValue,
     InterviewDB,
@@ -43,40 +53,43 @@ JA_SCENARIO = SCENARIO + "_ja"
 LAB_SCENARIO = "lab_sample_flow"
 ALL_TASK_IDS = [SCENARIO, JA_SCENARIO, LAB_SCENARIO]
 
+# (sid, action, actor, system, read concept ids, write concept ids)
+# Truth concept ids are evaluator-only; the tests use the same ids so agent
+# concept ids differ from truth ids (exercising the mapping).
 _TRUTH_NODES = [
-    ("a", "receive quotation request", "sales", None, [], ["request"]),
-    ("b", "check customer information in the CRM", "sales", "crm", ["customer"], []),
+    ("a", "receive quotation request", "sales", None, [], ["tc_request"]),
+    ("b", "check customer information in the CRM", "sales", "crm", ["tc_customer"], []),
     (
         "c",
         "create quotation in the quoting system",
         "sales",
         "quoting",
-        ["customer", "pricing"],
-        ["quote"],
+        ["tc_customer", "tc_pricing"],
+        ["tc_quote"],
     ),
     (
         "d",
         "approve high-value quotation",
         "manager",
         "quoting",
-        ["quote"],
-        ["approval"],
+        ["tc_quote"],
+        ["tc_approval"],
     ),
     (
         "e",
         "send quotation to customer",
         "sales",
         "email",
-        ["quote"],
-        ["sent_quote"],
+        ["tc_quote"],
+        ["tc_sent_quote"],
     ),
     (
         "f",
         "send quotation summary to accounting at month-end",
         "sales",
         "excel",
-        ["quote"],
-        ["excel_summary"],
+        ["tc_quote"],
+        ["tc_excel_summary"],
     ),
 ]
 
@@ -98,15 +111,68 @@ _PRIM_BY_SID = {
     "f": "send",
 }
 
+# Agent-local concept ids used by the faithful test builds (deliberately
+# different from the truth ids above) and their stakeholder-wording labels.
+_AGENT_CONCEPTS = {
+    "tc_request": ("request", "quotation request"),
+    "tc_customer": ("customer", "customer information"),
+    "tc_pricing": ("pricing", "pricing information"),
+    "tc_quote": ("quote", "quotation"),
+    "tc_approval": ("approval", "approval"),
+    "tc_sent_quote": ("sent_quote", "sent quotation"),
+    "tc_excel_summary": ("excel_summary", "summary of quotation information"),
+}
+
+_AGENT_CONCEPTS_JA = {
+    "tc_request": ("request", "見積依頼"),
+    "tc_customer": ("customer", "顧客情報"),
+    "tc_pricing": ("pricing", "価格情報"),
+    "tc_quote": ("quote", "見積書"),
+    "tc_approval": ("approval", "承認"),
+    "tc_sent_quote": ("sent_quote", "送付済みの見積書"),
+    "tc_excel_summary": ("excel_summary", "見積情報の集計"),
+}
+
+# Natural phrasing per truth concept used to build observation texts (EN).
+_NATURAL_EN = {
+    "tc_request": "the quotation request",
+    "tc_customer": "the customer information",
+    "tc_pricing": "pricing information",
+    "tc_quote": "the quotation",
+    "tc_approval": "the approval",
+    "tc_sent_quote": "the sent quotation",
+    "tc_excel_summary": "a summary of the quotation information",
+}
+
+_NATURAL_JA = {
+    "tc_request": "見積依頼",
+    "tc_customer": "顧客情報",
+    "tc_pricing": "価格情報",
+    "tc_quote": "見積書",
+    "tc_approval": "承認",
+    "tc_sent_quote": "送付済みの見積書",
+    "tc_excel_summary": "見積情報の集計",
+}
+
 
 def _tools() -> InterviewTools:
     return InterviewTools(InterviewDB())
 
 
 def _eval(tools: InterviewTools, scenario: str = SCENARIO):
-    """Evaluate under the scenario's stakeholder visibility (runtime behavior)."""
+    """Evaluate under the scenario's stakeholder visibility + hidden claim
+    provenance (runtime behavior)."""
     sc = get_scenario(scenario)
-    return evaluate(tools.db, sc.truth, sc.spec, sc.stakeholder)
+    assert sc is not None
+    provenance = build_provenance_ledger(tools.db, sc.claims, sc.stop_phrases)
+    return evaluate(
+        tools.db,
+        sc.truth,
+        sc.spec,
+        sc.stakeholder,
+        claims=sc.claims,
+        provenance=provenance,
+    )
 
 
 def _ingest(tools: InterviewTools, role: str = "user", content: str = "") -> int:
@@ -120,7 +186,10 @@ def _claim_obs(tools: InterviewTools, text: str) -> str:
     return tools.observe_message(sm_id)
 
 
-def _node_obs_text(action, actor, system, reads, writes) -> str:
+def _node_obs_text(action, actor, system, reads, writes, ja: bool = False) -> str:
+    """Natural-language observation text for a node, grounded in the
+    stakeholder's wording (the hidden claim derivation matches these)."""
+    natural = _NATURAL_JA if ja else _NATURAL_EN
     parts = []
     parts.append(
         f"The {actor} performs: {action}." if actor else f"The process: {action}."
@@ -128,10 +197,26 @@ def _node_obs_text(action, actor, system, reads, writes) -> str:
     if system:
         parts.append(f"It uses the {system}.")
     if reads:
-        parts.append(f"It reads {', '.join(reads)}.")
+        parts.append(f"It reads {', '.join(natural[r] for r in reads)}.")
     if writes:
-        parts.append(f"It writes {', '.join(writes)}.")
+        parts.append(f"It writes {', '.join(natural[w] for w in writes)}.")
     return " ".join(parts)
+
+
+def _ensure_concept(
+    tools: InterviewTools, truth_cid: str, oid: Optional[str], ja: bool = False
+) -> str:
+    """Create (or reuse) the agent-local concept for a truth concept id,
+    returning the agent concept id. First use creates it with the
+    stakeholder-wording label (locale-appropriate); later uses reuse the same
+    id (no term churn)."""
+    table = _AGENT_CONCEPTS_JA if ja else _AGENT_CONCEPTS
+    agent_cid, label = table[truth_cid]
+    dag = tools.db.dag
+    assert dag is not None
+    if agent_cid not in dag.data_concepts:
+        tools.create_concept(agent_cid, label, observation_id=oid)
+    return agent_cid
 
 
 def _build(
@@ -145,19 +230,24 @@ def _build(
     asserting only **stakeholder-visible** attributes (per the sales
     StakeholderFilter) so the build matches actual runtime behavior.
 
-    Hidden attributes (ap system/reads/writes, sq reads/writes, me reads) are
-    left unset — the correct epistemic-restraint behavior.
+    Data is recorded as agent-local concepts: one concept per business object
+    (``request``, ``customer``, ``pricing``, ``quote``, ``excel_summary``),
+    with ``customer`` reused across cc.reads and cq.reads. Hidden attributes
+    (ap system/reads/writes, sq reads/writes, me reads) are left unset — the
+    correct epistemic-restraint behavior.
 
     With ``evidence=True`` each node gets one rich authentic Observation that
     supports all its claims, and each edge an Observation that supports the
     relation (+ predicate). With ``evidence=False`` the same topology is built
     with no provenance (for the evidence-gate failures).
     """
+    tools.start_inference("quotation")
     i1, i2, i3, i4, i5, i6 = ids
     actions = _JA_ACTIONS if ja else [t[1] for t in _TRUTH_NODES]
     node_data = list(zip(_TRUTH_NODES, actions))
     node_map = {"a": i1, "b": i2, "c": i3, "d": i4, "e": i5, "f": i6}
     sc = get_scenario(JA_SCENARIO if ja else SCENARIO)
+    assert sc is not None
     visible_by_sid = {
         sid: sc.stakeholder.visible_attributes_for(tid)
         for sid, tid in {
@@ -183,17 +273,23 @@ def _build(
         _ingest(tools, "assistant", "Hello.")
         for (sid, _, actor, system, reads, writes), action in node_data:
             oid = _claim_obs(
-                tools, _node_obs_text(action, actor, system, reads, writes)
+                tools, _node_obs_text(action, actor, system, reads, writes, ja=ja)
             )
             vis = visible_by_sid[sid]
+            read_cids = [
+                _ensure_concept(tools, c, oid, ja=ja) for c in reads if "reads" in vis
+            ]
+            write_cids = [
+                _ensure_concept(tools, c, oid, ja=ja) for c in writes if "writes" in vis
+            ]
             tools.add_node(
                 node_map[sid],
                 action,
                 primitive=_PRIM_BY_SID[sid],
                 actor=actor if "actor" in vis else None,
                 system=system if "system" in vis else None,
-                reads=reads if "reads" in vis else None,
-                writes=writes if "writes" in vis else None,
+                reads=read_cids or None,
+                writes=write_cids or None,
                 observation_id=oid,
             )
         doid = _claim_obs(tools, f"The approval is {rationale}.")
@@ -210,14 +306,22 @@ def _build(
     else:
         for (sid, _, actor, system, reads, writes), action in node_data:
             vis = visible_by_sid[sid]
+            read_cids = [
+                _ensure_concept(tools, c, None, ja=ja) for c in reads if "reads" in vis
+            ]
+            write_cids = [
+                _ensure_concept(tools, c, None, ja=ja)
+                for c in writes
+                if "writes" in vis
+            ]
             tools.add_node(
                 node_map[sid],
                 action,
                 primitive=_PRIM_BY_SID[sid],
                 actor=actor if "actor" in vis else None,
                 system=system if "system" in vis else None,
-                reads=reads if "reads" in vis else None,
-                writes=writes if "writes" in vis else None,
+                reads=read_cids or None,
+                writes=write_cids or None,
             )
         tools.set_node_necessity(i4, rationale=rationale)
         tools.set_node_necessity(i6)
@@ -234,10 +338,14 @@ def _wrong_claim(tools: InterviewTools, target: str) -> str:
 
     Evidence hygiene only checks that the referenced Observation is real and
     authentic; it does not re-interpret its text. A wrong value is therefore
-    expected to pass hygiene but fail Ground Truth correctness.
+    expected to pass hygiene but fail Ground Truth correctness. For
+    reads/writes the ref is re-pointed at a fresh concept citing an
+    authentic-but-unrelated Observation, which hidden provenance cannot
+    support.
     """
     poison = _claim_obs(tools, "I like pizza on Fridays.")
     dag = tools.db.dag
+    assert dag is not None
     if target == "action":
         dag.nodes["b"].action = InferredValue(
             value="perform zebra dance",
@@ -253,12 +361,18 @@ def _wrong_claim(tools: InterviewTools, target: str) -> str:
             value="erp", confidence=1.0, observation_ids=[poison]
         )
     elif target == "read":
-        dag.nodes["b"].reads[0] = InferredValue(
-            value="wrongdata", confidence=1.0, observation_ids=[poison]
+        tools.create_concept("wrongdata", "wrong data", observation_id=poison)
+        dag.nodes["b"].reads[0] = ConceptRef(
+            concept_id="wrongdata",
+            confidence=1.0,
+            observation_ids=[poison],
         )
     elif target == "write":
-        dag.nodes["c"].writes[0] = InferredValue(
-            value="wrongdata", confidence=1.0, observation_ids=[poison]
+        tools.create_concept("wrongdata", "wrong data", observation_id=poison)
+        dag.nodes["c"].writes[0] = ConceptRef(
+            concept_id="wrongdata",
+            confidence=1.0,
+            observation_ids=[poison],
         )
     elif target == "predicate":
         dag.edges["e3"].predicate = InferredValue(
@@ -271,18 +385,15 @@ def _wrong_claim(tools: InterviewTools, target: str) -> str:
         dag.edges["e5"].from_node = "b"
         dag.edges["e5"].to_node = "e"
     elif target == "necessity":
+        assert dag.nodes["d"].necessity is not None
         dag.nodes["d"].necessity.rationale = InferredValue(
             value="a wrong reason", confidence=1.0, observation_ids=[poison]
         )
     return poison
 
-
-# ---------------------------------------------------------------------------
-# Model shape (DiscoveredConcept removed)
-# ---------------------------------------------------------------------------
-
-
-def test_A_discovered_concept_removed():
+    # ---------------------------------------------------------------------------
+    # Model shape (DiscoveredConcept removed)
+    # ---------------------------------------------------------------------------
     assert not hasattr(dagmod, "DiscoveredConcept")
     assert "concepts" not in BusinessDAG.model_fields
     assert "concept_id" not in Node.model_fields
@@ -291,6 +402,7 @@ def test_A_discovered_concept_removed():
 
 def test_truth_and_agent_result_use_same_dag_class():
     sc = get_scenario(SCENARIO)
+    assert sc is not None
     assert isinstance(sc.truth, BusinessDAG)
     tools = _tools()
     _build(tools)
@@ -310,7 +422,7 @@ def test_cycle_reject():
         start_node_id="a",
         end_node_ids=["b"],
     )
-    assert any("cycle" in e for e in dag.validate())
+    assert any("cycle" in e for e in dag.structure_errors())
 
 
 def test_empty_end_node_ids_invalid():
@@ -343,9 +455,9 @@ def test_resolve_primitive_unknown_is_unclassified():
 def test_unknown_operation_with_unclassified_is_valid():
     tools = _tools()
     _build(tools, evidence=True)
-    tools.db.dag.nodes["b"].primitive = InferredValue(
-        value="unclassified", confidence=1.0
-    )
+    dag = tools.db.dag
+    assert dag is not None
+    dag.nodes["b"].primitive = InferredValue(value="unclassified", confidence=1.0)
     res = _eval(tools)
     assert res.quality_pass is True  # unclassified is a normal state, not a failure
 
@@ -465,7 +577,9 @@ def test_wrong_necessity_drops_necessity_correctness():
 def test_correct_action_wrong_known_primitive_lowers_diagnostic():
     tools = _tools()
     _build(tools, evidence=True)
-    tools.db.dag.nodes["c"].primitive = InferredValue(value="approve", confidence=1.0)
+    dag = tools.db.dag
+    assert dag is not None
+    dag.nodes["c"].primitive = InferredValue(value="approve", confidence=1.0)
     res = _eval(tools)
     assert res.primitive_correctness < 1.0
     assert res.node_recall == 1.0  # domain concept still correct
@@ -503,7 +617,9 @@ def test_fabricated_observation_reference_fails_authenticity():
     evidence-hygiene gate (invalid reference)."""
     tools = _tools()
     _build(tools, evidence=True)
-    tools.db.dag.nodes["b"].actor.observation_ids.append("obs_fabricated")
+    dag = tools.db.dag
+    assert dag is not None
+    dag.nodes["b"].actor.observation_ids.append("obs_fabricated")
     res = _eval(tools)
     assert res.invalid_observation_reference_count >= 1
     assert res.provenance_authenticity_pass is False
@@ -520,7 +636,9 @@ def test_fabricated_observation_source_fails_authenticity():
         id="obs_fake", source_id="stakeholder", text="made up", order=999, turn=999
     )
     tools.db.observations.append(fake)
-    tools.db.dag.nodes["b"].actor.observation_ids.append("obs_fake")
+    dag = tools.db.dag
+    assert dag is not None
+    dag.nodes["b"].actor.observation_ids.append("obs_fake")
     res = _eval(tools)
     assert res.invalid_observation_source_count >= 1
     assert res.provenance_authenticity_pass is False
@@ -587,7 +705,9 @@ def test_necessity_correct_and_fabricated():
 def test_declared_endpoints_must_match():
     tools = _tools()
     _build(tools, evidence=True)
-    tools.db.dag.end_node_ids = []
+    dag = tools.db.dag
+    assert dag is not None
+    dag.end_node_ids = []
     res = _eval(tools)
     assert res.end_precision == 0.0
     assert res.structural_pass is False
@@ -657,6 +777,8 @@ def _build_lab(tools: InterviewTools):
     ]
     for sid, action, prim, actor, system, reads, writes, text in nodes:
         oid = _claim_obs(tools, text)
+        if reads:
+            tools.create_concept("sample", "sample", observation_id=oid)
         tools.add_node(
             sid,
             action,
@@ -704,9 +826,9 @@ def test_non_quotation_lab_scenario_full_pass():
 def test_lab_unknown_primitive_unclassified_valid():
     tools = _tools()
     _build_lab(tools)
-    tools.db.dag.nodes["n2"].primitive = InferredValue(
-        value="unclassified", confidence=1.0
-    )
+    dag = tools.db.dag
+    assert dag is not None
+    dag.nodes["n2"].primitive = InferredValue(value="unclassified", confidence=1.0)
     assert _eval(tools, LAB_SCENARIO).quality_pass is True
 
 
@@ -735,11 +857,27 @@ def test_hidden_truth_not_leaked_to_agent():
             InterviewTools.observe_message.__doc__ or "",
             InterviewTools.observe_latest_stakeholder_message.__doc__ or "",
             InterviewTools.set_node_necessity.__doc__ or "",
+            InterviewTools.create_concept.__doc__ or "",
+            InterviewTools.add_concept_term.__doc__ or "",
+            InterviewTools.merge_concepts.__doc__ or "",
+            InterviewTools.list_concepts.__doc__ or "",
         ]
     ).lower()
     for term in HIDDEN_TERMS:
         assert term not in policy, f"policy leaks {term}"
         assert term not in docs, f"tool doc leaks {term}"
+    # claim ids / truth concept ids / hidden provenance never appear in policy
+    # or docs (the word "provenance" alone is fine — it is the agent's own
+    # observation provenance; the HIDDEN mechanism must not leak)
+    for forbidden in (
+        "tc_request",
+        "tc_",
+        "claim_id",
+        "claim id",
+        "hidden provenance",
+    ):
+        assert forbidden not in policy, f"policy leaks {forbidden}"
+        assert forbidden not in docs, f"tool doc leaks {forbidden}"
 
 
 # ---------------------------------------------------------------------------
@@ -748,11 +886,11 @@ def test_hidden_truth_not_leaked_to_agent():
 
 
 def _mk_tool_message(traj, tools, cid, name, args):
-    tc = ToolCall(id=cid, name=name, arguments=args)
+    tc = ToolCall(id=cid, name=name, arguments=args, requestor="assistant")
     traj.append(AssistantMessage(role="assistant", tool_calls=[tc]))
     tools.db.messages.append({"role": "assistant", "content": None})
     res = getattr(tools, name)(**args)
-    traj.append(ToolMessage(role="tool", id=cid, content=res))
+    traj.append(ToolMessage(role="tool", id=cid, content=res, requestor="assistant"))
     tools.db.messages.append({"role": "tool", "content": res})
     return res
 
@@ -763,6 +901,7 @@ def _reference_trajectory(node_ids: tuple = ("a", "b", "c", "d", "e", "f")):
     # reference trajectory obeys the stakeholder contract.
     sid_to_truth = {"a": "r", "b": "cc", "c": "cq", "d": "ap", "e": "sq", "f": "me"}
     sc = get_scenario(SCENARIO)
+    assert sc is not None
     visible_by_sid = {
         sid: sc.stakeholder.visible_attributes_for(tid)
         for sid, tid in sid_to_truth.items()
@@ -785,6 +924,7 @@ def _reference_trajectory(node_ids: tuple = ("a", "b", "c", "d", "e", "f")):
         (sid, t[1], t) for sid, t in zip("abcdef", _TRUTH_NODES) if sid in include
     ]
     sm = 0
+    created: set[str] = set()
     for sid, action, (_, _, actor, system, reads, writes) in node_specs:
         cid += 1
         sm += 1
@@ -797,6 +937,43 @@ def _reference_trajectory(node_ids: tuple = ("a", "b", "c", "d", "e", "f")):
         )
         cid += 1
         vis = visible_by_sid[sid]
+        read_cids, write_cids = [], []
+        if "reads" in vis:
+            for truth_cid in reads:
+                agent_cid, label = _AGENT_CONCEPTS[truth_cid]
+                if agent_cid not in created:
+                    created.add(agent_cid)
+                    cid += 1
+                    _mk_tool_message(
+                        traj,
+                        tools,
+                        f"c{cid}",
+                        "create_concept",
+                        {
+                            "concept_id": agent_cid,
+                            "label": label,
+                            "observation_id": oid,
+                        },
+                    )
+                read_cids.append(agent_cid)
+        if "writes" in vis:
+            for truth_cid in writes:
+                agent_cid, label = _AGENT_CONCEPTS[truth_cid]
+                if agent_cid not in created:
+                    created.add(agent_cid)
+                    cid += 1
+                    _mk_tool_message(
+                        traj,
+                        tools,
+                        f"c{cid}",
+                        "create_concept",
+                        {
+                            "concept_id": agent_cid,
+                            "label": label,
+                            "observation_id": oid,
+                        },
+                    )
+                write_cids.append(agent_cid)
         args = {
             "node_id": sid,
             "action": action,
@@ -808,9 +985,9 @@ def _reference_trajectory(node_ids: tuple = ("a", "b", "c", "d", "e", "f")):
         if "system" in vis:
             args["system"] = system
         if "reads" in vis:
-            args["reads"] = reads
+            args["reads"] = read_cids
         if "writes" in vis:
-            args["writes"] = writes
+            args["writes"] = write_cids
         _mk_tool_message(traj, tools, f"c{cid}", "add_node", args)
     if "d" in include:
         cid += 1
@@ -893,16 +1070,20 @@ def test_evaluator_rewards_full_reconstruction():
         task=task,
         full_trajectory=_reference_trajectory(),
         solo_mode=False,
+        env_kwargs={},
     )
+    assert reward_info is not None
     assert reward_info.reward == 1.0
-    checks = {c.env_assertion.func_name: c.met for c in reward_info.env_assertions}
+    checks = {
+        c.env_assertion.func_name: c.met for c in (reward_info.env_assertions or [])
+    }
     assert checks == {
         "assert_finish_interview": True,
         "assert_dag_reconstructed": True,
         "assert_necessity_handled": True,
         "assert_evidence_backed": True,
     }
-    diag = reward_info.info["diagnostics"]
+    diag = (reward_info.info or {})["diagnostics"]
     assert diag["quality_pass"] is True
 
 
@@ -915,9 +1096,13 @@ def test_evaluator_detects_missing_node():
         task=task,
         full_trajectory=_reference_trajectory(node_ids=("a", "b", "c", "e", "f")),
         solo_mode=False,
+        env_kwargs={},
     )
+    assert reward_info is not None
     assert reward_info.reward == 0.0
-    checks = {c.env_assertion.func_name: c.met for c in reward_info.env_assertions}
+    checks = {
+        c.env_assertion.func_name: c.met for c in (reward_info.env_assertions or [])
+    }
     assert checks["assert_dag_reconstructed"] is False
 
 
@@ -939,10 +1124,14 @@ def test_evaluator_detects_fabricated_necessity():
         task=task,
         full_trajectory=traj,
         solo_mode=False,
+        env_kwargs={},
     )
-    checks = {c.env_assertion.func_name: c.met for c in reward_info.env_assertions}
+    assert reward_info is not None
+    checks = {
+        c.env_assertion.func_name: c.met for c in (reward_info.env_assertions or [])
+    }
     assert checks["assert_necessity_handled"] is False
-    assert reward_info.info["diagnostics"]["fabricated_necessity"] is True
+    assert (reward_info.info or {})["diagnostics"]["fabricated_necessity"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -970,7 +1159,8 @@ def test_lab_task_present():
 
 def _task_instructions(task_id: str) -> str:
     task = next(t for t in get_tasks() if t.id == task_id)
-    return task.user_scenario.instructions.task_instructions or ""
+    instructions = task.user_scenario.instructions
+    return instructions.task_instructions or ""  # type: ignore[attr-defined]
 
 
 def _task_instructions_norm(task_id: str) -> str:
@@ -1197,6 +1387,7 @@ from tau2.domains.business_interview.evaluation import _match_nodes  # noqa: E40
 def _drop_node(tools: InterviewTools, nid: str) -> None:
     """Remove a node and any incident edges from the built DAG."""
     dag = tools.db.dag
+    assert dag is not None
     dag.nodes.pop(nid, None)
     for eid in list(dag.edges):
         e = dag.edges[eid]
@@ -1236,6 +1427,8 @@ def test_fabricated_node_not_mapped_to_missing_truth_node():
     _drop_node(tools, "d")  # approval absent
     _add_node(tools, "fab", "handle escalation to the legal team")
     sc = get_scenario(SCENARIO)
+    assert sc is not None
+    assert tools.db.dag is not None
     mapping = _match_nodes(tools.db.dag, sc.truth, sc.spec)
     assert "fab" not in mapping  # fabricated node stays unmatched
     assert "d" not in set(mapping.values())  # approval truth node stays unmatched
@@ -1249,6 +1442,8 @@ def test_weak_single_token_overlap_does_not_match():
     _build(tools, evidence=True)
     _add_node(tools, "weak", "send the file")
     sc = get_scenario(SCENARIO)
+    assert sc is not None
+    assert tools.db.dag is not None
     mapping = _match_nodes(tools.db.dag, sc.truth, sc.spec)
     assert "weak" not in mapping
     assert _eval(tools).node_precision < 1.0
@@ -1307,11 +1502,15 @@ def test_approval_node_not_mismatched_to_month_end():
     _build(tools, evidence=True)
     _drop_node(tools, "f")  # month-end absent
     # Re-point the approval node's action at the smoke-style wording.
-    tools.db.dag.nodes["d"].action = InferredValue(
+    dag = tools.db.dag
+    assert dag is not None
+    dag.nodes["d"].action = InferredValue(
         value="Get approval from a manager before sending the quotation to the customer",
         confidence=1.0,
     )
     sc = get_scenario(SCENARIO)
+    assert sc is not None
+    assert tools.db.dag is not None
     mapping = _match_nodes(tools.db.dag, sc.truth, sc.spec)
     assert mapping["d"] == "ap"  # approval node -> approval Truth node
     assert "me" not in set(mapping.values())  # month-end stays unmatched
@@ -1459,10 +1658,11 @@ def test_observation_capture_survives_set_state_replay():
 
     def observe_and_record(name, args):
         cid = len(traj)
-        tc = ToolCall(id=f"c{cid}", name=name, arguments=args)
+        tc = ToolCall(id=f"c{cid}", name=name, arguments=args, requestor="assistant")
         push(AssistantMessage(role="assistant", tool_calls=[tc]))
+        assert env.tools is not None
         res = getattr(env.tools, name)(**args)
-        push(ToolMessage(role="tool", id=f"c{cid}", content=res))
+        push(ToolMessage(role="tool", id=f"c{cid}", content=res, requestor="assistant"))
         return res
 
     push(AssistantMessage(role="assistant", content="Hello."))
@@ -1480,9 +1680,11 @@ def test_observation_capture_survives_set_state_replay():
         message_history=list(traj),
         strict=False,
     )
-    listing = replay.tools.list_stakeholder_messages()
+    assert replay.tools is not None
+    listing = replay.tools.list_stakeholder_messages()  # type: ignore[attr-defined]
     assert listing.splitlines()[0].startswith("sm_1:")
     assert "sm_2:" in listing
+    assert replay.tools.db is not None
     assert len(replay.tools.db.observations) == 2
     texts = {o.text for o in replay.tools.db.observations}
     assert "First stakeholder statement." in texts
@@ -1507,12 +1709,14 @@ def test_remove_node_after_decomposition_leaves_no_dangling_edge():
     tools.add_edge("e2", "check_customer", "create_quotation")
     # decompose the coarse node and remove it
     tools.remove_node("prepare_quotation")
-    assert "prepare_quotation" not in tools.db.dag.nodes
+    dag = tools.db.dag
+    assert dag is not None
+    assert "prepare_quotation" not in dag.nodes
     # the incident edge e1 is removed; e2 (between remaining nodes) survives
-    assert "e1" not in tools.db.dag.edges
-    assert "e2" in tools.db.dag.edges
+    assert "e1" not in dag.edges
+    assert "e2" in dag.edges
     # no dangling edge references the removed node
-    for e in tools.db.dag.edges.values():
+    for e in dag.edges.values():
         assert e.from_node != "prepare_quotation"
         assert e.to_node != "prepare_quotation"
 
@@ -1530,8 +1734,10 @@ def test_remove_node_keeps_observations_and_provenance():
     # the Observation itself is kept, and its provenance on the surviving node
     # is preserved
     assert any(o.id == oid for o in tools.db.observations)
-    assert oid in tools.db.dag.nodes["fine"].observation_ids
-    assert "coarse" not in tools.db.dag.nodes
+    dag = tools.db.dag
+    assert dag is not None
+    assert oid in dag.nodes["fine"].observation_ids
+    assert "coarse" not in dag.nodes
 
 
 def test_remove_node_nonexistent_rejected():
@@ -1629,9 +1835,11 @@ def test_coarse_node_refinement_end_to_end_valid():
     assert tools.validate_dag() == "DAG is structurally valid."
     tools.finish_interview()
     assert tools.db.interview_complete is True
-    assert "prepare_quotation" not in tools.db.dag.nodes
+    dag = tools.db.dag
+    assert dag is not None
+    assert "prepare_quotation" not in dag.nodes
     assert all(
-        nid in tools.db.dag.nodes
+        nid in dag.nodes
         for nid in [
             "receive_request",
             "record_request",
@@ -1681,7 +1889,9 @@ def test_asserting_hidden_ap_system_is_incorrect():
     _build(tools)
     # Asserting ap.system=quoting (which equals the hidden Truth) is STILL wrong:
     # the stakeholder cannot know it, so epistemic restraint is required.
-    tools.db.dag.nodes["d"].system = InferredValue(
+    dag = tools.db.dag
+    assert dag is not None
+    dag.nodes["d"].system = InferredValue(
         value="quoting", confidence=1.0, observation_ids=["obs_x"]
     )
     res = _eval(tools)
@@ -1692,8 +1902,10 @@ def test_asserting_hidden_ap_system_is_incorrect():
 def test_asserting_hidden_ap_reads_is_incorrect():
     tools = _tools()
     _build(tools)
-    tools.db.dag.nodes["d"].reads = [
-        InferredValue(value="quote", confidence=1.0, observation_ids=["obs_x"])
+    dag = tools.db.dag
+    assert dag is not None
+    dag.nodes["d"].reads = [
+        ConceptRef(concept_id="quote", confidence=1.0, observation_ids=["obs_x"])
     ]
     res = _eval(tools)
     assert res.read_correctness < 1.0
@@ -1704,7 +1916,9 @@ def test_wrong_visible_attribute_still_fails():
     tools = _tools()
     _build(tools)
     # cq.system IS visible; a wrong value must still fail.
-    tools.db.dag.nodes["c"].system = InferredValue(
+    dag = tools.db.dag
+    assert dag is not None
+    dag.nodes["c"].system = InferredValue(
         value="erp", confidence=1.0, observation_ids=["obs_x"]
     )
     res = _eval(tools)
@@ -1785,8 +1999,10 @@ def test_lab_hidden_derived_attr_left_unset_is_correct():
     assert res.write_correctness == 1.0
     assert res.read_correctness == 1.0
     # verify hidden writes really are unset in the faithful build
-    assert tools.db.dag.nodes["n2"].writes == []
-    assert tools.db.dag.nodes["n4"].writes == []
+    dag = tools.db.dag
+    assert dag is not None
+    assert dag.nodes["n2"].writes == []
+    assert dag.nodes["n4"].writes == []
 
 
 def test_lab_asserting_hidden_derived_attr_is_penalized():
@@ -1794,10 +2010,11 @@ def test_lab_asserting_hidden_derived_attr_is_penalized():
     chamber") is penalized even though it equals the hidden Truth."""
     tools = _tools()
     _build_lab(tools)
-    tools.db.dag.nodes["n2"].writes = [
-        InferredValue(
-            value="seasoned chamber", confidence=1.0, observation_ids=["obs_x"]
-        )
+    dag = tools.db.dag
+    assert dag is not None
+    tools.create_concept("seasoned", "seasoned chamber")
+    dag.nodes["n2"].writes = [
+        ConceptRef(concept_id="seasoned", confidence=1.0, observation_ids=["obs_x"])
     ]
     res = _eval(tools, LAB_SCENARIO)
     assert res.write_correctness < 1.0
@@ -1847,439 +2064,418 @@ def test_lab_topology_and_open_world_behavior_still_pass():
     assert _eval(tools, LAB_SCENARIO).quality_pass is True
 
 
-def test_default_evaluate_without_stakeholder_is_explicit_all_visible():
-    """INTENTIONAL default-contract test.
+def test_default_evaluate_binds_data_via_claim_catalog():
+    """INTENTIONAL default-path test.
 
-    ``evaluate(db, truth, spec)`` WITHOUT a stakeholder keeps the generic
-    backwards-compatible default: every attribute is treated as visible (old
-    all-visible contract). This is the ONLY test that intentionally exercises
-    the default path; normal scenario evaluation must go through ``_eval``
-    (stakeholder-aware).
-
-    We build a FULL DAG (every Truth attribute asserted, including the ones the
-    sales stakeholder cannot know): under the default all-visible contract it
-    passes, while under the stakeholder contract the hidden-attribute assertions
-    are penalized.
+    Reads/writes bind ONLY through the hidden claim catalog regardless of
+    whether a stakeholder is passed: a hidden-asserted ref cannot bind even
+    without a stakeholder, because the catalog is visibility-filtered by
+    construction (no claim exists for sq.reads / sq.writes / ...).
+    (Actor/system keep the all-visible default: the faithful build leaves
+    hidden systems unset, so the default path fails those — the old contract.)
     """
     tools = _tools()
-    tools.start_inference("q")
-    _ingest(tools, "assistant", "Hello.")
-    for sid, action, actor, system, reads, writes in [
-        (t[0], t[1], t[2], t[3], t[4], t[5]) for t in _TRUTH_NODES
-    ]:
-        oid = _claim_obs(tools, _node_obs_text(action, actor, system, reads, writes))
-        tools.add_node(
-            sid,
-            action,
-            primitive=_PRIM_BY_SID[sid],
-            actor=actor,
-            system=system,
-            reads=reads,
-            writes=writes,
-            observation_id=oid,
-        )
-    doid = _claim_obs(tools, "The approval is for credit risk management.")
-    tools.set_node_necessity(
-        "d", rationale="for credit risk management", observation_id=doid
-    )
-    tools.set_node_necessity("f")
-    for eid, frm, to, pred in [
-        ("e1", "a", "b", None),
-        ("e2", "b", "c", None),
-        ("e3", "c", "d", "amount over 1,000,000"),
-        ("e4", "c", "e", "amount at or below 1,000,000"),
-        ("e5", "d", "e", None),
-        ("e6", "c", "f", "month-end"),
-    ]:
-        etext = f"After {frm}, we {to}." + (f" when {pred}." if pred else "")
-        eoid = _claim_obs(tools, etext)
-        tools.add_edge(eid, frm, to, predicate=pred, observation_id=eoid)
-    tools.set_dag_endpoints(start_node_id="a", end_node_ids=["e", "f"])
-    tools.finish_interview()
-
+    _build(tools, evidence=True)
     sc = get_scenario(SCENARIO)
     assert sc is not None
-    # default (no stakeholder): all attributes visible -> full DAG passes.
-    res = evaluate(tools.db, sc.truth, sc.spec)
-    assert res.structural_pass is True
-    # contrast: under the stakeholder contract the same full DAG FAILS because
-    # hidden attributes (ap system/reads/writes, sq reads/writes, me reads)
-    # are asserted instead of left unset.
-    assert _eval(tools).structural_pass is False
-
-
-# ---------------------------------------------------------------------------
-# Scenario-local data expressions (deterministic, precision-first concept
-# identity)
-#
-# EvaluationSpec.data_expressions declares **complete labels** that identify
-# the same scenario concept as a canonical Ground Truth data value. Matching
-# is normalized EXACT equality only: the canonical value OR a declared
-# complete label. Shared tokens / substring containment are never used to
-# infer concept identity, so "quotation request" / "quotation information" /
-# "price quotation" cannot match "quote" unless explicitly declared. A hidden
-# assertion stays incorrect no matter its wording, and a scenario without
-# declared expressions keeps the exact canonical contract.
-# ---------------------------------------------------------------------------
-
-
-def _rewrite_value(iv: InferredValue, new_value: str) -> InferredValue:
-    """Rewrite an asserted value, keeping its authentic provenance so the
-    evidence gate is not disturbed by the value change."""
-    return InferredValue(
-        value=new_value,
-        confidence=iv.confidence,
-        observation_ids=list(iv.observation_ids),
-    )
-
-
-def test_data_expressions_declared_only_for_quotation():
-    """The expression table is scenario-local and evidence-minimal: quotation
-    declares exactly the stakeholder-grounded complete labels; lab declares
-    nothing."""
-    sc = get_scenario(SCENARIO)
-    assert sc is not None
-    assert sc.spec.data_expressions == {
-        "quote": ["quote", "quotation"],
-        "customer": ["customer", "customer information"],
-        "pricing": ["pricing", "pricing information"],
-        "request": ["request", "quotation request"],
-        "excel_summary": ["excel_summary", "summary of quotation information"],
-    }
-    lab = get_scenario(LAB_SCENARIO)
-    assert lab is not None
-    assert lab.spec.data_expressions == {}
-
-
-def _data_hit(agent: str, truth: str):
-    """Unit-level read/write match under the quotation spec."""
-    from tau2.domains.business_interview.evaluation import _data_recall
-
-    sc = get_scenario(SCENARIO)
-    assert sc is not None
-    return _data_recall([agent], [truth], sc.spec)
-
-
-def test_exact_quote_family_matches_only_when_declared():
-    """Precision-first contract for the quote concept: canonical and the
-    declared complete label match; every near-collision fails even though it
-    contains the word "quotation" (these were false positives under the old
-    token-overlap matcher)."""
-    assert _data_hit("quote", "quote") == 1.0  # canonical exact
-    assert _data_hit("quotation", "quote") == 1.0  # declared complete label
-    assert _data_hit("QUOTATION", "quote") == 1.0  # case normalization only
-    for near in (
-        "quotation request",
-        "quotation information",
-        "quotation document",
-        "price quotation",
-        "invoice",
-        "a quotation",
-        "the quotation",
-        "quotation summary",
-    ):
-        assert _data_hit(near, "quote") == 0.0, near
-
-
-def test_exact_probe_matrix_customer_request_summary():
-    """Probe matrix: concept identity is exact + declared — the stakeholder-
-    grounded complete labels match, near-collisions do not."""
-    # customer family: "customer information" declared; "customer request" is
-    # a DIFFERENT object (the request) and must not match
-    assert _data_hit("customer", "customer") == 1.0
-    assert _data_hit("customer information", "customer") == 1.0
-    assert _data_hit("customer request", "customer") == 0.0
-    # request family: "quotation request" is the stakeholder's name for the
-    # request object and IS declared for "request"
-    assert _data_hit("request", "request") == 1.0
-    assert _data_hit("quotation request", "request") == 1.0
-    # summary family: only the stakeholder's complete label is declared for
-    # excel_summary; bare "summary" / "quotation summary" / "Excel file" fail
-    assert _data_hit("excel_summary", "excel_summary") == 1.0
-    assert _data_hit("summary of quotation information", "excel_summary") == 1.0
-    assert _data_hit("summary", "excel_summary") == 0.0
-    assert _data_hit("quotation summary", "excel_summary") == 0.0
-    assert _data_hit("Excel file", "excel_summary") == 0.0
-    # pricing family: stakeholder label declared; agent-embellished label is a
-    # distinct complete label and fails
-    assert _data_hit("pricing", "pricing") == 1.0
-    assert _data_hit("pricing information", "pricing") == 1.0
-    assert _data_hit("pricing information (from quoting system)", "pricing") == 0.0
-
-
-def test_exact_matching_never_uses_substring_or_tokens():
-    """Substring/token containment is dead: a value that merely CONTAINS a
-    declared label never matches ("quotation request" contains the word
-    "quotation"; "customer request" contains "customer")."""
-    from tau2.domains.business_interview.evaluation import _data_item_ok, _data_recall
-
-    sc = get_scenario(SCENARIO)
-    assert sc is not None
-    spec = sc.spec
-    assert _data_recall(["quotation request"], ["quote"], spec) == 0.0
-    assert _data_recall(["quotation information"], ["quote"], spec) == 0.0
-    assert _data_recall(["quotation document"], ["quote"], spec) == 0.0
-    assert _data_recall(["price quotation"], ["quote"], spec) == 0.0
-    # canonical "quote" is not a substring gate either
-    assert _data_recall(["x quote y"], ["quote"], spec) == 0.0
-    # and the unit predicate itself never falls back to token overlap
-    assert _data_item_ok("quote", "quotation request", spec) is False
-    assert _data_item_ok("quote", "quotation", spec) is True
-
-
-def test_visible_quote_quotation_equivalent():
-    """Visible cq.writes: Truth ``quote`` matches the agent's ``quotation``
-    via the scenario-local expression (the demonstrated real-LLM case)."""
-    tools = _tools()
-    _build(tools, evidence=True)
-    dag = tools.db.dag
-    assert dag is not None
-    dag.nodes["c"].writes = [_rewrite_value(dag.nodes["c"].writes[0], "quotation")]
-    res = _eval(tools)
-    assert res.write_correctness == 1.0
-    assert res.structural_pass is True
-    assert res.quality_pass is True
-
-
-def test_visible_quote_still_matches():
-    """The canonical value itself keeps matching under the expression layer."""
-    tools = _tools()
-    _build(tools, evidence=True)
-    res = _eval(tools)
-    assert res.write_correctness == 1.0
-    assert res.structural_pass is True
-
-
-def test_visible_unrelated_value_still_fails():
-    """An unrelated visible write (``invoice``) is NOT covered by any declared
-    expression for ``quote`` and must still fail."""
-    tools = _tools()
-    _build(tools, evidence=True)
-    dag = tools.db.dag
-    assert dag is not None
-    dag.nodes["c"].writes = [_rewrite_value(dag.nodes["c"].writes[0], "invoice")]
-    res = _eval(tools)
-    assert res.write_correctness < 1.0
-    assert res.structural_pass is False
-
-
-def test_visible_near_collision_write_still_fails():
-    """A visible write containing the declared word (``quotation request``,
-    ``quotation information``) must NOT match Truth ``quote`` — precision-first."""
-    for near in ("quotation request", "quotation information", "quotation document"):
-        tools = _tools()
-        _build(tools, evidence=True)
-        dag = tools.db.dag
-        assert dag is not None
-        dag.nodes["c"].writes = [_rewrite_value(dag.nodes["c"].writes[0], near)]
-        res = _eval(tools)
-        assert res.write_correctness < 1.0, near
-        assert res.structural_pass is False
-
-
-def test_visible_stakeholder_label_variants_match():
-    """The stakeholder-grounded complete labels declared in the quotation spec
-    match on their visible axes (customer information, pricing information,
-    quotation request, summary of quotation information)."""
-    tools = _tools()
-    _build(tools, evidence=True)
-    dag = tools.db.dag
-    assert dag is not None
-    # cc.reads / cq.reads: customer -> "customer information"
-    dag.nodes["b"].reads = [
-        _rewrite_value(dag.nodes["b"].reads[0], "customer information")
-    ]
-    dag.nodes["c"].reads = [
-        _rewrite_value(dag.nodes["c"].reads[0], "customer information"),
-        _rewrite_value(dag.nodes["c"].reads[1], "pricing information"),
-    ]
-    # r.writes: request -> "quotation request"
-    dag.nodes["a"].writes = [
-        _rewrite_value(dag.nodes["a"].writes[0], "quotation request")
-    ]
-    # me.writes: excel_summary -> "summary of quotation information"
-    dag.nodes["f"].writes = [
-        _rewrite_value(dag.nodes["f"].writes[0], "summary of quotation information")
-    ]
-    res = _eval(tools)
+    prov = build_provenance_ledger(tools.db, sc.claims, sc.stop_phrases)
+    res = evaluate(tools.db, sc.truth, sc.spec, claims=sc.claims, provenance=prov)
     assert res.read_correctness == 1.0
     assert res.write_correctness == 1.0
-    assert res.structural_pass is True
-
-
-def test_data_expressions_narrow_layer_not_fuzzy_matching():
-    """Expressions never become an open synonym layer: values unrelated to the
-    declared expressions fail, and the expression list is exactly the declared
-    one (no global dictionary, no fuzzy matcher)."""
-    tools = _tools()
-    _build(tools, evidence=True)
-    dag = tools.db.dag
-    assert dag is not None
-    for bad in ("invoice", "offer", "estimate", "price sheet", "document"):
-        dag.nodes["c"].writes = [_rewrite_value(dag.nodes["c"].writes[0], bad)]
-        res = _eval(tools)
-        assert res.write_correctness < 1.0, bad
-    dag.nodes["c"].writes = [_rewrite_value(dag.nodes["c"].writes[0], "quotation")]
-    assert _eval(tools).write_correctness == 1.0
-
-
-def test_hidden_quote_quotation_assertion_still_fails():
-    """Semantic equivalence must NEVER rescue a hidden assertion: sq.reads
-    (hidden, Truth ``quote``) asserted as ``quotation`` still fails even though
-    ``quotation`` is a declared expression for ``quote``."""
-    tools = _tools()
-    _build(tools, evidence=True)
-    dag = tools.db.dag
-    assert dag is not None
-    dag.nodes["e"].reads = [InferredValue(value="quotation", confidence=1.0)]
-    res = _eval(tools)
-    assert res.read_correctness < 1.0
-    assert res.structural_pass is False
-    # same for the month-end hidden read
+    assert res.concept_correctness == 1.0
+    # hidden sq.reads asserted with VALID quote provenance still fails under
+    # the default path: no sq.reads claim exists, so nothing can bind
     tools2 = _tools()
     _build(tools2, evidence=True)
     dag2 = tools2.db.dag
     assert dag2 is not None
-    dag2.nodes["f"].reads = [InferredValue(value="quotation", confidence=1.0)]
-    assert _eval(tools2).read_correctness < 1.0
+    oid = _claim_obs(tools2, "I create the quotation in the quoting system.")
+    dag2.nodes["e"].reads = [
+        ConceptRef(concept_id="quote", confidence=1.0, observation_ids=[oid])
+    ]
+    sc2 = get_scenario(SCENARIO)
+    assert sc2 is not None
+    prov2 = build_provenance_ledger(tools2.db, sc2.claims, sc2.stop_phrases)
+    res2 = evaluate(tools2.db, sc2.truth, sc2.spec, claims=sc2.claims, provenance=prov2)
+    assert res2.structural_pass is False
 
 
-def test_hidden_sent_quote_write_asserted_as_quotation_still_fails():
-    """The hidden ``sent_quote`` write asserted as ``quotation`` (run_01 real
-    artifact) is an epistemic error: no expression is declared for
-    ``sent_quote`` and hidden axes never use the expression layer."""
+# ---------------------------------------------------------------------------
+# Agent-local data concepts + hidden stakeholder provenance
+#
+# The Agent LLM, not the evaluator, interprets stakeholder wording variation:
+# it creates local DataConcepts, attaches observed ConceptTerms, and reuses
+# concept ids in ConceptRefs. The evaluator binds each local concept to a
+# hidden Truth concept ONLY through the hidden provenance ledger (claims.py):
+# a ref grounds a claim when the Observations it cites privately support that
+# claim. Wording alone never creates a match; hidden axes never bind; the
+# same local concept must map to ONE Truth concept; one Truth concept must be
+# represented by ONE local concept (merge to repair splits).
+# ---------------------------------------------------------------------------
+
+
+def _grounded_ref(
+    tools: InterviewTools,
+    truth_cid: str,
+    obs_ids: list[str],
+) -> ConceptRef:
+    """A ConceptRef on an existing agent concept citing the given observations."""
+    agent_cid, _ = _AGENT_CONCEPTS[truth_cid]
+    dag = tools.db.dag
+    assert dag is not None
+    assert agent_cid in dag.data_concepts
+    return ConceptRef(concept_id=agent_cid, confidence=1.0, observation_ids=obs_ids)
+
+
+def test_claim_catalog_only_contains_visible_axes():
+    """Hidden sq.reads / sq.writes / me.reads / ap.reads|writes have NO claims:
+    the private catalog is visibility-filtered by construction."""
+    sc = get_scenario(SCENARIO)
+    assert sc is not None
+    assert set(sc.claims) == {
+        "r.writes.tc_request",
+        "cc.reads.tc_customer",
+        "cq.reads.tc_customer",
+        "cq.reads.tc_pricing",
+        "cq.writes.tc_quote",
+        "me.writes.tc_excel_summary",
+    }
+    for cid in (
+        "sq.reads.tc_quote",
+        "sq.writes.tc_sent_quote",
+        "me.reads.tc_quote",
+        "ap.reads.tc_quote",
+        "ap.writes.tc_approval",
+    ):
+        assert cid not in sc.claims
+
+
+def test_agent_label_quotation_binds_to_truth_quote_without_alias():
+    """An agent concept labeled "quotation" binds to Truth tc_quote purely via
+    hidden provenance — no quote/quotation synonym table exists anywhere."""
     tools = _tools()
     _build(tools, evidence=True)
     dag = tools.db.dag
     assert dag is not None
-    dag.nodes["e"].writes = [InferredValue(value="quotation", confidence=1.0)]
+    oid = _claim_obs(tools, "I create the quotation in the quoting system.")
+    # a NEW agent concept with an arbitrary id and the stakeholder's label
+    tools.create_concept("q_doc", "quotation", observation_id=oid)
+    dag.nodes["c"].writes = [_grounded_ref(tools, "tc_quote", [oid])]
+    # concept id differs from the truth concept id (tc_quote) and no label
+    # comparison exists
+    assert dag.data_concepts["q_doc"].id != "tc_quote"
     res = _eval(tools)
+    assert res.write_correctness == 1.0
+    assert res.concept_correctness == 1.0
+    assert res.structural_pass is True
+
+
+def test_elaborated_label_binds_via_supporting_observation():
+    """'pricing information from the quoting system' binds to pricing when its
+    cited Observation privately supports cq.reads.pricing — the label itself
+    is never compared to anything."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    dag = tools.db.dag
+    assert dag is not None
+    oid = _claim_obs(
+        tools, "I use the pricing information that is available in the quoting system."
+    )
+    tools.create_concept(
+        "prc_info", "pricing information from the quoting system", observation_id=oid
+    )
+    dag.nodes["c"].reads = [
+        _grounded_ref(
+            tools, "tc_customer", list(dag.nodes["c"].reads[0].observation_ids)
+        ),
+        ConceptRef(concept_id="prc_info", confidence=1.0, observation_ids=[oid]),
+    ]
+    res = _eval(tools)
+    assert res.read_correctness == 1.0
+    assert res.concept_correctness == 1.0
+
+
+def test_wording_alone_cannot_create_a_match():
+    """A ref/concept with NO cited observations cannot ground anything: the
+    label text is never used by the evaluator."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    dag = tools.db.dag
+    assert dag is not None
+    tools.create_concept("mystery", "quotation")  # no observation
+    dag.nodes["c"].writes = [
+        ConceptRef(concept_id="mystery", confidence=1.0, observation_ids=[])
+    ]
+    res = _eval(tools)
+    assert res.write_correctness < 1.0
+    assert res.unsupported_concept_ref_count >= 1
+    assert res.structural_pass is False
+
+
+def test_unrelated_observation_cannot_ground_a_concept_ref():
+    """An authentic but unrelated Observation id cannot ground a ref: the
+    hidden ledger records no claim support for it, so a concept citing only
+    that Observation binds nothing."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    dag = tools.db.dag
+    assert dag is not None
+    pizza = _claim_obs(tools, "I like pizza on Fridays.")
+    tools.create_concept("pizza_quote", "quotation", observation_id=pizza)
+    dag.nodes["c"].writes = [
+        ConceptRef(concept_id="pizza_quote", confidence=1.0, observation_ids=[pizza])
+    ]
+    res = _eval(tools)
+    assert res.write_correctness < 1.0
+    assert res.unsupported_concept_ref_count >= 1
+    assert res.evidence_pass is True  # the obs is real & authentic (hygiene ok)
+    assert res.structural_pass is False
+
+
+def test_one_local_concept_as_customer_and_quote_fails():
+    """A single agent concept grounded as both customer (cc.reads) and quote
+    (cq.writes) must fail concept binding."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    dag = tools.db.dag
+    assert dag is not None
+    c_oid = _claim_obs(tools, "I check the customer information in the CRM.")
+    q_oid = _claim_obs(tools, "I create the quotation in the quoting system.")
+    tools.create_concept("blend", "customer information", observation_id=c_oid)
+    tools.add_concept_term("blend", "quotation", observation_id=q_oid)
+    dag.nodes["b"].reads = [
+        ConceptRef(concept_id="blend", confidence=1.0, observation_ids=[c_oid])
+    ]
+    dag.nodes["c"].writes = [
+        ConceptRef(concept_id="blend", confidence=1.0, observation_ids=[q_oid])
+    ]
+    res = _eval(tools)
+    assert res.concept_correctness == 0.0
+    assert res.structural_pass is False
+
+
+def test_separate_concepts_for_same_visible_object_fail_until_merged():
+    """Two agent concept ids both grounded as the same visible Truth customer
+    (cc.reads and cq.reads) fail until merge_concepts re-points them."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    dag = tools.db.dag
+    assert dag is not None
+    cc_oid = _claim_obs(tools, "I check the customer information in the CRM.")
+    cq_oid = _claim_obs(tools, "I create the quotation using customer information.")
+    tools.create_concept("cust_a", "customer information", observation_id=cc_oid)
+    tools.create_concept("cust_b", "customer information", observation_id=cq_oid)
+    dag.nodes["b"].reads = [
+        ConceptRef(concept_id="cust_a", confidence=1.0, observation_ids=[cc_oid])
+    ]
+    dag.nodes["c"].reads = [
+        ConceptRef(concept_id="cust_b", confidence=1.0, observation_ids=[cq_oid]),
+        dag.nodes["c"].reads[1],
+    ]
+    res = _eval(tools)
+    assert res.concept_correctness == 0.0
+    assert res.structural_pass is False
+    # repair: merge cust_b into cust_a and re-point every reference
+    tools.merge_concepts("cust_a", ["cust_b"])
+    assert "cust_b" not in dag.data_concepts
+    assert all(
+        r.concept_id == "cust_a"
+        for r in dag.nodes["c"].reads[:1] + dag.nodes["b"].reads
+    )
+    res2 = _eval(tools)
+    assert res2.concept_correctness == 1.0
+    assert res2.structural_pass is True
+
+
+def test_hidden_sq_assertions_fail_even_with_valid_quote_provenance():
+    """sq.reads / sq.writes asserted with Observations that genuinely support
+    the quote claim still fail: hidden axes are a prior gate."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    dag = tools.db.dag
+    assert dag is not None
+    oid = _claim_obs(tools, "I create the quotation in the quoting system.")
+    dag.nodes["e"].reads = [_grounded_ref(tools, "tc_quote", [oid])]
+    dag.nodes["e"].writes = [_grounded_ref(tools, "tc_quote", [oid])]
+    res = _eval(tools)
+    assert res.read_correctness < 1.0
     assert res.write_correctness < 1.0
     assert res.structural_pass is False
 
 
-def test_hidden_unset_still_passes_with_expressions_declared():
-    """Hidden attributes left unset remain correct while the expression layer
-    is active (epistemic restraint is still the winning behavior)."""
+def test_hidden_unset_still_correct():
+    """Hidden axes left unset remain correct while concept binding is active."""
     tools = _tools()
     _build(tools, evidence=True)
     res = _eval(tools)
     assert res.read_correctness == 1.0
     assert res.write_correctness == 1.0
+    assert res.concept_correctness == 1.0
     assert res.quality_pass is True
 
 
-def test_quotation_en_ja_unaffected_by_expressions():
-    """The expression layer must not change EN/JA equivalence: both full
-    reconstructions pass, and the JA ``quotation``-wording write also matches."""
+def test_lab_uses_same_concept_mechanism():
+    """lab_sample_flow binds through the same hidden-provenance mechanism: a
+    faithful build passes; an unsupported visible ref fails; a hidden derived
+    artifact assertion fails."""
+    tools = _tools()
+    _build_lab(tools)
+    res = _eval(tools, LAB_SCENARIO)
+    assert res.quality_pass is True
+    assert res.concept_correctness == 1.0
+    # unsupported visible ref: a fresh concept citing only an unrelated
+    # observation cannot bind n1.reads (no hidden support for the claim)
+    dag = tools.db.dag
+    assert dag is not None
+    pizza = _claim_obs(tools, "I like pizza on Fridays.")
+    tools.create_concept("pizza_sample", "sample", observation_id=pizza)
+    dag.nodes["n1"].reads = [
+        ConceptRef(concept_id="pizza_sample", confidence=1.0, observation_ids=[pizza])
+    ]
+    res2 = _eval(tools, LAB_SCENARIO)
+    assert res2.read_correctness < 1.0
+    assert res2.unsupported_concept_ref_count >= 1
+    # hidden derived write asserted still fails
+    tools2 = _tools()
+    _build_lab(tools2)
+    dag2 = tools2.db.dag
+    assert dag2 is not None
+    tools2.create_concept("seasoned", "seasoned chamber")
+    dag2.nodes["n2"].writes = [ConceptRef(concept_id="seasoned", confidence=1.0)]
+    assert _eval(tools2, LAB_SCENARIO).write_correctness < 1.0
+
+
+def test_hidden_provenance_absent_from_agent_visible_state():
+    """Claim ids, truth concept ids, and the provenance ledger never appear in
+    any Agent-visible output or serialized DB state."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    dag = tools.db.dag
+    assert dag is not None
+    listing = tools.list_concepts()
+    assert "tc_" not in listing
+    assert "claim" not in listing
+    assert "provenance" not in listing
+    # tool outputs and the DB model dump carry no claim ids / provenance
+    dumped = tools.db.model_dump(mode="json")
+    text = str(dumped)
+    assert "tc_request" not in text
+    assert "claim" not in text
+    assert "provenance" not in text
+    assert all("tc_" not in str(c) for c in dag.data_concepts)
+    # the ledger lives only in the derivation module output, never in the DB
+    assert not hasattr(tools.db, "provenance")
+    assert not hasattr(tools.db, "claims")
+
+
+def test_add_node_rejects_unknown_concept_id():
+    """add_node/update_node validate that reads/writes reference existing
+    agent-local concepts."""
+    tools = _tools()
+    tools.start_inference("q")
+    tools.create_concept("known", "known object")
+    tools.add_node("n1", "do something", reads=["known"], writes=None)
+    with pytest.raises(ValueError):
+        tools.add_node("n2", "do something else", reads=["unknown_concept"])
+    with pytest.raises(ValueError):
+        tools.update_node("n1", writes=["unknown_concept"])
+
+
+def test_merge_concepts_repoints_refs_and_folds_terms():
+    tools = _tools()
+    tools.start_inference("q")
+    tools.create_concept("a", "alpha")
+    tools.create_concept("b", "beta")
+    tools.add_node("n1", "first step", reads=["a"], writes=["b"])
+    tools.merge_concepts("a", ["b"])
+    dag = tools.db.dag
+    assert dag is not None
+    assert "b" not in dag.data_concepts
+    assert dag.nodes["n1"].reads[0].concept_id == "a"
+    assert dag.nodes["n1"].writes[0].concept_id == "a"
+
+
+def test_derive_utterance_claims_longest_phrase_and_stops():
+    """Simulator-side derivation: longest phrase wins, stop phrases consume
+    spans, and near-collisions never support the wrong claim."""
+    sc = get_scenario(SCENARIO)
+    assert sc is not None
+    d = derive_utterance_claims
+    # "quotation request" supports the request claim and consumes "quotation"
+    assert d("I record the quotation request", sc.claims, sc.stop_phrases) == {
+        "r.writes.tc_request": ["quotation request"]
+    }
+    # "quotation information" (the summary's data) supports nothing
+    assert (
+        d("the quotation information is sent to Accounting", sc.claims, sc.stop_phrases)
+        == {}
+    )
+    # the month-end summary supports only the excel_summary claim
+    assert d(
+        "At month-end I send a summary of the quotation information to Accounting",
+        sc.claims,
+        sc.stop_phrases,
+    ) == {"me.writes.tc_excel_summary": ["summary of the quotation information"]}
+    # the create statement supports quote + customer + pricing claims
+    out = d(
+        "I create the quotation using customer and pricing information",
+        sc.claims,
+        sc.stop_phrases,
+    )
+    assert "cq.writes.tc_quote" in out
+    assert "cq.reads.tc_customer" in out
+    assert "cq.reads.tc_pricing" in out
+    # validation rejects unknown / out-of-visibility claim ids
+    with pytest.raises(ValueError):
+        validate_ledger(
+            {3: {"sq.reads.tc_quote": ["quotation"]}}, sc.claims, sc.stakeholder
+        )
+    with pytest.raises(ValueError):
+        validate_ledger({3: {"fake.claim": ["x"]}}, sc.claims, sc.stakeholder)
+    validate_ledger(
+        {3: {"cq.writes.tc_quote": ["quotation"]}}, sc.claims, sc.stakeholder
+    )
+
+
+def test_en_ja_concept_equivalence():
+    """EN and JA faithful reconstructions behave identically under the same
+    concept-binding evaluator (JA claims use JA surface terms)."""
     en = _tools()
     _build(en, ja=False)
     ja = _tools()
     _build(ja, ja=True)
     ren = _eval(en, SCENARIO)
     rja = _eval(ja, JA_SCENARIO)
+    for attr in (
+        "structural_pass",
+        "actor_correctness",
+        "system_correctness",
+        "read_correctness",
+        "write_correctness",
+        "concept_correctness",
+        "necessity_pass",
+        "evidence_pass",
+    ):
+        assert getattr(ren, attr) == getattr(rja, attr), attr
     assert ren.quality_pass is True and rja.quality_pass is True
-    # JA with the quotation wording on the visible cq write still passes
-    jdag = ja.db.dag
-    assert jdag is not None
-    jdag.nodes["c"].writes = [_rewrite_value(jdag.nodes["c"].writes[0], "quotation")]
-    assert _eval(ja, JA_SCENARIO).write_correctness == 1.0
 
 
-def test_lab_scenario_unaffected_by_quotation_expressions():
-    """lab_sample_flow declares no data expressions; its behavior is
-    unchanged, and the quotation ``quote``/``quotation`` equivalence does NOT
-    leak into it."""
+def test_concept_refs_ground_only_expected_claims_at_slot():
+    """A ref whose Observation supports a DIFFERENT slot's claim (e.g. the
+    request utterance cited on cq.reads) is unsupported at this slot."""
     tools = _tools()
-    _build_lab(tools)
-    res = _eval(tools, LAB_SCENARIO)
-    assert res.quality_pass is True
-    assert res.write_correctness == 1.0
-    # a "quotation" value must NOT match the lab truth (sample): no leak
-    ldag = tools.db.dag
-    assert ldag is not None
-    ldag.nodes["n1"].reads = [InferredValue(value="quotation", confidence=1.0)]
-    assert _eval(tools, LAB_SCENARIO).read_correctness < 1.0
-
-
-def test_data_expressions_do_not_apply_to_hidden_lab_artifacts():
-    """Even a wording that would be 'equivalent' in the quotation scenario
-    cannot rescue a hidden lab artifact assertion."""
-    tools = _tools()
-    _build_lab(tools)
-    ldag = tools.db.dag
-    assert ldag is not None
-    ldag.nodes["n2"].writes = [InferredValue(value="quotation", confidence=1.0)]
-    res = _eval(tools, LAB_SCENARIO)
-    assert res.write_correctness < 1.0
-    assert res.structural_pass is False
-
-
-def test_data_recall_expression_layer_is_additive():
-    """Unit-level: matching is normalized exact canonical value OR normalized
-    exact declared expression — nothing else. An empty expression table leaves
-    only the exact canonical contract."""
-    from tau2.domains.business_interview.evaluation import _data_recall
-
-    sc = get_scenario(SCENARIO)
-    assert sc is not None
-    plain = sc.spec.model_copy(deep=True)
-    plain.data_expressions = {}
-    with_expr = sc.spec
-    assert _data_recall(["quote"], ["quote"], plain) == 1.0  # canonical exact
-    assert _data_recall(["quotation"], ["quote"], plain) == 0.0  # undeclared
-    assert _data_recall(["quotation"], ["quote"], with_expr) == 1.0  # declared
-    assert _data_recall(["invoice"], ["quote"], with_expr) == 0.0  # undeclared
-    # token/substring are never inferred: "quotation request" contains the
-    # declared label "quotation" as a token yet must not match
-    assert _data_recall(["quotation request"], ["quote"], with_expr) == 0.0
-    # normalization is case/whitespace only
-    assert _data_recall(["  Quotation "], ["quote"], with_expr) == 1.0
-    assert _data_recall(["quotation."], ["quote"], with_expr) == 0.0  # punctuation
-    # canonical Truth value itself is untouched
-    assert sc.truth.nodes["cq"].writes[0].value == "quote"
-
-
-def test_runtime_evaluator_still_uses_stakeholder_visibility():
-    """The runtime evaluator path (scenario -> evaluate with stakeholder) still
-    applies visibility on top of the expression layer: a fully-asserted DAG
-    passes the all-visible default but fails under the stakeholder contract."""
-    tools = _tools()
-    tools.start_inference("q")
-    _ingest(tools, "assistant", "Hello.")
-    for sid, action, actor, system, reads, writes in [
-        (t[0], t[1], t[2], t[3], t[4], t[5]) for t in _TRUTH_NODES
-    ]:
-        oid = _claim_obs(tools, _node_obs_text(action, actor, system, reads, writes))
-        tools.add_node(
-            sid,
-            action,
-            primitive=_PRIM_BY_SID[sid],
-            actor=actor,
-            system=system,
-            reads=reads,
-            writes=writes,
-            observation_id=oid,
-        )
-    doid = _claim_obs(tools, "The approval is for credit risk management.")
-    tools.set_node_necessity(
-        "d", rationale="for credit risk management", observation_id=doid
-    )
-    tools.set_node_necessity("f")
-    for eid, frm, to, pred in [
-        ("e1", "a", "b", None),
-        ("e2", "b", "c", None),
-        ("e3", "c", "d", "amount over 1,000,000"),
-        ("e4", "c", "e", "amount at or below 1,000,000"),
-        ("e5", "d", "e", None),
-        ("e6", "c", "f", "month-end"),
-    ]:
-        etext = f"After {frm}, we {to}." + (f" when {pred}." if pred else "")
-        eoid = _claim_obs(tools, etext)
-        tools.add_edge(eid, frm, to, predicate=pred, observation_id=eoid)
-    tools.set_dag_endpoints(start_node_id="a", end_node_ids=["e", "f"])
-    tools.finish_interview()
-    sc = get_scenario(SCENARIO)
-    assert sc is not None
-    assert evaluate(tools.db, sc.truth, sc.spec).structural_pass is True
-    assert _eval(tools).structural_pass is False  # hidden assertions penalized
+    _build(tools, evidence=True)
+    dag = tools.db.dag
+    assert dag is not None
+    oid = _claim_obs(tools, "I record the quotation request.")
+    # fresh concepts citing only the request utterance: at cq.reads, that
+    # Observation supports only r.writes.tc_request — nothing here binds
+    tools.create_concept("req_as_cust", "customer", observation_id=oid)
+    tools.create_concept("req_as_prc", "pricing", observation_id=oid)
+    dag.nodes["c"].reads = [
+        ConceptRef(concept_id="req_as_cust", confidence=1.0, observation_ids=[oid]),
+        ConceptRef(concept_id="req_as_prc", confidence=1.0, observation_ids=[oid]),
+    ]
+    res = _eval(tools)
+    assert res.read_correctness < 1.0  # neither ref supports cq.reads claims
+    assert res.unsupported_concept_ref_count >= 2

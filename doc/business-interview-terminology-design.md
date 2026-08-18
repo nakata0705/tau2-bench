@@ -12,20 +12,26 @@ later.
 
 ## 0. Problem
 
-Today, semantic equivalence for reads/writes is a **static, author-declared
-table** in the hidden `EvaluationSpec`:
+Semantic equivalence for reads/writes is currently achieved with
+**agent-local data concepts + hidden stakeholder provenance** (see the domain
+README): the Agent LLM creates local concepts and the evaluator binds them to
+Truth concepts through private per-utterance claim support (`claims.py`). The
+earlier static author-declared label table (`EvaluationSpec.data_expressions`)
+was removed.
+
+The remaining static piece is the **simulator-side surface-term table** used to
+derive the hidden provenance ledger:
 
 ```python
-data_expressions = {
-    "quote": ["quote", "quotation"],
-    "customer": ["customer", "customer information"],
+QUOTATION_SURFACE_TERMS_EN = {
+    ("cq", "writes", "tc_quote"): ["quotation", "quotations"],
     ...
 }
 ```
 
-This is deterministic, precise (normalized exact matching), and safe — but the
-labels the evaluator accepts for a concept are fixed at scenario-authoring
-time. The conversation itself produces **terminology agreements** the
+This is deterministic and private, but the surface terms a stakeholder can use
+are fixed at scenario-authoring time. The conversation itself produces
+**terminology agreements** the
 stakeholder explicitly confirms ("Is 'the quotation' the same thing you send
 later?" → "Yes."), and those agreements are currently ignored by the
 evaluator.

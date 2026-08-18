@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from tau2.domains.business_interview.dag import (
     BusinessDAG,
+    ConceptRef,
     Edge,
     InferredValue,
     Necessity,
@@ -130,6 +131,15 @@ def _clone_value(v: InferredValue) -> InferredValue:
     )
 
 
+def _clone_ref(r: ConceptRef) -> ConceptRef:
+    """Clone a non-optional ConceptRef (used for Node reads/writes)."""
+    return ConceptRef(
+        concept_id=r.concept_id,
+        confidence=r.confidence,
+        observation_ids=list(r.observation_ids),
+    )
+
+
 def _filtered_node(node: Node, attr_set: set[str], visible_nec: list[str]) -> Node:
     def keep(attr: str) -> bool:
         return attr in attr_set
@@ -147,8 +157,8 @@ def _filtered_node(node: Node, attr_set: set[str], visible_nec: list[str]) -> No
         action=_clone_value(node.action),
         actor=_clone_value(node.actor) if keep("actor") else InferredValue(),
         system=_clone_value(node.system) if keep("system") else InferredValue(),
-        reads=[_clone_value(r) for r in node.reads] if keep("reads") else [],
-        writes=[_clone_value(w) for w in node.writes] if keep("writes") else [],
+        reads=[_clone_ref(r) for r in node.reads] if keep("reads") else [],
+        writes=[_clone_ref(w) for w in node.writes] if keep("writes") else [],
         necessity=necessity,
         observation_ids=list(node.observation_ids),
     )

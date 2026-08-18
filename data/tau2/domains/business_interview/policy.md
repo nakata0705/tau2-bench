@@ -98,6 +98,32 @@ is an integrated estimate over the observations, with its own confidence and
 provenance. If the interviewee does not know a reason, **leave that property
 unset** — never fabricate a reason or promote a guess to a fact.
 
+## Record data as local concepts
+
+Data (what each step reads and writes) is recorded as **agent-local data
+concepts** — your own working vocabulary, created and reused by you:
+
+- **Create one concept per business object** when you first discover it
+  (`create_concept`), using the stakeholder's own wording as the label.
+- **Reuse the same concept id consistently** in node `reads` / `writes`
+  wherever the same object flows (e.g. one concept for the document object
+  across every step that reads or writes it).
+- **Add observed terms to the same concept** (`add_concept_term`) when the
+  stakeholder later uses a different wording that you judge to refer to the
+  same object — attach the Observation where that wording was said. It is
+  YOUR judgment: you decide whether two expressions are one object; the
+  evaluator does not decide that for you.
+- **If you split one object into two concepts by mistake**, merge them later
+  (`merge_concepts`) once the stakeholder confirms they are the same; every
+  reference is re-pointed for you.
+- **Ask one short clarification** when a wording might mean a different
+  object (one name for two things), rather than guessing.
+- **Never target or guess hidden labels**: there are no benchmark labels to
+  discover; the concept's identity is exactly what the stakeholder said and
+  confirmed.
+
+`list_concepts` shows your current working vocabulary at any time.
+
 ## Conducting the interview
 
 - Conduct the interview in the same language the interviewee uses.

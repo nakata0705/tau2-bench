@@ -23,14 +23,14 @@ offline over the existing artifacts, without changing any evaluator behavior.
 > first-person actor labeling 10). The hidden `quote↔quotation` reads (7 cases)
 > are now **epistemic errors** (class C), not semantic targets. **Implemented
 > since:** the recommended fix (option E below — a small scenario-local alias,
-> not WordNet) shipped as `EvaluationSpec.data_expressions` with
-> **normalized-exact matching** (`quote ↔ quotation`, stakeholder-visible
-> reads/writes only; token/substring matching removed); the 5/5 visible
-> `cq.writes` cases are recovered, the 8 hidden epistemic assertions remain
-> failures, and the current mismatch total is **31** (B=14, C=8, D=9) with the
-> +4 B-cases being agent-embellished labels that are deliberately not declared
-> (precision-first). The conclusions of this experiment (use a small
-> scenario-local alias, not
+> not WordNet) first shipped as `EvaluationSpec.data_expressions` with
+> **normalized-exact matching**, and was then **superseded entirely** by
+> **agent-local data concepts + hidden stakeholder provenance** (`claims.py`):
+> the evaluator now binds agent concept refs to Truth concepts through private
+> per-utterance claim support and never compares any label. The conclusions of
+> this experiment (use a small scenario-local alias, not WordNet) are unchanged;
+> the recovery numbers below are reproduced as-is from the original experiment
+> run.
 > WordNet) are unchanged; the recovery numbers below are reproduced as-is from
 > the original experiment run.
 

@@ -219,6 +219,11 @@ product of the 4 `ENV_ASSERTION`s, **any** single such mismatch zeroes the rewar
   declared complete label** (`EvaluationSpec.data_expressions`). Token
   overlap / substring containment are **removed** (precision-first): a label
   that merely contains a declared word never matches.
+
+  > **Superseded (2026-08-19):** string read/write scoring (including
+  > `data_expressions`) has been **removed**. Reads/writes are now
+  > **agent-local data concepts** bound to Truth concepts through hidden
+  > stakeholder provenance (`claims.py`); see the domain README.
 - Tools `add_node`/`update_node` accept `reads`/`writes` as free-text string
   lists; the reference `tasks.json` actions hardcode the GT artifact names
   (`request`, `quote`, `approval`, `sent_quote`, `excel_summary`, `customer`,

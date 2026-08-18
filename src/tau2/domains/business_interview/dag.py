@@ -65,6 +65,61 @@ class InferredValue(BaseModel):
         return self.value is not None and self.confidence > 0
 
 
+class ConceptTerm(BaseModel):
+    """One observed surface term of a data concept.
+
+    ``text`` is the stakeholder's wording as observed (e.g. "quotation",
+    "the order form"). ``observation_ids`` record which captured stakeholder
+    Observations contain this term. Terms are agent-local: nothing here is
+    compared to Ground Truth labels by the evaluator.
+    """
+
+    text: str
+    observation_ids: list[str] = Field(default_factory=list)
+
+
+class DataConcept(BaseModel):
+    """An agent-local data concept (a business object/artifact).
+
+    The Agent LLM decides whether different stakeholder expressions refer to
+    one concept; it creates a ``DataConcept``, attaches observed
+    ``ConceptTerm``\ s, and reuses its ``id`` consistently in ``ConceptRef``\ s
+    across nodes. Concept ids are arbitrary and agent-local; the evaluator
+    never compares labels to Ground Truth.
+    """
+
+    id: str
+    preferred_label: str = Field(
+        description="The agent's preferred label (stakeholder wording by default)."
+    )
+    terms: list[ConceptTerm] = Field(default_factory=list)
+
+
+class ConceptRef(BaseModel):
+    """A reference from a node's reads/writes to an agent-local data concept.
+
+    ``concept_id`` must exist in ``BusinessDAG.data_concepts``.
+    ``observation_ids`` cite the Observations that support using this concept
+    at this node/axis. ``confidence`` in [0, 1]; confidence 0 = unasserted.
+    """
+
+    concept_id: str
+    confidence: float = Field(default=1.0, description="Confidence in [0, 1].")
+    observation_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("confidence")
+    @classmethod
+    def _confidence_in_range(cls, v: float) -> float:
+        if not (0.0 <= v <= 1.0):
+            raise ValueError(f"confidence must be in [0, 1], got {v}")
+        return v
+
+    @property
+    def asserted(self) -> bool:
+        """True if this reference is an active claim (confidence > 0)."""
+        return self.confidence > 0
+
+
 class Necessity(BaseModel):
     """Why a node is needed.
 
@@ -107,8 +162,14 @@ class Node(BaseModel):
     )
     actor: InferredValue = Field(default_factory=InferredValue)
     system: InferredValue = Field(default_factory=InferredValue)
-    reads: list[InferredValue] = Field(default_factory=list)
-    writes: list[InferredValue] = Field(default_factory=list)
+    reads: list[ConceptRef] = Field(
+        default_factory=list,
+        description="Data concepts this node reads (agent-local concept refs).",
+    )
+    writes: list[ConceptRef] = Field(
+        default_factory=list,
+        description="Data concepts this node writes (agent-local concept refs).",
+    )
     necessity: Optional[Necessity] = Field(
         default=None,
         description="Why the node is needed (0 or 1 per node); None = no requirement.",
@@ -164,6 +225,10 @@ class BusinessDAG(BaseModel):
     name: str = Field(default="")
     nodes: dict[str, Node] = Field(default_factory=dict, description="Nodes by id.")
     edges: dict[str, Edge] = Field(default_factory=dict, description="Edges by id.")
+    data_concepts: dict[str, DataConcept] = Field(
+        default_factory=dict,
+        description="Agent-local data concepts referenced by node reads/writes.",
+    )
     start_node_id: Optional[str] = Field(default=None)
     end_node_ids: list[str] = Field(default_factory=list)
 
@@ -213,7 +278,7 @@ class BusinessDAG(BaseModel):
 
     # ---------------------------------------------------------------- validation
 
-    def validate(self) -> list[str]:
+    def structure_errors(self) -> list[str]:
         """Return a list of structural validation errors (empty = well-formed).
 
         A well-formed DAG has: exactly one start node, one or more end nodes,
@@ -237,6 +302,14 @@ class BusinessDAG(BaseModel):
                 errors.append(f"edge {e.id}: from_node not found: {e.from_node}")
             if e.to_node not in self.nodes:
                 errors.append(f"edge {e.id}: to_node not found: {e.to_node}")
+        for nid, node in self.nodes.items():
+            for axis in ("reads", "writes"):
+                for ref in getattr(node, axis):
+                    if ref.concept_id not in self.data_concepts:
+                        errors.append(
+                            f"node {nid}: {axis} references unknown concept "
+                            f"{ref.concept_id!r}"
+                        )
         cycle = self.find_cycle()
         if cycle:
             errors.append("cycle detected: " + " -> ".join(cycle))
@@ -249,7 +322,7 @@ class BusinessDAG(BaseModel):
 
     @property
     def is_valid(self) -> bool:
-        return not self.validate()
+        return not self.structure_errors()
 
 
 class InterviewResult(BaseModel):

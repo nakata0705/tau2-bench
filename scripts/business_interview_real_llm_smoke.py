@@ -47,11 +47,23 @@ ARTIFACT_DIR = REPO_ROOT / "artifacts" / "business_interview_real_llm"
 
 
 def _iter_inferred(attr):
-    """Yield a human-readable rendering of an InferredValue or list thereof."""
+    """Yield a human-readable rendering of an InferredValue, ConceptRef,
+    ConceptTerm, or list thereof."""
     if attr is None:
         return None
     if isinstance(attr, list):
         return [_iter_inferred(a) for a in attr]
+    if hasattr(attr, "concept_id"):  # ConceptRef
+        out = {"concept_id": attr.concept_id}
+        conf = getattr(attr, "confidence", None)
+        if conf:
+            out["confidence"] = round(float(conf), 3)
+        obs = getattr(attr, "observation_ids", None)
+        if obs:
+            out["observation_ids"] = list(obs)
+        return out
+    if hasattr(attr, "text") and hasattr(attr, "observation_ids"):  # ConceptTerm
+        return {"text": attr.text, "observation_ids": list(attr.observation_ids)}
     value = getattr(attr, "value", None)
     if value is None:
         return None
@@ -94,6 +106,17 @@ def dag_to_dict(dag) -> dict:
             }
             for nid, node in dag.nodes.items()
         },
+        "data_concepts": {
+            cid: {
+                "id": concept.id,
+                "preferred_label": concept.preferred_label,
+                "terms": [
+                    {"text": t.text, "observation_ids": list(t.observation_ids)}
+                    for t in concept.terms
+                ],
+            }
+            for cid, concept in dag.data_concepts.items()
+        },
         "edges": {
             eid: {
                 "id": edge.id,
@@ -104,7 +127,7 @@ def dag_to_dict(dag) -> dict:
             }
             for eid, edge in dag.edges.items()
         },
-        "validation_errors": dag.validate(),
+        "validation_errors": dag.structure_errors(),
         "is_valid": dag.is_valid,
     }
 
@@ -113,6 +136,7 @@ def run_once(run_index: int, seed: int) -> dict:
     """Run quotation_workflow_1 once with DeepSeek and return a full dump."""
     # Importing inside the function keeps the script import-light and explicit.
     from tau2.data_model.simulation import TextRunConfig
+    from tau2.domains.business_interview.claims import build_provenance_ledger
     from tau2.domains.business_interview.evaluation import evaluate
     from tau2.domains.business_interview.scenario import get_scenario
     from tau2.evaluator.evaluator import EvaluationType
@@ -173,7 +197,14 @@ def run_once(run_index: int, seed: int) -> dict:
         spec_dump = scenario.spec.model_dump(mode="json")
         eval_result = (
             evaluate(
-                db, scenario.truth, scenario.spec, scenario.stakeholder
+                db,
+                scenario.truth,
+                scenario.spec,
+                scenario.stakeholder,
+                claims=scenario.claims,
+                provenance=build_provenance_ledger(
+                    db, scenario.claims, scenario.stop_phrases
+                ),
             ).model_dump(mode="json")
             if db is not None
             else None

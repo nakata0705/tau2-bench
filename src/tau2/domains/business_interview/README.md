@@ -1,38 +1,78 @@
-# business_interview domain (v5 — simple open-world DAG)
+# business_interview domain (v6 — agent-local data concepts + hidden provenance)
 
 A benchmark for agents that must **reconstruct an unknown business DAG** from
 authentic stakeholder Observations, using **free-text actions**, optional
 **generic operation primitives** (with an explicit `unclassified` sentinel for
-unknown operations), and **evidence-backed provenance**. No fixed scenario
-ontology is required of the agent.
+unknown operations), **agent-local data concepts** for reads/writes, and
+**evidence-backed provenance**. No fixed scenario ontology is required of the
+agent.
 
 ## Core idea
 
 The real business process is a **Truth DAG** (1 start, 1+ ends, acyclic, every
 node reachable, ends out-degree 0). In the benchmark a hidden ground truth exists
 and only the evaluator uses it (deterministically). The agent holds its
-understanding open-world: free-text actions, optional generic primitives, actor /
-system / reads / writes / necessity, each traceable to authentic Observations.
+understanding open-world: free-text actions, optional generic primitives,
+actor / system / reads / writes / necessity, each traceable to authentic
+Observations. **Reads/writes are agent-local data concepts** — the Agent LLM,
+not the evaluator, interprets stakeholder wording variation.
 
-**Benchmark vs production.** The concept resolver / hidden `EvaluationSpec` is
-only a *scoring aid*; it is not the agent's business-understanding mechanism.
+**Benchmark vs production.** The concept resolver / hidden `EvaluationSpec` /
+claim catalog are only *scoring aids*; they are not the agent's
+business-understanding mechanism.
+
+## The pipeline
+
+```text
+stakeholder natural language
+  -> Agent LLM local concept identity
+  -> consistent ConceptRefs
+  -> Observation ids
+  -> hidden Truth-claim provenance
+  -> deterministic evaluator binding
+```
 
 ## Domain model (`dag.py`)
 
-- `BusinessDAG` — `nodes`, `edges`, `start_node_id`, `end_node_ids`, plus
-  structural validation.
+- `BusinessDAG` — `nodes`, `edges`, `data_concepts`, `start_node_id`,
+  `end_node_ids`, plus structural validation (including: every `ConceptRef`
+  must reference an existing concept).
 - `Node` — `id`, `action` (open-world free text), optional `primitive` (generic
-  operation or `unclassified`), `actor`, `system`, `reads`, `writes`, `necessity`,
-  `observation_ids`.
+  operation or `unclassified`), `actor`, `system`, `reads` / `writes`
+  (`list[ConceptRef]`), `necessity`, `observation_ids`.
+- `DataConcept` — `id` (agent-local, arbitrary), `preferred_label`, `terms`
+  (`list[ConceptTerm]`).
+- `ConceptTerm` — `text` (an observed stakeholder wording), `observation_ids`.
+- `ConceptRef` — `concept_id`, `confidence`, `observation_ids`.
 - `Edge` — `id`, `from_node`, `to_node`, optional `predicate`, `observation_ids`.
-- `InferredValue` — `value`, `confidence` (0..1), `observation_ids`.
+- `InferredValue` — `value`, `confidence` (0..1), `observation_ids` (used for
+  action/actor/system/predicate/necessity).
 - `Necessity` — a node property with `rationale`, `owner`, `evidence`, `removal_impact`.
 - `Observation` — `id`, `source_id`, `text`, `order`, `turn` (authentic).
 - `InterviewResult` — `dag` + `observations`.
 
-There is **no** DiscoveredConcept model / concept discovery: the benchmark
-evaluates the ability to DAG-ify an unknown business as free actions, not to
-manage discovered concepts as separate objects.
+There is **no** DiscoveredConcept model: the benchmark evaluates the ability to
+DAG-ify an unknown business as free actions + local concepts, not to manage
+discovered concepts as separate objects.
+
+## Agent-local data concepts (reads/writes)
+
+The Agent LLM decides whether different stakeholder expressions refer to one
+business object:
+
+- `create_concept(concept_id, label, observation_id?)` — create a local concept
+  when an object is first discovered; prefer the stakeholder's wording as the
+  label.
+- `add_concept_term(concept_id, term, observation_id?)` — record a later,
+  different wording the Agent judges to be the same object.
+- `merge_concepts(target, sources)` — repair an initial mistaken split: every
+  node reference is re-pointed to the target and terms are folded in.
+- `list_concepts()` — see the agent's own working vocabulary.
+
+`add_node` / `update_node` take `reads` / `writes` as **concept ids** (validated
+against the DAG's concepts). Reuse one concept id consistently across every
+node+axis where the same object flows; the evaluator requires this (see
+“Evaluator binding”).
 
 ## Generic primitives (`concepts.py`)
 
@@ -41,8 +81,7 @@ primitives** (create / check / approve / reject / send / receive / record /
 update / transform / reconcile / notify / move / review). `resolve_primitive`
 returns the best primitive, or **`"unclassified"`** when no known primitive can
 be safely determined. `unclassified` is a normal open-world state, **not** a
-failure. Quotation-specific semantic aliases are NOT placed in the global
-resolver; they live in the hidden `EvaluationSpec`.
+failure. There are NO read/write aliases anywhere in the global resolver.
 
 ## Agent tools
 
@@ -52,41 +91,96 @@ resolver; they live in the hidden `EvaluationSpec`.
 | `list_stakeholder_messages()` | See the stakeholder statements by stable id (`sm_1`, ...) |
 | `observe_latest_stakeholder_message()` | Return the id of the most recent stakeholder message (`sm_N`) |
 | `observe_message(message_id)` | **Capture** a stakeholder message by id (e.g. `sm_3`) as an authentic Observation (idempotent) |
-| `add_node(node_id, action, primitive?, ...)` | Add a node (action is open-world free text; primitive is optional) |
+| `create_concept(concept_id, label, observation_id?)` | Create an agent-local data concept (business object) |
+| `add_concept_term(concept_id, term, observation_id?)` | Add an observed wording to a concept |
+| `merge_concepts(target, sources)` | Merge mistakenly split concepts (re-points all refs) |
+| `list_concepts()` | List the agent's own concepts / terms |
+| `add_node(node_id, action, primitive?, ...)` | Add a node (action is open-world free text; reads/writes are concept ids) |
 | `update_node(node_id, ...)` | Update an existing node's attributes / evidence |
 | `remove_node(node_id)` | Remove a node and its incident edges (drop obsolete / superseded coarse nodes) |
 | `attach_observation(node_id, observation_id)` | Attach an observation to a node (multiple per node) |
 | `add_edge(edge_id, from_node, to_node, predicate?)` | Add a directed edge (predicate = condition) |
 | `update_edge(edge_id, ...)` | Update an edge |
-| `set_node_necessity(node_id, rationale?, owner?, ..., *_confidence?, observation_id?)` | Record why a node is needed (node property, per-property confidence) |
+| `set_node_necessity(node_id, rationale?, ..., observation_id?)` | Record why a node is needed (per-property confidence) |
 | `set_dag_endpoints(start_node_id?, end_node_ids?)` | Set the start and end nodes |
 | `validate_dag()` | Review the DAG's internal structural consistency (no GT reference) |
 | `finish_interview(summary?)` | Close the interview (rejects a structurally invalid DAG) |
 
+## Hidden Truth claims + stakeholder provenance (`claims.py`)
+
+The benchmark privately records which Truth claim each stakeholder utterance
+came from:
+
+- **Claim** — one evaluator-only Truth claim: a stakeholder-visible read/write
+  fact (Truth node + axis + Truth data concept), e.g. `cq.writes.tc_quote`,
+  `cc.reads.tc_customer`, `cq.reads.tc_pricing`. Only claims allowed by the
+  scenario's `StakeholderFilter` enter the private catalog — hidden axes
+  (`sq.reads`, `sq.writes`, `me.reads`, ...) produce **no** claims and can never
+  be referenced.
+- **Provenance ledger** — for every stakeholder (user) message, the simulator
+  side deterministically records which claims the utterance expressed and
+  which surface terms it used (`build_provenance_ledger`). This is private
+  metadata emitted with the natural response; it contains no Ground Truth
+  canonical labels.
+- **Validation** — `validate_ledger` rejects unknown claim ids and claims
+  outside stakeholder visibility.
+
+The Agent never sees claim ids, the catalog, or the ledger: they exist only in
+`claims.py` and the evaluator's inputs; the ledger is not part of
+`InterviewDB`, tool outputs, or serialized state. The evaluator **never infers
+semantic support by reading Observation text** — it consumes the ledger.
+
 ## Evaluation (`evaluation.py`)
 
 The evaluator maps agent nodes to Truth nodes using a **hidden scenario-local
-`EvaluationSpec`** (evaluator-only expressions + expected primitives). The global
-resolver holds only generic primitives. Metrics:
+`EvaluationSpec`** (evaluator-only action expressions + expected primitives;
+**no read/write equivalence**). Metrics:
 
 - `node_recall` / `node_precision` / `domain_concept_correctness`, `fabricated_node_count`
 - `edge_recall` / `edge_precision`, `fabricated_edge_count`
 - `start_correct`, `end_recall` / `end_precision`
 - `predicate_correctness`, `actor_correctness`, `system_correctness`,
   `read_correctness`, `write_correctness`
+- `concept_correctness` — agent-local concept binding integrity
 - `necessity_correctness`, `fabricated_necessity`
 - `primitive_correctness` (diagnostic; `unclassified` is not penalized)
 
 ### Result correctness vs evidence hygiene
 
-Evaluation is split into two orthogonal responsibilities.
+**Result correctness** compares the inferred DAG against the hidden Ground
+Truth: node/edge recall + precision, start/end, predicate/actor/system/read/
+write correctness, concept correctness, necessity correctness, and the
+diagnostic primitive correctness. **Evidence hygiene** (`evidence_pass` /
+`provenance_authenticity_pass`) deterministically guarantees only that every
+asserted claim references a **real, authentic stakeholder Observation** —
+captured from an actual user message via `observe_message`, not fabricated. It
+does **not** re-interpret Observation *text* to decide whether it semantically
+supports a claim.
 
-**Result correctness** compares the inferred DAG against the hidden Ground Truth
-(exact Ground Truth comparison): node/edge recall + precision, start/end,
-predicate/actor/system/read/write correctness, necessity correctness, and the
-diagnostic primitive correctness. A wrong actor / system / read / write / action
-lowers the corresponding correctness; a wrong edge / predicate / necessity lowers
-its metric.
+### Evaluator binding (reads/writes)
+
+For each matched node+axis, the evaluator:
+
+1. maps the Agent node to its Truth node with the existing node matching;
+2. determines the expected hidden Truth claims for that node+axis;
+3. inspects **only** the `ConceptRef`/concept's cited Observation ids;
+4. requires the **hidden provenance ledger** to support the expected claim
+   (i.e. the cited Observation privately expressed that claim);
+5. binds the agent-local concept id to the Truth data concept.
+
+A local concept is valid only if all its grounded visible uses bind to **ONE**
+Truth data concept. Failures:
+
+- no cited Observation supports the expected claim → unsupported ref;
+- one local concept binds to multiple Truth concepts → `concept_correctness` 0;
+- multiple agent concept ids represent the same Truth concept across visible
+  slots without being merged → `concept_correctness` 0;
+- a hidden read/write axis is asserted → epistemic failure.
+
+Labels are never compared: the evaluator does not know or care whether the
+agent wrote “quote”, “quotation”, “the price doc”, or anything else. Wording
+alone cannot create a match; an authentic-but-unrelated Observation cannot
+ground a ref.
 
 ### Stakeholder-visibility scoring
 
@@ -97,74 +191,44 @@ by the scenario's `StakeholderFilter` (`scenario.stakeholder`), per node.
 
 For each matched node and each of actor/system/reads/writes:
 
-- **visible** attribute (the stakeholder can know it): the agent value is
-  compared against the Truth value using the current matching behavior — a
-  wrong value fails;
+- **visible** attribute (the stakeholder can know it): compared against Truth —
+  actor/system via role normalization, reads/writes via hidden-claim binding;
 - **hidden** attribute (the stakeholder cannot know it): the **correct** agent
   behavior is to leave it **unset / empty**. An asserted value is **incorrect**
   even if it happens to equal the full hidden Truth — the benchmark rewards
-  epistemic restraint, not fabrication.
+  epistemic restraint, not fabrication. Hidden axes are a **prior gate**: no
+  provenance or terminology mechanism can rescue a hidden assertion.
 
-Hidden attributes are **not** ignored and **not** simply dropped from scoring;
-asserting one is penalized. Node actions, topology, predicates, necessity, and
-other Truth structure are not affected by visibility. Necessity keeps its own
-known-unknown handling: a fabricated necessity claim is still penalized.
+Node actions, topology, predicates, necessity, and other Truth structure are
+not affected by visibility. Necessity keeps its own known-unknown handling.
 
-`evaluate(db, truth, spec, stakeholder)` receives the stakeholder visibility; the
-`InterviewTools` assertion hooks pass `scenario.stakeholder` automatically.
+`evaluate(db, truth, spec, stakeholder, claims=..., provenance=...)` receives
+the stakeholder visibility plus the hidden claim catalog and provenance ledger
+(the `InterviewTools` assertion hooks pass `scenario.claims` and the derived
+ledger automatically).
 
 ## Terminology alignment (interview behavior)
 
-Terminology is a **conversation-level** concern, not an evaluator concern. The
-intended separation:
+Terminology is a **conversation-level** concern. The intended separation:
 
 1. **Ground Truth** defines the benchmark's concepts/facts (evaluator-only).
 2. **Stakeholder** speaks natural domain language ("I create the quotation").
 3. **Interviewer (Agent)** establishes a **shared working vocabulary** with the
-   stakeholder: identify important roles/systems/objects, use the stakeholder's
-   own terms by default, and briefly confirm stable labels for recurring
-   concepts ("I'll call the document you create 'the order form' — is that the
-   same document you later send?").
-4. **Explicit terminology agreements are respected thereafter**: after the
-   stakeholder confirms a proposed name accurately refers to a known thing,
-   both sides use that term consistently for the rest of the interview.
-5. **Evaluator semantic equivalence is a separate concern**: a scenario may
-   declare small, deterministic, scenario-local expressions for canonical
-   data values (see “Scenario-local data expressions” below). Declaring
-   ``quote -> [quote, quotation]`` means the evaluator treats the
-   stakeholder's natural wording ``quotation`` as the same business concept
-   as the canonical Truth value ``quote`` — but only on
-   **stakeholder-visible** reads/writes, and only when the scenario declares
-   it. It is *not* a license for the Agent to relax its own terminology
-   discipline; the Agent's conversation behavior is unchanged.
-
-Rules of the road:
-
-- The Agent must not silently normalize wording, invent synonyms, or merge
-  concepts the stakeholder has not agreed are the same.
-- The Agent determines the stakeholder's business role from first-person speech
-  ("I check the customer information") and uses the role in the DAG; it does
-  not force the stakeholder to stop using "I".
-- The Agent must not invent derived artifacts the stakeholder never names (e.g.
-  a "seasoned chamber" just because the stakeholder says the chamber is
-  seasoned).
-- The stakeholder only agrees to a proposed name when it accurately refers to
-  something in its `known_info`; agreement never creates new facts, and
-  ambiguous identity is answered with "I don't know", never a silent merge.
-- The stakeholder must not reveal hidden GT vocabulary.
+   stakeholder and records it as **agent-local data concepts**: identify
+   important roles/systems/objects, use the stakeholder's own terms by default,
+   and briefly confirm stable labels for recurring concepts.
+4. **The Agent LLM decides concept identity.** When later wording may mean the
+   same object, the Agent decides whether to reuse the concept; if materially
+   ambiguous, it asks the stakeholder; observed/confirmed terms are added to
+   the same local concept; one concept id is reused consistently throughout
+   reads/writes.
+5. **The evaluator never decides synonymy.** There is no synonym table, no
+   label comparison — equivalence comes only from hidden claim provenance.
 
 Implementation is prompt/policy behavior only (`policy.md` + task
 `task_instructions`). There is **no** glossary model, ontology, or terminology
-API.
-
-**Evidence hygiene** (`evidence_pass` / `provenance_authenticity_pass`)
-deterministically guarantees only that every asserted claim references a **real,
-authentic stakeholder Observation** — captured from an actual user message via
-`observe_message`, not fabricated, and existing. It does **not** re-interpret the
-Observation *text* to decide whether it semantically supports the claim. Because
-the stakeholder may rephrase the same Ground Truth differently on every run, the
-evaluator deliberately does not gate on token / substring / negation semantic
-relevance of the Observation body.
+API. A design note for an optional future interview-confirmed terminology
+record lives in `doc/business-interview-terminology-design.md`.
 
 `quality_pass` requires `structural_pass AND necessity_pass AND evidence_pass AND
 provenance_authenticity_pass`. Unknown (unset) values need no provenance; a value
@@ -177,122 +241,33 @@ edges / attributes / necessity properties it can observe. Multiple filters can b
 applied to the same Truth DAG; `apply` returns a filtered DAG so hidden
 information never leaks to the simulator.
 
-`StakeholderFilter` supports **per-node** visibility of actor / system / reads /
-writes via `visible_node_attributes` (a node listed there is limited to exactly
-those axes; a node not listed uses the global `visible_attributes`). `evaluate()`
+`StakeholderFilter` supports **per-node** visibility of actor / system /
+reads / writes via `visible_node_attributes` (a node listed there is limited to
+exactly those axes; a node not listed uses the global `visible_attributes`). `evaluate()`
 uses this to score a hidden attribute as correct only when the agent leaves it
-unset (see “Stakeholder-visibility scoring”).
+unset (see “Stakeholder-visibility scoring”). The claim catalog is derived from
+the same visibility (`build_claims`), so hidden facts never enter the private
+catalog.
 
 ## Scenario
 
-Scenarios bundle a Truth DAG + a hidden scenario-local `EvaluationSpec` +
-stakeholder filter(s). Bundled:
+Scenarios bundle a Truth DAG (with evaluator-only Truth data concepts) + a
+hidden scenario-local `EvaluationSpec` + stakeholder filter(s) + the hidden
+claim catalog. Bundled:
 
 - `quotation_workflow_1` (EN) / `quotation_workflow_1_ja` — the quotation
   workflow (receive → check → create → (approve OR send) → send + conditional
   month-end summary; 1 start / 2 ends; approval rationale is credit-risk,
-  month-end necessity unknown).
+  month-end necessity unknown). Truth concepts: `tc_request`, `tc_customer`,
+  `tc_pricing`, `tc_quote`, `tc_approval`, `tc_sent_quote`,
+  `tc_excel_summary`. Visible claims: `r.writes.tc_request`,
+  `cc.reads.tc_customer`, `cq.reads.tc_customer`, `cq.reads.tc_pricing`,
+  `cq.writes.tc_quote`, `me.writes.tc_excel_summary`. EN and JA use
+  locale-appropriate surface terms for the derivation.
 - `lab_sample_flow` — a **non-quotation** lab scenario (specimen accession →
   chamber seasoning → conditioning cycle → approve conditioned batch) proving
-  the design is not quotation-specific; its unknown domain expressions live only
-  in the hidden `EvaluationSpec`.
-
-  **Visibility (same epistemic-restraint principle as quotation):** the lab
-  stakeholder can state actors, the environment-chamber system, and the raw
-  specimen/sample input (n1 reads), but the GT read/write artifacts
-  (`accessioned sample`, `seasoned chamber`, `conditioned sample`, `batch
-  approval`) are **benchmark-derived artifact/state names** the stakeholder
-  never uses — they are hidden, so a faithful agent leaves them unset. Derived
-  GT artifacts need not be stakeholder-visible; the full Truth DAG remains the
-  author's process model.
-
-## Scenario-local data expressions (`EvaluationSpec.data_expressions`)
-
-A scenario may declare **small, deterministic, scenario-local semantic
-equivalences for data values** in its hidden `EvaluationSpec`:
-
-```python
-EvaluationSpec(
-    ...,
-    data_expressions={
-        # canonical value -> complete labels identifying the same concept
-        "quote": ["quote", "quotation"],
-        "customer": ["customer", "customer information"],
-        "pricing": ["pricing", "pricing information"],
-        "request": ["request", "quotation request"],
-        "excel_summary": ["excel_summary", "summary of quotation information"],
-    },
-)
-```
-
-### Four distinct layers (do not conflate)
-
-1. **Lexical similarity — removed.** Reads/writes matching never uses token
-   overlap or substring containment. `"quotation request"` contains the word
-   `"quotation"`, yet it is NOT the `quote` concept. Shared tokens or
-   substrings prove nothing about concept identity and are not used.
-2. **Scenario-local concept equivalence — exact.** `data_expressions` lists
-   **complete labels** that identify the same scenario concept as the
-   canonical Truth value. A label matches only when its **normalized exact
-   form** (case-fold + whitespace collapse — harmless formatting only)
-   equals the agent value's normalized form. Normalized exact canonical value
-   OR normalized exact declared label: that is the whole matching rule.
-3. **Stakeholder visibility — prior gate.** Whether the stakeholder was
-   allowed to know/assert the concept. Hidden axes are scored before any
-   label matching: an asserted value fails even when its wording equals a
-   declared expression.
-4. **Stakeholder-confirmed terminology — design only.** Terminology
-   established during the interview (term → clarifity identity → stakeholder
-   confirms → machine-readable record) is explored in
-   `doc/business-interview-terminology-design.md` but is **not implemented**;
-   the static scenario-local table remains the source of semantic identity.
-
-Architecture — deterministic attribute scoring is the composition of three
-independent layers:
-
-```text
-Ground Truth canonical concept
-        +
-scenario-local accepted expressions
-        +
-stakeholder visibility
-        =
-deterministic attribute scoring
-```
-
-The two questions are **independent checks**:
-
-- **Semantic equivalence** answers *“Are these two labels the same known
-  concept?”* — the canonical Truth value `quote` and the stakeholder's wording
-  `quotation` are one business concept for this scenario.
-- **Visibility** answers *“Was the stakeholder allowed to know/assert this
-  concept?”* — a read/write axis a stakeholder cannot know must be left unset.
-
-Rules of the road:
-
-- Expressions belong to the **scenario's `EvaluationSpec`** (evaluator-only,
-  hidden from the agent) — never a global alias table. A scenario without
-  `data_expressions` keeps the exact canonical contract.
-- The **canonical Truth value is unchanged**; expressions are matched by
-  normalized exact equality only (no WordNet, stemming, embeddings, LLM
-  judges, unrestricted synonymy, or large dictionaries).
-- Expressions apply **only to stakeholder-visible reads/writes**. Semantic
-  equivalence can never turn a hidden assertion into a hit: if an attribute is
-  hidden, `Truth: quote` / `Agent: quotation` is still incorrect because the
-  Agent asserted a fact the stakeholder cannot know (epistemic restraint).
-- Only expressions justified by committed evidence are declared. Every
-  quotation expression is the stakeholder's observed wording from the saved
-  real-LLM runs: `quote ↔ quotation`, `customer ↔ customer information`,
-  `pricing ↔ pricing information`, `request ↔ quotation request`,
-  `excel_summary ↔ summary of quotation information`. Near-collisions that
-  are NOT declared stay distinct: `quotation request` / `quotation
-  information` / `quotation document` / `price quotation` / `invoice` never
-  match `quote`; `customer request` never matches `customer`; `quotation
-  summary` / `Excel file` never match `excel_summary`; agent-embellished
-  labels such as `pricing information (from quoting system)` never match
-  `pricing`. Broad variants (`estimate`, `proposal`, `price sheet`,
-  `document`, `offer`) are **not** declared, and hidden `sent_quote` / hidden
-  read artifacts get **no** aliases.
+  the design is not quotation-specific. Its derived read/write artifacts are
+  hidden; the only visible data claim is `n1.reads.tc_sample`.
 
 ## Running
 
@@ -312,6 +287,8 @@ uv run pytest tests/test_domains/test_business_interview/
 ## Design notes
 
 - **Truth and Inferred DAGs are the same class.** No GT-only node/edge types.
+- **Reads/writes are agent-local concepts** with hidden-claim binding; the
+  evaluator contains no synonym inference and never reads Observation text.
 - **Observations are authentic primary evidence** (via `observe_message` /
   `observe_latest_stakeholder_message`); immutable;
   multiple observations attach to one node.
@@ -319,11 +296,12 @@ uv run pytest tests/test_domains/test_business_interview/
   operation, with `unclassified` for unknown operations.
 - **Conditional branches are edges with predicates** — no Branch class.
 - **Necessity is a node property**; unknown must stay unknown (no fabrication).
-- **Hidden scenario EvaluationSpec is evaluator-only**; the global resolver holds
-  only generic primitives.
+- **Hidden scenario EvaluationSpec + claim catalog are evaluator-only**; the
+  global resolver holds only generic primitives.
 - **Result correctness is Ground Truth comparison; evidence hygiene only checks
   Observation references are real & authentic** — the Observation body is not
   semantically re-interpreted.
-- **No compatibility shims.** DiscoveredConcept / concept discovery / claim-level
-  semantic relevance (`support`, SUPPORTED / CONTRADICTED / UNKNOWN) are removed.
+- **No compatibility shims.** DiscoveredConcept / concept discovery /
+  claim-level semantic relevance (`support`, SUPPORTED / CONTRADICTED /
+  UNKNOWN) / string read-write matching / `data_expressions` are removed.
 - **Generic tau2 core unchanged.**
