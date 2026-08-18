@@ -269,9 +269,19 @@ judge added.
 
 ## 6. Real-run mismatch review (seeds 4000–4004)
 
+> **Superseded numbers.** The table below is the **pre-visibility** classification
+> (50 mismatches) from the original analysis. The current stakeholder-aware
+> analysis (commits `cafb944`/`6fa5d9e`; see
+> `doc/business-interview-attribute-mismatch-analysis.md`) re-classifies the same
+> runs as **32 mismatches**: B=15 (visible semantic/representation: `quote↔
+> quotation` on create-quotation write + first-person actor labeling), C=8
+> (hidden attributes asserted — epistemic errors), D=9 (visible facts never
+> recorded), A/E/F=0. Hidden+unset axes are correct and no longer count. Use the
+> visibility-aware numbers for Goal 3, not the table below.
+
 All 5 real runs have **reward = 0.0** because `structural_pass` is `False` in
-every run. The existing `attribute_mismatch_analysis.json` classifies 50
-mismatches as:
+every run. The original (pre-visibility) `attribute_mismatch_analysis.json`
+classified 50 mismatches as:
 
 | class | count | share |
 | ------- | ------- | ------- |
@@ -361,11 +371,14 @@ No production behavior or tests changed.
 
 ### P1 — materially distorts scoring
 
-1. `quote` ↔ `quotation` evaluator-too-strict (B, 22 cases) masks real agent
-   skill; any "quotation"-wording run is penalized (already covered by the
-   WordNet experiment — recommended fix: tiny scenario-local alias, not WordNet).
+1. `quote` ↔ `quotation` evaluator-too-strict (originally 22 B cases; under the
+   current visibility contract only the create-quotation **write** remains a
+   visible semantic target — 5/5 runs — while the hidden reads are now epistemic
+   errors) masks real agent skill; any "quotation"-wording run is penalized
+   (already covered by the WordNet experiment — recommended fix: tiny
+   scenario-local alias, not WordNet).
 2. Actor `"I (the stakeholder)"` vs `sales` not aliased (norm_role first-person
-   gap) → 10 B cases.
+   gap) → 10 visible B cases.
 3. Lab reads/writes artifact names are mostly implied, not stated → agent must
    guess.
 4. Hard AND-gate reward: **no partial credit**; any single attribute mismatch

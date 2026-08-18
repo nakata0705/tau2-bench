@@ -15,8 +15,19 @@ offline over the existing artifacts, without changing any evaluator behavior.
 
 ## 1. Current problem
 
-The prior analysis (`attribute_mismatch_analysis.json`) found **22 / 50** (44%) of
-attribute mismatches are `B_evaluator_too_strict`. The data-related subset is:
+> **Note (superseded numbers):** the original mismatch analysis counted **22 / 50**
+> `B_evaluator_too_strict` cases under the pre-visibility contract. The current
+> visibility-aware analysis (see `business-interview-attribute-mismatch-analysis.md`)
+> re-classifies the same runs: **32 mismatches**, of which the visible semantic
+> population is **15** (`quote↔quotation` on the create-quotation write 5/5, plus
+> first-person actor labeling 10). The hidden `quote↔quotation` reads (7 cases)
+> are now **epistemic errors** (class C), not semantic targets. The conclusions of
+> this experiment (use a small scenario-local alias, not WordNet) are unchanged;
+> the recovery numbers below are reproduced as-is from the original experiment run.
+
+The prior analysis (`attribute_mismatch_analysis.json`, pre-visibility) found
+**22 / 50** (44%) of attribute mismatches are `B_evaluator_too_strict`. The
+data-related subset (as originally measured) is:
 
 | source | count |
 | -------- | ------- |

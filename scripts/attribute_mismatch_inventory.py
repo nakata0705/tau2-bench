@@ -236,6 +236,156 @@ def _status_label(status: str) -> str:
     }[status]
 
 
+# ---------------------------------------------------------------------------
+# Visibility-aware mismatch classification (supersedes the pre-visibility
+# analysis: hidden attributes are no longer ordinary semantic mismatches).
+# ---------------------------------------------------------------------------
+
+# Classes (post-visibility contract):
+#   A genuine agent extraction error          (visible attr, agent value wrong)
+#   B evaluator semantic/representation gap   (visible attr, semantically same)
+#   C agent epistemic error                   (hidden attr, agent asserted it)
+#   D visible fact never obtained/recorded    (visible attr, agent left unset)
+#   E GT/modeling ambiguity after visibility  (residual, visibility-independent)
+#   F ambiguous
+_CLASS_ORDER = [
+    "A_genuine_agent_extraction_error",
+    "B_evaluator_semantic_mismatch",
+    "C_agent_epistemic_error",
+    "D_visible_fact_not_obtained",
+    "E_gt_modeling_ambiguity",
+    "F_ambiguous",
+]
+
+# Manual override: for a visible non-empty mismatch the mechanical rule below
+# cannot distinguish A (genuinely wrong value) from B (semantically same,
+# representation differs). The key is ``(truth_node, axis, agent_value)``. In
+# the seed-4000..4004 population every visible non-empty mismatch is a
+# representation gap (first-person actor label / quote-vs-quotation wording),
+# so the overrides are empty and the mechanical default is B. If future runs
+# produce a genuinely wrong visible value, list it here as A.
+_A_OVERRIDES: set[tuple[str, str, str]] = set()
+
+
+def _classify_axis(e: dict, tnid: str, axis: str) -> str:
+    """Classify one actor/system/reads/writes axis under the visibility contract.
+
+    - ``hit`` / ``hidden_unset`` are correct: not a mismatch (caller skips).
+    - ``hidden_asserted`` -> C (epistemic error; the agent invented a fact the
+      stakeholder cannot know).
+    - visible ``mismatch`` with an empty agent value -> D (the stakeholder-visible
+      fact was never obtained/recorded).
+    - visible ``mismatch`` with a non-empty agent value -> B by default (the
+      value is semantically the same fact in a different representation);
+      genuinely wrong values are overridden to A via ``_A_OVERRIDES``.
+    """
+    if e["status"] == "hidden_asserted":
+        return "C_agent_epistemic_error"
+    # visible mismatch
+    agent = e["agent"]
+    if axis in ("reads", "writes"):
+        agent_empty = not agent
+    else:
+        agent_empty = agent is None or agent == ""
+    if agent_empty:
+        return "D_visible_fact_not_obtained"
+    key = (tnid, axis, str(agent))
+    if key in _A_OVERRIDES:
+        return "A_genuine_agent_extraction_error"
+    return "B_evaluator_semantic_mismatch"
+
+
+def build_analysis(all_runs) -> dict:
+    """Compute the visibility-aware mismatch analysis from the inventory."""
+    matched_nodes = 0
+    by_attr: dict[str, int] = {a: 0 for a in ("actor", "system", "reads", "writes")}
+    by_class: dict[str, int] = {c: 0 for c in _CLASS_ORDER}
+    attr_class: dict[str, dict[str, int]] = {
+        a: {c: 0 for c in _CLASS_ORDER} for a in ("actor", "system", "reads", "writes")
+    }
+    per_run: dict[str, int] = {}
+    cases: list[dict] = []
+    for r in all_runs:
+        run_total = 0
+        for na in r["node_analyses"]:
+            matched_nodes += 1
+            for axis in ("actor", "system", "reads", "writes"):
+                e = na[axis]
+                if e["status"] in ("hit", "hidden_unset"):
+                    continue  # correct under the visibility contract
+                cls = _classify_axis(e, na["truth_node"], axis)
+                by_attr[axis] += 1
+                by_class[cls] += 1
+                attr_class[axis][cls] += 1
+                run_total += 1
+                cases.append(
+                    {
+                        "run": r["run"],
+                        "agent_node": na["agent_node"],
+                        "truth_node": na["truth_node"],
+                        "axis": axis,
+                        "class": cls,
+                        "truth": e["truth"],
+                        "agent": e["agent"],
+                    }
+                )
+        per_run[r["run"]] = run_total
+    total = sum(by_class.values())
+    pct = {c: (by_class[c] / total if total else 0.0) for c in _CLASS_ORDER}
+
+    # recurring patterns: group cases by (truth_node, axis, truth value, agent
+    # value) and by (truth_node, axis, class) so both exact and class-level
+    # recurrence are visible.
+    exact: dict[tuple, dict] = {}
+    for c in cases:
+        key = (c["truth_node"], c["axis"], str(c["truth"]), str(c["agent"]))
+        e = exact.setdefault(
+            key,
+            {
+                "truth_node": c["truth_node"],
+                "axis": c["axis"],
+                "truth": c["truth"],
+                "agent": c["agent"],
+                "class": c["class"],
+                "runs": [],
+            },
+        )
+        e["runs"].append(c["run"])
+    recurring_patterns = [
+        {
+            "pattern": f"{v['truth_node']}.{v['axis']} T={v['truth']} A={v['agent']}",
+            "frequency": f"{len(v['runs'])}/{len(all_runs)}",
+            "class": v["class"],
+            "runs": sorted(v["runs"]),
+        }
+        for v in sorted(
+            exact.values(), key=lambda v: (-len(v["runs"]), v["truth_node"], v["axis"])
+        )
+    ]
+
+    return {
+        "scenario": "quotation_workflow_1",
+        "source_artifacts": [
+            "run_00_seed4000",
+            "run_01_seed4001",
+            "run_02_seed4002",
+            "run_03_seed4003",
+            "run_04_seed4004",
+        ],
+        "supersedes": "pre-visibility mismatch analysis (50 mismatches / 22 evaluator-too-strict). Hidden stakeholder attributes are no longer semantic mismatches: hidden+unset is correct, hidden+asserted is an epistemic error.",
+        "method": "per-node attribute comparison using the evaluator's own _match_nodes / norm_role / norm_system / _data_recall AND the scenario StakeholderFilter visibility; hidden+unset is correct, hidden+asserted is class C, visible mismatches are A/B/D per agent value and evidence.",
+        "matched_nodes_total": matched_nodes,
+        "mismatch_totals": by_attr,
+        "mismatch_total": total,
+        "classification_counts": by_class,
+        "classification_pct": pct,
+        "per_attribute_classification": attr_class,
+        "per_run_summary": per_run,
+        "recurring_patterns": recurring_patterns,
+        "cases": cases,
+    }
+
+
 def main():
     all_runs = []
     for p in sorted(glob.glob(str(ART_DIR / "run_*_seed4*.json"))):
@@ -294,6 +444,17 @@ def main():
     except OSError as exc:
         raise SystemExit(f"cannot write {out}: {exc}")
     print("\nwrote", out)
+
+    analysis = build_analysis(all_runs)
+    analysis_out = ART_DIR / "attribute_mismatch_analysis.json"
+    try:
+        with open(analysis_out, "w", encoding="utf-8") as f:
+            json.dump(analysis, f, indent=2, ensure_ascii=False)
+    except OSError as exc:
+        raise SystemExit(f"cannot write {analysis_out}: {exc}")
+    print("\nwrote", analysis_out)
+    print("mismatch_total:", analysis["mismatch_total"])
+    print("classification:", analysis["classification_counts"])
 
 
 if __name__ == "__main__":

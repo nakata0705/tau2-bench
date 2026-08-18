@@ -1,101 +1,558 @@
 {
   "scenario": "quotation_workflow_1",
-  "source_artifacts": ["run_00_seed4000", "run_01_seed4001", "run_02_seed4002", "run_03_seed4003", "run_04_seed4004"],
-  "method": "per-node attribute comparison using the evaluator's own _match_nodes / norm_role / norm_system / _data_recall, with each mismatch classified by reading the stakeholder Observations + conversation.",
+  "source_artifacts": [
+    "run_00_seed4000",
+    "run_01_seed4001",
+    "run_02_seed4002",
+    "run_03_seed4003",
+    "run_04_seed4004"
+  ],
+  "supersedes": "pre-visibility mismatch analysis (50 mismatches / 22 evaluator-too-strict). Hidden stakeholder attributes are no longer semantic mismatches: hidden+unset is correct, hidden+asserted is an epistemic error.",
+  "method": "per-node attribute comparison using the evaluator's own _match_nodes / norm_role / norm_system / _data_recall AND the scenario StakeholderFilter visibility; hidden+unset is correct, hidden+asserted is class C, visible mismatches are A/B/D per agent value and evidence.",
   "matched_nodes_total": 28,
   "mismatch_totals": {
     "actor": 10,
-    "system": 6,
-    "reads": 13,
-    "writes": 21
+    "system": 2,
+    "reads": 7,
+    "writes": 13
   },
-  "mismatch_total": 50,
+  "mismatch_total": 32,
   "classification_counts": {
-    "A_genuine_agent_error": 4,
-    "B_evaluator_too_strict": 22,
-    "C_truth_or_modeling_issue": 16,
-    "D_information_not_obtained": 8,
-    "E_ambiguous": 0
+    "A_genuine_agent_extraction_error": 0,
+    "B_evaluator_semantic_mismatch": 15,
+    "C_agent_epistemic_error": 8,
+    "D_visible_fact_not_obtained": 9,
+    "E_gt_modeling_ambiguity": 0,
+    "F_ambiguous": 0
   },
   "classification_pct": {
-    "A_genuine_agent_error": 0.08,
-    "B_evaluator_too_strict": 0.44,
-    "C_truth_or_modeling_issue": 0.32,
-    "D_information_not_obtained": 0.16,
-    "E_ambiguous": 0.0
+    "A_genuine_agent_extraction_error": 0.0,
+    "B_evaluator_semantic_mismatch": 0.46875,
+    "C_agent_epistemic_error": 0.25,
+    "D_visible_fact_not_obtained": 0.28125,
+    "E_gt_modeling_ambiguity": 0.0,
+    "F_ambiguous": 0.0
   },
   "per_attribute_classification": {
     "actor": {
-      "total": 10,
-      "B_evaluator_too_strict": 10,
-      "note": "All 10 = agent actor 'I (the stakeholder)' vs GT 'sales'. Stakeholder is the sales employee and says 'I ...'. norm_role lacks first-person/self-reference aliases (has 'interviewee'/'you'/'yourself' but not 'i'/'me'/'stakeholder'). Runs 01/03/04 wrote 'Interviewee' (matches); runs 00/02 wrote 'I (the stakeholder)' (misses)."
+      "A_genuine_agent_extraction_error": 0,
+      "B_evaluator_semantic_mismatch": 10,
+      "C_agent_epistemic_error": 0,
+      "D_visible_fact_not_obtained": 0,
+      "E_gt_modeling_ambiguity": 0,
+      "F_ambiguous": 0
     },
     "system": {
-      "total": 6,
-      "A_genuine_agent_error": 2,
-      "D_information_not_obtained": 4,
-      "note": "A: run_01 send step (stakeholder said 'by email', agent left system=None) + run_01 month-end (stakeholder said 'as an Excel file', agent left system=None). D: approval node system='quoting' left None in runs 01/02/03/04 because the stakeholder never states the approval happens in the quoting system."
+      "A_genuine_agent_extraction_error": 0,
+      "B_evaluator_semantic_mismatch": 0,
+      "C_agent_epistemic_error": 0,
+      "D_visible_fact_not_obtained": 2,
+      "E_gt_modeling_ambiguity": 0,
+      "F_ambiguous": 0
     },
     "reads": {
-      "total": 13,
-      "B_evaluator_too_strict": 7,
-      "C_truth_or_modeling_issue": 2,
-      "D_information_not_obtained": 4,
-      "note": "B: read 'quote' (GT) vs agent 'quotation'/'quotation information' - token matcher treats quote/quotation as different (not a substring; no stem). C: send node reads empty (stakeholder only says 'send it'). D: approval node reads empty (manager-reviewing-the-quote is never stated)."
+      "A_genuine_agent_extraction_error": 0,
+      "B_evaluator_semantic_mismatch": 0,
+      "C_agent_epistemic_error": 7,
+      "D_visible_fact_not_obtained": 0,
+      "E_gt_modeling_ambiguity": 0,
+      "F_ambiguous": 0
     },
     "writes": {
-      "total": 21,
-      "B_evaluator_too_strict": 5,
-      "C_truth_or_modeling_issue": 14,
-      "A_genuine_agent_error": 2,
-      "note": "B: create-quotation write 'quote' (GT) vs 'quotation' (agent), 5/5. C: GT models write artifacts (request / sent_quote / approval) that the stakeholder does not verbalize as outputs (r record request, sq send by email, ap needs approval); agent records no write. A: month-end write 'excel_summary' empty in runs 02/04 although the stakeholder explicitly says 'send a summary ... as an Excel file'."
+      "A_genuine_agent_extraction_error": 0,
+      "B_evaluator_semantic_mismatch": 5,
+      "C_agent_epistemic_error": 1,
+      "D_visible_fact_not_obtained": 7,
+      "E_gt_modeling_ambiguity": 0,
+      "F_ambiguous": 0
     }
+  },
+  "per_run_summary": {
+    "run_00_seed4000.json": 9,
+    "run_01_seed4001.json": 6,
+    "run_02_seed4002.json": 9,
+    "run_03_seed4003.json": 3,
+    "run_04_seed4004.json": 5
   },
   "recurring_patterns": [
     {
-      "pattern": "create-quotation write 'quote' not scored (agent 'quotation')",
+      "pattern": "cq.writes T=['quote'] A=['quotation']",
       "frequency": "5/5",
-      "class": "B",
-      "fix": "deterministic quote<->quotation normalization / small synonym map in _data_recall"
+      "class": "B_evaluator_semantic_mismatch",
+      "runs": [
+        "run_00_seed4000.json",
+        "run_01_seed4001.json",
+        "run_02_seed4002.json",
+        "run_03_seed4003.json",
+        "run_04_seed4004.json"
+      ]
     },
     {
-      "pattern": "send/month-end read 'quote' not scored (agent 'quotation'/'quotation information')",
-      "frequency": "5/5 (send and/or month-end)",
-      "class": "B",
-      "fix": "same quote<->quotation normalization"
+      "pattern": "r.writes T=['request'] A=[]",
+      "frequency": "5/5",
+      "class": "D_visible_fact_not_obtained",
+      "runs": [
+        "run_00_seed4000.json",
+        "run_01_seed4001.json",
+        "run_02_seed4002.json",
+        "run_03_seed4003.json",
+        "run_04_seed4004.json"
+      ]
     },
     {
-      "pattern": "actor 'I (the stakeholder)' vs GT 'sales'",
-      "frequency": "2/5 runs (seed 4000, 4002); other 3/5 used 'Interviewee' which matches",
-      "class": "B (with agent-labeling inconsistency note)",
-      "fix": "add first-person / self-reference actor aliases (i/me/stakeholder/the interviewee) since the stakeholder IS the actor; also encourage cleaner role labels"
+      "pattern": "me.reads T=['quote'] A=['quotation information']",
+      "frequency": "4/5",
+      "class": "C_agent_epistemic_error",
+      "runs": [
+        "run_00_seed4000.json",
+        "run_01_seed4001.json",
+        "run_02_seed4002.json",
+        "run_04_seed4004.json"
+      ]
     },
     {
-      "pattern": "approval node system='quoting' left None",
-      "frequency": "4/5 runs",
-      "class": "D",
-      "fix": "stakeholder known_info never states the approval happens in the quoting system; either add it to the scenario or drop ap.system from GT (GT/scenario consistency)"
+      "pattern": "sq.reads T=['quote'] A=['quotation']",
+      "frequency": "3/5",
+      "class": "C_agent_epistemic_error",
+      "runs": [
+        "run_00_seed4000.json",
+        "run_03_seed4003.json",
+        "run_04_seed4004.json"
+      ]
     },
     {
-      "pattern": "writes request / sent_quote / approval not recorded by agent",
-      "frequency": "request 5/5, sent_quote 5/5, approval 4/5",
-      "class": "C",
-      "fix": "GT models explicit write artifacts the stakeholder does not verbalize as outputs; review GT write granularity or add to scenario disclosure"
+      "pattern": "cc.actor T=sales A=I (the stakeholder)",
+      "frequency": "2/5",
+      "class": "B_evaluator_semantic_mismatch",
+      "runs": [
+        "run_00_seed4000.json",
+        "run_02_seed4002.json"
+      ]
     },
     {
-      "pattern": "approval read 'quote' left empty",
-      "frequency": "4/5 runs",
-      "class": "D",
-      "fix": "manager-reviews-the-quote is never stated; GT/scenario consistency"
+      "pattern": "cq.actor T=sales A=I (the stakeholder)",
+      "frequency": "2/5",
+      "class": "B_evaluator_semantic_mismatch",
+      "runs": [
+        "run_00_seed4000.json",
+        "run_02_seed4002.json"
+      ]
+    },
+    {
+      "pattern": "me.actor T=sales A=I (the stakeholder)",
+      "frequency": "2/5",
+      "class": "B_evaluator_semantic_mismatch",
+      "runs": [
+        "run_00_seed4000.json",
+        "run_02_seed4002.json"
+      ]
+    },
+    {
+      "pattern": "me.writes T=['excel_summary'] A=[]",
+      "frequency": "2/5",
+      "class": "D_visible_fact_not_obtained",
+      "runs": [
+        "run_02_seed4002.json",
+        "run_04_seed4004.json"
+      ]
+    },
+    {
+      "pattern": "r.actor T=sales A=I (the stakeholder)",
+      "frequency": "2/5",
+      "class": "B_evaluator_semantic_mismatch",
+      "runs": [
+        "run_00_seed4000.json",
+        "run_02_seed4002.json"
+      ]
+    },
+    {
+      "pattern": "sq.actor T=sales A=I (the stakeholder)",
+      "frequency": "2/5",
+      "class": "B_evaluator_semantic_mismatch",
+      "runs": [
+        "run_00_seed4000.json",
+        "run_02_seed4002.json"
+      ]
+    },
+    {
+      "pattern": "me.system T=excel A=None",
+      "frequency": "1/5",
+      "class": "D_visible_fact_not_obtained",
+      "runs": [
+        "run_01_seed4001.json"
+      ]
+    },
+    {
+      "pattern": "sq.system T=email A=None",
+      "frequency": "1/5",
+      "class": "D_visible_fact_not_obtained",
+      "runs": [
+        "run_01_seed4001.json"
+      ]
+    },
+    {
+      "pattern": "sq.writes T=['sent_quote'] A=['quotation']",
+      "frequency": "1/5",
+      "class": "C_agent_epistemic_error",
+      "runs": [
+        "run_01_seed4001.json"
+      ]
     }
   ],
-  "conclusion": {
-    "genuine_agent_extraction_share": 0.08,
-    "dominant_causes": [
-      "evaluator too strict on synonymous data wording (quote vs quotation) and first-person actor labeling",
-      "Ground Truth models write/read data artifacts the stakeholder does not verbalize",
-      "a few GT attributes (approval system/read) not present in the stakeholder known_info"
-    ],
-    "takeaway": "The low actor/system/read/write correctness is mostly NOT genuine agent extraction failure. The single biggest lever is a deterministic, explainable quote/quotation (+first-person actor) normalization, not an LLM judge or embeddings."
-  }
+  "cases": [
+    {
+      "run": "run_00_seed4000.json",
+      "agent_node": "check_customer_info",
+      "truth_node": "cc",
+      "axis": "actor",
+      "class": "B_evaluator_semantic_mismatch",
+      "truth": "sales",
+      "agent": "I (the stakeholder)"
+    },
+    {
+      "run": "run_00_seed4000.json",
+      "agent_node": "create_quotation",
+      "truth_node": "cq",
+      "axis": "actor",
+      "class": "B_evaluator_semantic_mismatch",
+      "truth": "sales",
+      "agent": "I (the stakeholder)"
+    },
+    {
+      "run": "run_00_seed4000.json",
+      "agent_node": "create_quotation",
+      "truth_node": "cq",
+      "axis": "writes",
+      "class": "B_evaluator_semantic_mismatch",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation"
+      ]
+    },
+    {
+      "run": "run_00_seed4000.json",
+      "agent_node": "month_end_summary",
+      "truth_node": "me",
+      "axis": "actor",
+      "class": "B_evaluator_semantic_mismatch",
+      "truth": "sales",
+      "agent": "I (the stakeholder)"
+    },
+    {
+      "run": "run_00_seed4000.json",
+      "agent_node": "month_end_summary",
+      "truth_node": "me",
+      "axis": "reads",
+      "class": "C_agent_epistemic_error",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation information"
+      ]
+    },
+    {
+      "run": "run_00_seed4000.json",
+      "agent_node": "send_quotation",
+      "truth_node": "sq",
+      "axis": "actor",
+      "class": "B_evaluator_semantic_mismatch",
+      "truth": "sales",
+      "agent": "I (the stakeholder)"
+    },
+    {
+      "run": "run_00_seed4000.json",
+      "agent_node": "send_quotation",
+      "truth_node": "sq",
+      "axis": "reads",
+      "class": "C_agent_epistemic_error",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation"
+      ]
+    },
+    {
+      "run": "run_00_seed4000.json",
+      "agent_node": "record_request",
+      "truth_node": "r",
+      "axis": "actor",
+      "class": "B_evaluator_semantic_mismatch",
+      "truth": "sales",
+      "agent": "I (the stakeholder)"
+    },
+    {
+      "run": "run_00_seed4000.json",
+      "agent_node": "record_request",
+      "truth_node": "r",
+      "axis": "writes",
+      "class": "D_visible_fact_not_obtained",
+      "truth": [
+        "request"
+      ],
+      "agent": []
+    },
+    {
+      "run": "run_01_seed4001.json",
+      "agent_node": "create_quotation",
+      "truth_node": "cq",
+      "axis": "writes",
+      "class": "B_evaluator_semantic_mismatch",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation"
+      ]
+    },
+    {
+      "run": "run_01_seed4001.json",
+      "agent_node": "send_accounting_summary",
+      "truth_node": "me",
+      "axis": "system",
+      "class": "D_visible_fact_not_obtained",
+      "truth": "excel",
+      "agent": null
+    },
+    {
+      "run": "run_01_seed4001.json",
+      "agent_node": "send_accounting_summary",
+      "truth_node": "me",
+      "axis": "reads",
+      "class": "C_agent_epistemic_error",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation information"
+      ]
+    },
+    {
+      "run": "run_01_seed4001.json",
+      "agent_node": "record_request",
+      "truth_node": "r",
+      "axis": "writes",
+      "class": "D_visible_fact_not_obtained",
+      "truth": [
+        "request"
+      ],
+      "agent": []
+    },
+    {
+      "run": "run_01_seed4001.json",
+      "agent_node": "send_quotation",
+      "truth_node": "sq",
+      "axis": "system",
+      "class": "D_visible_fact_not_obtained",
+      "truth": "email",
+      "agent": null
+    },
+    {
+      "run": "run_01_seed4001.json",
+      "agent_node": "send_quotation",
+      "truth_node": "sq",
+      "axis": "writes",
+      "class": "C_agent_epistemic_error",
+      "truth": [
+        "sent_quote"
+      ],
+      "agent": [
+        "quotation"
+      ]
+    },
+    {
+      "run": "run_02_seed4002.json",
+      "agent_node": "check_customer",
+      "truth_node": "cc",
+      "axis": "actor",
+      "class": "B_evaluator_semantic_mismatch",
+      "truth": "sales",
+      "agent": "I (the stakeholder)"
+    },
+    {
+      "run": "run_02_seed4002.json",
+      "agent_node": "create_quotation",
+      "truth_node": "cq",
+      "axis": "actor",
+      "class": "B_evaluator_semantic_mismatch",
+      "truth": "sales",
+      "agent": "I (the stakeholder)"
+    },
+    {
+      "run": "run_02_seed4002.json",
+      "agent_node": "create_quotation",
+      "truth_node": "cq",
+      "axis": "writes",
+      "class": "B_evaluator_semantic_mismatch",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation"
+      ]
+    },
+    {
+      "run": "run_02_seed4002.json",
+      "agent_node": "send_accounting_summary",
+      "truth_node": "me",
+      "axis": "actor",
+      "class": "B_evaluator_semantic_mismatch",
+      "truth": "sales",
+      "agent": "I (the stakeholder)"
+    },
+    {
+      "run": "run_02_seed4002.json",
+      "agent_node": "send_accounting_summary",
+      "truth_node": "me",
+      "axis": "reads",
+      "class": "C_agent_epistemic_error",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation information"
+      ]
+    },
+    {
+      "run": "run_02_seed4002.json",
+      "agent_node": "send_accounting_summary",
+      "truth_node": "me",
+      "axis": "writes",
+      "class": "D_visible_fact_not_obtained",
+      "truth": [
+        "excel_summary"
+      ],
+      "agent": []
+    },
+    {
+      "run": "run_02_seed4002.json",
+      "agent_node": "send_quotation",
+      "truth_node": "sq",
+      "axis": "actor",
+      "class": "B_evaluator_semantic_mismatch",
+      "truth": "sales",
+      "agent": "I (the stakeholder)"
+    },
+    {
+      "run": "run_02_seed4002.json",
+      "agent_node": "record_request",
+      "truth_node": "r",
+      "axis": "actor",
+      "class": "B_evaluator_semantic_mismatch",
+      "truth": "sales",
+      "agent": "I (the stakeholder)"
+    },
+    {
+      "run": "run_02_seed4002.json",
+      "agent_node": "record_request",
+      "truth_node": "r",
+      "axis": "writes",
+      "class": "D_visible_fact_not_obtained",
+      "truth": [
+        "request"
+      ],
+      "agent": []
+    },
+    {
+      "run": "run_03_seed4003.json",
+      "agent_node": "create_quotation",
+      "truth_node": "cq",
+      "axis": "writes",
+      "class": "B_evaluator_semantic_mismatch",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation"
+      ]
+    },
+    {
+      "run": "run_03_seed4003.json",
+      "agent_node": "send_quotation",
+      "truth_node": "sq",
+      "axis": "reads",
+      "class": "C_agent_epistemic_error",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation"
+      ]
+    },
+    {
+      "run": "run_03_seed4003.json",
+      "agent_node": "record_request",
+      "truth_node": "r",
+      "axis": "writes",
+      "class": "D_visible_fact_not_obtained",
+      "truth": [
+        "request"
+      ],
+      "agent": []
+    },
+    {
+      "run": "run_04_seed4004.json",
+      "agent_node": "month_end_summary",
+      "truth_node": "me",
+      "axis": "reads",
+      "class": "C_agent_epistemic_error",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation information"
+      ]
+    },
+    {
+      "run": "run_04_seed4004.json",
+      "agent_node": "month_end_summary",
+      "truth_node": "me",
+      "axis": "writes",
+      "class": "D_visible_fact_not_obtained",
+      "truth": [
+        "excel_summary"
+      ],
+      "agent": []
+    },
+    {
+      "run": "run_04_seed4004.json",
+      "agent_node": "create_quotation",
+      "truth_node": "cq",
+      "axis": "writes",
+      "class": "B_evaluator_semantic_mismatch",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation"
+      ]
+    },
+    {
+      "run": "run_04_seed4004.json",
+      "agent_node": "send_quotation",
+      "truth_node": "sq",
+      "axis": "reads",
+      "class": "C_agent_epistemic_error",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation"
+      ]
+    },
+    {
+      "run": "run_04_seed4004.json",
+      "agent_node": "record_request",
+      "truth_node": "r",
+      "axis": "writes",
+      "class": "D_visible_fact_not_obtained",
+      "truth": [
+        "request"
+      ],
+      "agent": []
+    }
+  ]
 }

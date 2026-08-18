@@ -167,6 +167,8 @@ def run_once(run_index: int, seed: int) -> dict:
     spec_dump = None
     try:
         scenario = get_scenario(TASK_ID)
+        if scenario is None:
+            raise ValueError(f"unknown scenario: {TASK_ID}")
         truth_dag = scenario.truth
         spec_dump = scenario.spec.model_dump(mode="json")
         eval_result = (
@@ -285,8 +287,11 @@ def main() -> int:
         logger.info("Starting run {} / {} (seed={})", i + 1, runs, seed)
         dump = run_once(i, seed)
         out_path = ARTIFACT_DIR / f"run_{i:02d}_seed{seed}.json"
-        with open(out_path, "w") as fp:
-            json.dump(dump, fp, indent=2, ensure_ascii=False)
+        try:
+            with open(out_path, "w", encoding="utf-8") as fp:
+                json.dump(dump, fp, indent=2, ensure_ascii=False)
+        except OSError as exc:
+            raise SystemExit(f"cannot write {out_path}: {exc}")
         logger.info("Wrote {}", out_path)
 
         summaries.append(
@@ -325,20 +330,23 @@ def main() -> int:
         )
 
     summary_path = ARTIFACT_DIR / "summary.json"
-    with open(summary_path, "w") as fp:
-        json.dump(
-            {
-                "task_id": TASK_ID,
-                "agent_model": AGENT_MODEL,
-                "user_model": USER_MODEL,
-                "llm_args": LLM_ARGS,
-                "num_runs": len(summaries),
-                "runs": summaries,
-            },
-            fp,
-            indent=2,
-            ensure_ascii=False,
-        )
+    try:
+        with open(summary_path, "w", encoding="utf-8") as fp:
+            json.dump(
+                {
+                    "task_id": TASK_ID,
+                    "agent_model": AGENT_MODEL,
+                    "user_model": USER_MODEL,
+                    "llm_args": LLM_ARGS,
+                    "num_runs": len(summaries),
+                    "runs": summaries,
+                },
+                fp,
+                indent=2,
+                ensure_ascii=False,
+            )
+    except OSError as exc:
+        raise SystemExit(f"cannot write {summary_path}: {exc}")
     logger.info("Summary: {}", summary_path)
     return 0
 
