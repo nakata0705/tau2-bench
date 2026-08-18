@@ -1,0 +1,203 @@
+{
+  "scenario": "business_interview_current_architecture_audit",
+  "date": "2026-08-18",
+  "branch": "business-interview",
+  "method": "Investigation-only read of source, policy.md, tasks.json, tests, artifacts, and live callers. No behavior changed.",
+  "architecture": {
+    "runtime_flow": [
+      "task (tasks.json) -> environment (get_environment) -> policy.md to agent",
+      "stakeholder prompt from task.user_scenario.instructions.known_info/unknown_info (NOT the StakeholderFilter)",
+      "conversation recorded by BusinessInterviewEnvironment.on_message into InterviewDB.messages",
+      "agent tools (InterviewTools) capture Observations (observe_message) and build inferred BusinessDAG",
+      "evaluator: EnvironmentEvaluator.calculate_reward -> run_env_assertion(4) -> evaluate(db, truth, spec) -> structural_pass/necessity_pass/evidence_pass/protocol",
+      "reward = product of ENV_ASSERTION checks (reward_basis=[ENV_ASSERTION])",
+      "DB-match computed but NOT in reward_basis (diagnostic only)",
+      "evaluator_metrics surfaced via tools.get_eval_diagnostics (half-duplex only)"
+    ],
+    "truth_sources": {
+      "truth_dag": "scenario.quotation_truth()/lab_sample_truth() (domain code)",
+      "evaluation_spec": "scenario.quotation_spec()/lab_sample_spec() (hidden scenario-local)",
+      "stakeholder_knowledge": "tasks.json user_scenario.instructions.known_info (NOT scenario.StakeholderFilter)",
+      "stakeholder_filter": "Scenario.stakeholder (StakeholderFilter) is constructed but NEVER applied at runtime",
+      "policy": "data/tau2/domains/business_interview/policy.md"
+    },
+    "key_integration": {
+      "registry.py": "registers get_environment/get_tasks/get_tasks_split under business_interview",
+      "cli.py": "business_interview listed as a domain",
+      "tools.assert_dag_reconstructed": "returns evaluate().structural_pass",
+      "tools.assert_necessity_handled": "returns evaluate().necessity_pass",
+      "tools.assert_evidence_backed": "returns evaluate().evidence_pass",
+      "tools.assert_finish_interview": "returns interview_complete",
+      "get_eval_diagnostics": "returns evaluate().model_dump(json) — half-duplex EnvironmentEvaluator only"
+    }
+  },
+  "active_legacy_dead_inventory": {
+    "A_active_runtime": [
+      "dag.py BusinessDAG/Node/Edge/InferredValue/Necessity/Observation/InterviewDB",
+      "evaluation.py evaluate()/all metrics/gates",
+      "scenario.py truth/spec/filters/scenarios",
+      "tools.py InterviewTools + assert_* + get_eval_diagnostics",
+      "environment.py get_environment/get_tasks/get_tasks_split/on_message",
+      "aliases.py norm_role/norm_system (used by evaluation)",
+      "concepts.py resolve_primitive (used by evaluation primitive_correctness)",
+      "stakeholder.py StakeholderFilter (data model; apply unused at runtime)"
+    ],
+    "B_active_but_legacy_shaped": [
+      "evaluation.domain_concept_correctness = node_precision (legacy-named alias; name survives from earlier concept-based design)",
+      "dag.py InterviewResult / InterviewDB.interview_result (defined; no runtime caller found — likely diagnostic-only vestige)",
+      "evaluation.primitive_correctness is 'diagnostic' (in README/tests) but primitives partly drive the tool arg; scenario specs hardcode primitive strings in tasks.json reference actions",
+      "concepts.py docstring says 'resolution returns None' but code returns 'unclassified' (doc drift)"
+    ],
+    "C_test_or_diagnostic_only": [
+      "scripts/attribute_mismatch_inventory.py (diagnostic)",
+      "scripts/wordnet_attribute_match_experiment.py (diagnostic; analysis-only)",
+      "scripts/business_interview_real_llm_smoke.py (manual exploratory)",
+      "scripts/business_interview_reeval_smoke.py (manual re-eval)",
+      "scripts/stakeholder_fidelity_classify.py (diagnostic)",
+      "scripts/update_stakeholder_fidelity_prompts.py (one-off generator for tasks.json)",
+      "tests/test_domains/test_business_interview/test_dag_business_interview.py (67 tests)",
+      "StakeholderFilter.describe() (used by tests only)"
+    ],
+    "D_apparently_dead": [
+      "aliases.value_signals() + _VALUE_VARIANTS (no caller in src/tests/scripts)",
+      "scenario.quotation_finance_filter() (no caller; finance filter never wired)",
+      "scenario.lab_sample_filter() is used via _SCENARIOS, but finance filter is dead",
+      "__pycache__/ground_truth.cpython-312.pyc, data_model.cpython-312.pyc, semantic.cpython-312.pyc (compiled leftovers of removed modules; gitignored, not tracked)",
+      "InterviewResult / interview_result() (no runtime caller)",
+      "concepts.py _PRIMITIVES entries not used by any scenario: move, notify, reconcile, record, reject, review, update (only approve/check/create/receive/send/transform used)"
+    ],
+    "E_uncertain": [
+      "aliases docstring references semantic.py and ground_truth.py which no longer exist (stale doc references a removed architecture)",
+      "dag.py v3 header vs README v5 vs evaluation v5 (version drift across files)",
+      "policy.md says 'stakeholder-truth consistency check' — no such live module (removed ground_truth.py)"
+    ]
+  },
+  "gt_stakeholder_evaluator_matrix": {
+    "quotation_workflow_1": [
+      {"fact": "r action receive request", "gt": "scenario", "stakeholder_states": "yes (record request)", "obtainable": true, "scored": true, "pass_critical": true},
+      {"fact": "r actor=sales", "gt": "scenario", "stakeholder_states": "yes (you)", "obtainable": true, "scored": true, "pass_critical": true},
+      {"fact": "r writes=[request]", "gt": "scenario", "stakeholder_states": "yes (record the request)", "obtainable": true, "scored": true, "pass_critical": true},
+      {"fact": "cc action check customer in CRM", "gt": "scenario", "stakeholder_states": "yes", "obtainable": true, "scored": true, "pass_critical": true},
+      {"fact": "cc actor=sales system=crm reads=[customer]", "gt": "scenario", "stakeholder_states": "yes", "obtainable": true, "scored": true, "pass_critical": true},
+      {"fact": "cq action create quotation in quoting system", "gt": "scenario", "stakeholder_states": "yes", "obtainable": true, "scored": true, "pass_critical": true},
+      {"fact": "cq actor=sales system=quoting reads=[customer,pricing]", "gt": "scenario", "stakeholder_states": "yes", "obtainable": true, "scored": true, "pass_critical": true},
+      {"fact": "cq writes=[quote]", "gt": "scenario", "stakeholder_states": "implied (create the quotation)", "obtainable": true, "scored": true, "pass_critical": true, "note": "quote vs quotation wording B"},
+      {"fact": "ap action approve high-value quotation", "gt": "scenario", "stakeholder_states": "yes (approval by manager for >1,000,000)", "obtainable": true, "scored": true, "pass_critical": true},
+      {"fact": "ap actor=manager", "gt": "scenario", "stakeholder_states": "yes (approval by a manager)", "obtainable": true, "scored": true, "pass_critical": true},
+      {"fact": "ap necessity rationale=credit risk", "gt": "scenario", "stakeholder_states": "yes (for credit risk management)", "obtainable": true, "scored": true, "pass_critical": true},
+      {"fact": "ap system=quoting", "gt": "scenario", "stakeholder_states": "NO (never states where approval happens)", "obtainable": false, "scored": true, "pass_critical": true, "p0": true},
+      {"fact": "ap reads=[quote]", "gt": "scenario", "stakeholder_states": "NO (never states approval reads the quote)", "obtainable": false, "scored": true, "pass_critical": true, "p0": true},
+      {"fact": "ap writes=[approval]", "gt": "scenario", "stakeholder_states": "NO (never names approval artifact)", "obtainable": false, "scored": true, "pass_critical": true, "p0": true},
+      {"fact": "sq action send quotation to customer", "gt": "scenario", "stakeholder_states": "yes", "obtainable": true, "scored": true, "pass_critical": true},
+      {"fact": "sq actor=sales system=email", "gt": "scenario", "stakeholder_states": "yes (by email)", "obtainable": true, "scored": true, "pass_critical": true},
+      {"fact": "sq reads=[quote]", "gt": "scenario", "stakeholder_states": "NO (never states send reads the quote)", "obtainable": false, "scored": true, "pass_critical": true, "p0": true},
+      {"fact": "sq writes=[sent_quote]", "gt": "scenario", "stakeholder_states": "NO (never names sent_quote artifact)", "obtainable": false, "scored": true, "pass_critical": true, "p0": true},
+      {"fact": "me action send summary at month-end", "gt": "scenario", "stakeholder_states": "yes", "obtainable": true, "scored": true, "pass_critical": true},
+      {"fact": "me actor=sales system=excel", "gt": "scenario", "stakeholder_states": "yes (Excel file)", "obtainable": true, "scored": true, "pass_critical": true},
+      {"fact": "me reads=[quote]", "gt": "scenario", "stakeholder_states": "NO (never states summary reads the quote)", "obtainable": false, "scored": true, "pass_critical": true, "p0": true},
+      {"fact": "me writes=[excel_summary]", "gt": "scenario", "stakeholder_states": "yes (summary as Excel file)", "obtainable": true, "scored": true, "pass_critical": true},
+      {"fact": "me necessity all unset", "gt": "scenario", "stakeholder_states": "yes (does not know why)", "obtainable": true, "scored": true, "pass_critical": true},
+      {"fact": "edges e1..e6 + predicates", "gt": "scenario", "stakeholder_states": "yes (flow, thresholds, month-end)", "obtainable": true, "scored": true, "pass_critical": true}
+    ],
+    "lab_sample_flow": [
+      {"fact": "4 nodes n1..n4", "gt": "scenario", "stakeholder_states": "yes", "obtainable": true, "scored": true, "pass_critical": true},
+      {"fact": "reads/writes artifacts (sample, accessioned sample, seasoned chamber, conditioned sample, batch approval)", "gt": "scenario", "stakeholder_states": "partial (artifacts mostly implied, not named)", "obtainable": "inferable", "scored": true, "pass_critical": true, "p1": true},
+      {"fact": "necessity", "gt": "scenario (none)", "stakeholder_states": "n/a", "obtainable": true, "scored": true, "pass_critical": false, "note": "necessity_correctness=1.0 trivially since no GT necessity"},
+      {"fact": "system environment chamber for n2/n3", "gt": "scenario", "stakeholder_states": "yes", "obtainable": true, "scored": true, "pass_critical": true}
+    ]
+  },
+  "reads_writes_findings": {
+    "current_meaning": "Reads/writes are free-text lists of data artifacts (InferredValue) per node, scored by _data_recall: a hit if any raw token overlaps OR truth value is a substring of the agent value (any single shared token suffices).",
+    "quote_vs_quotation": "B evaluator-too-strict: no shared token, 'quote' not substring of 'quotation' -> miss. Documented in wordnet experiment.",
+    "sent_quote": "GT write artifact never named by stakeholder; agent leaves empty (or 'quotation') -> C modeling + B wording. sq.writes=[sent_quote] is P0-unobtainable.",
+    "approval": "GT write artifact (ap.writes=[approval]) and read (ap.reads=[quote]) never stated; system=quoting never stated -> P0.",
+    "excel_summary": "stakeholder states summary as Excel file; agent 'summary of quotation information' matches via 'summary' token -> largely recoverable; empty in runs 02/04 = A genuine miss.",
+    "request": "stakeholder states 'record the request'; agent often leaves r.writes empty -> A/C.",
+    "ambiguity": [
+      "read/write semantics are only loosely defined (data artifacts as free text); no ontology -> matching relies on raw token overlap",
+      "_data_recall is lenient (any single token) while _match_nodes requires >=2 significant tokens (inconsistent thresholds)"
+    ]
+  },
+  "matching_responsibility_map": {
+    "node_matching": "evaluation._match_nodes — scenario-local via spec.expressions; >=2 sig tokens or whole-expression substring; greedy by (overlap, bonus); bonus from norm_role/norm_system. Risk: quote/quotation, paraphrases miss; any single-token weak match rejected.",
+    "role_normalization": "aliases.norm_role — scenario-global alias table (sales/manager). Risk: first-person 'I (the stakeholder)' not aliased -> miss (B).",
+    "system_normalization": "aliases.norm_system — global (crm/quoting/email/excel). Risk: 'quoting system' vs 'quoting' ok; 'CRM' ok.",
+    "reads_writes": "evaluation._data_recall — raw token overlap OR substring; lenient single-token threshold. Risk: quote/quotation miss; false positives from single shared token (e.g. customer).",
+    "predicates": "evaluation._predicate_ok — _PREDICATE_STOP drops amount/quote/quotation/digits; token overlap or substring over spec.predicate_expressions. Risk: numeric thresholds, 'over 1,000,000' variants.",
+    "necessity": "evaluation._necessity_value_ok — substring/token overlap over spec.necessity_expressions; requires asserted (confidence>0).",
+    "primitive_resolution": "concepts.resolve_primitive — global generic primitives, returns 'unclassified' if unknown; diagnostic only. Note docstring says 'returns None'.",
+    "evaluation_spec_expressions": "scenario.quotation_spec/lab_sample_spec — scenario-local hidden aliases for node/predicate/necessity matching.",
+    "evidence_hygiene": "evaluation._evidence_metrics — only checks observation references are real & authentic; does NOT check semantic support."
+  },
+  "real_run_mismatch_review": {
+    "source": "artifacts/business_interview_real_llm (seeds 4000-4004)",
+    "all_5_reward_0": "structural_pass=False in all 5 runs; reward_basis=[ENV_ASSERTION] so reward=0",
+    "classification_counts": {"A_genuine_agent_error": 4, "B_evaluator_too_strict": 22, "C_truth_or_modeling_issue": 16, "D_information_not_obtained": 8, "E_ambiguous": 0},
+    "confirmations": [
+      "quote vs quotation (B) still the dominant evaluator-too-strict pattern; still unscored by current _data_recall",
+      "ap system=quoting left None (D) — stakeholder never states it; confirmed P0-unobtainable",
+      "ap/sq reads=[quote] left empty (D) — never stated; confirmed P0",
+      "writes sent_quote/approval not recorded (C modeling) — confirmed",
+      "actor 'I (the stakeholder)' vs sales (B, norm_role gap) — confirmed; not a WordNet/lexical issue",
+      "month-end excel_summary empty in runs 02/04 (A genuine miss) — confirmed"
+    ],
+    "meaningful_change": "None observed: all 50 mismatches reconfirm the documented A/B/C/D split; no reclassification needed."
+  },
+  "invariants": {
+    "real_current_invariants": [
+      "open-world free-text actions (no fixed domain ontology required of agent)",
+      "same BusinessDAG class for Truth and inferred DAG",
+      "authentic Observation provenance (observe_message only; text immutable from ledger)",
+      "unknown facts remain unknown (confidence 0 / unset; unclassified primitive is valid)",
+      "deterministic evaluation (no embeddings/LLM judge; no random)",
+      "hidden scenario-local EvaluationSpec (evaluator-only scoring aid)",
+      "optional generic primitives; 'unclassified' is valid open-world state",
+      "evidence hygiene checks only that references are real/authentic, not semantic support",
+      "conditional branches = edges with predicates (no Branch class)",
+      "necessity is a node property (rationale/owner/evidence/removal_impact)"
+    ],
+    "accidental_legacy": [
+      "StakeholderFilter.apply() never used at runtime (stakeholder prompt comes from tasks.json known_info) — dead-ish modeling layer",
+      "domain_concept_correctness name (legacy concept-era alias for node_precision)",
+      "concepts.py docstring 'returns None' vs actual 'unclassified'",
+      "aliases.py references removed semantic.py/ground_truth.py modules",
+      "InterviewResult / interview_result() with no runtime caller",
+      "version headers drift (dag v3, evaluation v5, concepts v4, README v5)"
+    ]
+  },
+  "test_baseline": {
+    "command": "uv run pytest tests/test_domains/test_business_interview/",
+    "result": "67 passed, 2 warnings",
+    "note": "No production behavior or tests changed."
+  },
+  "prioritized_findings": {
+    "P0_unfair_or_impossible_contract": [
+      "approval node ap.system='quoting' is scored pass-critical but the stakeholder never states where approval happens -> unobtainable",
+      "ap.reads=[quote] scored pass-critical, never stated",
+      "ap.writes=[approval] scored pass-critical, never stated",
+      "sq.reads=[quote] and sq.writes=[sent_quote] scored pass-critical, never stated",
+      "me.reads=[quote] scored pass-critical, never stated",
+      "A faithful agent recording only known_info fails structural_pass (verified experimentally) -> reward 0 despite correct interviewing",
+      "These force the agent to either fabricate (violating policy 'record only what the interviewee states') or fail."
+    ],
+    "P1_materially_distorts_scoring": [
+      "quote/quotation evaluator-too-strict (B, 22 cases) masks real agent skill; any run with 'quotation' wording for 'quote' is penalized",
+      "actor 'I (the stakeholder)' vs 'sales' not aliased (norm_role first-person gap) -> 10 B cases",
+      "lab reads/writes artifact names (accessioned sample, seasoned chamber, conditioned sample, batch approval) are mostly implied not stated -> agent must guess",
+      "reward is a hard AND-gate product: any single attribute mismatch zeroes reward -> no partial credit, amplifies P0/P1"
+    ],
+    "P2_architectural_debt": [
+      "StakeholderFilter is constructed and stored in Scenario but never applied at runtime (dead modeling layer); stakeholder knowledge actually lives in tasks.json known_info, creating two sources of truth that can drift",
+      "primitives partially hardcoded in tasks.json reference actions AND computed by concepts.resolve_primitive (duplicated responsibility)",
+      "_data_recall (any 1 token) vs _match_nodes (>=2 sig tokens) threshold inconsistency",
+      "get_eval_diagnostics only wired for half-duplex (full-duplex path doesn't surface domain metrics)",
+      "evaluator_metrics/truth_dag/evaluation_spec_hidden serialized into real-run artifacts (analysis convenience, but spec is 'hidden')"
+    ],
+    "P3_cleanup_or_docs": [
+      "dead code: value_signals/_VALUE_VARIANTS, quotation_finance_filter, InterviewResult/interview_result, unused primitives (move/notify/reconcile/record/reject/review/update)",
+      "stale docs: aliases references semantic.py/ground_truth.py; concepts docstring 'returns None'; version header drift (v3/v4/v5); README says v5",
+      "gitignored __pycache__ leftovers of removed modules (ground_truth/data_model/semantic) — harmless but confusing"
+    ]
+  },
+  "recommended_next_goal": "Make the benchmark contract fair: (1) either surface the currently-unobtainable GT facts (ap.system, ap/sq/me reads, ap/sq writes) in the stakeholder known_info or drop them from the GT / mark them unclassified/optional, and (2) relax the hard AND-gate reward so a single synonym/actor mismatch doesn't zero the score (or fix the quote/quotation + first-person aliasing). Do this as a dedicated follow-up goal with tests; do NOT implement it here."
+}
