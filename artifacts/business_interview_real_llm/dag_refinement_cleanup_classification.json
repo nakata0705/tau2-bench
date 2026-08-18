@@ -1,0 +1,97 @@
+{
+  "scenario": "quotation_workflow_1",
+  "models": {
+    "interview_agent": "deepseek/deepseek-chat (deepseek-v4-flash)",
+    "stakeholder": "deepseek/deepseek-chat (deepseek-v4-flash)"
+  },
+  "prompt_version": "DAG refinement / cleanup policy (working hypothesis, remove_node, validate_dag, finish validation)",
+  "method": "post-hoc analysis of the 5 DeepSeek smoke runs (seeds 4000-4004) from the saved artifacts.",
+  "runs": {
+    "run_00_seed4000": {
+      "termination": "user_stop",
+      "dag_valid": true,
+      "validation_errors": [],
+      "obsolete_coarse_node_remaining": false,
+      "remove_node_calls": 1,
+      "validate_dag_calls": 2,
+      "finish_rejections": 0,
+      "tool_errors": 0,
+      "node_recall": 0.83,
+      "node_precision": 0.71,
+      "edge_recall": 0.67,
+      "edge_precision": 0.62,
+      "quality_pass": false
+    },
+    "run_01_seed4001": {
+      "termination": "user_stop",
+      "dag_valid": true,
+      "validation_errors": [],
+      "obsolete_coarse_node_remaining": false,
+      "remove_node_calls": 1,
+      "validate_dag_calls": 2,
+      "finish_rejections": 0,
+      "tool_errors": 0,
+      "node_recall": 1.0,
+      "node_precision": 0.86,
+      "edge_recall": 1.0,
+      "edge_precision": 0.86,
+      "quality_pass": false
+    },
+    "run_02_seed4002": {
+      "termination": "user_stop",
+      "dag_valid": true,
+      "validation_errors": [],
+      "obsolete_coarse_node_remaining": false,
+      "remove_node_calls": 1,
+      "validate_dag_calls": 4,
+      "finish_rejections": 0,
+      "tool_errors": 0,
+      "node_recall": 1.0,
+      "node_precision": 0.86,
+      "edge_recall": 1.0,
+      "edge_precision": 0.86,
+      "quality_pass": false
+    },
+    "run_03_seed4003": {
+      "termination": "user_stop",
+      "dag_valid": true,
+      "validation_errors": [],
+      "obsolete_coarse_node_remaining": false,
+      "remove_node_calls": 1,
+      "validate_dag_calls": 2,
+      "finish_rejections": 0,
+      "tool_errors": 0,
+      "node_recall": 0.83,
+      "node_precision": 0.83,
+      "edge_recall": 0.83,
+      "edge_precision": 0.83,
+      "quality_pass": false
+    },
+    "run_04_seed4004": {
+      "termination": "user_stop",
+      "dag_valid": true,
+      "validation_errors": [],
+      "obsolete_coarse_node_remaining": false,
+      "remove_node_calls": 1,
+      "validate_dag_calls": 3,
+      "finish_rejections": 0,
+      "tool_errors": 0,
+      "node_recall": 1.0,
+      "node_precision": 0.86,
+      "edge_recall": 1.0,
+      "edge_precision": 0.88,
+      "quality_pass": false
+    }
+  },
+  "summary": {
+    "dag_valid": "5/5",
+    "validation_errors": "none in any run",
+    "obsolete_coarse_node_remaining": "0/5",
+    "remove_node_used": "5/5",
+    "validate_dag_used": "5/5",
+    "finish_rejections": "0/5 (agents validated proactively; self-repair covered by unit test)",
+    "tool_errors": "0/5",
+    "stakeholder_fidelity_preserved": "unsupported_fact 0/5, false denial 0/5, approval + month-end disclosed appropriately"
+  },
+  "note": "quality_pass remains False because structural_pass also requires exact actor/system/read/write correctness vs the hidden Ground Truth (out of scope here); the DAG-cleanup objective (valid final DAG, no obsolete/unreachable nodes) is met."
+}

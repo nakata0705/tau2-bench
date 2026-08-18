@@ -54,12 +54,14 @@ resolver; they live in the hidden `EvaluationSpec`.
 | `observe_message(message_id)` | **Capture** a stakeholder message by id (e.g. `sm_3`) as an authentic Observation (idempotent) |
 | `add_node(node_id, action, primitive?, ...)` | Add a node (action is open-world free text; primitive is optional) |
 | `update_node(node_id, ...)` | Update an existing node's attributes / evidence |
+| `remove_node(node_id)` | Remove a node and its incident edges (drop obsolete / superseded coarse nodes) |
 | `attach_observation(node_id, observation_id)` | Attach an observation to a node (multiple per node) |
 | `add_edge(edge_id, from_node, to_node, predicate?)` | Add a directed edge (predicate = condition) |
 | `update_edge(edge_id, ...)` | Update an edge |
 | `set_node_necessity(node_id, rationale?, owner?, ..., *_confidence?, observation_id?)` | Record why a node is needed (node property, per-property confidence) |
 | `set_dag_endpoints(start_node_id?, end_node_ids?)` | Set the start and end nodes |
-| `finish_interview(summary?)` | Close the interview |
+| `validate_dag()` | Review the DAG's internal structural consistency (no GT reference) |
+| `finish_interview(summary?)` | Close the interview (rejects a structurally invalid DAG) |
 
 ## Evaluation (`evaluation.py`)
 

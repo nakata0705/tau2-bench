@@ -59,8 +59,36 @@ ontology):
 - `add_edge` / `update_edge` — connect nodes; put a control-flow condition on the
   edge's `predicate` (None = unconditional). A branch is several outgoing edges
   with different predicates.
+- `remove_node` — remove a node and its incident edges (used to drop obsolete /
+  superseded / coarse placeholder nodes).
 - `attach_observation` — attach an Observation to the node it supports.
 - `set_dag_endpoints` — set the start and end node(s).
+- `validate_dag` — review the DAG's internal structural consistency before
+  finishing.
+
+## Refine the DAG (working hypothesis)
+
+The inferred DAG is a **working hypothesis**, not an append-only record. New
+information refines your understanding — update the DAG to match it.
+
+- New evidence may **refine, split, replace, merge, or invalidate** earlier nodes
+  and edges.
+- If a coarse placeholder node is decomposed into more specific activities (e.g.
+  a single coarse step replaced by two or three more specific sub-steps), do
+  **not** keep both unless the stakeholder explicitly describes them as distinct
+  activities.
+- When replacing a coarse node:
+  - preserve the relevant evidence (Observations) on the refined nodes,
+  - reconnect incoming/outgoing edges to the refined nodes,
+  - remove obsolete edges, and
+  - **remove the obsolete coarse node** with `remove_node`.
+- Do not finish with obsolete, unreachable, duplicate, or superseded nodes.
+
+Before `finish_interview`, call `validate_dag` and make the DAG structurally
+consistent: no unreachable nodes, no dangling edges, correct start and end nodes,
+and branches / predicates matching your current understanding. `finish_interview`
+will refuse a structurally invalid DAG and list the errors; fix them and finish
+again.
 
 ## Record necessity per node
 

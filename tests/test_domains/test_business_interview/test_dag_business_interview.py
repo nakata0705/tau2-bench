@@ -1085,6 +1085,21 @@ def test_arbitrary_ids_and_reasonable_paraphrase_match():
     ]
     for nid, action in node_data:
         _add_node(tools, nid, action)
+    # Build a structurally valid DAG so finish_interview (which validates)
+    # succeeds: n0 -> n1 -> n2; n2 -> n3 -> n4 (approval -> send);
+    # n2 -> n4 (direct send) and n2 -> n5 (month-end summary).
+    for eid, frm, to, pred in [
+        ("z1", "n0", "n1", None),
+        ("z2", "n1", "n2", None),
+        ("z3", "n2", "n3", "amount over 1,000,000"),
+        ("z4", "n2", "n4", "amount at or below 1,000,000"),
+        ("z5", "n3", "n4", None),
+        ("z6", "n2", "n5", "month-end"),
+    ]:
+        args = {"edge_id": eid, "from_node": frm, "to_node": to}
+        if pred:
+            args["predicate"] = pred
+        tools.add_edge(**args)
     tools.set_dag_endpoints(start_node_id="n0", end_node_ids=["n4", "n5"])
     tools.finish_interview()
     res = _eval(tools)
@@ -1282,3 +1297,154 @@ def test_observation_capture_survives_set_state_replay():
     assert "Second stakeholder statement." in texts
     assert oid1 in {o.id for o in replay.tools.db.observations}
     assert oid2 in {o.id for o in replay.tools.db.observations}
+
+
+# ---------------------------------------------------------------------------
+# DAG refinement / cleanup (working hypothesis, no obsolete coarse nodes)
+# ---------------------------------------------------------------------------
+
+
+def test_remove_node_after_decomposition_leaves_no_dangling_edge():
+    tools = _tools()
+    tools.start_inference("q")
+    tools.add_node("prepare_quotation", "prepare the quotation")
+    tools.add_node("record_request", "record the quotation request")
+    tools.add_node("check_customer", "check the customer in the CRM")
+    tools.add_node("create_quotation", "create the quotation")
+    tools.add_edge("e1", "prepare_quotation", "check_customer")
+    tools.add_edge("e2", "check_customer", "create_quotation")
+    # decompose the coarse node and remove it
+    tools.remove_node("prepare_quotation")
+    assert "prepare_quotation" not in tools.db.dag.nodes
+    # the incident edge e1 is removed; e2 (between remaining nodes) survives
+    assert "e1" not in tools.db.dag.edges
+    assert "e2" in tools.db.dag.edges
+    # no dangling edge references the removed node
+    for e in tools.db.dag.edges.values():
+        assert e.from_node != "prepare_quotation"
+        assert e.to_node != "prepare_quotation"
+
+
+def test_remove_node_keeps_observations_and_provenance():
+    tools = _tools()
+    tools.start_inference("q")
+    _ingest(tools, "user", "We prepare the quotation by hand.")
+    oid = tools.observe_message("sm_1")
+    tools.add_node("coarse", "prepare the quotation", observation_id=oid)
+    # attach the same observation to a surviving node too
+    tools.add_node("fine", "record the request")
+    tools.attach_observation("fine", oid)
+    tools.remove_node("coarse")
+    # the Observation itself is kept, and its provenance on the surviving node
+    # is preserved
+    assert any(o.id == oid for o in tools.db.observations)
+    assert oid in tools.db.dag.nodes["fine"].observation_ids
+    assert "coarse" not in tools.db.dag.nodes
+
+
+def test_remove_node_nonexistent_rejected():
+    tools = _tools()
+    tools.start_inference("q")
+    with pytest.raises(ValueError):
+        tools.remove_node("does_not_exist")
+
+
+def test_finish_rejects_unreachable_node():
+    tools = _tools()
+    tools.start_inference("q")
+    tools.add_node("a", "start")
+    tools.add_node("b", "end")
+    tools.add_edge("e1", "a", "b")
+    tools.add_node("orphan", "orphan step")  # unreachable
+    tools.set_dag_endpoints(start_node_id="a", end_node_ids=["b"])
+    with pytest.raises(ValueError) as ei:
+        tools.finish_interview()
+    assert "unreachable node: orphan" in str(ei.value)
+    assert tools.db.interview_complete is False
+
+
+def test_finish_accepts_valid_dag():
+    tools = _tools()
+    tools.start_inference("q")
+    tools.add_node("a", "start")
+    tools.add_node("b", "end")
+    tools.add_edge("e1", "a", "b")
+    tools.set_dag_endpoints(start_node_id="a", end_node_ids=["b"])
+    tools.finish_interview()
+    assert tools.db.interview_complete is True
+
+
+def test_finish_rejection_then_fix_and_refinish():
+    tools = _tools()
+    tools.start_inference("q")
+    tools.add_node("a", "start")
+    tools.add_node("b", "end")
+    tools.add_node("orphan", "orphan step")
+    tools.add_edge("e1", "a", "b")
+    tools.set_dag_endpoints(start_node_id="a", end_node_ids=["b"])
+    with pytest.raises(ValueError):
+        tools.finish_interview()
+    # fix by removing the orphan, then finish again
+    tools.remove_node("orphan")
+    tools.finish_interview()
+    assert tools.db.interview_complete is True
+
+
+def test_validate_dag_reports_structural_errors_then_clean():
+    tools = _tools()
+    tools.start_inference("q")
+    tools.add_node("a", "start")
+    tools.add_node("b", "end")
+    tools.add_edge("e1", "a", "b")
+    # start not declared yet -> invalid
+    assert "start_node_id must be set" in tools.validate_dag()
+    tools.set_dag_endpoints(start_node_id="a", end_node_ids=["b"])
+    assert tools.validate_dag() == "DAG is structurally valid."
+
+
+def test_coarse_node_refinement_end_to_end_valid():
+    """Reproduce the smoke failure: coarse receive->prepare->send refined into
+    receive->record->check->create->send, removing the coarse prepare node, so
+    the final DAG is valid and contains no obsolete node."""
+    tools = _tools()
+    tools.start_inference("q")
+    for nid, action in [
+        ("receive_request", "receive quotation request"),
+        ("prepare_quotation", "prepare the quotation"),
+        ("send_quotation", "send quotation to customer"),
+    ]:
+        tools.add_node(nid, action)
+    tools.add_edge("e1", "receive_request", "prepare_quotation")
+    tools.add_edge("e2", "prepare_quotation", "send_quotation")
+    # detailed interview reveals sub-steps; add them
+    for nid, action in [
+        ("record_request", "record the request"),
+        ("check_customer", "check customer in the CRM"),
+        ("create_quotation", "create quotation in the quoting system"),
+    ]:
+        tools.add_node(nid, action)
+    # reconnect around the refined sub-steps
+    tools.add_edge("e3", "receive_request", "record_request")
+    tools.add_edge("e4", "record_request", "check_customer")
+    tools.add_edge("e5", "check_customer", "create_quotation")
+    tools.add_edge("e6", "create_quotation", "send_quotation")
+    # remove the now-obsolete coarse node (and its incident edges e1/e2)
+    tools.remove_node("prepare_quotation")
+    tools.set_dag_endpoints(
+        start_node_id="receive_request", end_node_ids=["send_quotation"]
+    )
+    # no obsolete / unreachable nodes; finish succeeds
+    assert tools.validate_dag() == "DAG is structurally valid."
+    tools.finish_interview()
+    assert tools.db.interview_complete is True
+    assert "prepare_quotation" not in tools.db.dag.nodes
+    assert all(
+        nid in tools.db.dag.nodes
+        for nid in [
+            "receive_request",
+            "record_request",
+            "check_customer",
+            "create_quotation",
+            "send_quotation",
+        ]
+    )

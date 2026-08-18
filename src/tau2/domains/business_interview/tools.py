@@ -332,6 +332,56 @@ class InterviewTools(ToolKitBase):
         return f"Updated node {node_id}."
 
     @is_tool(ToolType.WRITE)
+    def remove_node(self, node_id: str) -> str:
+        """Remove a node and its incident edges from the inferred DAG.
+
+        The DAG is a working hypothesis, not an append-only record: you may
+        remove a coarse placeholder node once you have decomposed it into more
+        specific activities (e.g. a single ``coarse_step`` replaced by
+        ``step_a`` -> ``step_b`` -> ``step_c``).
+
+        This also removes every edge that connects to the node (incoming or
+        outgoing), so no dangling edge is left behind. If the removed node was
+        the declared start or an end node, that endpoint reference is cleared
+        (re-set it afterwards with ``set_dag_endpoints``). The stakeholder
+        Observations themselves are kept — the node's evidence provenance on
+        other nodes is unaffected.
+
+        Args:
+            node_id: The node to remove.
+
+        Returns:
+            A confirmation message listing what was removed.
+
+        Raises:
+            ValueError: If the node does not exist.
+        """
+        dag = self._dag()
+        if node_id not in dag.nodes:
+            raise ValueError(f"node not found: {node_id}")
+        removed_edges = sorted(
+            eid
+            for eid, e in dag.edges.items()
+            if e.from_node == node_id or e.to_node == node_id
+        )
+        for eid in removed_edges:
+            del dag.edges[eid]
+        touched_endpoint = False
+        if dag.start_node_id == node_id:
+            dag.start_node_id = None
+            touched_endpoint = True
+        if node_id in dag.end_node_ids:
+            dag.end_node_ids = [e for e in dag.end_node_ids if e != node_id]
+            touched_endpoint = True
+        del dag.nodes[node_id]
+        parts = [f"Removed node {node_id}."]
+        if removed_edges:
+            parts.append(f"Removed incident edges: {', '.join(removed_edges)}.")
+        if touched_endpoint:
+            parts.append("The removed node was a declared endpoint; re-set it.")
+        return " ".join(parts)
+
+    @is_tool(ToolType.WRITE)
     def set_node_necessity(
         self,
         node_id: str,
@@ -525,9 +575,53 @@ class InterviewTools(ToolKitBase):
             dag.end_node_ids = list(end_node_ids)
         return "Set DAG endpoints."
 
+    @is_tool(ToolType.READ)
+    def validate_dag(self) -> str:
+        """Validate the inferred DAG's **internal** structural consistency.
+
+        Reports only self-consistency problems (unreachable nodes, dangling
+        edges, invalid start/end, cycles, ...), never the hidden Ground Truth.
+        Call this to review the final structure before ``finish_interview``.
+
+        Returns:
+            The validation result (or the list of structural errors).
+        """
+        dag = self._dag()
+        if not dag.nodes:
+            return "No DAG nodes yet. Call start_inference to begin."
+        errors = dag.validate()
+        if not errors:
+            return "DAG is structurally valid."
+        return "DAG validation errors:\n- " + "\n- ".join(errors)
+
     @is_tool(ToolType.WRITE)
     def finish_interview(self, summary: Optional[str] = None) -> str:
-        """Mark the interview complete."""
+        """Mark the interview complete.
+
+        Refuses to finish a structurally invalid DAG (unreachable nodes, dangling
+        edges, invalid start/end, cycles, ...). The reported errors are only about
+        the DAG's own internal consistency — never about the hidden Ground Truth.
+        Fix the issues and call this again to finish.
+
+        Args:
+            summary: Optional summary of what was captured.
+
+        Returns:
+            A confirmation message.
+
+        Raises:
+            ValueError: If no DAG was built, or the DAG is structurally invalid.
+        """
+        dag = self._dag()
+        if not dag.nodes:
+            raise ValueError(
+                "Cannot finish: no DAG has been built yet. Call start_inference first."
+            )
+        errors = dag.validate()
+        if errors:
+            raise ValueError(
+                "Cannot finish: DAG is structurally invalid.\n- " + "\n- ".join(errors)
+            )
         self.db.interview_complete = True
         if summary:
             self.db.summary = summary
