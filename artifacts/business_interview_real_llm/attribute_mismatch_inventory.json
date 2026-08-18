@@ -1,0 +1,1613 @@
+[
+  {
+    "run": "run_00_seed4000.json",
+    "termination": "user_stop",
+    "mapping": {
+      "check_customer_info": "cc",
+      "create_quotation": "cq",
+      "month_end_summary": "me",
+      "send_quotation": "sq",
+      "record_request": "r"
+    },
+    "unmatched_truth": [
+      "ap"
+    ],
+    "node_analyses": [
+      {
+        "agent_node": "check_customer_info",
+        "truth_node": "cc",
+        "action_agent": "Check the customer's information in the CRM",
+        "action_truth": "check customer information in the CRM",
+        "actor": {
+          "truth": "sales",
+          "agent": "I (the stakeholder)",
+          "norm_truth": "sales",
+          "norm_agent": "i (the stakeholder)",
+          "hit": false,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ],
+          "node_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        },
+        "system": {
+          "truth": "crm",
+          "agent": "CRM",
+          "norm_truth": "crm",
+          "norm_agent": "crm",
+          "hit": true,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ],
+          "node_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "customer"
+          ],
+          "agent": [
+            "customer information"
+          ],
+          "hit": 1.0,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        },
+        "writes": {
+          "truth": [],
+          "agent": [],
+          "hit": 1.0,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        }
+      },
+      {
+        "agent_node": "create_quotation",
+        "truth_node": "cq",
+        "action_agent": "Create the quotation in the quoting system using customer and pricing information",
+        "action_truth": "create quotation in the quoting system",
+        "actor": {
+          "truth": "sales",
+          "agent": "I (the stakeholder)",
+          "norm_truth": "sales",
+          "norm_agent": "i (the stakeholder)",
+          "hit": false,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ],
+          "node_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email.",
+            "I don’t know what happens if customer information is missing—that’s not something I’ve dealt with or been told about. As for pricing information, I use the pricing information that’s available in the quoting system when I create the quotation.\n\nThere is one special case, though: if the quotation is over 1,000,000 yen, it needs approval from a manager before I can send it to the customer. That approval is for credit risk management."
+          ]
+        },
+        "system": {
+          "truth": "quoting",
+          "agent": "quoting system",
+          "norm_truth": "quoting",
+          "norm_agent": "quoting",
+          "hit": true,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ],
+          "node_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email.",
+            "I don’t know what happens if customer information is missing—that’s not something I’ve dealt with or been told about. As for pricing information, I use the pricing information that’s available in the quoting system when I create the quotation.\n\nThere is one special case, though: if the quotation is over 1,000,000 yen, it needs approval from a manager before I can send it to the customer. That approval is for credit risk management."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "customer",
+            "pricing"
+          ],
+          "agent": [
+            "customer information",
+            "pricing information from the quoting system"
+          ],
+          "hit": 1.0,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email.",
+            "I don’t know what happens if customer information is missing—that’s not something I’ve dealt with or been told about. As for pricing information, I use the pricing information that’s available in the quoting system when I create the quotation.\n\nThere is one special case, though: if the quotation is over 1,000,000 yen, it needs approval from a manager before I can send it to the customer. That approval is for credit risk management."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "quote"
+          ],
+          "agent": [
+            "quotation"
+          ],
+          "hit": 0.0,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email.",
+            "I don’t know what happens if customer information is missing—that’s not something I’ve dealt with or been told about. As for pricing information, I use the pricing information that’s available in the quoting system when I create the quotation.\n\nThere is one special case, though: if the quotation is over 1,000,000 yen, it needs approval from a manager before I can send it to the customer. That approval is for credit risk management."
+          ]
+        }
+      },
+      {
+        "agent_node": "month_end_summary",
+        "truth_node": "me",
+        "action_agent": "Send a summary of the quotation information to the Accounting team as an Excel file",
+        "action_truth": "send quotation summary to accounting at month-end",
+        "actor": {
+          "truth": "sales",
+          "agent": "I (the stakeholder)",
+          "norm_truth": "sales",
+          "norm_agent": "i (the stakeholder)",
+          "hit": false,
+          "agent_evidence": [
+            "Receiving the quotation request from the customer is what starts the whole process—without it, there wouldn’t be anything to prepare. I don’t know what would happen if that step didn’t happen, since it’s always how the process begins.\n\nAs for anything else about the process—there is one more thing. At month-end, I send a summary of the quotation information to the Accounting team as an Excel file. That’s separate from the normal quotation flow. I don’t know why that month-end step is done; nobody ever told me the reason, and there’s no documentation. I have only a vague impression that Accounting needs it, but I’m not sure."
+          ],
+          "node_evidence": [
+            "Receiving the quotation request from the customer is what starts the whole process—without it, there wouldn’t be anything to prepare. I don’t know what would happen if that step didn’t happen, since it’s always how the process begins.\n\nAs for anything else about the process—there is one more thing. At month-end, I send a summary of the quotation information to the Accounting team as an Excel file. That’s separate from the normal quotation flow. I don’t know why that month-end step is done; nobody ever told me the reason, and there’s no documentation. I have only a vague impression that Accounting needs it, but I’m not sure."
+          ]
+        },
+        "system": {
+          "truth": "excel",
+          "agent": "Excel",
+          "norm_truth": "excel",
+          "norm_agent": "excel",
+          "hit": true,
+          "agent_evidence": [
+            "Receiving the quotation request from the customer is what starts the whole process—without it, there wouldn’t be anything to prepare. I don’t know what would happen if that step didn’t happen, since it’s always how the process begins.\n\nAs for anything else about the process—there is one more thing. At month-end, I send a summary of the quotation information to the Accounting team as an Excel file. That’s separate from the normal quotation flow. I don’t know why that month-end step is done; nobody ever told me the reason, and there’s no documentation. I have only a vague impression that Accounting needs it, but I’m not sure."
+          ],
+          "node_evidence": [
+            "Receiving the quotation request from the customer is what starts the whole process—without it, there wouldn’t be anything to prepare. I don’t know what would happen if that step didn’t happen, since it’s always how the process begins.\n\nAs for anything else about the process—there is one more thing. At month-end, I send a summary of the quotation information to the Accounting team as an Excel file. That’s separate from the normal quotation flow. I don’t know why that month-end step is done; nobody ever told me the reason, and there’s no documentation. I have only a vague impression that Accounting needs it, but I’m not sure."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "quote"
+          ],
+          "agent": [
+            "quotation information"
+          ],
+          "hit": 0.0,
+          "agent_evidence": [
+            "Receiving the quotation request from the customer is what starts the whole process—without it, there wouldn’t be anything to prepare. I don’t know what would happen if that step didn’t happen, since it’s always how the process begins.\n\nAs for anything else about the process—there is one more thing. At month-end, I send a summary of the quotation information to the Accounting team as an Excel file. That’s separate from the normal quotation flow. I don’t know why that month-end step is done; nobody ever told me the reason, and there’s no documentation. I have only a vague impression that Accounting needs it, but I’m not sure."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "excel_summary"
+          ],
+          "agent": [
+            "summary of quotation information"
+          ],
+          "hit": 1.0,
+          "agent_evidence": [
+            "Receiving the quotation request from the customer is what starts the whole process—without it, there wouldn’t be anything to prepare. I don’t know what would happen if that step didn’t happen, since it’s always how the process begins.\n\nAs for anything else about the process—there is one more thing. At month-end, I send a summary of the quotation information to the Accounting team as an Excel file. That’s separate from the normal quotation flow. I don’t know why that month-end step is done; nobody ever told me the reason, and there’s no documentation. I have only a vague impression that Accounting needs it, but I’m not sure."
+          ]
+        }
+      },
+      {
+        "agent_node": "send_quotation",
+        "truth_node": "sq",
+        "action_agent": "Send the quotation to the customer by email",
+        "action_truth": "send quotation to customer",
+        "actor": {
+          "truth": "sales",
+          "agent": "I (the stakeholder)",
+          "norm_truth": "sales",
+          "norm_agent": "i (the stakeholder)",
+          "hit": false,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ],
+          "node_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email.",
+            "I don’t know what happens if customer information is missing—that’s not something I’ve dealt with or been told about. As for pricing information, I use the pricing information that’s available in the quoting system when I create the quotation.\n\nThere is one special case, though: if the quotation is over 1,000,000 yen, it needs approval from a manager before I can send it to the customer. That approval is for credit risk management.",
+            "I’m not sure what happens if the manager doesn’t approve the quotation—I’ve never been told about that, and I don’t have any information about it. In the normal flow, once the manager approves, I send the quotation to the customer by email."
+          ]
+        },
+        "system": {
+          "truth": "email",
+          "agent": "email",
+          "norm_truth": "email",
+          "norm_agent": "email",
+          "hit": true,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ],
+          "node_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email.",
+            "I don’t know what happens if customer information is missing—that’s not something I’ve dealt with or been told about. As for pricing information, I use the pricing information that’s available in the quoting system when I create the quotation.\n\nThere is one special case, though: if the quotation is over 1,000,000 yen, it needs approval from a manager before I can send it to the customer. That approval is for credit risk management.",
+            "I’m not sure what happens if the manager doesn’t approve the quotation—I’ve never been told about that, and I don’t have any information about it. In the normal flow, once the manager approves, I send the quotation to the customer by email."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "quote"
+          ],
+          "agent": [
+            "quotation"
+          ],
+          "hit": 0.0,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email.",
+            "I don’t know what happens if customer information is missing—that’s not something I’ve dealt with or been told about. As for pricing information, I use the pricing information that’s available in the quoting system when I create the quotation.\n\nThere is one special case, though: if the quotation is over 1,000,000 yen, it needs approval from a manager before I can send it to the customer. That approval is for credit risk management.",
+            "I’m not sure what happens if the manager doesn’t approve the quotation—I’ve never been told about that, and I don’t have any information about it. In the normal flow, once the manager approves, I send the quotation to the customer by email."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "sent_quote"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email.",
+            "I don’t know what happens if customer information is missing—that’s not something I’ve dealt with or been told about. As for pricing information, I use the pricing information that’s available in the quoting system when I create the quotation.\n\nThere is one special case, though: if the quotation is over 1,000,000 yen, it needs approval from a manager before I can send it to the customer. That approval is for credit risk management.",
+            "I’m not sure what happens if the manager doesn’t approve the quotation—I’ve never been told about that, and I don’t have any information about it. In the normal flow, once the manager approves, I send the quotation to the customer by email."
+          ]
+        }
+      },
+      {
+        "agent_node": "record_request",
+        "truth_node": "r",
+        "action_agent": "Record the quotation request",
+        "action_truth": "receive quotation request",
+        "actor": {
+          "truth": "sales",
+          "agent": "I (the stakeholder)",
+          "norm_truth": "sales",
+          "norm_agent": "i (the stakeholder)",
+          "hit": false,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ],
+          "node_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        },
+        "system": {
+          "truth": null,
+          "agent": null,
+          "norm_truth": "",
+          "norm_agent": "",
+          "hit": true,
+          "agent_evidence": [],
+          "node_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        },
+        "reads": {
+          "truth": [],
+          "agent": [],
+          "hit": 1.0,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "request"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record the request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "run": "run_01_seed4001.json",
+    "termination": "user_stop",
+    "mapping": {
+      "check_customer_crm": "cc",
+      "create_quotation": "cq",
+      "send_accounting_summary": "me",
+      "record_request": "r",
+      "send_quotation": "sq",
+      "manager_approval": "ap"
+    },
+    "unmatched_truth": [],
+    "node_analyses": [
+      {
+        "agent_node": "check_customer_crm",
+        "truth_node": "cc",
+        "action_agent": "Check the customer's information in the CRM",
+        "action_truth": "check customer information in the CRM",
+        "actor": {
+          "truth": "sales",
+          "agent": "Interviewee",
+          "norm_truth": "sales",
+          "norm_agent": "sales",
+          "hit": true,
+          "agent_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email."
+          ],
+          "node_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email."
+          ]
+        },
+        "system": {
+          "truth": "crm",
+          "agent": "CRM",
+          "norm_truth": "crm",
+          "norm_agent": "crm",
+          "hit": true,
+          "agent_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email."
+          ],
+          "node_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "customer"
+          ],
+          "agent": [
+            "customer information"
+          ],
+          "hit": 1.0,
+          "agent_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email."
+          ]
+        },
+        "writes": {
+          "truth": [],
+          "agent": [],
+          "hit": 1.0,
+          "agent_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email."
+          ]
+        }
+      },
+      {
+        "agent_node": "create_quotation",
+        "truth_node": "cq",
+        "action_agent": "Create the quotation in the quoting system using customer and pricing information",
+        "action_truth": "create quotation in the quoting system",
+        "actor": {
+          "truth": "sales",
+          "agent": "Interviewee",
+          "norm_truth": "sales",
+          "norm_agent": "sales",
+          "hit": true,
+          "agent_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email."
+          ],
+          "node_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email.",
+            "I’m not sure about the specific consequences if we skipped those steps—I don’t have that information. What I can say is that the purpose of the whole process is to produce an accurate quotation. The steps I follow are the normal way we do it, but I can’t speak to what would happen if we didn’t follow them."
+          ]
+        },
+        "system": {
+          "truth": "quoting",
+          "agent": "Quoting system",
+          "norm_truth": "quoting",
+          "norm_agent": "quoting",
+          "hit": true,
+          "agent_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email."
+          ],
+          "node_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email.",
+            "I’m not sure about the specific consequences if we skipped those steps—I don’t have that information. What I can say is that the purpose of the whole process is to produce an accurate quotation. The steps I follow are the normal way we do it, but I can’t speak to what would happen if we didn’t follow them."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "customer",
+            "pricing"
+          ],
+          "agent": [
+            "customer information",
+            "pricing information"
+          ],
+          "hit": 1.0,
+          "agent_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email.",
+            "I’m not sure about the specific consequences if we skipped those steps—I don’t have that information. What I can say is that the purpose of the whole process is to produce an accurate quotation. The steps I follow are the normal way we do it, but I can’t speak to what would happen if we didn’t follow them."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "quote"
+          ],
+          "agent": [
+            "quotation"
+          ],
+          "hit": 0.0,
+          "agent_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email.",
+            "I’m not sure about the specific consequences if we skipped those steps—I don’t have that information. What I can say is that the purpose of the whole process is to produce an accurate quotation. The steps I follow are the normal way we do it, but I can’t speak to what would happen if we didn’t follow them."
+          ]
+        }
+      },
+      {
+        "agent_node": "send_accounting_summary",
+        "truth_node": "me",
+        "action_agent": "Send a summary of the quotation information to the Accounting team as an Excel file",
+        "action_truth": "send quotation summary to accounting at month-end",
+        "actor": {
+          "truth": "sales",
+          "agent": "Interviewee",
+          "norm_truth": "sales",
+          "norm_agent": "sales",
+          "hit": true,
+          "agent_evidence": [
+            "There is one more thing: at month-end, I also send a summary of the quotation information to the Accounting team as an Excel file. That’s separate from the normal quotation flow."
+          ],
+          "node_evidence": [
+            "There is one more thing: at month-end, I also send a summary of the quotation information to the Accounting team as an Excel file. That’s separate from the normal quotation flow."
+          ]
+        },
+        "system": {
+          "truth": "excel",
+          "agent": null,
+          "norm_truth": "excel",
+          "norm_agent": "",
+          "hit": false,
+          "agent_evidence": [],
+          "node_evidence": [
+            "There is one more thing: at month-end, I also send a summary of the quotation information to the Accounting team as an Excel file. That’s separate from the normal quotation flow."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "quote"
+          ],
+          "agent": [
+            "quotation information"
+          ],
+          "hit": 0.0,
+          "agent_evidence": [
+            "There is one more thing: at month-end, I also send a summary of the quotation information to the Accounting team as an Excel file. That’s separate from the normal quotation flow."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "excel_summary"
+          ],
+          "agent": [
+            "Excel file"
+          ],
+          "hit": 1.0,
+          "agent_evidence": [
+            "There is one more thing: at month-end, I also send a summary of the quotation information to the Accounting team as an Excel file. That’s separate from the normal quotation flow."
+          ]
+        }
+      },
+      {
+        "agent_node": "record_request",
+        "truth_node": "r",
+        "action_agent": "Record the quotation request",
+        "action_truth": "receive quotation request",
+        "actor": {
+          "truth": "sales",
+          "agent": "Interviewee",
+          "norm_truth": "sales",
+          "norm_agent": "sales",
+          "hit": true,
+          "agent_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email."
+          ],
+          "node_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email."
+          ]
+        },
+        "system": {
+          "truth": null,
+          "agent": null,
+          "norm_truth": "",
+          "norm_agent": "",
+          "hit": true,
+          "agent_evidence": [],
+          "node_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email."
+          ]
+        },
+        "reads": {
+          "truth": [],
+          "agent": [],
+          "hit": 1.0,
+          "agent_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "request"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email."
+          ]
+        }
+      },
+      {
+        "agent_node": "send_quotation",
+        "truth_node": "sq",
+        "action_agent": "Send the quotation to the customer by email",
+        "action_truth": "send quotation to customer",
+        "actor": {
+          "truth": "sales",
+          "agent": "Interviewee",
+          "norm_truth": "sales",
+          "norm_agent": "sales",
+          "hit": true,
+          "agent_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email."
+          ],
+          "node_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email."
+          ]
+        },
+        "system": {
+          "truth": "email",
+          "agent": null,
+          "norm_truth": "email",
+          "norm_agent": "",
+          "hit": false,
+          "agent_evidence": [],
+          "node_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "quote"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "sent_quote"
+          ],
+          "agent": [
+            "quotation"
+          ],
+          "hit": 0.0,
+          "agent_evidence": [
+            "Once we get the request, I record it, then check the customer’s information in the CRM. After that, I create the quotation in the quoting system using the customer and pricing information. Once it’s ready, I send it to the customer by email."
+          ]
+        }
+      },
+      {
+        "agent_node": "manager_approval",
+        "truth_node": "ap",
+        "action_agent": "Manager's approval for credit risk management",
+        "action_truth": "approve high-value quotation",
+        "actor": {
+          "truth": "manager",
+          "agent": "Manager",
+          "norm_truth": "manager",
+          "norm_agent": "manager",
+          "hit": true,
+          "agent_evidence": [
+            "I’m not sure about that—I don’t have any specific information about what happens if the customer’s information isn’t found in the CRM. I can only describe the normal flow I follow.\n\nOne thing I can mention is that for quotations over 1,000,000 yen, we need a manager’s approval before sending it out. That approval is for credit risk management."
+          ],
+          "node_evidence": [
+            "I’m not sure about that—I don’t have any specific information about what happens if the customer’s information isn’t found in the CRM. I can only describe the normal flow I follow.\n\nOne thing I can mention is that for quotations over 1,000,000 yen, we need a manager’s approval before sending it out. That approval is for credit risk management."
+          ]
+        },
+        "system": {
+          "truth": "quoting",
+          "agent": null,
+          "norm_truth": "quoting",
+          "norm_agent": "",
+          "hit": false,
+          "agent_evidence": [],
+          "node_evidence": [
+            "I’m not sure about that—I don’t have any specific information about what happens if the customer’s information isn’t found in the CRM. I can only describe the normal flow I follow.\n\nOne thing I can mention is that for quotations over 1,000,000 yen, we need a manager’s approval before sending it out. That approval is for credit risk management."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "quote"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "I’m not sure about that—I don’t have any specific information about what happens if the customer’s information isn’t found in the CRM. I can only describe the normal flow I follow.\n\nOne thing I can mention is that for quotations over 1,000,000 yen, we need a manager’s approval before sending it out. That approval is for credit risk management."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "approval"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "I’m not sure about that—I don’t have any specific information about what happens if the customer’s information isn’t found in the CRM. I can only describe the normal flow I follow.\n\nOne thing I can mention is that for quotations over 1,000,000 yen, we need a manager’s approval before sending it out. That approval is for credit risk management."
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "run": "run_02_seed4002.json",
+    "termination": "user_stop",
+    "mapping": {
+      "check_customer": "cc",
+      "create_quotation": "cq",
+      "send_accounting_summary": "me",
+      "send_quotation": "sq",
+      "record_request": "r",
+      "manager_approval": "ap"
+    },
+    "unmatched_truth": [],
+    "node_analyses": [
+      {
+        "agent_node": "check_customer",
+        "truth_node": "cc",
+        "action_agent": "Check the customer's information in the CRM",
+        "action_truth": "check customer information in the CRM",
+        "actor": {
+          "truth": "sales",
+          "agent": "I (the stakeholder)",
+          "norm_truth": "sales",
+          "norm_agent": "i (the stakeholder)",
+          "hit": false,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and the goal is to produce an accurate quotation."
+          ],
+          "node_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and the goal is to produce an accurate quotation."
+          ]
+        },
+        "system": {
+          "truth": "crm",
+          "agent": "CRM",
+          "norm_truth": "crm",
+          "norm_agent": "crm",
+          "hit": true,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and the goal is to produce an accurate quotation."
+          ],
+          "node_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and the goal is to produce an accurate quotation."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "customer"
+          ],
+          "agent": [
+            "customer information"
+          ],
+          "hit": 1.0,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and the goal is to produce an accurate quotation."
+          ]
+        },
+        "writes": {
+          "truth": [],
+          "agent": [],
+          "hit": 1.0,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and the goal is to produce an accurate quotation."
+          ]
+        }
+      },
+      {
+        "agent_node": "create_quotation",
+        "truth_node": "cq",
+        "action_agent": "Create the quotation in the quoting system using customer and pricing information",
+        "action_truth": "create quotation in the quoting system",
+        "actor": {
+          "truth": "sales",
+          "agent": "I (the stakeholder)",
+          "norm_truth": "sales",
+          "norm_agent": "i (the stakeholder)",
+          "hit": false,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and the goal is to produce an accurate quotation."
+          ],
+          "node_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and the goal is to produce an accurate quotation.",
+            "I use the pricing information that’s available in the quoting system when I create the quotation. I don’t know more about where it comes from beyond that.",
+            "The intended outcome is to produce an accurate quotation for the customer. That’s what the whole process is meant to achieve."
+          ]
+        },
+        "system": {
+          "truth": "quoting",
+          "agent": "quoting system",
+          "norm_truth": "quoting",
+          "norm_agent": "quoting",
+          "hit": true,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and the goal is to produce an accurate quotation."
+          ],
+          "node_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and the goal is to produce an accurate quotation.",
+            "I use the pricing information that’s available in the quoting system when I create the quotation. I don’t know more about where it comes from beyond that.",
+            "The intended outcome is to produce an accurate quotation for the customer. That’s what the whole process is meant to achieve."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "customer",
+            "pricing"
+          ],
+          "agent": [
+            "customer information",
+            "pricing information (from quoting system)"
+          ],
+          "hit": 1.0,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and the goal is to produce an accurate quotation.",
+            "I use the pricing information that’s available in the quoting system when I create the quotation. I don’t know more about where it comes from beyond that.",
+            "The intended outcome is to produce an accurate quotation for the customer. That’s what the whole process is meant to achieve."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "quote"
+          ],
+          "agent": [
+            "quotation"
+          ],
+          "hit": 0.0,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and the goal is to produce an accurate quotation.",
+            "I use the pricing information that’s available in the quoting system when I create the quotation. I don’t know more about where it comes from beyond that.",
+            "The intended outcome is to produce an accurate quotation for the customer. That’s what the whole process is meant to achieve."
+          ]
+        }
+      },
+      {
+        "agent_node": "send_accounting_summary",
+        "truth_node": "me",
+        "action_agent": "Send a summary of the quotation information to the Accounting team as an Excel file",
+        "action_truth": "send quotation summary to accounting at month-end",
+        "actor": {
+          "truth": "sales",
+          "agent": "I (the stakeholder)",
+          "norm_truth": "sales",
+          "norm_agent": "i (the stakeholder)",
+          "hit": false,
+          "agent_evidence": [
+            "There is one more thing that happens separately. At month-end, I send a summary of the quotation information to the Accounting team as an Excel file. That’s part of the process, but I don’t know why that step is done. I only have a vague impression that Accounting needs it, but I’m not certain and there’s no documentation about it."
+          ],
+          "node_evidence": [
+            "There is one more thing that happens separately. At month-end, I send a summary of the quotation information to the Accounting team as an Excel file. That’s part of the process, but I don’t know why that step is done. I only have a vague impression that Accounting needs it, but I’m not certain and there’s no documentation about it."
+          ]
+        },
+        "system": {
+          "truth": "excel",
+          "agent": "Excel",
+          "norm_truth": "excel",
+          "norm_agent": "excel",
+          "hit": true,
+          "agent_evidence": [
+            "There is one more thing that happens separately. At month-end, I send a summary of the quotation information to the Accounting team as an Excel file. That’s part of the process, but I don’t know why that step is done. I only have a vague impression that Accounting needs it, but I’m not certain and there’s no documentation about it."
+          ],
+          "node_evidence": [
+            "There is one more thing that happens separately. At month-end, I send a summary of the quotation information to the Accounting team as an Excel file. That’s part of the process, but I don’t know why that step is done. I only have a vague impression that Accounting needs it, but I’m not certain and there’s no documentation about it."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "quote"
+          ],
+          "agent": [
+            "quotation information"
+          ],
+          "hit": 0.0,
+          "agent_evidence": [
+            "There is one more thing that happens separately. At month-end, I send a summary of the quotation information to the Accounting team as an Excel file. That’s part of the process, but I don’t know why that step is done. I only have a vague impression that Accounting needs it, but I’m not certain and there’s no documentation about it."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "excel_summary"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "There is one more thing that happens separately. At month-end, I send a summary of the quotation information to the Accounting team as an Excel file. That’s part of the process, but I don’t know why that step is done. I only have a vague impression that Accounting needs it, but I’m not certain and there’s no documentation about it."
+          ]
+        }
+      },
+      {
+        "agent_node": "send_quotation",
+        "truth_node": "sq",
+        "action_agent": "Send the quotation to the customer by email",
+        "action_truth": "send quotation to customer",
+        "actor": {
+          "truth": "sales",
+          "agent": "I (the stakeholder)",
+          "norm_truth": "sales",
+          "norm_agent": "i (the stakeholder)",
+          "hit": false,
+          "agent_evidence": [
+            "Once the quotation is created in the quoting system, I send it to the customer by email. But if the quotation is over 1,000,000 yen, it needs approval from a manager before it can be sent. That approval is for credit risk management."
+          ],
+          "node_evidence": [
+            "Once the quotation is created in the quoting system, I send it to the customer by email. But if the quotation is over 1,000,000 yen, it needs approval from a manager before it can be sent. That approval is for credit risk management.",
+            "That’s how we deliver the quotation to the customer—by email. That’s just the normal way we send it. I don’t know of any other reason beyond that."
+          ]
+        },
+        "system": {
+          "truth": "email",
+          "agent": "email",
+          "norm_truth": "email",
+          "norm_agent": "email",
+          "hit": true,
+          "agent_evidence": [
+            "Once the quotation is created in the quoting system, I send it to the customer by email. But if the quotation is over 1,000,000 yen, it needs approval from a manager before it can be sent. That approval is for credit risk management."
+          ],
+          "node_evidence": [
+            "Once the quotation is created in the quoting system, I send it to the customer by email. But if the quotation is over 1,000,000 yen, it needs approval from a manager before it can be sent. That approval is for credit risk management.",
+            "That’s how we deliver the quotation to the customer—by email. That’s just the normal way we send it. I don’t know of any other reason beyond that."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "quote"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "Once the quotation is created in the quoting system, I send it to the customer by email. But if the quotation is over 1,000,000 yen, it needs approval from a manager before it can be sent. That approval is for credit risk management.",
+            "That’s how we deliver the quotation to the customer—by email. That’s just the normal way we send it. I don’t know of any other reason beyond that."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "sent_quote"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "Once the quotation is created in the quoting system, I send it to the customer by email. But if the quotation is over 1,000,000 yen, it needs approval from a manager before it can be sent. That approval is for credit risk management.",
+            "That’s how we deliver the quotation to the customer—by email. That’s just the normal way we send it. I don’t know of any other reason beyond that."
+          ]
+        }
+      },
+      {
+        "agent_node": "record_request",
+        "truth_node": "r",
+        "action_agent": "Record the quotation request",
+        "action_truth": "receive quotation request",
+        "actor": {
+          "truth": "sales",
+          "agent": "I (the stakeholder)",
+          "norm_truth": "sales",
+          "norm_agent": "i (the stakeholder)",
+          "hit": false,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and the goal is to produce an accurate quotation."
+          ],
+          "node_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and the goal is to produce an accurate quotation."
+          ]
+        },
+        "system": {
+          "truth": null,
+          "agent": null,
+          "norm_truth": "",
+          "norm_agent": "",
+          "hit": true,
+          "agent_evidence": [],
+          "node_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and the goal is to produce an accurate quotation."
+          ]
+        },
+        "reads": {
+          "truth": [],
+          "agent": [],
+          "hit": 1.0,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and the goal is to produce an accurate quotation."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "request"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and the goal is to produce an accurate quotation."
+          ]
+        }
+      },
+      {
+        "agent_node": "manager_approval",
+        "truth_node": "ap",
+        "action_agent": "Manager approval for credit risk management",
+        "action_truth": "approve high-value quotation",
+        "actor": {
+          "truth": "manager",
+          "agent": "Manager",
+          "norm_truth": "manager",
+          "norm_agent": "manager",
+          "hit": true,
+          "agent_evidence": [
+            "Once the quotation is created in the quoting system, I send it to the customer by email. But if the quotation is over 1,000,000 yen, it needs approval from a manager before it can be sent. That approval is for credit risk management."
+          ],
+          "node_evidence": [
+            "Once the quotation is created in the quoting system, I send it to the customer by email. But if the quotation is over 1,000,000 yen, it needs approval from a manager before it can be sent. That approval is for credit risk management."
+          ]
+        },
+        "system": {
+          "truth": "quoting",
+          "agent": null,
+          "norm_truth": "quoting",
+          "norm_agent": "",
+          "hit": false,
+          "agent_evidence": [],
+          "node_evidence": [
+            "Once the quotation is created in the quoting system, I send it to the customer by email. But if the quotation is over 1,000,000 yen, it needs approval from a manager before it can be sent. That approval is for credit risk management."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "quote"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "Once the quotation is created in the quoting system, I send it to the customer by email. But if the quotation is over 1,000,000 yen, it needs approval from a manager before it can be sent. That approval is for credit risk management."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "approval"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "Once the quotation is created in the quoting system, I send it to the customer by email. But if the quotation is over 1,000,000 yen, it needs approval from a manager before it can be sent. That approval is for credit risk management."
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "run": "run_03_seed4003.json",
+    "termination": "user_stop",
+    "mapping": {
+      "check_customer": "cc",
+      "create_quotation": "cq",
+      "send_quotation": "sq",
+      "record_request": "r",
+      "manager_approval": "ap"
+    },
+    "unmatched_truth": [
+      "me"
+    ],
+    "node_analyses": [
+      {
+        "agent_node": "check_customer",
+        "truth_node": "cc",
+        "action_agent": "Check the customer's information in the CRM to confirm it's there and up to date",
+        "action_truth": "check customer information in the CRM",
+        "actor": {
+          "truth": "sales",
+          "agent": "Interviewee",
+          "norm_truth": "sales",
+          "norm_agent": "sales",
+          "hit": true,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email."
+          ],
+          "node_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email.",
+            "I check the customer’s information in the CRM to make sure it’s there and up to date before I create the quotation. I’m not looking for anything specific beyond that—just confirming the customer details are available.",
+            "I check the customer’s information in the CRM to make sure we have the correct details before creating the quotation. That’s part of the normal flow. I don’t know more about why it’s necessary beyond that."
+          ]
+        },
+        "system": {
+          "truth": "crm",
+          "agent": "CRM",
+          "norm_truth": "crm",
+          "norm_agent": "crm",
+          "hit": true,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email."
+          ],
+          "node_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email.",
+            "I check the customer’s information in the CRM to make sure it’s there and up to date before I create the quotation. I’m not looking for anything specific beyond that—just confirming the customer details are available.",
+            "I check the customer’s information in the CRM to make sure we have the correct details before creating the quotation. That’s part of the normal flow. I don’t know more about why it’s necessary beyond that."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "customer"
+          ],
+          "agent": [
+            "customer information"
+          ],
+          "hit": 1.0,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email.",
+            "I check the customer’s information in the CRM to make sure it’s there and up to date before I create the quotation. I’m not looking for anything specific beyond that—just confirming the customer details are available.",
+            "I check the customer’s information in the CRM to make sure we have the correct details before creating the quotation. That’s part of the normal flow. I don’t know more about why it’s necessary beyond that."
+          ]
+        },
+        "writes": {
+          "truth": [],
+          "agent": [],
+          "hit": 1.0,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email.",
+            "I check the customer’s information in the CRM to make sure it’s there and up to date before I create the quotation. I’m not looking for anything specific beyond that—just confirming the customer details are available.",
+            "I check the customer’s information in the CRM to make sure we have the correct details before creating the quotation. That’s part of the normal flow. I don’t know more about why it’s necessary beyond that."
+          ]
+        }
+      },
+      {
+        "agent_node": "create_quotation",
+        "truth_node": "cq",
+        "action_agent": "Create the quotation in the quoting system using customer and pricing information",
+        "action_truth": "create quotation in the quoting system",
+        "actor": {
+          "truth": "sales",
+          "agent": "Interviewee",
+          "norm_truth": "sales",
+          "norm_agent": "sales",
+          "hit": true,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email."
+          ],
+          "node_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email.",
+            "I use the pricing information that’s available in the quoting system when I create the quotation. I don’t determine the pricing myself—I just use what’s there.",
+            "Creating the quotation in the quoting system is how we actually produce the quotation for the customer. It uses the customer and pricing information to generate the document that we then send by email."
+          ]
+        },
+        "system": {
+          "truth": "quoting",
+          "agent": "Quoting system",
+          "norm_truth": "quoting",
+          "norm_agent": "quoting",
+          "hit": true,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email."
+          ],
+          "node_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email.",
+            "I use the pricing information that’s available in the quoting system when I create the quotation. I don’t determine the pricing myself—I just use what’s there.",
+            "Creating the quotation in the quoting system is how we actually produce the quotation for the customer. It uses the customer and pricing information to generate the document that we then send by email."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "customer",
+            "pricing"
+          ],
+          "agent": [
+            "customer information",
+            "pricing information (from quoting system)"
+          ],
+          "hit": 1.0,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email.",
+            "I use the pricing information that’s available in the quoting system when I create the quotation. I don’t determine the pricing myself—I just use what’s there.",
+            "Creating the quotation in the quoting system is how we actually produce the quotation for the customer. It uses the customer and pricing information to generate the document that we then send by email."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "quote"
+          ],
+          "agent": [
+            "quotation"
+          ],
+          "hit": 0.0,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email.",
+            "I use the pricing information that’s available in the quoting system when I create the quotation. I don’t determine the pricing myself—I just use what’s there.",
+            "Creating the quotation in the quoting system is how we actually produce the quotation for the customer. It uses the customer and pricing information to generate the document that we then send by email."
+          ]
+        }
+      },
+      {
+        "agent_node": "send_quotation",
+        "truth_node": "sq",
+        "action_agent": "Send the quotation to the customer by email",
+        "action_truth": "send quotation to customer",
+        "actor": {
+          "truth": "sales",
+          "agent": "Interviewee",
+          "norm_truth": "sales",
+          "norm_agent": "sales",
+          "hit": true,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email."
+          ],
+          "node_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email.",
+            "After I send the quotation to the customer by email, that’s the end of the normal flow for that quotation. There’s nothing else that happens after that in the regular process.",
+            "Sending the quotation to the customer by email is how we deliver the quotation to them. That’s the final step in the normal flow, and it’s how the customer receives the document."
+          ]
+        },
+        "system": {
+          "truth": "email",
+          "agent": "Email",
+          "norm_truth": "email",
+          "norm_agent": "email",
+          "hit": true,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email."
+          ],
+          "node_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email.",
+            "After I send the quotation to the customer by email, that’s the end of the normal flow for that quotation. There’s nothing else that happens after that in the regular process.",
+            "Sending the quotation to the customer by email is how we deliver the quotation to them. That’s the final step in the normal flow, and it’s how the customer receives the document."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "quote"
+          ],
+          "agent": [
+            "quotation"
+          ],
+          "hit": 0.0,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email.",
+            "After I send the quotation to the customer by email, that’s the end of the normal flow for that quotation. There’s nothing else that happens after that in the regular process.",
+            "Sending the quotation to the customer by email is how we deliver the quotation to them. That’s the final step in the normal flow, and it’s how the customer receives the document."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "sent_quote"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email.",
+            "After I send the quotation to the customer by email, that’s the end of the normal flow for that quotation. There’s nothing else that happens after that in the regular process.",
+            "Sending the quotation to the customer by email is how we deliver the quotation to them. That’s the final step in the normal flow, and it’s how the customer receives the document."
+          ]
+        }
+      },
+      {
+        "agent_node": "record_request",
+        "truth_node": "r",
+        "action_agent": "Record the quotation request",
+        "action_truth": "receive quotation request",
+        "actor": {
+          "truth": "sales",
+          "agent": "Interviewee",
+          "norm_truth": "sales",
+          "norm_agent": "sales",
+          "hit": true,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email."
+          ],
+          "node_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email.",
+            "I record the quotation request as the first step in the process. I don’t have details beyond that—I just note that the request has come in before I check the customer information in the CRM."
+          ]
+        },
+        "system": {
+          "truth": null,
+          "agent": null,
+          "norm_truth": "",
+          "norm_agent": "",
+          "hit": true,
+          "agent_evidence": [],
+          "node_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email.",
+            "I record the quotation request as the first step in the process. I don’t have details beyond that—I just note that the request has come in before I check the customer information in the CRM."
+          ]
+        },
+        "reads": {
+          "truth": [],
+          "agent": [],
+          "hit": 1.0,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email.",
+            "I record the quotation request as the first step in the process. I don’t have details beyond that—I just note that the request has come in before I check the customer information in the CRM."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "request"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "When I prepare a quotation, I first record the quotation request. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. The quotation itself is based on that information, and I send it to the customer by email.",
+            "I record the quotation request as the first step in the process. I don’t have details beyond that—I just note that the request has come in before I check the customer information in the CRM."
+          ]
+        }
+      },
+      {
+        "agent_node": "manager_approval",
+        "truth_node": "ap",
+        "action_agent": "Manager's approval for credit risk management",
+        "action_truth": "approve high-value quotation",
+        "actor": {
+          "truth": "manager",
+          "agent": "Manager",
+          "norm_truth": "manager",
+          "norm_agent": "manager",
+          "hit": true,
+          "agent_evidence": [
+            "There is one special case: for quotations over 1,000,000 yen, a manager’s approval is required before the quotation is sent. That approval is for credit risk management. Other than that, I don’t know of any other variations or special cases."
+          ],
+          "node_evidence": [
+            "There is one special case: for quotations over 1,000,000 yen, a manager’s approval is required before the quotation is sent. That approval is for credit risk management. Other than that, I don’t know of any other variations or special cases.",
+            "I don’t know what happens if the manager doesn’t approve the quotation. In the normal flow, for quotations over 1,000,000 yen, the manager’s approval is required before sending, and that approval is for credit risk management. I don’t have any information about what happens if approval isn’t given."
+          ]
+        },
+        "system": {
+          "truth": "quoting",
+          "agent": null,
+          "norm_truth": "quoting",
+          "norm_agent": "",
+          "hit": false,
+          "agent_evidence": [],
+          "node_evidence": [
+            "There is one special case: for quotations over 1,000,000 yen, a manager’s approval is required before the quotation is sent. That approval is for credit risk management. Other than that, I don’t know of any other variations or special cases.",
+            "I don’t know what happens if the manager doesn’t approve the quotation. In the normal flow, for quotations over 1,000,000 yen, the manager’s approval is required before sending, and that approval is for credit risk management. I don’t have any information about what happens if approval isn’t given."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "quote"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "There is one special case: for quotations over 1,000,000 yen, a manager’s approval is required before the quotation is sent. That approval is for credit risk management. Other than that, I don’t know of any other variations or special cases.",
+            "I don’t know what happens if the manager doesn’t approve the quotation. In the normal flow, for quotations over 1,000,000 yen, the manager’s approval is required before sending, and that approval is for credit risk management. I don’t have any information about what happens if approval isn’t given."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "approval"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "There is one special case: for quotations over 1,000,000 yen, a manager’s approval is required before the quotation is sent. That approval is for credit risk management. Other than that, I don’t know of any other variations or special cases.",
+            "I don’t know what happens if the manager doesn’t approve the quotation. In the normal flow, for quotations over 1,000,000 yen, the manager’s approval is required before sending, and that approval is for credit risk management. I don’t have any information about what happens if approval isn’t given."
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "run": "run_04_seed4004.json",
+    "termination": "user_stop",
+    "mapping": {
+      "month_end_summary": "me",
+      "check_customer": "cc",
+      "create_quotation": "cq",
+      "send_quotation": "sq",
+      "record_request": "r",
+      "manager_approval": "ap"
+    },
+    "unmatched_truth": [],
+    "node_analyses": [
+      {
+        "agent_node": "month_end_summary",
+        "truth_node": "me",
+        "action_agent": "Send a summary of the quotation information to the Accounting team as an Excel file at month-end",
+        "action_truth": "send quotation summary to accounting at month-end",
+        "actor": {
+          "truth": "sales",
+          "agent": "Interviewee",
+          "norm_truth": "sales",
+          "norm_agent": "sales",
+          "hit": true,
+          "agent_evidence": [
+            "There is one more thing: at month-end, I send a summary of the quotation information to the Accounting team as an Excel file. That’s separate from the normal quotation flow. I don’t know why that month-end step is done—nobody ever told me, and there’s no documentation. I only have a vague impression that Accounting needs it, but I’m not certain."
+          ],
+          "node_evidence": [
+            "There is one more thing: at month-end, I send a summary of the quotation information to the Accounting team as an Excel file. That’s separate from the normal quotation flow. I don’t know why that month-end step is done—nobody ever told me, and there’s no documentation. I only have a vague impression that Accounting needs it, but I’m not certain."
+          ]
+        },
+        "system": {
+          "truth": "excel",
+          "agent": "Excel",
+          "norm_truth": "excel",
+          "norm_agent": "excel",
+          "hit": true,
+          "agent_evidence": [
+            "There is one more thing: at month-end, I send a summary of the quotation information to the Accounting team as an Excel file. That’s separate from the normal quotation flow. I don’t know why that month-end step is done—nobody ever told me, and there’s no documentation. I only have a vague impression that Accounting needs it, but I’m not certain."
+          ],
+          "node_evidence": [
+            "There is one more thing: at month-end, I send a summary of the quotation information to the Accounting team as an Excel file. That’s separate from the normal quotation flow. I don’t know why that month-end step is done—nobody ever told me, and there’s no documentation. I only have a vague impression that Accounting needs it, but I’m not certain."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "quote"
+          ],
+          "agent": [
+            "quotation information"
+          ],
+          "hit": 0.0,
+          "agent_evidence": [
+            "There is one more thing: at month-end, I send a summary of the quotation information to the Accounting team as an Excel file. That’s separate from the normal quotation flow. I don’t know why that month-end step is done—nobody ever told me, and there’s no documentation. I only have a vague impression that Accounting needs it, but I’m not certain."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "excel_summary"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "There is one more thing: at month-end, I send a summary of the quotation information to the Accounting team as an Excel file. That’s separate from the normal quotation flow. I don’t know why that month-end step is done—nobody ever told me, and there’s no documentation. I only have a vague impression that Accounting needs it, but I’m not certain."
+          ]
+        }
+      },
+      {
+        "agent_node": "check_customer",
+        "truth_node": "cc",
+        "action_agent": "Check the customer's information in the CRM",
+        "action_truth": "check customer information in the CRM",
+        "actor": {
+          "truth": "sales",
+          "agent": "Interviewee",
+          "norm_truth": "sales",
+          "norm_agent": "sales",
+          "hit": true,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ],
+          "node_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        },
+        "system": {
+          "truth": "crm",
+          "agent": "CRM",
+          "norm_truth": "crm",
+          "norm_agent": "crm",
+          "hit": true,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ],
+          "node_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "customer"
+          ],
+          "agent": [
+            "customer information"
+          ],
+          "hit": 1.0,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        },
+        "writes": {
+          "truth": [],
+          "agent": [],
+          "hit": 1.0,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        }
+      },
+      {
+        "agent_node": "create_quotation",
+        "truth_node": "cq",
+        "action_agent": "Create the quotation in the quoting system using customer and pricing information",
+        "action_truth": "create quotation in the quoting system",
+        "actor": {
+          "truth": "sales",
+          "agent": "Interviewee",
+          "norm_truth": "sales",
+          "norm_agent": "sales",
+          "hit": true,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ],
+          "node_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        },
+        "system": {
+          "truth": "quoting",
+          "agent": "Quoting system",
+          "norm_truth": "quoting",
+          "norm_agent": "quoting",
+          "hit": true,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ],
+          "node_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "customer",
+            "pricing"
+          ],
+          "agent": [
+            "customer information",
+            "pricing information"
+          ],
+          "hit": 1.0,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "quote"
+          ],
+          "agent": [
+            "quotation"
+          ],
+          "hit": 0.0,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        }
+      },
+      {
+        "agent_node": "send_quotation",
+        "truth_node": "sq",
+        "action_agent": "Send the quotation to the customer by email",
+        "action_truth": "send quotation to customer",
+        "actor": {
+          "truth": "sales",
+          "agent": "Interviewee",
+          "norm_truth": "sales",
+          "norm_agent": "sales",
+          "hit": true,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ],
+          "node_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        },
+        "system": {
+          "truth": "email",
+          "agent": "Email",
+          "norm_truth": "email",
+          "norm_agent": "email",
+          "hit": true,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ],
+          "node_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "quote"
+          ],
+          "agent": [
+            "quotation"
+          ],
+          "hit": 0.0,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "sent_quote"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        }
+      },
+      {
+        "agent_node": "record_request",
+        "truth_node": "r",
+        "action_agent": "Record the quotation request",
+        "action_truth": "receive quotation request",
+        "actor": {
+          "truth": "sales",
+          "agent": "Interviewee",
+          "norm_truth": "sales",
+          "norm_agent": "sales",
+          "hit": true,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ],
+          "node_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        },
+        "system": {
+          "truth": null,
+          "agent": null,
+          "norm_truth": "",
+          "norm_agent": "",
+          "hit": true,
+          "agent_evidence": [],
+          "node_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        },
+        "reads": {
+          "truth": [],
+          "agent": [],
+          "hit": 1.0,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "request"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "Sure. When I get a quotation request, I first record it. Then I check the customer’s information in the CRM. After that, I create the quotation in the quoting system, using the customer and pricing information. Once it’s ready, I send the quotation to the customer by email."
+          ]
+        }
+      },
+      {
+        "agent_node": "manager_approval",
+        "truth_node": "ap",
+        "action_agent": "Approve the quotation for credit risk management",
+        "action_truth": "approve high-value quotation",
+        "actor": {
+          "truth": "manager",
+          "agent": "Manager",
+          "norm_truth": "manager",
+          "norm_agent": "manager",
+          "hit": true,
+          "agent_evidence": [
+            "There is one situation where the process changes: if the quotation is over 1,000,000 yen, it needs approval from a manager before I can send it to the customer. That approval is for credit risk management. I don’t have any other special cases beyond that."
+          ],
+          "node_evidence": [
+            "There is one situation where the process changes: if the quotation is over 1,000,000 yen, it needs approval from a manager before I can send it to the customer. That approval is for credit risk management. I don’t have any other special cases beyond that."
+          ]
+        },
+        "system": {
+          "truth": "quoting",
+          "agent": null,
+          "norm_truth": "quoting",
+          "norm_agent": "",
+          "hit": false,
+          "agent_evidence": [],
+          "node_evidence": [
+            "There is one situation where the process changes: if the quotation is over 1,000,000 yen, it needs approval from a manager before I can send it to the customer. That approval is for credit risk management. I don’t have any other special cases beyond that."
+          ]
+        },
+        "reads": {
+          "truth": [
+            "quote"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "There is one situation where the process changes: if the quotation is over 1,000,000 yen, it needs approval from a manager before I can send it to the customer. That approval is for credit risk management. I don’t have any other special cases beyond that."
+          ]
+        },
+        "writes": {
+          "truth": [
+            "approval"
+          ],
+          "agent": [],
+          "hit": 0.0,
+          "agent_evidence": [
+            "There is one situation where the process changes: if the quotation is over 1,000,000 yen, it needs approval from a manager before I can send it to the customer. That approval is for credit risk management. I don’t have any other special cases beyond that."
+          ]
+        }
+      }
+    ]
+  }
+]
