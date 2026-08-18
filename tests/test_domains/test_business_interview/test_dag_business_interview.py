@@ -1906,3 +1906,242 @@ def test_default_evaluate_without_stakeholder_is_explicit_all_visible():
     # hidden attributes (ap system/reads/writes, sq reads/writes, me reads)
     # are asserted instead of left unset.
     assert _eval(tools).structural_pass is False
+
+
+# ---------------------------------------------------------------------------
+# Scenario-local data expressions (deterministic semantic equivalence)
+#
+# EvaluationSpec may declare small, scenario-local accepted expressions for
+# canonical Ground Truth data values (e.g. quote -> [quote, quotation]). The
+# evaluator uses them ONLY for stakeholder-visible reads/writes; a hidden
+# assertion stays incorrect no matter its wording, and a scenario without
+# declared expressions keeps the baseline token/substring matching exactly.
+# ---------------------------------------------------------------------------
+
+
+def _rewrite_value(iv: InferredValue, new_value: str) -> InferredValue:
+    """Rewrite an asserted value, keeping its authentic provenance so the
+    evidence gate is not disturbed by the value change."""
+    return InferredValue(
+        value=new_value,
+        confidence=iv.confidence,
+        observation_ids=list(iv.observation_ids),
+    )
+
+
+def test_data_expressions_declared_only_for_quotation():
+    """The expression table is scenario-local: quotation declares exactly
+    ``quote -> [quote, quotation]``; lab declares nothing."""
+    sc = get_scenario(SCENARIO)
+    assert sc is not None
+    assert sc.spec.data_expressions == {"quote": ["quote", "quotation"]}
+    lab = get_scenario(LAB_SCENARIO)
+    assert lab is not None
+    assert lab.spec.data_expressions == {}
+
+
+def test_visible_quote_quotation_equivalent():
+    """Visible cq.writes: Truth ``quote`` matches the agent's ``quotation``
+    via the scenario-local expression (the demonstrated real-LLM case)."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    dag = tools.db.dag
+    assert dag is not None
+    dag.nodes["c"].writes = [_rewrite_value(dag.nodes["c"].writes[0], "quotation")]
+    res = _eval(tools)
+    assert res.write_correctness == 1.0
+    assert res.structural_pass is True
+    assert res.quality_pass is True
+
+
+def test_visible_quote_still_matches():
+    """The canonical value itself keeps matching under the expression layer."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    res = _eval(tools)
+    assert res.write_correctness == 1.0
+    assert res.structural_pass is True
+
+
+def test_visible_unrelated_value_still_fails():
+    """An unrelated visible write (``invoice``) is NOT covered by any declared
+    expression for ``quote`` and must still fail."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    dag = tools.db.dag
+    assert dag is not None
+    dag.nodes["c"].writes = [_rewrite_value(dag.nodes["c"].writes[0], "invoice")]
+    res = _eval(tools)
+    assert res.write_correctness < 1.0
+    assert res.structural_pass is False
+
+
+def test_data_expressions_narrow_layer_not_fuzzy_matching():
+    """Expressions never become an open synonym layer: values unrelated to the
+    declared expressions fail, and the expression list is exactly the declared
+    one (no global dictionary, no fuzzy matcher)."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    dag = tools.db.dag
+    assert dag is not None
+    for bad in ("invoice", "offer", "estimate", "price sheet", "document"):
+        dag.nodes["c"].writes = [_rewrite_value(dag.nodes["c"].writes[0], bad)]
+        res = _eval(tools)
+        assert res.write_correctness < 1.0, bad
+    dag.nodes["c"].writes = [_rewrite_value(dag.nodes["c"].writes[0], "quotation")]
+    assert _eval(tools).write_correctness == 1.0
+
+
+def test_hidden_quote_quotation_assertion_still_fails():
+    """Semantic equivalence must NEVER rescue a hidden assertion: sq.reads
+    (hidden, Truth ``quote``) asserted as ``quotation`` still fails even though
+    ``quotation`` is a declared expression for ``quote``."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    dag = tools.db.dag
+    assert dag is not None
+    dag.nodes["e"].reads = [InferredValue(value="quotation", confidence=1.0)]
+    res = _eval(tools)
+    assert res.read_correctness < 1.0
+    assert res.structural_pass is False
+    # same for the month-end hidden read
+    tools2 = _tools()
+    _build(tools2, evidence=True)
+    dag2 = tools2.db.dag
+    assert dag2 is not None
+    dag2.nodes["f"].reads = [InferredValue(value="quotation", confidence=1.0)]
+    assert _eval(tools2).read_correctness < 1.0
+
+
+def test_hidden_sent_quote_write_asserted_as_quotation_still_fails():
+    """The hidden ``sent_quote`` write asserted as ``quotation`` (run_01 real
+    artifact) is an epistemic error: no expression is declared for
+    ``sent_quote`` and hidden axes never use the expression layer."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    dag = tools.db.dag
+    assert dag is not None
+    dag.nodes["e"].writes = [InferredValue(value="quotation", confidence=1.0)]
+    res = _eval(tools)
+    assert res.write_correctness < 1.0
+    assert res.structural_pass is False
+
+
+def test_hidden_unset_still_passes_with_expressions_declared():
+    """Hidden attributes left unset remain correct while the expression layer
+    is active (epistemic restraint is still the winning behavior)."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    res = _eval(tools)
+    assert res.read_correctness == 1.0
+    assert res.write_correctness == 1.0
+    assert res.quality_pass is True
+
+
+def test_quotation_en_ja_unaffected_by_expressions():
+    """The expression layer must not change EN/JA equivalence: both full
+    reconstructions pass, and the JA ``quotation``-wording write also matches."""
+    en = _tools()
+    _build(en, ja=False)
+    ja = _tools()
+    _build(ja, ja=True)
+    ren = _eval(en, SCENARIO)
+    rja = _eval(ja, JA_SCENARIO)
+    assert ren.quality_pass is True and rja.quality_pass is True
+    # JA with the quotation wording on the visible cq write still passes
+    jdag = ja.db.dag
+    assert jdag is not None
+    jdag.nodes["c"].writes = [_rewrite_value(jdag.nodes["c"].writes[0], "quotation")]
+    assert _eval(ja, JA_SCENARIO).write_correctness == 1.0
+
+
+def test_lab_scenario_unaffected_by_quotation_expressions():
+    """lab_sample_flow declares no data expressions; its behavior is
+    unchanged, and the quotation ``quote``/``quotation`` equivalence does NOT
+    leak into it."""
+    tools = _tools()
+    _build_lab(tools)
+    res = _eval(tools, LAB_SCENARIO)
+    assert res.quality_pass is True
+    assert res.write_correctness == 1.0
+    # a "quotation" value must NOT match the lab truth (sample): no leak
+    ldag = tools.db.dag
+    assert ldag is not None
+    ldag.nodes["n1"].reads = [InferredValue(value="quotation", confidence=1.0)]
+    assert _eval(tools, LAB_SCENARIO).read_correctness < 1.0
+
+
+def test_data_expressions_do_not_apply_to_hidden_lab_artifacts():
+    """Even a wording that would be 'equivalent' in the quotation scenario
+    cannot rescue a hidden lab artifact assertion."""
+    tools = _tools()
+    _build_lab(tools)
+    ldag = tools.db.dag
+    assert ldag is not None
+    ldag.nodes["n2"].writes = [InferredValue(value="quotation", confidence=1.0)]
+    res = _eval(tools, LAB_SCENARIO)
+    assert res.write_correctness < 1.0
+    assert res.structural_pass is False
+
+
+def test_data_recall_expression_layer_is_additive():
+    """Unit-level: the expression layer is additive over the baseline — the
+    same truth/agent pair matches only when the scenario declares it."""
+    from tau2.domains.business_interview.evaluation import _data_recall
+
+    sc = get_scenario(SCENARIO)
+    assert sc is not None
+    plain = sc.spec.model_copy(deep=True)
+    plain.data_expressions = {}
+    with_expr = sc.spec
+    assert _data_recall(["quote"], ["quote"], plain) == 1.0  # baseline
+    assert _data_recall(["quotation"], ["quote"], plain) == 0.0  # baseline miss
+    assert _data_recall(["quotation"], ["quote"], with_expr) == 1.0  # declared
+    assert _data_recall(["invoice"], ["quote"], with_expr) == 0.0  # undeclared
+    # canonical Truth value itself is untouched
+    assert sc.truth.nodes["cq"].writes[0].value == "quote"
+
+
+def test_runtime_evaluator_still_uses_stakeholder_visibility():
+    """The runtime evaluator path (scenario -> evaluate with stakeholder) still
+    applies visibility on top of the expression layer: a fully-asserted DAG
+    passes the all-visible default but fails under the stakeholder contract."""
+    tools = _tools()
+    tools.start_inference("q")
+    _ingest(tools, "assistant", "Hello.")
+    for sid, action, actor, system, reads, writes in [
+        (t[0], t[1], t[2], t[3], t[4], t[5]) for t in _TRUTH_NODES
+    ]:
+        oid = _claim_obs(tools, _node_obs_text(action, actor, system, reads, writes))
+        tools.add_node(
+            sid,
+            action,
+            primitive=_PRIM_BY_SID[sid],
+            actor=actor,
+            system=system,
+            reads=reads,
+            writes=writes,
+            observation_id=oid,
+        )
+    doid = _claim_obs(tools, "The approval is for credit risk management.")
+    tools.set_node_necessity(
+        "d", rationale="for credit risk management", observation_id=doid
+    )
+    tools.set_node_necessity("f")
+    for eid, frm, to, pred in [
+        ("e1", "a", "b", None),
+        ("e2", "b", "c", None),
+        ("e3", "c", "d", "amount over 1,000,000"),
+        ("e4", "c", "e", "amount at or below 1,000,000"),
+        ("e5", "d", "e", None),
+        ("e6", "c", "f", "month-end"),
+    ]:
+        etext = f"After {frm}, we {to}." + (f" when {pred}." if pred else "")
+        eoid = _claim_obs(tools, etext)
+        tools.add_edge(eid, frm, to, predicate=pred, observation_id=eoid)
+    tools.set_dag_endpoints(start_node_id="a", end_node_ids=["e", "f"])
+    tools.finish_interview()
+    sc = get_scenario(SCENARIO)
+    assert sc is not None
+    assert evaluate(tools.db, sc.truth, sc.spec).structural_pass is True
+    assert _eval(tools).structural_pass is False  # hidden assertions penalized

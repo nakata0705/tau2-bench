@@ -128,9 +128,15 @@ intended separation:
 4. **Explicit terminology agreements are respected thereafter**: after the
    stakeholder confirms a proposed name accurately refers to a known thing,
    both sides use that term consistently for the rest of the interview.
-5. **Evaluator semantic equivalence is a separate concern** (handled later):
-   agreeing on a term with the stakeholder is *not* a license to relax
-   matching; the evaluator keeps its current deterministic comparison.
+5. **Evaluator semantic equivalence is a separate concern**: a scenario may
+   declare small, deterministic, scenario-local expressions for canonical
+   data values (see “Scenario-local data expressions” below). Declaring
+   ``quote -> [quote, quotation]`` means the evaluator treats the
+   stakeholder's natural wording ``quotation`` as the same business concept
+   as the canonical Truth value ``quote`` — but only on
+   **stakeholder-visible** reads/writes, and only when the scenario declares
+   it. It is *not* a license for the Agent to relax its own terminology
+   discipline; the Agent's conversation behavior is unchanged.
 
 Rules of the road:
 
@@ -199,6 +205,60 @@ stakeholder filter(s). Bundled:
   never uses — they are hidden, so a faithful agent leaves them unset. Derived
   GT artifacts need not be stakeholder-visible; the full Truth DAG remains the
   author's process model.
+
+## Scenario-local data expressions (`EvaluationSpec.data_expressions`)
+
+A scenario may declare **small, deterministic, scenario-local semantic
+equivalences for data values** in its hidden `EvaluationSpec`:
+
+```python
+EvaluationSpec(
+    ...,
+    data_expressions={
+        "quote": ["quote", "quotation"],  # canonical value -> accepted expressions
+    },
+)
+```
+
+Architecture — deterministic attribute scoring is the composition of three
+independent layers:
+
+```text
+Ground Truth canonical concept
+        +
+scenario-local accepted expressions
+        +
+stakeholder visibility
+        =
+deterministic attribute scoring
+```
+
+The two questions are **independent checks**:
+
+- **Semantic equivalence** answers *“Are these two labels the same known
+  concept?”* — the canonical Truth value `quote` and the stakeholder's wording
+  `quotation` are one business concept for this scenario.
+- **Visibility** answers *“Was the stakeholder allowed to know/assert this
+  concept?”* — a read/write axis a stakeholder cannot know must be left unset.
+
+Rules of the road:
+
+- Expressions belong to the **scenario's `EvaluationSpec`** (evaluator-only,
+  hidden from the agent) — never a global alias table. A scenario without
+  `data_expressions` keeps the baseline token/substring matching exactly.
+- The **canonical Truth value is unchanged**; expressions are an additive
+  matching layer using the same deterministic token-overlap / substring
+  mechanics as the baseline (no WordNet, stemming, embeddings, LLM judges,
+  unrestricted synonymy, or large dictionaries).
+- Expressions apply **only to stakeholder-visible reads/writes**. Semantic
+  equivalence can never turn a hidden assertion into a hit: if an attribute is
+  hidden, `Truth: quote` / `Agent: quotation` is still incorrect because the
+  Agent asserted a fact the stakeholder cannot know (epistemic restraint).
+- Only expressions justified by committed evidence are declared. The quotation
+  scenario declares exactly `quote -> [quote, quotation]` — the stakeholder's
+  observed natural wording. Broad variants (`estimate`, `proposal`, `price
+  sheet`, `document`, `offer`) are **not** declared, and hidden `sent_quote` /
+  hidden read artifacts get **no** aliases.
 
 ## Running
 

@@ -52,11 +52,22 @@ class TruthNodeSpec(BaseModel):
 
 
 class EvaluationSpec(BaseModel):
-    """Evaluator-only, scenario-local annotations (hidden from the agent)."""
+    """Evaluator-only, scenario-local annotations (hidden from the agent).
+
+    ``data_expressions`` maps a canonical Ground Truth data value (a read/write
+    value) to the small set of **scenario-local** accepted expressions for the
+    same business concept. It is a narrow, deterministic equivalence layer for
+    **stakeholder-visible** reads/writes only: it never changes the canonical
+    Truth value and it never applies to hidden attributes (a hidden assertion
+    stays incorrect even when its wording matches an expression). A scenario
+    without ``data_expressions`` keeps the baseline token/substring matching
+    exactly.
+    """
 
     truth_nodes: dict[str, TruthNodeSpec] = Field(default_factory=dict)
     predicate_expressions: dict[str, list[str]] = Field(default_factory=dict)
     necessity_expressions: dict[str, list[str]] = Field(default_factory=dict)
+    data_expressions: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class EvaluationResult(BaseModel):
@@ -359,7 +370,30 @@ def _match_nodes(agent: BusinessDAG, truth: BusinessDAG, spec: EvaluationSpec):
 # ---------------------------------------------------------------------------
 
 
-def _data_recall(agent_items, truth_items) -> float:
+def _data_item_ok(tvalue: str, avalue: str, spec: EvaluationSpec) -> bool:
+    """Baseline + scenario-local expression matching for one read/write value.
+
+    Baseline (unchanged): significant-token overlap or substring containment
+    against the canonical Truth value. The scenario-local layer adds the
+    canonical value's declared expressions (``spec.data_expressions``) using
+    the same deterministic token/substring mechanics. The canonical Truth
+    value itself is never rewritten.
+    """
+    a_low = (avalue or "").lower()
+    if bool(_tokens(tvalue) & _tokens(avalue)) or tvalue.lower() in a_low:
+        return True
+    for expr in spec.data_expressions.get(tvalue, ()):
+        e_low = expr.lower()
+        if bool(_tokens(expr) & _tokens(avalue)) or e_low in a_low:
+            return True
+    return False
+
+
+def _data_recall(
+    agent_items, truth_items, spec: Optional[EvaluationSpec] = None
+) -> float:
+    if spec is None:
+        spec = EvaluationSpec()
     if not truth_items:
         return 1.0 if not agent_items else 0.0
     hits = 0
@@ -367,11 +401,7 @@ def _data_recall(agent_items, truth_items) -> float:
         if not truth_items[gi]:
             hits += 1
             continue
-        matched = any(
-            bool(_tokens(truth_items[gi]) & _tokens(a))
-            or truth_items[gi].lower() in (a or "").lower()
-            for a in agent_items
-        )
+        matched = any(_data_item_ok(truth_items[gi], a, spec) for a in agent_items)
         if matched:
             hits += 1
     return hits / len(truth_items)
@@ -596,7 +626,7 @@ def _attribute_ok(
     # reads / writes
     if visible:
         return _data_recall(
-            [v.value for v in agent_value], [v.value for v in truth_value]
+            [v.value for v in agent_value], [v.value for v in truth_value], spec
         )
     # hidden: correct only when the list has no asserted entry
     return 1.0 if not any(v.asserted for v in agent_value) else 0.0

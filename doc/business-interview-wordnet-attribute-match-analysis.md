@@ -21,9 +21,15 @@ offline over the existing artifacts, without changing any evaluator behavior.
 > re-classifies the same runs: **32 mismatches**, of which the visible semantic
 > population is **15** (`quote↔quotation` on the create-quotation write 5/5, plus
 > first-person actor labeling 10). The hidden `quote↔quotation` reads (7 cases)
-> are now **epistemic errors** (class C), not semantic targets. The conclusions of
-> this experiment (use a small scenario-local alias, not WordNet) are unchanged;
-> the recovery numbers below are reproduced as-is from the original experiment run.
+> are now **epistemic errors** (class C), not semantic targets. **Implemented
+> since:** the recommended fix (option E below — a small scenario-local alias,
+> not WordNet) shipped as `EvaluationSpec.data_expressions`
+> (`quote -> [quote, quotation]`, stakeholder-visible reads/writes only); the
+> 5/5 visible `cq.writes` cases are recovered, the 8 hidden epistemic assertions
+> remain failures, and the current mismatch total is **27** (B=10, C=8, D=9).
+> The conclusions of this experiment (use a small scenario-local alias, not
+> WordNet) are unchanged; the recovery numbers below are reproduced as-is from
+> the original experiment run.
 
 The prior analysis (`attribute_mismatch_analysis.json`, pre-visibility) found
 **22 / 50** (44%) of attribute mismatches are `B_evaluator_too_strict`. The

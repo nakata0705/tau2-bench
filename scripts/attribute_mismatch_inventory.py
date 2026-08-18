@@ -113,10 +113,10 @@ def analyze_artifact(path):
                 "system", tnid, visible, an.system, tn.system, obs_map, an
             ),
             "reads": _data_axis_entry(
-                "reads", tnid, visible, an.reads, tn.reads, obs_map, an
+                "reads", tnid, visible, an.reads, tn.reads, obs_map, an, spec
             ),
             "writes": _data_axis_entry(
-                "writes", tnid, visible, an.writes, tn.writes, obs_map, an
+                "writes", tnid, visible, an.writes, tn.writes, obs_map, an, spec
             ),
         }
         node_analyses.append(entry)
@@ -192,8 +192,12 @@ def _axis_entry(axis, tnid, visible, an_val, tn_val, obs_map, an) -> dict:
     }
 
 
-def _data_axis_entry(axis, tnid, visible, an_list, tn_list, obs_map, an) -> dict:
-    """reads/writes entry. Same visible vs hidden semantics as ``_axis_entry``."""
+def _data_axis_entry(axis, tnid, visible, an_list, tn_list, obs_map, an, spec) -> dict:
+    """reads/writes entry. Same visible vs hidden semantics as ``_axis_entry``.
+
+    ``spec`` carries the scenario-local ``data_expressions`` so the inventory
+    reflects the CURRENT evaluator contract (visible-only equivalence).
+    """
     truth_items = [_val(r) for r in tn_list]
     agent_items = [_val(r) for r in an_list]
     if axis not in visible:
@@ -215,7 +219,7 @@ def _data_axis_entry(axis, tnid, visible, an_list, tn_list, obs_map, an) -> dict
             "agent": agent_items,
             "agent_evidence": _evidence(an.observation_ids, obs_map),
         }
-    hit = _data_recall(agent_items, truth_items)
+    hit = _data_recall(agent_items, truth_items, spec)
     return {
         "visible": True,
         "status": "hit" if hit >= 1.0 else "mismatch",

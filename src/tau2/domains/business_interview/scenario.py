@@ -214,6 +214,16 @@ def quotation_spec() -> EvaluationSpec:
                 "与信",
             ],
         },
+        # Scenario-local data equivalence (evaluator-only, deterministic).
+        # ``quote`` is the canonical Ground Truth value; ``quotation`` is the
+        # stakeholder's natural wording for the same business concept. Only
+        # stakeholder-visible reads/writes may use this layer — a hidden
+        # assertion stays incorrect no matter its wording. No broader variants
+        # (estimate / proposal / price sheet / document / offer) are declared:
+        # only expressions justified by the observed runs.
+        data_expressions={
+            "quote": ["quote", "quotation"],
+        },
     )
 
 

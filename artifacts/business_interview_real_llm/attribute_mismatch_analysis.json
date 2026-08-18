@@ -14,12 +14,12 @@
     "actor": 10,
     "system": 2,
     "reads": 7,
-    "writes": 13
+    "writes": 8
   },
-  "mismatch_total": 32,
+  "mismatch_total": 27,
   "classification_counts": {
     "A_genuine_agent_extraction_error": 0,
-    "B_evaluator_semantic_mismatch": 15,
+    "B_evaluator_semantic_mismatch": 10,
     "C_agent_epistemic_error": 8,
     "D_visible_fact_not_obtained": 9,
     "E_gt_modeling_ambiguity": 0,
@@ -27,9 +27,9 @@
   },
   "classification_pct": {
     "A_genuine_agent_extraction_error": 0.0,
-    "B_evaluator_semantic_mismatch": 0.46875,
-    "C_agent_epistemic_error": 0.25,
-    "D_visible_fact_not_obtained": 0.28125,
+    "B_evaluator_semantic_mismatch": 0.37037037037037035,
+    "C_agent_epistemic_error": 0.2962962962962963,
+    "D_visible_fact_not_obtained": 0.3333333333333333,
     "E_gt_modeling_ambiguity": 0.0,
     "F_ambiguous": 0.0
   },
@@ -60,7 +60,7 @@
     },
     "writes": {
       "A_genuine_agent_extraction_error": 0,
-      "B_evaluator_semantic_mismatch": 5,
+      "B_evaluator_semantic_mismatch": 0,
       "C_agent_epistemic_error": 1,
       "D_visible_fact_not_obtained": 7,
       "E_gt_modeling_ambiguity": 0,
@@ -68,25 +68,13 @@
     }
   },
   "per_run_summary": {
-    "run_00_seed4000.json": 9,
-    "run_01_seed4001.json": 6,
-    "run_02_seed4002.json": 9,
-    "run_03_seed4003.json": 3,
-    "run_04_seed4004.json": 5
+    "run_00_seed4000.json": 8,
+    "run_01_seed4001.json": 5,
+    "run_02_seed4002.json": 8,
+    "run_03_seed4003.json": 2,
+    "run_04_seed4004.json": 4
   },
   "recurring_patterns": [
-    {
-      "pattern": "cq.writes T=['quote'] A=['quotation']",
-      "frequency": "5/5",
-      "class": "B_evaluator_semantic_mismatch",
-      "runs": [
-        "run_00_seed4000.json",
-        "run_01_seed4001.json",
-        "run_02_seed4002.json",
-        "run_03_seed4003.json",
-        "run_04_seed4004.json"
-      ]
-    },
     {
       "pattern": "r.writes T=['request'] A=[]",
       "frequency": "5/5",
@@ -220,19 +208,6 @@
     },
     {
       "run": "run_00_seed4000.json",
-      "agent_node": "create_quotation",
-      "truth_node": "cq",
-      "axis": "writes",
-      "class": "B_evaluator_semantic_mismatch",
-      "truth": [
-        "quote"
-      ],
-      "agent": [
-        "quotation"
-      ]
-    },
-    {
-      "run": "run_00_seed4000.json",
       "agent_node": "month_end_summary",
       "truth_node": "me",
       "axis": "actor",
@@ -294,19 +269,6 @@
         "request"
       ],
       "agent": []
-    },
-    {
-      "run": "run_01_seed4001.json",
-      "agent_node": "create_quotation",
-      "truth_node": "cq",
-      "axis": "writes",
-      "class": "B_evaluator_semantic_mismatch",
-      "truth": [
-        "quote"
-      ],
-      "agent": [
-        "quotation"
-      ]
     },
     {
       "run": "run_01_seed4001.json",
@@ -383,19 +345,6 @@
     },
     {
       "run": "run_02_seed4002.json",
-      "agent_node": "create_quotation",
-      "truth_node": "cq",
-      "axis": "writes",
-      "class": "B_evaluator_semantic_mismatch",
-      "truth": [
-        "quote"
-      ],
-      "agent": [
-        "quotation"
-      ]
-    },
-    {
-      "run": "run_02_seed4002.json",
       "agent_node": "send_accounting_summary",
       "truth_node": "me",
       "axis": "actor",
@@ -458,19 +407,6 @@
     },
     {
       "run": "run_03_seed4003.json",
-      "agent_node": "create_quotation",
-      "truth_node": "cq",
-      "axis": "writes",
-      "class": "B_evaluator_semantic_mismatch",
-      "truth": [
-        "quote"
-      ],
-      "agent": [
-        "quotation"
-      ]
-    },
-    {
-      "run": "run_03_seed4003.json",
       "agent_node": "send_quotation",
       "truth_node": "sq",
       "axis": "reads",
@@ -516,19 +452,6 @@
         "excel_summary"
       ],
       "agent": []
-    },
-    {
-      "run": "run_04_seed4004.json",
-      "agent_node": "create_quotation",
-      "truth_node": "cq",
-      "axis": "writes",
-      "class": "B_evaluator_semantic_mismatch",
-      "truth": [
-        "quote"
-      ],
-      "agent": [
-        "quotation"
-      ]
     },
     {
       "run": "run_04_seed4004.json",

@@ -273,11 +273,14 @@ judge added.
 > (50 mismatches) from the original analysis. The current stakeholder-aware
 > analysis (commits `cafb944`/`6fa5d9e`; see
 > `doc/business-interview-attribute-mismatch-analysis.md`) re-classifies the same
-> runs as **32 mismatches**: B=15 (visible semantic/representation: `quote↔
-> quotation` on create-quotation write + first-person actor labeling), C=8
-> (hidden attributes asserted — epistemic errors), D=9 (visible facts never
-> recorded), A/E/F=0. Hidden+unset axes are correct and no longer count. Use the
-> visibility-aware numbers for Goal 3, not the table below.
+> runs, and the scenario-local data-expression change
+> (`EvaluationSpec.data_expressions`, `quote -> [quote, quotation]`) recovers the
+> one visible semantic target. The current numbers are **27 mismatches**: B=10
+> (visible representation: first-person actor labeling — intentionally not
+> changed), C=8 (hidden attributes asserted — epistemic errors), D=9 (visible
+> facts never recorded), A/E/F=0. The `cq.writes` `quote↔quotation` cases are
+> recovered 5/5. Hidden+unset axes are correct and no longer count. Use the
+> current numbers for any future evaluator work, not the table below.
 
 All 5 real runs have **reward = 0.0** because `structural_pass` is `False` in
 every run. The original (pre-visibility) `attribute_mismatch_analysis.json`

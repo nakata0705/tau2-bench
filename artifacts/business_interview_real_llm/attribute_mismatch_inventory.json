@@ -140,8 +140,8 @@
         },
         "writes": {
           "visible": true,
-          "status": "mismatch",
-          "hit": 0.0,
+          "status": "hit",
+          "hit": 1.0,
           "truth": [
             "quote"
           ],
@@ -499,8 +499,8 @@
         },
         "writes": {
           "visible": true,
-          "status": "mismatch",
-          "hit": 0.0,
+          "status": "hit",
+          "hit": 1.0,
           "truth": [
             "quote"
           ],
@@ -910,8 +910,8 @@
         },
         "writes": {
           "visible": true,
-          "status": "mismatch",
-          "hit": 0.0,
+          "status": "hit",
+          "hit": 1.0,
           "truth": [
             "quote"
           ],
@@ -1335,8 +1335,8 @@
         },
         "writes": {
           "visible": true,
-          "status": "mismatch",
-          "hit": 0.0,
+          "status": "hit",
+          "hit": 1.0,
           "truth": [
             "quote"
           ],
@@ -1759,8 +1759,8 @@
         },
         "writes": {
           "visible": true,
-          "status": "mismatch",
-          "hit": 0.0,
+          "status": "hit",
+          "hit": 1.0,
           "truth": [
             "quote"
           ],
