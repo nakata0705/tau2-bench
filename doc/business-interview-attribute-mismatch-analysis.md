@@ -1,14 +1,14 @@
-# business_interview — Actor / System / Read / Write Mismatch Analysis (visibility-aware)
+# business_interview — Actor / System / Read / Write Mismatch Analysis (visibility-aware, precision-first)
 
 **Date:** 2026-08-19
 **Branch:** `business-interview`
-**Type:** **Analysis + one evaluator change.** The analysis is based on the
-already-committed DeepSeek artifacts (seeds 4000–4004); no new LLM runs. A
-follow-up change (scenario-local `EvaluationSpec.data_expressions`, commit
-"feat: add scenario-local data equivalence to business interviews") recovered
-the one justified visible semantic target (`quote ↔ quotation` on
-`cq.writes`); this report documents the regenerated, current-evaluator
-numbers.
+**Type:** **Analysis + evaluator changes.** The analysis is based on the
+already-committed DeepSeek artifacts (seeds 4000–4004); no new LLM runs. Two
+follow-up changes are reflected: (1) scenario-local
+`EvaluationSpec.data_expressions` recovered the visible `quote ↔ quotation`
+target on `cq.writes`; (2) data matching is now **precision-first**
+(normalized exact concept identity — token/substring matching removed), with
+every accepted label declared explicitly in the scenario spec.
 
 > **Supersedes the pre-visibility analysis.** The earlier version of this report
 > (commit `be251e8` era) counted **50 mismatches / 22 evaluator-too-strict** under
@@ -17,8 +17,7 @@ numbers.
 > unset, and asserting a hidden attribute is an **epistemic/fabrication error**,
 > not an ordinary Truth-vs-agent semantic mismatch. This report re-classifies the
 > same five saved real-LLM runs under the **current** contract and supersedes all
-> earlier totals, patterns, and recommendations. Do not use the old numbers to
-> design future evaluator work.
+> earlier totals, patterns, and recommendations.
 
 ---
 
@@ -44,16 +43,16 @@ For each of the 5 artifacts (`run_00_seed4000` … `run_04_seed4004`):
 Helper: `scripts/attribute_mismatch_inventory.py` (reads the artifacts, emits
 `attribute_mismatch_inventory.json` **and** `attribute_mismatch_analysis.json`;
 the analysis is generated reproducibly from the inventory, not hand-written).
-The inventory now passes the scenario spec into `_data_recall`, so a visible
-`quote` / `quotation` pair is scored as a hit exactly as the live evaluator
-scores it.
+The inventory passes the scenario spec into `_data_recall`, so visible data
+axes are scored exactly as the live evaluator scores them.
 
 ## 2. Current evaluator semantics (as of this analysis)
 
 - **Node mapping** (`_match_nodes`): an agent node is a candidate for a Truth node
   iff it shares ≥2 significant (stopword-filtered) tokens with a hidden expression
   or contains a whole expression; actor/system agreement is a **ranking bonus**,
-  not a rescue. Assignment is greedy by `(overlap, bonus)`.
+  not a rescue. Assignment is greedy by `(overlap, bonus)`. Node matching is
+  unchanged.
 - **Stakeholder visibility** (`StakeholderFilter.visible_node_attributes`): the
   sales stakeholder can know only
   - `r`: actor, writes
@@ -66,13 +65,18 @@ scores it.
   alias tables. Roles: `sales` (…, interviewee, you, yourself, 営業, 自分, …),
   `manager` (…, supervisor, …). If no variant matches, the **raw** label is
   returned (e.g. `i (the stakeholder)`), which then fails equality.
-- **`_data_recall`** (reads/writes): for each Truth item, a hit if **any** raw
-  token overlaps OR the Truth value is a substring of the agent value **OR the
-  Truth value has a declared scenario-local expression that matches** (`spec.
-  data_expressions`, e.g. `quote -> [quote, quotation]`). Raw `[a-z0-9]+`
-  tokenization (no stemming, no global synonym map): `quote` vs `quotation`
-  matches **only** because the quotation scenario declares it, and **only** on
-  stakeholder-visible axes.
+- **`_data_recall`** (reads/writes) — **precision-first concept identity**:
+  a Truth data item matches an agent value iff the **normalized exact
+  canonical value** equals the agent value, OR the agent value equals a
+  **normalized exact declared complete label** (`spec.data_expressions`).
+  Normalization is case-fold + whitespace collapse only. **Token overlap and
+  substring containment are removed** — `"quotation request"` /
+  `"quotation information"` / `"price quotation"` do not match `quote` even
+  though they contain the word `quotation`. Declared labels are the
+  stakeholder-grounded complete labels observed in the saved runs
+  (`quote ↔ quotation`, `customer ↔ customer information`,
+  `pricing ↔ pricing information`, `request ↔ quotation request`,
+  `excel_summary ↔ summary of quotation information`).
 
 ## 3. Per-run correctness — stored vs replayed
 
@@ -88,41 +92,55 @@ DAG topology is stable (5/5 valid). **Historical vs replayed metrics.** The
 table above is the `evaluator_metrics` **stored inside the artifacts at run
 time** — they were produced by the **pre-visibility** scorer that was current
 when the runs were saved (commit `2ca2413`), **not** by the stakeholder-aware
-scorer (added later, commits `cafb944`/`6fa5d9e`). Any visibility-aware or
-expression-aware numbers in this report are **replays of the saved DAGs under
-the current evaluator** (`scripts/attribute_mismatch_inventory.py`,
+scorer (added later, commits `cafb944`/`6fa5d9e`), and **not** by the
+precision-first matcher. Any visibility-aware / precision-first numbers in
+this report are **replays of the saved DAGs under the current evaluator**
+(`scripts/attribute_mismatch_inventory.py`,
 `scripts/business_interview_reeval_smoke.py`,
 `scripts/business_interview_data_expression_reeval.py`) — they are not what is
 stored in the artifacts.
 
-Under the current evaluator (replay), the only write-axis change is
-`cq.writes`: `quote` vs agent `quotation` is now a hit via the scenario-local
-expression, so replayed write correctness rises to **0.80 / 0.67 / 0.67 /
-0.80 / 0.67** (the stored pre-visibility numbers above also conflate hidden
-assertions with visible misses; see §4-§6 for the visibility-aware view).
+Under the current evaluator (replay, seeds 4000–4004):
+
+| run | read (replay) | write (replay) |
+| ----- | ------- | ------- |
+| run_00_seed4000 | 0.50 | 0.80 |
+| run_01_seed4001 | 0.83 | 0.50 |
+| run_02_seed4002 | 0.75 | 0.67 |
+| run_03_seed4003 | 0.70 | 0.80 |
+| run_04_seed4004 | 0.67 | 0.67 |
+
+`cq.writes` `quote↔quotation` is recovered 5/5. `cc.reads` (`customer
+information`) and `cq.reads` `pricing information` are recovered by declared
+labels; agent-embellished labels (`pricing information from the quoting
+system`, `pricing information (from quoting system)`, `Excel file`) are now
+**precision-first mismatches** (see §5–§6).
 
 ## 4. Mismatch totals under the current evaluator (28 matched node-pairs)
 
-| attribute | mismatches (was, visibility) | now (current evaluator) |
+| attribute | mismatches (was) | now (precision-first) |
 | ----------- | ------------------ | ----- |
 | actor | 10 | **10** |
 | system | 2 | **2** |
-| reads | 7 | **7** |
-| writes | 13 | **8** |
-| **total** | **32** | **27** |
+| reads | 7 | **10** |
+| writes | 8 | **9** |
+| **total** | **27** | **31** |
 
-Hidden + unset axes are **correct** and no longer counted. The five
-`cq.writes` `quote↔quotation` cases are **recovered** by the scenario-local
-expression layer (they now score as hits, so they are no longer mismatches).
+The 5 `cq.writes` `quote↔quotation` cases stay **recovered**. The +4 are the
+precision-first casualties: visible labels that only matched through token
+overlap and are **not** declared complete labels (`pricing information from
+the quoting system` ×2 runs, `pricing information (from quoting system)` ×1,
+`Excel file` ×1). These are now reported as mismatches rather than silently
+accepted.
 
-## 5. Classification (27 total, current evaluator)
+## 5. Classification (31 total, current evaluator)
 
 | class | count | share | description |
 | ------- | ------- | ------- | ------------- |
 | **A genuine agent extraction error** | 0 | 0% | visible attr, agent value genuinely wrong |
-| **B evaluator semantic/representation mismatch** | 10 | 37.0% | visible attr, semantically same but different representation |
-| **C agent epistemic error (asserted hidden)** | 8 | 29.6% | hidden attr asserted by the agent — fabrication, not synonymy |
-| **D visible fact never obtained/recorded** | 9 | 33.3% | visible attr, agent left it unset/empty |
+| **B evaluator semantic/representation mismatch** | 14 | 45.2% | visible attr, semantically same but different representation |
+| **C agent epistemic error (asserted hidden)** | 8 | 25.8% | hidden attr asserted by the agent — fabrication, not synonymy |
+| **D visible fact never obtained/recorded** | 9 | 29.0% | visible attr, agent left it unset/empty |
 | E GT/modeling ambiguity after visibility | 0 | 0% | — |
 | F ambiguous | 0 | 0% | — |
 
@@ -133,11 +151,9 @@ expression layer (they now score as hits, so they are no longer mismatches).
 - 10 × `"I (the stakeholder)"` vs `"sales"` (runs 00: 5 nodes, 02: 5 nodes).
   Visible; the stakeholder IS the sales employee and says "I", so this is an
   evaluator representation gap (`norm_role` lacks first-person/self-reference
-  aliases — has `interviewee`/`you`/`yourself`, not `i`/`me`/`stakeholder`).
-  Runs 01/03/04 wrote the matching `"Interviewee"`. Per the terminology-policy
-  goal, first-person coreference is treated as an **interviewing
-  responsibility** (the Agent asks for and records the business role), so
-  `norm_role` is intentionally **not** changed.
+  aliases). Per the terminology-policy goal, first-person coreference is
+  treated as an **interviewing responsibility** (the Agent asks for and
+  records the business role), so `norm_role` is intentionally **not** changed.
 
 **system (2, all D):**
 
@@ -147,27 +163,33 @@ expression layer (they now score as hits, so they are no longer mismatches).
 - The old 4 × approval-`quoting` cases are **gone**: `ap.system` is hidden, and
   leaving it unset is now **correct**.
 
-**reads (7, all C):**
+**reads (10):**
 
-- 7 × hidden `reads=[quote]` asserted by the agent as `quotation` /
+- 7 × **C**: hidden `reads=[quote]` asserted by the agent as `quotation` /
   `quotation information` (me in runs 00/01/02/04; sq in runs 00/03/04).
-  These are **epistemic errors**: the stakeholder never states these reads, so
-  the agent should have left them unset. They are **NOT** `quote↔quotation`
-  semantic targets — the expression layer explicitly does **not** apply to
+  Epistemic errors — the expression layer explicitly does **not** apply to
   hidden attributes, and these remain failures.
+- 3 × **B** (new, precision-first): `cq.reads` agent wrote `pricing information
+  from the quoting system` / `pricing information (from quoting system)` for
+  Truth `pricing` (runs 00/02/03; run 01/04 wrote the declared `pricing
+  information` and match). The embellished labels are distinct complete labels
+  and are **not** declared, so they now fail instead of matching through the
+  shared tokens `pricing`/`information`.
 
-**writes (8):**
+**writes (9):**
 
 - 1 × **C**: run_01 send `writes=["quotation"]` asserted for hidden
-  `sent_quote` — epistemic error (no expression is declared for `sent_quote`,
-  and hidden axes never use expressions).
+  `sent_quote` — epistemic error.
 - 7 × **D**: `r.writes=["request"]` never recorded (5/5), month-end
-  `excel_summary` never recorded (runs 02/04). Visible facts the agent did not
-  record.
+  `excel_summary` never recorded (runs 02/04).
+- 1 × **B** (new, precision-first): run_01 month-end `writes=["Excel file"]`
+  for Truth `excel_summary` — the format, not the summary object; the declared
+  label is `summary of quotation information` (recorded correctly by runs
+  00/04, which match).
 - The previous 5 × **B** `create-quotation GT quote vs agent quotation`
   (5/5 runs) are **recovered**: the quotation scenario declares
-  `data_expressions={"quote": ["quote", "quotation"]}`, a stakeholder-visible
-  write, so the pair now scores as a hit.
+  `data_expressions` with `quote ↔ quotation` (normalized exact), a
+  stakeholder-visible write, so the pair now scores as a hit.
 
 ## 6. Recurring patterns (current evaluator)
 
@@ -179,41 +201,44 @@ expression layer (they now score as hits, so they are no longer mismatches).
 | `r.writes=["request"]` never recorded | 5/5 | D |
 | month-end `excel_summary` never recorded | 2/5 (runs 02/04) | D |
 | run_01 send/month-end `system` left None | 2 | D |
+| `cq.reads` pricing label embellished (`from the quoting system` / `(from quoting system)`) | 3/5 | B (new, precision-first) |
+| `me.writes` recorded as `Excel file` (format, not the summary) | 1/5 | B (new, precision-first) |
 
 The former pattern `create-quotation write quote (agent quotation) not scored`
 (5/5, B) is **gone** — recovered by the scenario-local expression.
 
 ## 7. Contribution: Agent vs Evaluator vs visibility vs coverage
 
-- **Genuine agent extraction errors: 0** under the current contract. No visible
-  attribute carries a truly wrong non-empty value in these runs.
-- **Evaluator semantic/representation gaps (B, 37%)**: one deterministic
-  visible pattern remains — first-person actor labeling (`"I (the
-  stakeholder)"` vs `sales`, 10 cases). Per the terminology-policy goal this is
-  intentionally **not** fixed in `norm_role` (first-person coreference is an
-  interviewing responsibility; the Agent now asks the stakeholder's business
-  role and records it).
-- **Epistemic errors (C, 29.6%)**: the agent asserted stakeholder-hidden reads/
+- **Genuine agent extraction errors: 0** under the current contract.
+- **Evaluator semantic/representation gaps (B, 45.2%)**: first-person actor
+  labeling (10 cases, intentionally unchanged) + 4 new precision-first
+  mismatches from agent-embellished visible labels that are not declared
+  complete labels (pricing ×3, Excel-file ×1). These 4 are the honest price of
+  exact concept identity: the fix is agent label discipline (use the
+  stakeholder's term), not looser matching.
+- **Epistemic errors (C, 25.8%)**: the agent asserted stakeholder-hidden reads/
   writes (8 cases). These must **not** be "fixed" by loosening the matcher —
-  the correct agent behavior is to leave them unset, and the evaluator already
-  penalizes assertions. Replay confirms all 8 remain failures.
-- **Not-obtained visible facts (D, 33.3%)**: visible `request`/`excel_summary`
+  the correct agent behavior is to leave them unset. Replay confirms all 8
+  remain failures.
+- **Not-obtained visible facts (D, 29.0%)**: visible `request`/`excel_summary`
   writes and two systems the stakeholder explicitly stated were simply not
   recorded. Extraction/recording behavior, not matching.
 
 ## 8. Remaining evaluator mismatch population
 
-After the scenario-local `data_expressions` change, the replay of the saved
-seed-4000..4004 DAGs shows:
+After the precision-first change, the replay of the saved seed-4000..4004 DAGs
+shows **31 mismatches**:
 
-1. **`"I (the stakeholder)"` ↔ `sales` on visible actor axes — 10 cases
-   (2/5 runs, 37% of mismatches).** Representation gap in `norm_role`
-   (first-person self-reference). Explicitly **out of scope** for the
-   terminology goals: no first-person / global actor aliases are added.
-2. **Epistemic errors (C, 8 cases)** — hidden reads/writes asserted as
-   `quotation` (7 reads + 1 `sent_quote` write). These are **not** semantic
-   targets; the correct fix is agent behavior (epistemic restraint).
-3. **Not-obtained visible facts (D, 9 cases)** — recording behavior, not
+1. **`"I (the stakeholder)"` ↔ `sales` on visible actor axes — 10 cases.**
+   Explicitly **out of scope**: no first-person / global actor aliases are
+   added; the interview policy resolves the role by asking.
+2. **Agent-embellished visible labels — 4 cases** (`pricing information from
+   the quoting system` / `pricing information (from quoting system)` ×3,
+   `Excel file` ×1). Precision-first by design; the declared stakeholder
+   labels match, these do not.
+3. **Epistemic errors (C, 8 cases)** — hidden reads/writes asserted as
+   `quotation`. Not semantic targets; correct fix is agent behavior.
+4. **Not-obtained visible facts (D, 9 cases)** — recording behavior, not
    matching.
 
 Do **NOT** fix as semantic matching:
@@ -222,58 +247,78 @@ Do **NOT** fix as semantic matching:
 - hidden `sent_quote` write asserted as `quotation` (1 case) — C;
 - unrecorded visible `request` / `excel_summary` writes and `email`/`excel`
   systems (9 cases) — D (recording behavior, not matching);
-- old "approval system/read not stated" cases (8) — resolved by visibility
-  (hidden + unset is correct).
+- embellished pricing/Excel labels (4 cases) — B, resolved by the Agent using
+  the stakeholder's term, never by restoring token/substring matching.
 
-## 9. Change implemented after this analysis
+## 9. Matching rule (implemented)
 
-The only justified visible semantic target (`quote ↔ quotation` on
-`cq.writes`) is implemented as a **scenario-local** deterministic equivalence:
+Reads/writes matching is **precision-first concept identity**:
 
-- `EvaluationSpec.data_expressions: dict[str, list[str]]` — canonical Truth
-  data value → accepted expressions; lives in the hidden, evaluator-only
-  scenario spec (never a global alias table); canonical Truth values are
-  unchanged.
-- Used **only for stakeholder-visible reads/writes**; a hidden assertion
-  (`Truth: quote`, agent `quotation`) still fails — semantic equivalence never
-  overrides visibility.
-- Baseline token/substring matching is preserved; no WordNet / stemming /
-  embeddings / LLM judges / unrestricted synonymy.
-- Quotation declares exactly `data_expressions={"quote": ["quote",
-  "quotation"]}`. No `estimate` / `proposal` / `price sheet` / `document` /
-  `offer` variants and no aliases for hidden `sent_quote` or hidden reads.
+```text
+normalized exact canonical value
+        OR
+normalized exact scenario-local accepted expression
+```
 
-Replay results (seeds 4000-4004; `scripts/business_interview_data_expression_reeval.py`
-→ `artifacts/business_interview_real_llm/data_expression_reeval.json`):
+- Normalization: case-fold + whitespace collapse (harmless formatting only).
+- Token overlap and substring containment are **removed** — a value that
+  merely contains a declared label never matches.
+- `EvaluationSpec.data_expressions` lists **complete labels** identifying the
+  same scenario concept; it is scenario-local, hidden, evaluator-only; the
+  canonical Truth values are unchanged.
+- Quotation declares exactly (all stakeholder-grounded, from the saved runs):
 
-- `cq.writes` `quote↔quotation`: **5/5 recovered** (baseline 0.00 → 1.00).
-- Hidden epistemic assertions: **8/8 remain failures** (plus 4/4 in the
-  terminology-policy seed-5000/5001 runs).
-- No axis changed outside `cq.writes` → **no new false positives**.
-- Actor behavior unchanged (replays use the saved `final_dag` verbatim; no LLM
-  calls).
+  ```python
+  data_expressions={
+      "quote": ["quote", "quotation"],
+      "customer": ["customer", "customer information"],
+      "pricing": ["pricing", "pricing information"],
+      "request": ["request", "quotation request"],
+      "excel_summary": ["excel_summary", "summary of quotation information"],
+  }
+  ```
+
+- No `estimate` / `proposal` / `price sheet` / `document` / `offer` variants;
+  no aliases for hidden `sent_quote` or hidden reads; hidden axes never use
+  the expression layer.
+
+Replay results (seeds 4000-4004 and terminology-policy seeds 5000/5001;
+`scripts/business_interview_data_expression_reeval.py` →
+`artifacts/business_interview_real_llm/data_expression_reeval.json`):
+
+- `cq.writes` `quote↔quotation`: **7/7 recovered** (all replayed runs).
+- Hidden epistemic assertions: **12/12 remain failures** (8 in seeds
+  4000–4004, 4 in seeds 5000/5001).
+- Collision probes (133 truth×probe pairs): **0 false positives**; every
+  near-collision (`quotation request`, `quotation information`, `quotation
+  document`, `price quotation`, `invoice`) fails against `quote`.
+- 18 axis matches kept by declared labels; **7 matches lost for good** (the
+  embellished-label cases above) — reported, not restored.
+- No axis changed outside reads/writes; actor behavior unchanged (saved
+  `final_dag` replayed verbatim; no LLM calls).
 
 ## 10. What should NOT be changed
 
-- Do **not** relax `_data_recall` into "anything semantically matches" (would
-  reward the 8 epistemic assertions).
+- Do **not** restore token-overlap / substring matching for reads/writes.
 - Do **not** add an embeddings / LLM judge / WordNet / stemming.
 - Do **not** add first-person / global actor aliases to `norm_role`.
 - Do **not** change the node-matching gate (`_match_nodes`).
 - Do **not** change the stakeholder fidelity prompt / Ground Truth / `known_info`.
 - Do **not** change the StakeholderFilter visibility (already aligned with
   `known_info`).
+- Do **not** implement an interview-terminology glossary tool yet (design
+  note: `doc/business-interview-terminology-design.md`).
 
 ## 11. Verification
 
 - `scripts/attribute_mismatch_inventory.py` regenerates both JSONs reproducibly
   (identical SHA on rerun).
 - `scripts/business_interview_data_expression_reeval.py` replays all saved
-  seed-4000..4004 and seed-5000/5001 DAGs under baseline vs expression-aware
-  contracts and emits `data_expression_reeval.json`.
+  seed-4000..4004 and seed-5000/5001 DAGs under loose vs exact-core vs
+  exact-declared contracts and emits `data_expression_reeval.json`.
 - `make check-all` (ruff lint + format) clean.
-- `pytest tests/test_domains/test_business_interview/` → **105 passed**
-  (includes the scenario-local expression regression tests).
+- `pytest tests/test_domains/test_business_interview/` → **110 passed**
+  (includes the precision-first regression tests).
 
 ## 12. Deliverables
 
@@ -281,6 +326,7 @@ Replay results (seeds 4000-4004; `scripts/business_interview_data_expression_ree
 - Replay helper: `scripts/business_interview_data_expression_reeval.py`
 - Inventory: `artifacts/business_interview_real_llm/attribute_mismatch_inventory.json`
 - Summary: `artifacts/business_interview_real_llm/attribute_mismatch_analysis.json`
-  (current-evaluator, supersedes the 32-mismatch numbers)
+  (current-evaluator, precision-first)
 - Replay: `artifacts/business_interview_real_llm/data_expression_reeval.json`
+- Design note: `doc/business-interview-terminology-design.md`
 - This report: `doc/business-interview-attribute-mismatch-analysis.md`

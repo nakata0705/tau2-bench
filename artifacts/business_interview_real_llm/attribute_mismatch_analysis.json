@@ -13,13 +13,13 @@
   "mismatch_totals": {
     "actor": 10,
     "system": 2,
-    "reads": 7,
-    "writes": 8
+    "reads": 10,
+    "writes": 9
   },
-  "mismatch_total": 27,
+  "mismatch_total": 31,
   "classification_counts": {
     "A_genuine_agent_extraction_error": 0,
-    "B_evaluator_semantic_mismatch": 10,
+    "B_evaluator_semantic_mismatch": 14,
     "C_agent_epistemic_error": 8,
     "D_visible_fact_not_obtained": 9,
     "E_gt_modeling_ambiguity": 0,
@@ -27,9 +27,9 @@
   },
   "classification_pct": {
     "A_genuine_agent_extraction_error": 0.0,
-    "B_evaluator_semantic_mismatch": 0.37037037037037035,
-    "C_agent_epistemic_error": 0.2962962962962963,
-    "D_visible_fact_not_obtained": 0.3333333333333333,
+    "B_evaluator_semantic_mismatch": 0.45161290322580644,
+    "C_agent_epistemic_error": 0.25806451612903225,
+    "D_visible_fact_not_obtained": 0.2903225806451613,
     "E_gt_modeling_ambiguity": 0.0,
     "F_ambiguous": 0.0
   },
@@ -52,7 +52,7 @@
     },
     "reads": {
       "A_genuine_agent_extraction_error": 0,
-      "B_evaluator_semantic_mismatch": 0,
+      "B_evaluator_semantic_mismatch": 3,
       "C_agent_epistemic_error": 7,
       "D_visible_fact_not_obtained": 0,
       "E_gt_modeling_ambiguity": 0,
@@ -60,7 +60,7 @@
     },
     "writes": {
       "A_genuine_agent_extraction_error": 0,
-      "B_evaluator_semantic_mismatch": 0,
+      "B_evaluator_semantic_mismatch": 1,
       "C_agent_epistemic_error": 1,
       "D_visible_fact_not_obtained": 7,
       "E_gt_modeling_ambiguity": 0,
@@ -68,10 +68,10 @@
     }
   },
   "per_run_summary": {
-    "run_00_seed4000.json": 8,
-    "run_01_seed4001.json": 5,
-    "run_02_seed4002.json": 8,
-    "run_03_seed4003.json": 2,
+    "run_00_seed4000.json": 9,
+    "run_01_seed4001.json": 6,
+    "run_02_seed4002.json": 9,
+    "run_03_seed4003.json": 3,
     "run_04_seed4004.json": 4
   },
   "recurring_patterns": [
@@ -127,6 +127,15 @@
       ]
     },
     {
+      "pattern": "cq.reads T=['customer', 'pricing'] A=['customer information', 'pricing information (from quoting system)']",
+      "frequency": "2/5",
+      "class": "B_evaluator_semantic_mismatch",
+      "runs": [
+        "run_02_seed4002.json",
+        "run_03_seed4003.json"
+      ]
+    },
+    {
       "pattern": "me.actor T=sales A=I (the stakeholder)",
       "frequency": "2/5",
       "class": "B_evaluator_semantic_mismatch",
@@ -163,9 +172,25 @@
       ]
     },
     {
+      "pattern": "cq.reads T=['customer', 'pricing'] A=['customer information', 'pricing information from the quoting system']",
+      "frequency": "1/5",
+      "class": "B_evaluator_semantic_mismatch",
+      "runs": [
+        "run_00_seed4000.json"
+      ]
+    },
+    {
       "pattern": "me.system T=excel A=None",
       "frequency": "1/5",
       "class": "D_visible_fact_not_obtained",
+      "runs": [
+        "run_01_seed4001.json"
+      ]
+    },
+    {
+      "pattern": "me.writes T=['excel_summary'] A=['Excel file']",
+      "frequency": "1/5",
+      "class": "B_evaluator_semantic_mismatch",
       "runs": [
         "run_01_seed4001.json"
       ]
@@ -205,6 +230,21 @@
       "class": "B_evaluator_semantic_mismatch",
       "truth": "sales",
       "agent": "I (the stakeholder)"
+    },
+    {
+      "run": "run_00_seed4000.json",
+      "agent_node": "create_quotation",
+      "truth_node": "cq",
+      "axis": "reads",
+      "class": "B_evaluator_semantic_mismatch",
+      "truth": [
+        "customer",
+        "pricing"
+      ],
+      "agent": [
+        "customer information",
+        "pricing information from the quoting system"
+      ]
     },
     {
       "run": "run_00_seed4000.json",
@@ -294,6 +334,19 @@
     },
     {
       "run": "run_01_seed4001.json",
+      "agent_node": "send_accounting_summary",
+      "truth_node": "me",
+      "axis": "writes",
+      "class": "B_evaluator_semantic_mismatch",
+      "truth": [
+        "excel_summary"
+      ],
+      "agent": [
+        "Excel file"
+      ]
+    },
+    {
+      "run": "run_01_seed4001.json",
       "agent_node": "record_request",
       "truth_node": "r",
       "axis": "writes",
@@ -342,6 +395,21 @@
       "class": "B_evaluator_semantic_mismatch",
       "truth": "sales",
       "agent": "I (the stakeholder)"
+    },
+    {
+      "run": "run_02_seed4002.json",
+      "agent_node": "create_quotation",
+      "truth_node": "cq",
+      "axis": "reads",
+      "class": "B_evaluator_semantic_mismatch",
+      "truth": [
+        "customer",
+        "pricing"
+      ],
+      "agent": [
+        "customer information",
+        "pricing information (from quoting system)"
+      ]
     },
     {
       "run": "run_02_seed4002.json",
@@ -404,6 +472,21 @@
         "request"
       ],
       "agent": []
+    },
+    {
+      "run": "run_03_seed4003.json",
+      "agent_node": "create_quotation",
+      "truth_node": "cq",
+      "axis": "reads",
+      "class": "B_evaluator_semantic_mismatch",
+      "truth": [
+        "customer",
+        "pricing"
+      ],
+      "agent": [
+        "customer information",
+        "pricing information (from quoting system)"
+      ]
     },
     {
       "run": "run_03_seed4003.json",

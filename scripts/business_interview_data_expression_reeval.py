@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-"""Re-evaluate saved business_interview smoke artifacts under the current
-evaluator with scenario-local ``data_expressions``.
+"""Replay saved business_interview smoke artifacts under the precision-first
+data matcher.
 
-Isolates the effect of the scenario-local semantic-equivalence change:
+Isolates the effect of the precision-first data-equivalence change by
+replaying every saved DAG (seeds 4000-4004 and terminology-policy seeds
+5000/5001) under three read/write matching contracts:
 
-- **baseline**: current evaluator with ``data_expressions`` emptied — i.e. the
-  deterministic token/substring matching that existed before this change;
-- **expressions**: same evaluator with the quotation scenario's declared
-  ``quote -> [quote, quotation]`` expressions.
+- ``loose``       — the pre-change matcher (normalized token overlap OR
+                    substring containment, applied to canonical values AND
+                    declared expressions). This is what previously let
+                    "quotation request" / "quotation information" match
+                    "quote" via the declared expression "quotation".
+- ``exact_core``  — the new matcher with the scenario's ``data_expressions``
+                    emptied: normalized EXACT canonical value only.
+- ``exact_decl``  — the new matcher with the quotation scenario's declared
+                    complete labels (the shipped contract).
 
-For every saved DAG (seed 4000-4004 and terminology-policy seed 5000/5001) it
-reports, per run:
-
-- ``cq_writes_hit`` — whether the visible create-quotation write axis is scored
-  as a match (the 5/5 ``quote``/``quotation`` semantic target);
-- ``hidden_assertions`` — the hidden reads/writes the agent asserted (these
-  MUST stay failures: epistemic errors, never rescued by expressions);
-- write_correctness under both contracts, and a per-axis diff to prove **no
-  other axis changed** (no new false positives);
-- the stored historical ``evaluator_metrics`` (recorded at run time by the
-  pre-visibility scorer) so stored metrics are never confused with replays.
+For every run it reports the per-axis score under each contract, the
+``cq.writes`` recovery, hidden assertions (must stay failures), and the
+collision-probe matrix (near-collisions must NOT match "quote" and must
+produce zero false positives).
 
 No LLM calls are made; the actor behavior is the saved ``final_dag`` verbatim.
 Output: artifacts/business_interview_real_llm/data_expression_reeval.json
@@ -44,6 +44,39 @@ ART_DIR = Path("artifacts/business_interview_real_llm")
 
 TRUTH = quotation_truth()
 STAKEHOLDER = quotation_sales_filter()
+
+# Collision probe set: agent labels probed against each canonical Truth data
+# value. Only declared complete labels may match; everything else must fail.
+COLLISION_PROBES = [
+    "quote",
+    "quotation",
+    "quotation request",
+    "quotation information",
+    "quotation document",
+    "price quotation",
+    "invoice",
+    "customer",
+    "customer information",
+    "customer request",
+    "request",
+    "summary",
+    "quotation summary",
+    "excel_summary",
+    "summary of quotation information",
+    "Excel file",
+    "pricing",
+    "pricing information",
+    "pricing information (from quoting system)",
+]
+
+_TRUE_DATA_VALUES = sorted(
+    {
+        v.value
+        for n in TRUTH.nodes.values()
+        for axis in ("reads", "writes")
+        for v in getattr(n, axis)
+    }
+)
 
 
 def _cv(x):
@@ -79,9 +112,18 @@ def _load_artifact(path):
     return d, agent
 
 
-def _axis_ok(agent, mapping, tnid, anid, axis, spec):
-    """Score one matched node reads/writes axis the way the evaluator does, so
-    the diff can isolate which axes the data-expression layer changes."""
+def _reeval(d, agent, spec):
+    db = InterviewDB(
+        dag=agent,
+        messages=list(d["db_messages_ledger"]),
+        observations=[],
+        interview_complete=bool(d["interview_complete"]),
+    )
+    return evaluate(db, TRUTH, spec, STAKEHOLDER)
+
+
+def _axis_score(agent, mapping, tnid, anid, axis, spec):
+    """Score one matched node reads/writes axis the way the evaluator does."""
     an = agent.nodes[anid]
     tn = TRUTH.nodes[tnid]
     visible = STAKEHOLDER.visible_attributes_for(tnid)
@@ -95,20 +137,77 @@ def _axis_ok(agent, mapping, tnid, anid, axis, spec):
     )
 
 
-def _reeval(d, agent, spec):
-    db = InterviewDB(
-        dag=agent,
-        messages=list(d["db_messages_ledger"]),
-        observations=[],
-        interview_complete=bool(d["interview_complete"]),
+def _loose_item_ok(tvalue, avalue, spec):
+    """The PRE-CHANGE loose matcher (token overlap OR substring containment
+    over canonical values AND declared expressions) — kept here only as the
+    measurement baseline; it is no longer part of the evaluator."""
+    import re
+
+    tokens = re.compile(r"[a-z0-9]+")
+    at = set(tokens.findall((avalue or "").lower()))
+    a_low = (avalue or "").lower()
+    tt = set(tokens.findall(tvalue.lower()))
+    if tt & at or tvalue.lower() in a_low:
+        return True
+    for expr in spec.data_expressions.get(tvalue, ()):
+        et = set(tokens.findall(expr.lower()))
+        if et & at or expr.lower() in a_low:
+            return True
+    return False
+
+
+def _loose_data_recall(agent_items, truth_items, spec):
+    if not truth_items:
+        return 1.0 if not agent_items else 0.0
+    hits = 0
+    for gi in range(len(truth_items)):
+        if not truth_items[gi]:
+            hits += 1
+            continue
+        if any(_loose_item_ok(truth_items[gi], a, spec) for a in agent_items):
+            hits += 1
+    return hits / len(truth_items)
+
+
+def _axis_score_loose(agent, mapping, tnid, anid, axis, spec):
+    an = agent.nodes[anid]
+    tn = TRUTH.nodes[tnid]
+    visible = STAKEHOLDER.visible_attributes_for(tnid)
+    if axis not in visible:
+        vals = list(getattr(an, axis))
+        return 1.0 if not any(v.asserted for v in vals) else 0.0
+    return _loose_data_recall(
+        [v.value for v in getattr(an, axis)],
+        [v.value for v in getattr(tn, axis)],
+        spec,
     )
-    return evaluate(db, TRUTH, spec, STAKEHOLDER)
 
 
 def main():
     spec_expr = quotation_spec()
-    spec_plain = copy.deepcopy(spec_expr)
-    spec_plain.data_expressions = {}
+    spec_core = copy.deepcopy(spec_expr)
+    spec_core.data_expressions = {}
+
+    # collision matrix: probe each agent label against each canonical Truth
+    # data value under the shipped contract; report every intended hit and
+    # every unexpected hit (false positive).
+    matrix = []
+    for truth in _TRUE_DATA_VALUES:
+        for probe in COLLISION_PROBES:
+            hit = _data_recall([probe], [truth], spec_expr)
+            intended = (
+                probe in ([truth] + spec_expr.data_expressions.get(truth, []))
+                and _data_recall([probe], [truth], spec_expr) == 1.0
+            )
+            matrix.append(
+                {
+                    "truth": truth,
+                    "probe": probe,
+                    "hit": hit == 1.0,
+                    "intended": intended,
+                }
+            )
+    false_positives = [m for m in matrix if m["hit"] and not m["intended"]]
 
     runs = []
     paths = sorted(glob.glob(str(ART_DIR / "run_*_seed4*.json"))) + sorted(
@@ -117,33 +216,39 @@ def main():
     for p in paths:
         d, agent = _load_artifact(p)
         name = Path(p).name
+        r_loose = _reeval(d, agent, spec_expr)
+        r_core = _reeval(d, agent, spec_core)
         r_expr = _reeval(d, agent, spec_expr)
-        r_plain = _reeval(d, agent, spec_plain)
 
-        # per-axis diff (visible + hidden semantics, evaluator mechanics)
         from tau2.domains.business_interview.evaluation import _match_nodes
 
         mapping = _match_nodes(agent, TRUTH, spec_expr)
-        axis_diff = {}
+        axis_changes = {}
         for anid, tnid in mapping.items():
             for axis in ("reads", "writes"):
-                base = _axis_ok(agent, mapping, tnid, anid, axis, spec_plain)
-                expr = _axis_ok(agent, mapping, tnid, anid, axis, spec_expr)
-                if base != expr:
-                    axis_diff[f"{tnid}.{axis}"] = {
-                        "baseline": base,
-                        "expressions": expr,
+                base = _axis_score_loose(agent, mapping, tnid, anid, axis, spec_expr)
+                core = _axis_score(agent, mapping, tnid, anid, axis, spec_core)
+                expr = _axis_score(agent, mapping, tnid, anid, axis, spec_expr)
+                if base != expr or core != expr:
+                    an = agent.nodes[anid]
+                    tn = TRUTH.nodes[tnid]
+                    axis_changes[f"{tnid}.{axis}"] = {
+                        "loose": base,
+                        "exact_core": core,
+                        "exact_decl": expr,
+                        "truth": [v.value for v in getattr(tn, axis)],
+                        "agent": [v.value for v in getattr(an, axis) if v.asserted],
                     }
 
         cq_writes = None
-        hidden_entries = []
+        hidden = []
         for anid, tnid in mapping.items():
             if tnid == "cq":
                 cq_writes = {
-                    "baseline": _axis_ok(
-                        agent, mapping, "cq", anid, "writes", spec_plain
+                    "loose": _axis_score_loose(
+                        agent, mapping, "cq", anid, "writes", spec_expr
                     ),
-                    "expressions": _axis_ok(
+                    "exact_decl": _axis_score(
                         agent, mapping, "cq", anid, "writes", spec_expr
                     ),
                 }
@@ -153,15 +258,12 @@ def main():
                 vals = [v.value for v in getattr(agent.nodes[anid], axis) if v.asserted]
                 if not vals:
                     continue
-                hidden_entries.append(
+                hidden.append(
                     {
                         "node": tnid,
                         "axis": axis,
                         "values": vals,
-                        "baseline_score": _axis_ok(
-                            agent, mapping, tnid, anid, axis, spec_plain
-                        ),
-                        "expressions_score": _axis_ok(
+                        "score": _axis_score(
                             agent, mapping, tnid, anid, axis, spec_expr
                         ),
                     }
@@ -172,72 +274,95 @@ def main():
                 "run": name,
                 "termination": d.get("termination_reason"),
                 "stored_evaluator_metrics": d.get("evaluator_metrics") or {},
-                "replayed_baseline": {
-                    "write_correctness": r_plain.write_correctness,
-                    "quality_pass": r_plain.quality_pass,
-                    "structural_pass": r_plain.structural_pass,
+                "replayed_loose": {
+                    "read_correctness": r_loose.read_correctness,
+                    "write_correctness": r_loose.write_correctness,
                 },
-                "replayed_expressions": {
-                    "write_correctness": r_expr.write_correctness,
+                "replayed_exact_core": {
+                    "read_correctness": r_core.read_correctness,
+                    "write_correctness": r_core.write_correctness,
+                },
+                "replayed_exact_decl": {
                     "read_correctness": r_expr.read_correctness,
-                    "actor_correctness": r_expr.actor_correctness,
-                    "system_correctness": r_expr.system_correctness,
-                    "node_recall": r_expr.node_recall,
-                    "node_precision": r_expr.node_precision,
-                    "edge_recall": r_expr.edge_recall,
-                    "edge_precision": r_expr.edge_precision,
+                    "write_correctness": r_expr.write_correctness,
                     "quality_pass": r_expr.quality_pass,
                     "structural_pass": r_expr.structural_pass,
                 },
-                "cq_writes_quote_quotation": cq_writes,
-                "axis_diffs": axis_diff,
-                "hidden_assertions": hidden_entries,
+                "cq_writes": cq_writes,
+                "axis_changes": axis_changes,
+                "hidden_assertions": hidden,
             }
         )
 
-    recovered = sum(
+    cq_recovered = sum(
         1
         for r in runs
-        if r["cq_writes_quote_quotation"]
-        and r["cq_writes_quote_quotation"]["baseline"] < 1.0
-        and r["cq_writes_quote_quotation"]["expressions"] == 1.0
+        if r["cq_writes"]
+        and r["cq_writes"]["loose"] == 1.0
+        and r["cq_writes"]["exact_decl"] == 1.0
     )
     hidden_total = sum(len(r["hidden_assertions"]) for r in runs)
     hidden_still_fail = all(
-        e["expressions_score"] == 0.0 for r in runs for e in r["hidden_assertions"]
+        e["score"] == 0.0 for r in runs for e in r["hidden_assertions"]
     )
-    unexpected_diffs = [
-        (r["run"], k) for r in runs for k in r["axis_diffs"] if k != "cq.writes"
+    # matches kept by a declared expression: exact_core miss -> exact_decl hit
+    recovered_by_decl = [
+        (r["run"], k, v)
+        for r in runs
+        for k, v in r["axis_changes"].items()
+        if v["exact_core"] < 1.0 and v["exact_decl"] == 1.0
+    ]
+    # matches lost for good: hit under loose AND exact_core, lost under exact_decl
+    lost = [
+        (r["run"], k, v)
+        for r in runs
+        for k, v in r["axis_changes"].items()
+        if v["loose"] == 1.0 and v["exact_decl"] < 1.0
     ]
 
     summary = {
         "scenario": "quotation_workflow_1",
         "method": (
             "replay each saved final_dag under the current evaluator with the "
-            "scenario StakeholderFilter; baseline = data_expressions emptied; "
-            "expressions = quotation data_expressions configured. Stored "
+            "scenario StakeholderFilter. loose = pre-change matcher (token/"
+            "substring incl. expressions, simulated locally), exact_core = "
+            "normalized-exact canonical only, exact_decl = shipped contract "
+            "(normalized-exact canonical OR declared complete labels). Stored "
             "evaluator_metrics are historical artifacts from the run-time "
             "(pre-visibility) scorer and are NOT replayed metrics."
         ),
+        "data_matching_rule": (
+            "normalized exact canonical value OR normalized exact "
+            "scenario-local accepted expression; no token overlap, no "
+            "substring containment"
+        ),
         "runs_replayed": len(runs),
-        "cq_writes_recovered": {
-            "count": recovered,
-            "of": sum(
-                1
-                for r in runs
-                if r["cq_writes_quote_quotation"]
-                and r["cq_writes_quote_quotation"]["baseline"] < 1.0
-            ),
-        },
+        "cq_writes_recovered": {"count": cq_recovered, "of": len(runs)},
         "hidden_epistemic_assertions": {
             "count": hidden_total,
             "all_still_fail": hidden_still_fail,
-            "note": (
-                "hidden asserted axes are scored 0.0 by _attribute_ok before "
-                "data matching; expressions never apply to hidden attributes"
-            ),
         },
-        "axis_changes_outside_cq_writes": unexpected_diffs,
+        "collision_probe_matrix": {
+            "probes": len(matrix),
+            "false_positives": [m for m in matrix if m["hit"] and not m["intended"]],
+            "intended_hits": [m for m in matrix if m["hit"] and m["intended"]],
+            "near_collisions_vs_quote": {
+                p: _data_recall([p], ["quote"], spec_expr) == 1.0
+                for p in (
+                    "quotation request",
+                    "quotation information",
+                    "quotation document",
+                    "price quotation",
+                    "invoice",
+                )
+            },
+        },
+        "matches_recovered_by_declared_expression": [
+            {"run": r, "axis": k, "details": v} for r, k, v in recovered_by_decl
+        ],
+        "matches_lost_for_good": [
+            {"run": r, "axis": k, "details": v} for r, k, v in lost
+        ],
         "actor_behavior": (
             "unchanged: replays use the saved final_dag verbatim; no LLM calls"
         ),
@@ -251,17 +376,33 @@ def main():
         raise SystemExit(f"cannot write {out}: {exc}")
     print("wrote", out)
     print(f"runs replayed: {len(runs)}")
-    print(f"cq.writes quote<->quotation recovered: {recovered}")
-    print(f"hidden epistemic assertions remaining: {hidden_total}")
-    print(f"hidden assertions all still fail: {hidden_still_fail}")
-    print("axis changes outside cq.writes:", unexpected_diffs or "none")
+    print(f"cq.writes quote<->quotation recovered: {cq_recovered}/{len(runs)}")
+    print(
+        f"hidden epistemic assertions: {hidden_total}, all still fail: {hidden_still_fail}"
+    )
+    print(f"collision probes: {len(matrix)}, false positives: {len(false_positives)}")
+    print(
+        "near collisions vs quote:",
+        summary["collision_probe_matrix"]["near_collisions_vs_quote"],
+    )
+    print(f"matches recovered by declared expression: {len(recovered_by_decl)}")
+    print(f"matches lost for good: {len(lost)}")
     for r in runs:
-        cq = r["cq_writes_quote_quotation"]
-        cq_s = f"{cq['baseline']:.2f}->{cq['expressions']:.2f}" if cq else "n/a"
+        cq = r["cq_writes"]
+        cq_s = f"loose={cq['loose']:.2f} decl={cq['exact_decl']:.2f}" if cq else "n/a"
+        rd, rc, rx = (
+            r["replayed_loose"]["read_correctness"],
+            r["replayed_exact_core"]["read_correctness"],
+            r["replayed_exact_decl"]["read_correctness"],
+        )
+        wd, wc, wx = (
+            r["replayed_loose"]["write_correctness"],
+            r["replayed_exact_core"]["write_correctness"],
+            r["replayed_exact_decl"]["write_correctness"],
+        )
         print(
-            f"{r['run']:28} cq.writes {cq_s:12} "
-            f"write_corr {r['replayed_baseline']['write_correctness']:.2f}"
-            f"->{r['replayed_expressions']['write_correctness']:.2f} "
+            f"{r['run']:28} cq.writes {cq_s:26} "
+            f"read {rd:.2f}/{rc:.2f}/{rx:.2f} write {wd:.2f}/{wc:.2f}/{wx:.2f} "
             f"hidden={len(r['hidden_assertions'])}"
         )
 

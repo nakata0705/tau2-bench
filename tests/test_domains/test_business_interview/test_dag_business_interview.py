@@ -1909,13 +1909,17 @@ def test_default_evaluate_without_stakeholder_is_explicit_all_visible():
 
 
 # ---------------------------------------------------------------------------
-# Scenario-local data expressions (deterministic semantic equivalence)
+# Scenario-local data expressions (deterministic, precision-first concept
+# identity)
 #
-# EvaluationSpec may declare small, scenario-local accepted expressions for
-# canonical Ground Truth data values (e.g. quote -> [quote, quotation]). The
-# evaluator uses them ONLY for stakeholder-visible reads/writes; a hidden
+# EvaluationSpec.data_expressions declares **complete labels** that identify
+# the same scenario concept as a canonical Ground Truth data value. Matching
+# is normalized EXACT equality only: the canonical value OR a declared
+# complete label. Shared tokens / substring containment are never used to
+# infer concept identity, so "quotation request" / "quotation information" /
+# "price quotation" cannot match "quote" unless explicitly declared. A hidden
 # assertion stays incorrect no matter its wording, and a scenario without
-# declared expressions keeps the baseline token/substring matching exactly.
+# declared expressions keeps the exact canonical contract.
 # ---------------------------------------------------------------------------
 
 
@@ -1930,14 +1934,97 @@ def _rewrite_value(iv: InferredValue, new_value: str) -> InferredValue:
 
 
 def test_data_expressions_declared_only_for_quotation():
-    """The expression table is scenario-local: quotation declares exactly
-    ``quote -> [quote, quotation]``; lab declares nothing."""
+    """The expression table is scenario-local and evidence-minimal: quotation
+    declares exactly the stakeholder-grounded complete labels; lab declares
+    nothing."""
     sc = get_scenario(SCENARIO)
     assert sc is not None
-    assert sc.spec.data_expressions == {"quote": ["quote", "quotation"]}
+    assert sc.spec.data_expressions == {
+        "quote": ["quote", "quotation"],
+        "customer": ["customer", "customer information"],
+        "pricing": ["pricing", "pricing information"],
+        "request": ["request", "quotation request"],
+        "excel_summary": ["excel_summary", "summary of quotation information"],
+    }
     lab = get_scenario(LAB_SCENARIO)
     assert lab is not None
     assert lab.spec.data_expressions == {}
+
+
+def _data_hit(agent: str, truth: str):
+    """Unit-level read/write match under the quotation spec."""
+    from tau2.domains.business_interview.evaluation import _data_recall
+
+    sc = get_scenario(SCENARIO)
+    assert sc is not None
+    return _data_recall([agent], [truth], sc.spec)
+
+
+def test_exact_quote_family_matches_only_when_declared():
+    """Precision-first contract for the quote concept: canonical and the
+    declared complete label match; every near-collision fails even though it
+    contains the word "quotation" (these were false positives under the old
+    token-overlap matcher)."""
+    assert _data_hit("quote", "quote") == 1.0  # canonical exact
+    assert _data_hit("quotation", "quote") == 1.0  # declared complete label
+    assert _data_hit("QUOTATION", "quote") == 1.0  # case normalization only
+    for near in (
+        "quotation request",
+        "quotation information",
+        "quotation document",
+        "price quotation",
+        "invoice",
+        "a quotation",
+        "the quotation",
+        "quotation summary",
+    ):
+        assert _data_hit(near, "quote") == 0.0, near
+
+
+def test_exact_probe_matrix_customer_request_summary():
+    """Probe matrix: concept identity is exact + declared — the stakeholder-
+    grounded complete labels match, near-collisions do not."""
+    # customer family: "customer information" declared; "customer request" is
+    # a DIFFERENT object (the request) and must not match
+    assert _data_hit("customer", "customer") == 1.0
+    assert _data_hit("customer information", "customer") == 1.0
+    assert _data_hit("customer request", "customer") == 0.0
+    # request family: "quotation request" is the stakeholder's name for the
+    # request object and IS declared for "request"
+    assert _data_hit("request", "request") == 1.0
+    assert _data_hit("quotation request", "request") == 1.0
+    # summary family: only the stakeholder's complete label is declared for
+    # excel_summary; bare "summary" / "quotation summary" / "Excel file" fail
+    assert _data_hit("excel_summary", "excel_summary") == 1.0
+    assert _data_hit("summary of quotation information", "excel_summary") == 1.0
+    assert _data_hit("summary", "excel_summary") == 0.0
+    assert _data_hit("quotation summary", "excel_summary") == 0.0
+    assert _data_hit("Excel file", "excel_summary") == 0.0
+    # pricing family: stakeholder label declared; agent-embellished label is a
+    # distinct complete label and fails
+    assert _data_hit("pricing", "pricing") == 1.0
+    assert _data_hit("pricing information", "pricing") == 1.0
+    assert _data_hit("pricing information (from quoting system)", "pricing") == 0.0
+
+
+def test_exact_matching_never_uses_substring_or_tokens():
+    """Substring/token containment is dead: a value that merely CONTAINS a
+    declared label never matches ("quotation request" contains the word
+    "quotation"; "customer request" contains "customer")."""
+    from tau2.domains.business_interview.evaluation import _data_item_ok, _data_recall
+
+    sc = get_scenario(SCENARIO)
+    assert sc is not None
+    spec = sc.spec
+    assert _data_recall(["quotation request"], ["quote"], spec) == 0.0
+    assert _data_recall(["quotation information"], ["quote"], spec) == 0.0
+    assert _data_recall(["quotation document"], ["quote"], spec) == 0.0
+    assert _data_recall(["price quotation"], ["quote"], spec) == 0.0
+    # canonical "quote" is not a substring gate either
+    assert _data_recall(["x quote y"], ["quote"], spec) == 0.0
+    # and the unit predicate itself never falls back to token overlap
+    assert _data_item_ok("quote", "quotation request", spec) is False
+    assert _data_item_ok("quote", "quotation", spec) is True
 
 
 def test_visible_quote_quotation_equivalent():
@@ -1974,6 +2061,50 @@ def test_visible_unrelated_value_still_fails():
     res = _eval(tools)
     assert res.write_correctness < 1.0
     assert res.structural_pass is False
+
+
+def test_visible_near_collision_write_still_fails():
+    """A visible write containing the declared word (``quotation request``,
+    ``quotation information``) must NOT match Truth ``quote`` — precision-first."""
+    for near in ("quotation request", "quotation information", "quotation document"):
+        tools = _tools()
+        _build(tools, evidence=True)
+        dag = tools.db.dag
+        assert dag is not None
+        dag.nodes["c"].writes = [_rewrite_value(dag.nodes["c"].writes[0], near)]
+        res = _eval(tools)
+        assert res.write_correctness < 1.0, near
+        assert res.structural_pass is False
+
+
+def test_visible_stakeholder_label_variants_match():
+    """The stakeholder-grounded complete labels declared in the quotation spec
+    match on their visible axes (customer information, pricing information,
+    quotation request, summary of quotation information)."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    dag = tools.db.dag
+    assert dag is not None
+    # cc.reads / cq.reads: customer -> "customer information"
+    dag.nodes["b"].reads = [
+        _rewrite_value(dag.nodes["b"].reads[0], "customer information")
+    ]
+    dag.nodes["c"].reads = [
+        _rewrite_value(dag.nodes["c"].reads[0], "customer information"),
+        _rewrite_value(dag.nodes["c"].reads[1], "pricing information"),
+    ]
+    # r.writes: request -> "quotation request"
+    dag.nodes["a"].writes = [
+        _rewrite_value(dag.nodes["a"].writes[0], "quotation request")
+    ]
+    # me.writes: excel_summary -> "summary of quotation information"
+    dag.nodes["f"].writes = [
+        _rewrite_value(dag.nodes["f"].writes[0], "summary of quotation information")
+    ]
+    res = _eval(tools)
+    assert res.read_correctness == 1.0
+    assert res.write_correctness == 1.0
+    assert res.structural_pass is True
 
 
 def test_data_expressions_narrow_layer_not_fuzzy_matching():
@@ -2085,8 +2216,9 @@ def test_data_expressions_do_not_apply_to_hidden_lab_artifacts():
 
 
 def test_data_recall_expression_layer_is_additive():
-    """Unit-level: the expression layer is additive over the baseline — the
-    same truth/agent pair matches only when the scenario declares it."""
+    """Unit-level: matching is normalized exact canonical value OR normalized
+    exact declared expression — nothing else. An empty expression table leaves
+    only the exact canonical contract."""
     from tau2.domains.business_interview.evaluation import _data_recall
 
     sc = get_scenario(SCENARIO)
@@ -2094,10 +2226,16 @@ def test_data_recall_expression_layer_is_additive():
     plain = sc.spec.model_copy(deep=True)
     plain.data_expressions = {}
     with_expr = sc.spec
-    assert _data_recall(["quote"], ["quote"], plain) == 1.0  # baseline
-    assert _data_recall(["quotation"], ["quote"], plain) == 0.0  # baseline miss
+    assert _data_recall(["quote"], ["quote"], plain) == 1.0  # canonical exact
+    assert _data_recall(["quotation"], ["quote"], plain) == 0.0  # undeclared
     assert _data_recall(["quotation"], ["quote"], with_expr) == 1.0  # declared
     assert _data_recall(["invoice"], ["quote"], with_expr) == 0.0  # undeclared
+    # token/substring are never inferred: "quotation request" contains the
+    # declared label "quotation" as a token yet must not match
+    assert _data_recall(["quotation request"], ["quote"], with_expr) == 0.0
+    # normalization is case/whitespace only
+    assert _data_recall(["  Quotation "], ["quote"], with_expr) == 1.0
+    assert _data_recall(["quotation."], ["quote"], with_expr) == 0.0  # punctuation
     # canonical Truth value itself is untouched
     assert sc.truth.nodes["cq"].writes[0].value == "quote"
 

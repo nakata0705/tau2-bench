@@ -214,15 +214,34 @@ def quotation_spec() -> EvaluationSpec:
                 "与信",
             ],
         },
-        # Scenario-local data equivalence (evaluator-only, deterministic).
-        # ``quote`` is the canonical Ground Truth value; ``quotation`` is the
-        # stakeholder's natural wording for the same business concept. Only
-        # stakeholder-visible reads/writes may use this layer — a hidden
-        # assertion stays incorrect no matter its wording. No broader variants
-        # (estimate / proposal / price sheet / document / offer) are declared:
-        # only expressions justified by the observed runs.
+        # Scenario-local data equivalence (evaluator-only, deterministic,
+        # precision-first). Each key is a canonical Ground Truth read/write
+        # value; the list holds **complete labels** that identify the same
+        # scenario concept, matched by normalized exact equality ONLY (no
+        # token overlap / substring containment). Every expression is grounded
+        # in the stakeholder's observed wording in the saved real-LLM runs:
+        #   quote      <-> quotation           (create-quotation write)
+        #   customer   <-> customer information (CRM check / create reads)
+        #   pricing    <-> pricing information  (create read)
+        #   request    <-> quotation request    (receive write: the request
+        #                                       the customer sends)
+        #   excel_summary <-> summary of quotation information (month-end
+        #                                       summary object)
+        # Near-collisions that are NOT declared stay distinct: quotation
+        # request / quotation information / quotation document / price
+        # quotation / invoice never match "quote"; "customer request" never
+        # matches "customer"; "quotation summary" / "Excel file" never match
+        # "excel_summary". Hidden axes never use this layer (a hidden
+        # assertion stays incorrect no matter its wording).
         data_expressions={
             "quote": ["quote", "quotation"],
+            "customer": ["customer", "customer information"],
+            "pricing": ["pricing", "pricing information"],
+            "request": ["request", "quotation request"],
+            "excel_summary": [
+                "excel_summary",
+                "summary of quotation information",
+            ],
         },
     )
 

@@ -370,21 +370,38 @@ def _match_nodes(agent: BusinessDAG, truth: BusinessDAG, spec: EvaluationSpec):
 # ---------------------------------------------------------------------------
 
 
-def _data_item_ok(tvalue: str, avalue: str, spec: EvaluationSpec) -> bool:
-    """Baseline + scenario-local expression matching for one read/write value.
+def _norm_data_value(value: Optional[str]) -> str:
+    """Case-fold + whitespace normalization only (harmless formatting).
 
-    Baseline (unchanged): significant-token overlap or substring containment
-    against the canonical Truth value. The scenario-local layer adds the
-    canonical value's declared expressions (``spec.data_expressions``) using
-    the same deterministic token/substring mechanics. The canonical Truth
-    value itself is never rewritten.
+    Used for read/write concept identity: no tokenization, no stemming, no
+    substring containment. Two labels are the same concept iff their
+    normalized forms are byte-identical.
     """
-    a_low = (avalue or "").lower()
-    if bool(_tokens(tvalue) & _tokens(avalue)) or tvalue.lower() in a_low:
+    return " ".join((value or "").lower().split())
+
+
+def _data_item_ok(tvalue: str, avalue: str, spec: EvaluationSpec) -> bool:
+    """Concept-identity match for one read/write value (precision-first).
+
+    Contract:
+
+        normalized exact canonical value
+        OR
+        normalized exact scenario-local accepted expression
+
+    ``spec.data_expressions[tvalue]`` lists **complete labels** that identify
+    the same scenario concept as the canonical Truth value ``tvalue``; a label
+    matches only when its normalized form equals the agent value's normalized
+    form exactly. Shared tokens or substring containment are NEVER used to
+    infer concept identity ("quotation request" / "quotation information" /
+    "price quotation" do not match "quote" unless explicitly declared). The
+    canonical Truth value is never rewritten.
+    """
+    na = _norm_data_value(avalue)
+    if na == _norm_data_value(tvalue):
         return True
     for expr in spec.data_expressions.get(tvalue, ()):
-        e_low = expr.lower()
-        if bool(_tokens(expr) & _tokens(avalue)) or e_low in a_low:
+        if na == _norm_data_value(expr):
             return True
     return False
 

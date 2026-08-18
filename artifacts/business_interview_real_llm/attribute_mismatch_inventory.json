@@ -123,8 +123,8 @@
         },
         "reads": {
           "visible": true,
-          "status": "hit",
-          "hit": 1.0,
+          "status": "mismatch",
+          "hit": 0.5,
           "truth": [
             "customer",
             "pricing"
@@ -567,8 +567,8 @@
         },
         "writes": {
           "visible": true,
-          "status": "hit",
-          "hit": 1.0,
+          "status": "mismatch",
+          "hit": 0.0,
           "truth": [
             "excel_summary"
           ],
@@ -892,8 +892,8 @@
         },
         "reads": {
           "visible": true,
-          "status": "hit",
-          "hit": 1.0,
+          "status": "mismatch",
+          "hit": 0.5,
           "truth": [
             "customer",
             "pricing"
@@ -1317,8 +1317,8 @@
         },
         "reads": {
           "visible": true,
-          "status": "hit",
-          "hit": 1.0,
+          "status": "mismatch",
+          "hit": 0.5,
           "truth": [
             "customer",
             "pricing"

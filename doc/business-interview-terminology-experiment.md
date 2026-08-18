@@ -86,9 +86,11 @@ NOT terminology problems and must not be "fixed" by loosening the matcher.
   agreed business-object term; no GT vocabulary leakage; truthful
   don't-know answers on ambiguous identity.
 - Does not show: any scoring improvement (not the goal), and it does **not**
-  justify evaluator changes. The visible `quote↔quotation` write mismatch
-  remains exactly the Goal-3 semantic target identified in the visibility-aware
-  mismatch analysis (5/5 runs on seeds 4000–4004; observed again here).
+  justify evaluator changes beyond what shipped. The visible `quote↔quotation`
+  write mismatch (5/5 runs on seeds 4000–4004; observed again here) was the
+  Goal-3 semantic target and is now resolved by the scenario-local
+  `EvaluationSpec.data_expressions` exact-equivalence layer (see
+  `business-interview-attribute-mismatch-analysis.md` §9).
 
 ## 5. Files
 

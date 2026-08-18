@@ -1,6 +1,7 @@
 {
   "scenario": "quotation_workflow_1",
-  "method": "replay each saved final_dag under the current evaluator with the scenario StakeholderFilter; baseline = data_expressions emptied; expressions = quotation data_expressions configured. Stored evaluator_metrics are historical artifacts from the run-time (pre-visibility) scorer and are NOT replayed metrics.",
+  "method": "replay each saved final_dag under the current evaluator with the scenario StakeholderFilter. loose = pre-change matcher (token/substring incl. expressions, simulated locally), exact_core = normalized-exact canonical only, exact_decl = shipped contract (normalized-exact canonical OR declared complete labels). Stored evaluator_metrics are historical artifacts from the run-time (pre-visibility) scorer and are NOT replayed metrics.",
+  "data_matching_rule": "normalized exact canonical value OR normalized exact scenario-local accepted expression; no token overlap, no substring containment",
   "runs_replayed": 7,
   "cq_writes_recovered": {
     "count": 7,
@@ -8,10 +9,474 @@
   },
   "hidden_epistemic_assertions": {
     "count": 12,
-    "all_still_fail": true,
-    "note": "hidden asserted axes are scored 0.0 by _attribute_ok before data matching; expressions never apply to hidden attributes"
+    "all_still_fail": true
   },
-  "axis_changes_outside_cq_writes": [],
+  "collision_probe_matrix": {
+    "probes": 133,
+    "false_positives": [],
+    "intended_hits": [
+      {
+        "truth": "customer",
+        "probe": "customer",
+        "hit": true,
+        "intended": true
+      },
+      {
+        "truth": "customer",
+        "probe": "customer information",
+        "hit": true,
+        "intended": true
+      },
+      {
+        "truth": "excel_summary",
+        "probe": "excel_summary",
+        "hit": true,
+        "intended": true
+      },
+      {
+        "truth": "excel_summary",
+        "probe": "summary of quotation information",
+        "hit": true,
+        "intended": true
+      },
+      {
+        "truth": "pricing",
+        "probe": "pricing",
+        "hit": true,
+        "intended": true
+      },
+      {
+        "truth": "pricing",
+        "probe": "pricing information",
+        "hit": true,
+        "intended": true
+      },
+      {
+        "truth": "quote",
+        "probe": "quote",
+        "hit": true,
+        "intended": true
+      },
+      {
+        "truth": "quote",
+        "probe": "quotation",
+        "hit": true,
+        "intended": true
+      },
+      {
+        "truth": "request",
+        "probe": "quotation request",
+        "hit": true,
+        "intended": true
+      },
+      {
+        "truth": "request",
+        "probe": "request",
+        "hit": true,
+        "intended": true
+      }
+    ],
+    "near_collisions_vs_quote": {
+      "quotation request": false,
+      "quotation information": false,
+      "quotation document": false,
+      "price quotation": false,
+      "invoice": false
+    }
+  },
+  "matches_recovered_by_declared_expression": [
+    {
+      "run": "run_00_seed4000.json",
+      "axis": "cc.reads",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 1.0,
+        "truth": [
+          "customer"
+        ],
+        "agent": [
+          "customer information"
+        ]
+      }
+    },
+    {
+      "run": "run_00_seed4000.json",
+      "axis": "cq.writes",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 1.0,
+        "truth": [
+          "quote"
+        ],
+        "agent": [
+          "quotation"
+        ]
+      }
+    },
+    {
+      "run": "run_00_seed4000.json",
+      "axis": "me.writes",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 1.0,
+        "truth": [
+          "excel_summary"
+        ],
+        "agent": [
+          "summary of quotation information"
+        ]
+      }
+    },
+    {
+      "run": "run_01_seed4001.json",
+      "axis": "cc.reads",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 1.0,
+        "truth": [
+          "customer"
+        ],
+        "agent": [
+          "customer information"
+        ]
+      }
+    },
+    {
+      "run": "run_01_seed4001.json",
+      "axis": "cq.reads",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 1.0,
+        "truth": [
+          "customer",
+          "pricing"
+        ],
+        "agent": [
+          "customer information",
+          "pricing information"
+        ]
+      }
+    },
+    {
+      "run": "run_01_seed4001.json",
+      "axis": "cq.writes",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 1.0,
+        "truth": [
+          "quote"
+        ],
+        "agent": [
+          "quotation"
+        ]
+      }
+    },
+    {
+      "run": "run_02_seed4002.json",
+      "axis": "cc.reads",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 1.0,
+        "truth": [
+          "customer"
+        ],
+        "agent": [
+          "customer information"
+        ]
+      }
+    },
+    {
+      "run": "run_02_seed4002.json",
+      "axis": "cq.writes",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 1.0,
+        "truth": [
+          "quote"
+        ],
+        "agent": [
+          "quotation"
+        ]
+      }
+    },
+    {
+      "run": "run_03_seed4003.json",
+      "axis": "cc.reads",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 1.0,
+        "truth": [
+          "customer"
+        ],
+        "agent": [
+          "customer information"
+        ]
+      }
+    },
+    {
+      "run": "run_03_seed4003.json",
+      "axis": "cq.writes",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 1.0,
+        "truth": [
+          "quote"
+        ],
+        "agent": [
+          "quotation"
+        ]
+      }
+    },
+    {
+      "run": "run_04_seed4004.json",
+      "axis": "cc.reads",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 1.0,
+        "truth": [
+          "customer"
+        ],
+        "agent": [
+          "customer information"
+        ]
+      }
+    },
+    {
+      "run": "run_04_seed4004.json",
+      "axis": "cq.reads",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 1.0,
+        "truth": [
+          "customer",
+          "pricing"
+        ],
+        "agent": [
+          "customer information",
+          "pricing information"
+        ]
+      }
+    },
+    {
+      "run": "run_04_seed4004.json",
+      "axis": "cq.writes",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 1.0,
+        "truth": [
+          "quote"
+        ],
+        "agent": [
+          "quotation"
+        ]
+      }
+    },
+    {
+      "run": "run_00_seed5000.json",
+      "axis": "cc.reads",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 1.0,
+        "truth": [
+          "customer"
+        ],
+        "agent": [
+          "customer information"
+        ]
+      }
+    },
+    {
+      "run": "run_00_seed5000.json",
+      "axis": "cq.reads",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 1.0,
+        "truth": [
+          "customer",
+          "pricing"
+        ],
+        "agent": [
+          "customer information",
+          "pricing information"
+        ]
+      }
+    },
+    {
+      "run": "run_00_seed5000.json",
+      "axis": "cq.writes",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 1.0,
+        "truth": [
+          "quote"
+        ],
+        "agent": [
+          "quotation"
+        ]
+      }
+    },
+    {
+      "run": "run_01_seed5001.json",
+      "axis": "cc.reads",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 1.0,
+        "truth": [
+          "customer"
+        ],
+        "agent": [
+          "customer information"
+        ]
+      }
+    },
+    {
+      "run": "run_01_seed5001.json",
+      "axis": "cq.writes",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 1.0,
+        "truth": [
+          "quote"
+        ],
+        "agent": [
+          "quotation"
+        ]
+      }
+    }
+  ],
+  "matches_lost_for_good": [
+    {
+      "run": "run_00_seed4000.json",
+      "axis": "cq.reads",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 0.5,
+        "truth": [
+          "customer",
+          "pricing"
+        ],
+        "agent": [
+          "customer information",
+          "pricing information from the quoting system"
+        ]
+      }
+    },
+    {
+      "run": "run_01_seed4001.json",
+      "axis": "me.writes",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 0.0,
+        "truth": [
+          "excel_summary"
+        ],
+        "agent": [
+          "Excel file"
+        ]
+      }
+    },
+    {
+      "run": "run_02_seed4002.json",
+      "axis": "cq.reads",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 0.5,
+        "truth": [
+          "customer",
+          "pricing"
+        ],
+        "agent": [
+          "customer information",
+          "pricing information (from quoting system)"
+        ]
+      }
+    },
+    {
+      "run": "run_03_seed4003.json",
+      "axis": "cq.reads",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 0.5,
+        "truth": [
+          "customer",
+          "pricing"
+        ],
+        "agent": [
+          "customer information",
+          "pricing information (from quoting system)"
+        ]
+      }
+    },
+    {
+      "run": "run_00_seed5000.json",
+      "axis": "me.writes",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 0.0,
+        "truth": [
+          "excel_summary"
+        ],
+        "agent": [
+          "Excel file summary"
+        ]
+      }
+    },
+    {
+      "run": "run_01_seed5001.json",
+      "axis": "me.writes",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 0.0,
+        "truth": [
+          "excel_summary"
+        ],
+        "agent": [
+          "quotation information summary (Excel file)"
+        ]
+      }
+    },
+    {
+      "run": "run_01_seed5001.json",
+      "axis": "cq.reads",
+      "details": {
+        "loose": 1.0,
+        "exact_core": 0.0,
+        "exact_decl": 0.5,
+        "truth": [
+          "customer",
+          "pricing"
+        ],
+        "agent": [
+          "customer information",
+          "pricing information (from quoting system)"
+        ]
+      }
+    }
+  ],
   "actor_behavior": "unchanged: replays use the saved final_dag verbatim; no LLM calls",
   "runs": [
     {
@@ -55,31 +520,70 @@
         "protocol_pass": true,
         "quality_pass": false
       },
-      "replayed_baseline": {
-        "write_correctness": 0.6,
-        "quality_pass": false,
-        "structural_pass": false
+      "replayed_loose": {
+        "read_correctness": 0.5,
+        "write_correctness": 0.8
       },
-      "replayed_expressions": {
+      "replayed_exact_core": {
+        "read_correctness": 0.2,
+        "write_correctness": 0.4
+      },
+      "replayed_exact_decl": {
+        "read_correctness": 0.5,
         "write_correctness": 0.8,
-        "read_correctness": 0.6,
-        "actor_correctness": 0.0,
-        "system_correctness": 1.0,
-        "node_recall": 0.8333333333333334,
-        "node_precision": 0.7142857142857143,
-        "edge_recall": 0.6666666666666666,
-        "edge_precision": 0.625,
         "quality_pass": false,
         "structural_pass": false
       },
-      "cq_writes_quote_quotation": {
-        "baseline": 0.0,
-        "expressions": 1.0
+      "cq_writes": {
+        "loose": 1.0,
+        "exact_decl": 1.0
       },
-      "axis_diffs": {
+      "axis_changes": {
+        "cc.reads": {
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 1.0,
+          "truth": [
+            "customer"
+          ],
+          "agent": [
+            "customer information"
+          ]
+        },
+        "cq.reads": {
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 0.5,
+          "truth": [
+            "customer",
+            "pricing"
+          ],
+          "agent": [
+            "customer information",
+            "pricing information from the quoting system"
+          ]
+        },
         "cq.writes": {
-          "baseline": 0.0,
-          "expressions": 1.0
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 1.0,
+          "truth": [
+            "quote"
+          ],
+          "agent": [
+            "quotation"
+          ]
+        },
+        "me.writes": {
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 1.0,
+          "truth": [
+            "excel_summary"
+          ],
+          "agent": [
+            "summary of quotation information"
+          ]
         }
       },
       "hidden_assertions": [
@@ -89,8 +593,7 @@
           "values": [
             "quotation information"
           ],
-          "baseline_score": 0.0,
-          "expressions_score": 0.0
+          "score": 0.0
         },
         {
           "node": "sq",
@@ -98,8 +601,7 @@
           "values": [
             "quotation"
           ],
-          "baseline_score": 0.0,
-          "expressions_score": 0.0
+          "score": 0.0
         }
       ]
     },
@@ -144,31 +646,70 @@
         "protocol_pass": true,
         "quality_pass": false
       },
-      "replayed_baseline": {
+      "replayed_loose": {
+        "read_correctness": 0.8333333333333334,
+        "write_correctness": 0.5
+      },
+      "replayed_exact_core": {
+        "read_correctness": 0.5,
+        "write_correctness": 0.3333333333333333
+      },
+      "replayed_exact_decl": {
+        "read_correctness": 0.8333333333333334,
         "write_correctness": 0.5,
         "quality_pass": false,
         "structural_pass": false
       },
-      "replayed_expressions": {
-        "write_correctness": 0.6666666666666666,
-        "read_correctness": 0.8333333333333334,
-        "actor_correctness": 1.0,
-        "system_correctness": 0.6666666666666666,
-        "node_recall": 1.0,
-        "node_precision": 0.8571428571428571,
-        "edge_recall": 1.0,
-        "edge_precision": 0.8571428571428571,
-        "quality_pass": false,
-        "structural_pass": false
+      "cq_writes": {
+        "loose": 1.0,
+        "exact_decl": 1.0
       },
-      "cq_writes_quote_quotation": {
-        "baseline": 0.0,
-        "expressions": 1.0
-      },
-      "axis_diffs": {
+      "axis_changes": {
+        "cc.reads": {
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 1.0,
+          "truth": [
+            "customer"
+          ],
+          "agent": [
+            "customer information"
+          ]
+        },
+        "cq.reads": {
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 1.0,
+          "truth": [
+            "customer",
+            "pricing"
+          ],
+          "agent": [
+            "customer information",
+            "pricing information"
+          ]
+        },
         "cq.writes": {
-          "baseline": 0.0,
-          "expressions": 1.0
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 1.0,
+          "truth": [
+            "quote"
+          ],
+          "agent": [
+            "quotation"
+          ]
+        },
+        "me.writes": {
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 0.0,
+          "truth": [
+            "excel_summary"
+          ],
+          "agent": [
+            "Excel file"
+          ]
         }
       },
       "hidden_assertions": [
@@ -178,8 +719,7 @@
           "values": [
             "quotation information"
           ],
-          "baseline_score": 0.0,
-          "expressions_score": 0.0
+          "score": 0.0
         },
         {
           "node": "sq",
@@ -187,8 +727,7 @@
           "values": [
             "quotation"
           ],
-          "baseline_score": 0.0,
-          "expressions_score": 0.0
+          "score": 0.0
         }
       ]
     },
@@ -233,31 +772,59 @@
         "protocol_pass": true,
         "quality_pass": false
       },
-      "replayed_baseline": {
-        "write_correctness": 0.5,
-        "quality_pass": false,
-        "structural_pass": false
+      "replayed_loose": {
+        "read_correctness": 0.75,
+        "write_correctness": 0.6666666666666666
       },
-      "replayed_expressions": {
+      "replayed_exact_core": {
+        "read_correctness": 0.5,
+        "write_correctness": 0.5
+      },
+      "replayed_exact_decl": {
+        "read_correctness": 0.75,
         "write_correctness": 0.6666666666666666,
-        "read_correctness": 0.8333333333333334,
-        "actor_correctness": 0.16666666666666666,
-        "system_correctness": 1.0,
-        "node_recall": 1.0,
-        "node_precision": 0.8571428571428571,
-        "edge_recall": 1.0,
-        "edge_precision": 0.8571428571428571,
         "quality_pass": false,
         "structural_pass": false
       },
-      "cq_writes_quote_quotation": {
-        "baseline": 0.0,
-        "expressions": 1.0
+      "cq_writes": {
+        "loose": 1.0,
+        "exact_decl": 1.0
       },
-      "axis_diffs": {
+      "axis_changes": {
+        "cc.reads": {
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 1.0,
+          "truth": [
+            "customer"
+          ],
+          "agent": [
+            "customer information"
+          ]
+        },
+        "cq.reads": {
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 0.5,
+          "truth": [
+            "customer",
+            "pricing"
+          ],
+          "agent": [
+            "customer information",
+            "pricing information (from quoting system)"
+          ]
+        },
         "cq.writes": {
-          "baseline": 0.0,
-          "expressions": 1.0
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 1.0,
+          "truth": [
+            "quote"
+          ],
+          "agent": [
+            "quotation"
+          ]
         }
       },
       "hidden_assertions": [
@@ -267,8 +834,7 @@
           "values": [
             "quotation information"
           ],
-          "baseline_score": 0.0,
-          "expressions_score": 0.0
+          "score": 0.0
         }
       ]
     },
@@ -313,31 +879,59 @@
         "protocol_pass": true,
         "quality_pass": false
       },
-      "replayed_baseline": {
-        "write_correctness": 0.6,
-        "quality_pass": false,
-        "structural_pass": false
+      "replayed_loose": {
+        "read_correctness": 0.7,
+        "write_correctness": 0.8
       },
-      "replayed_expressions": {
+      "replayed_exact_core": {
+        "read_correctness": 0.4,
+        "write_correctness": 0.6
+      },
+      "replayed_exact_decl": {
+        "read_correctness": 0.7,
         "write_correctness": 0.8,
-        "read_correctness": 0.8,
-        "actor_correctness": 1.0,
-        "system_correctness": 1.0,
-        "node_recall": 0.8333333333333334,
-        "node_precision": 0.8333333333333334,
-        "edge_recall": 0.8333333333333334,
-        "edge_precision": 0.8333333333333334,
         "quality_pass": false,
         "structural_pass": false
       },
-      "cq_writes_quote_quotation": {
-        "baseline": 0.0,
-        "expressions": 1.0
+      "cq_writes": {
+        "loose": 1.0,
+        "exact_decl": 1.0
       },
-      "axis_diffs": {
+      "axis_changes": {
+        "cc.reads": {
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 1.0,
+          "truth": [
+            "customer"
+          ],
+          "agent": [
+            "customer information"
+          ]
+        },
+        "cq.reads": {
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 0.5,
+          "truth": [
+            "customer",
+            "pricing"
+          ],
+          "agent": [
+            "customer information",
+            "pricing information (from quoting system)"
+          ]
+        },
         "cq.writes": {
-          "baseline": 0.0,
-          "expressions": 1.0
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 1.0,
+          "truth": [
+            "quote"
+          ],
+          "agent": [
+            "quotation"
+          ]
         }
       },
       "hidden_assertions": [
@@ -347,8 +941,7 @@
           "values": [
             "quotation"
           ],
-          "baseline_score": 0.0,
-          "expressions_score": 0.0
+          "score": 0.0
         }
       ]
     },
@@ -393,31 +986,59 @@
         "protocol_pass": true,
         "quality_pass": false
       },
-      "replayed_baseline": {
-        "write_correctness": 0.5,
-        "quality_pass": false,
-        "structural_pass": false
-      },
-      "replayed_expressions": {
-        "write_correctness": 0.6666666666666666,
+      "replayed_loose": {
         "read_correctness": 0.6666666666666666,
-        "actor_correctness": 1.0,
-        "system_correctness": 1.0,
-        "node_recall": 1.0,
-        "node_precision": 0.8571428571428571,
-        "edge_recall": 1.0,
-        "edge_precision": 0.875,
+        "write_correctness": 0.6666666666666666
+      },
+      "replayed_exact_core": {
+        "read_correctness": 0.3333333333333333,
+        "write_correctness": 0.5
+      },
+      "replayed_exact_decl": {
+        "read_correctness": 0.6666666666666666,
+        "write_correctness": 0.6666666666666666,
         "quality_pass": false,
         "structural_pass": false
       },
-      "cq_writes_quote_quotation": {
-        "baseline": 0.0,
-        "expressions": 1.0
+      "cq_writes": {
+        "loose": 1.0,
+        "exact_decl": 1.0
       },
-      "axis_diffs": {
+      "axis_changes": {
+        "cc.reads": {
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 1.0,
+          "truth": [
+            "customer"
+          ],
+          "agent": [
+            "customer information"
+          ]
+        },
+        "cq.reads": {
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 1.0,
+          "truth": [
+            "customer",
+            "pricing"
+          ],
+          "agent": [
+            "customer information",
+            "pricing information"
+          ]
+        },
         "cq.writes": {
-          "baseline": 0.0,
-          "expressions": 1.0
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 1.0,
+          "truth": [
+            "quote"
+          ],
+          "agent": [
+            "quotation"
+          ]
         }
       },
       "hidden_assertions": [
@@ -427,8 +1048,7 @@
           "values": [
             "quotation information"
           ],
-          "baseline_score": 0.0,
-          "expressions_score": 0.0
+          "score": 0.0
         },
         {
           "node": "sq",
@@ -436,8 +1056,7 @@
           "values": [
             "quotation"
           ],
-          "baseline_score": 0.0,
-          "expressions_score": 0.0
+          "score": 0.0
         }
       ]
     },
@@ -482,31 +1101,70 @@
         "protocol_pass": true,
         "quality_pass": false
       },
-      "replayed_baseline": {
+      "replayed_loose": {
+        "read_correctness": 0.6666666666666666,
+        "write_correctness": 0.5
+      },
+      "replayed_exact_core": {
+        "read_correctness": 0.3333333333333333,
+        "write_correctness": 0.3333333333333333
+      },
+      "replayed_exact_decl": {
+        "read_correctness": 0.6666666666666666,
         "write_correctness": 0.5,
         "quality_pass": false,
         "structural_pass": false
       },
-      "replayed_expressions": {
-        "write_correctness": 0.6666666666666666,
-        "read_correctness": 0.6666666666666666,
-        "actor_correctness": 1.0,
-        "system_correctness": 0.6666666666666666,
-        "node_recall": 1.0,
-        "node_precision": 0.8571428571428571,
-        "edge_recall": 0.8333333333333334,
-        "edge_precision": 0.7142857142857143,
-        "quality_pass": false,
-        "structural_pass": false
+      "cq_writes": {
+        "loose": 1.0,
+        "exact_decl": 1.0
       },
-      "cq_writes_quote_quotation": {
-        "baseline": 0.0,
-        "expressions": 1.0
-      },
-      "axis_diffs": {
+      "axis_changes": {
+        "me.writes": {
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 0.0,
+          "truth": [
+            "excel_summary"
+          ],
+          "agent": [
+            "Excel file summary"
+          ]
+        },
+        "cc.reads": {
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 1.0,
+          "truth": [
+            "customer"
+          ],
+          "agent": [
+            "customer information"
+          ]
+        },
+        "cq.reads": {
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 1.0,
+          "truth": [
+            "customer",
+            "pricing"
+          ],
+          "agent": [
+            "customer information",
+            "pricing information"
+          ]
+        },
         "cq.writes": {
-          "baseline": 0.0,
-          "expressions": 1.0
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 1.0,
+          "truth": [
+            "quote"
+          ],
+          "agent": [
+            "quotation"
+          ]
         }
       },
       "hidden_assertions": [
@@ -516,8 +1174,7 @@
           "values": [
             "quotation information"
           ],
-          "baseline_score": 0.0,
-          "expressions_score": 0.0
+          "score": 0.0
         },
         {
           "node": "sq",
@@ -525,8 +1182,7 @@
           "values": [
             "quotation"
           ],
-          "baseline_score": 0.0,
-          "expressions_score": 0.0
+          "score": 0.0
         },
         {
           "node": "ap",
@@ -534,8 +1190,7 @@
           "values": [
             "quotation"
           ],
-          "baseline_score": 0.0,
-          "expressions_score": 0.0
+          "score": 0.0
         }
       ]
     },
@@ -580,31 +1235,70 @@
         "protocol_pass": true,
         "quality_pass": false
       },
-      "replayed_baseline": {
+      "replayed_loose": {
+        "read_correctness": 0.9166666666666666,
+        "write_correctness": 0.5
+      },
+      "replayed_exact_core": {
+        "read_correctness": 0.6666666666666666,
+        "write_correctness": 0.3333333333333333
+      },
+      "replayed_exact_decl": {
+        "read_correctness": 0.9166666666666666,
         "write_correctness": 0.5,
         "quality_pass": false,
         "structural_pass": false
       },
-      "replayed_expressions": {
-        "write_correctness": 0.6666666666666666,
-        "read_correctness": 1.0,
-        "actor_correctness": 1.0,
-        "system_correctness": 0.6666666666666666,
-        "node_recall": 1.0,
-        "node_precision": 0.8571428571428571,
-        "edge_recall": 1.0,
-        "edge_precision": 0.8571428571428571,
-        "quality_pass": false,
-        "structural_pass": false
+      "cq_writes": {
+        "loose": 1.0,
+        "exact_decl": 1.0
       },
-      "cq_writes_quote_quotation": {
-        "baseline": 0.0,
-        "expressions": 1.0
-      },
-      "axis_diffs": {
+      "axis_changes": {
+        "me.writes": {
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 0.0,
+          "truth": [
+            "excel_summary"
+          ],
+          "agent": [
+            "quotation information summary (Excel file)"
+          ]
+        },
+        "cc.reads": {
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 1.0,
+          "truth": [
+            "customer"
+          ],
+          "agent": [
+            "customer information"
+          ]
+        },
+        "cq.reads": {
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 0.5,
+          "truth": [
+            "customer",
+            "pricing"
+          ],
+          "agent": [
+            "customer information",
+            "pricing information (from quoting system)"
+          ]
+        },
         "cq.writes": {
-          "baseline": 0.0,
-          "expressions": 1.0
+          "loose": 1.0,
+          "exact_core": 0.0,
+          "exact_decl": 1.0,
+          "truth": [
+            "quote"
+          ],
+          "agent": [
+            "quotation"
+          ]
         }
       },
       "hidden_assertions": [
@@ -614,8 +1308,7 @@
           "values": [
             "quotation"
           ],
-          "baseline_score": 0.0,
-          "expressions_score": 0.0
+          "score": 0.0
         }
       ]
     }

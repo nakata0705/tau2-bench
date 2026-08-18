@@ -214,10 +214,11 @@ product of the 4 `ENV_ASSERTION`s, **any** single such mismatch zeroes the rewar
 
 - `Node.reads` / `Node.writes` are **free-text lists of data artifacts**
   (each an `InferredValue`). There is no data dictionary / ontology.
-- Evaluator `_data_recall` scores a truth data item as hit if **any** raw token
-  overlaps an agent token **or** the truth value is a substring of the agent
-  value. Note: **any single shared token suffices** — this is more lenient than
-  node matching (≥2 significant tokens).
+- Evaluator `_data_recall` scores a truth data item as hit iff the agent
+  value is the **normalized exact canonical value** or a **normalized exact
+  declared complete label** (`EvaluationSpec.data_expressions`). Token
+  overlap / substring containment are **removed** (precision-first): a label
+  that merely contains a declared word never matches.
 - Tools `add_node`/`update_node` accept `reads`/`writes` as free-text string
   lists; the reference `tasks.json` actions hardcode the GT artifact names
   (`request`, `quote`, `approval`, `sent_quote`, `excel_summary`, `customer`,

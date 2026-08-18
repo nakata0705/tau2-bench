@@ -215,10 +215,37 @@ equivalences for data values** in its hidden `EvaluationSpec`:
 EvaluationSpec(
     ...,
     data_expressions={
-        "quote": ["quote", "quotation"],  # canonical value -> accepted expressions
+        # canonical value -> complete labels identifying the same concept
+        "quote": ["quote", "quotation"],
+        "customer": ["customer", "customer information"],
+        "pricing": ["pricing", "pricing information"],
+        "request": ["request", "quotation request"],
+        "excel_summary": ["excel_summary", "summary of quotation information"],
     },
 )
 ```
+
+### Four distinct layers (do not conflate)
+
+1. **Lexical similarity — removed.** Reads/writes matching never uses token
+   overlap or substring containment. `"quotation request"` contains the word
+   `"quotation"`, yet it is NOT the `quote` concept. Shared tokens or
+   substrings prove nothing about concept identity and are not used.
+2. **Scenario-local concept equivalence — exact.** `data_expressions` lists
+   **complete labels** that identify the same scenario concept as the
+   canonical Truth value. A label matches only when its **normalized exact
+   form** (case-fold + whitespace collapse — harmless formatting only)
+   equals the agent value's normalized form. Normalized exact canonical value
+   OR normalized exact declared label: that is the whole matching rule.
+3. **Stakeholder visibility — prior gate.** Whether the stakeholder was
+   allowed to know/assert the concept. Hidden axes are scored before any
+   label matching: an asserted value fails even when its wording equals a
+   declared expression.
+4. **Stakeholder-confirmed terminology — design only.** Terminology
+   established during the interview (term → clarifity identity → stakeholder
+   confirms → machine-readable record) is explored in
+   `doc/business-interview-terminology-design.md` but is **not implemented**;
+   the static scenario-local table remains the source of semantic identity.
 
 Architecture — deterministic attribute scoring is the composition of three
 independent layers:
@@ -245,20 +272,27 @@ Rules of the road:
 
 - Expressions belong to the **scenario's `EvaluationSpec`** (evaluator-only,
   hidden from the agent) — never a global alias table. A scenario without
-  `data_expressions` keeps the baseline token/substring matching exactly.
-- The **canonical Truth value is unchanged**; expressions are an additive
-  matching layer using the same deterministic token-overlap / substring
-  mechanics as the baseline (no WordNet, stemming, embeddings, LLM judges,
-  unrestricted synonymy, or large dictionaries).
+  `data_expressions` keeps the exact canonical contract.
+- The **canonical Truth value is unchanged**; expressions are matched by
+  normalized exact equality only (no WordNet, stemming, embeddings, LLM
+  judges, unrestricted synonymy, or large dictionaries).
 - Expressions apply **only to stakeholder-visible reads/writes**. Semantic
   equivalence can never turn a hidden assertion into a hit: if an attribute is
   hidden, `Truth: quote` / `Agent: quotation` is still incorrect because the
   Agent asserted a fact the stakeholder cannot know (epistemic restraint).
-- Only expressions justified by committed evidence are declared. The quotation
-  scenario declares exactly `quote -> [quote, quotation]` — the stakeholder's
-  observed natural wording. Broad variants (`estimate`, `proposal`, `price
-  sheet`, `document`, `offer`) are **not** declared, and hidden `sent_quote` /
-  hidden read artifacts get **no** aliases.
+- Only expressions justified by committed evidence are declared. Every
+  quotation expression is the stakeholder's observed wording from the saved
+  real-LLM runs: `quote ↔ quotation`, `customer ↔ customer information`,
+  `pricing ↔ pricing information`, `request ↔ quotation request`,
+  `excel_summary ↔ summary of quotation information`. Near-collisions that
+  are NOT declared stay distinct: `quotation request` / `quotation
+  information` / `quotation document` / `price quotation` / `invoice` never
+  match `quote`; `customer request` never matches `customer`; `quotation
+  summary` / `Excel file` never match `excel_summary`; agent-embellished
+  labels such as `pricing information (from quoting system)` never match
+  `pricing`. Broad variants (`estimate`, `proposal`, `price sheet`,
+  `document`, `offer`) are **not** declared, and hidden `sent_quote` / hidden
+  read artifacts get **no** aliases.
 
 ## Running
 
