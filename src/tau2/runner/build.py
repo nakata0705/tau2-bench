@@ -35,9 +35,7 @@ from tau2.user_simulation_voice_presets import (
 )
 
 
-def _safe_backchannel_ticks(
-    threshold_seconds, tick_duration_seconds
-):
+def _safe_backchannel_ticks(threshold_seconds, tick_duration_seconds):
     """Convert a backchannel threshold (seconds) to ticks; None stays None."""
     if threshold_seconds is None or tick_duration_seconds is None:
         return None
@@ -275,7 +273,9 @@ def build_voice_user(
     )
 
     # Update synthesis_config with merged effect configs
-    synthesis_config.channel_effects_config = sampled_voice_config.channel_effects_config
+    synthesis_config.channel_effects_config = (
+        sampled_voice_config.channel_effects_config
+    )
     synthesis_config.source_effects_config = sampled_voice_config.source_effects_config
     synthesis_config.speech_effects_config = sampled_voice_config.speech_effects_config
 
@@ -403,9 +403,7 @@ def build_text_orchestrator(
         seed = config.seed
 
     solo_mode = bool(
-        registry.get_agent_metadata(
-            config.effective_agent, "solo_mode", default=False
-        )
+        registry.get_agent_metadata(config.effective_agent, "solo_mode", default=False)
     )
     domain = config.domain
     env_kwargs = _build_env_kwargs(config, task)
@@ -506,9 +504,7 @@ def build_voice_orchestrator(
 
     # Solo mode is not supported for voice/full-duplex runs
     solo_mode = bool(
-        registry.get_agent_metadata(
-            config.effective_agent, "solo_mode", default=False
-        )
+        registry.get_agent_metadata(config.effective_agent, "solo_mode", default=False)
     )
     if solo_mode:
         raise ValueError(

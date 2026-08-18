@@ -196,9 +196,7 @@ class StakeholderUserSimulator(UserSimulator):
 
     # ------------------------------------------------------------- sidecar
 
-    def _generate_sidecar(
-        self, messages: list, contract: Optional[str] = None
-    ) -> dict:
+    def _generate_sidecar(self, messages: list, contract: Optional[str] = None) -> dict:
         """Call the user LLM and parse/validate the private sidecar.
 
         The output contract is appended to the LAST user message (the agent's
