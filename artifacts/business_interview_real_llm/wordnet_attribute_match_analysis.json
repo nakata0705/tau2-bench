@@ -1,0 +1,288 @@
+{
+  "scenario": "quotation_workflow_1",
+  "source_artifacts": [
+    "run_00_seed4000",
+    "run_01_seed4001",
+    "run_02_seed4002",
+    "run_03_seed4003",
+    "run_04_seed4004"
+  ],
+  "nltk_available": true,
+  "inflect_available": true,
+  "data_related_b_cases": 13,
+  "data_related_b_from_analysis": 12,
+  "recovery": {
+    "baseline": 0,
+    "lemma": 0,
+    "synset": 13,
+    "deriv": 13,
+    "hybrid": 13
+  },
+  "positive_cases": [
+    {
+      "run": "run_00_seed4000.json",
+      "truth_node": "cq",
+      "attr": "writes",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation"
+      ],
+      "hits": {
+        "baseline": 0.0,
+        "lemma": 0.0,
+        "synset": 1.0,
+        "deriv": 1.0,
+        "hybrid": 1.0
+      }
+    },
+    {
+      "run": "run_00_seed4000.json",
+      "truth_node": "me",
+      "attr": "reads",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation information"
+      ],
+      "hits": {
+        "baseline": 0.0,
+        "lemma": 0.0,
+        "synset": 1.0,
+        "deriv": 1.0,
+        "hybrid": 1.0
+      }
+    },
+    {
+      "run": "run_00_seed4000.json",
+      "truth_node": "sq",
+      "attr": "reads",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation"
+      ],
+      "hits": {
+        "baseline": 0.0,
+        "lemma": 0.0,
+        "synset": 1.0,
+        "deriv": 1.0,
+        "hybrid": 1.0
+      }
+    },
+    {
+      "run": "run_01_seed4001.json",
+      "truth_node": "cq",
+      "attr": "writes",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation"
+      ],
+      "hits": {
+        "baseline": 0.0,
+        "lemma": 0.0,
+        "synset": 1.0,
+        "deriv": 1.0,
+        "hybrid": 1.0
+      }
+    },
+    {
+      "run": "run_01_seed4001.json",
+      "truth_node": "me",
+      "attr": "reads",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation information"
+      ],
+      "hits": {
+        "baseline": 0.0,
+        "lemma": 0.0,
+        "synset": 1.0,
+        "deriv": 1.0,
+        "hybrid": 1.0
+      }
+    },
+    {
+      "run": "run_01_seed4001.json",
+      "truth_node": "sq",
+      "attr": "writes",
+      "truth": [
+        "sent_quote"
+      ],
+      "agent": [
+        "quotation"
+      ],
+      "hits": {
+        "baseline": 0.0,
+        "lemma": 0.0,
+        "synset": 1.0,
+        "deriv": 1.0,
+        "hybrid": 1.0
+      }
+    },
+    {
+      "run": "run_02_seed4002.json",
+      "truth_node": "cq",
+      "attr": "writes",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation"
+      ],
+      "hits": {
+        "baseline": 0.0,
+        "lemma": 0.0,
+        "synset": 1.0,
+        "deriv": 1.0,
+        "hybrid": 1.0
+      }
+    },
+    {
+      "run": "run_02_seed4002.json",
+      "truth_node": "me",
+      "attr": "reads",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation information"
+      ],
+      "hits": {
+        "baseline": 0.0,
+        "lemma": 0.0,
+        "synset": 1.0,
+        "deriv": 1.0,
+        "hybrid": 1.0
+      }
+    },
+    {
+      "run": "run_03_seed4003.json",
+      "truth_node": "cq",
+      "attr": "writes",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation"
+      ],
+      "hits": {
+        "baseline": 0.0,
+        "lemma": 0.0,
+        "synset": 1.0,
+        "deriv": 1.0,
+        "hybrid": 1.0
+      }
+    },
+    {
+      "run": "run_03_seed4003.json",
+      "truth_node": "sq",
+      "attr": "reads",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation"
+      ],
+      "hits": {
+        "baseline": 0.0,
+        "lemma": 0.0,
+        "synset": 1.0,
+        "deriv": 1.0,
+        "hybrid": 1.0
+      }
+    },
+    {
+      "run": "run_04_seed4004.json",
+      "truth_node": "me",
+      "attr": "reads",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation information"
+      ],
+      "hits": {
+        "baseline": 0.0,
+        "lemma": 0.0,
+        "synset": 1.0,
+        "deriv": 1.0,
+        "hybrid": 1.0
+      }
+    },
+    {
+      "run": "run_04_seed4004.json",
+      "truth_node": "cq",
+      "attr": "writes",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation"
+      ],
+      "hits": {
+        "baseline": 0.0,
+        "lemma": 0.0,
+        "synset": 1.0,
+        "deriv": 1.0,
+        "hybrid": 1.0
+      }
+    },
+    {
+      "run": "run_04_seed4004.json",
+      "truth_node": "sq",
+      "attr": "reads",
+      "truth": [
+        "quote"
+      ],
+      "agent": [
+        "quotation"
+      ],
+      "hits": {
+        "baseline": 0.0,
+        "lemma": 0.0,
+        "synset": 1.0,
+        "deriv": 1.0,
+        "hybrid": 1.0
+      }
+    }
+  ],
+  "false_positive_new_matches": {
+    "quote <-> quotation": {
+      "variants": [
+        "synset",
+        "deriv"
+      ],
+      "verdict": "safe",
+      "note": "same business artifact (price quotation); deriv via quote.v.02<->quotation.n.03; synset only via the citation sense quotation.n.02"
+    },
+    "sent_quote <-> quotation": {
+      "variants": [
+        "synset",
+        "deriv"
+      ],
+      "verdict": "safe",
+      "note": "sent_quote is a quotation (the sent copy); matched via its 'quote' component token -> quotation"
+    }
+  },
+  "new_questionable": [],
+  "new_false_positives": [],
+  "latent_cross_domain_risk": {
+    "account <-> invoice": "bill.n.02::account<->account.v.02 & bill.n.02::invoice<->invoice.v.01 (bill sense)",
+    "account <-> report": "explanation.n.01::account<->report.v.01::account + bill/accounting senses",
+    "report <-> accounting": "account.v.02::account<->accounting.n.02/04::accounting + report senses",
+    "invoice <-> accounting": "bill.n.02::invoice<->invoice.v.01 + account.v.02<->accounting senses"
+  },
+  "notes": {
+    "lemma_limitation": "lemmatization only collapses INFLECTION (quotes->quote, quotations->quotation); it does NOT unify quote<->quotation because they are distinct lexemes. Hence lemma alone rescues 0 of the quote/quotation B cases.",
+    "quote_quotation_same_synset": "quote & quotation share only quotation.n.02 (the 'passage/expression quoted or cited' sense) - NOT the business price-quotation sense. Same-synset would match them through an unrelated sense.",
+    "quote_quotation_deriv": "genuine business derivational pair: quote.v.02 ('name the price of') <-> quotation.n.03 ('a statement of the current market price')."
+  }
+}
