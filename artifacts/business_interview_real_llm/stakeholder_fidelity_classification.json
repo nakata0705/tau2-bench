@@ -1,0 +1,70 @@
+{
+  "scenario": "quotation_workflow_1",
+  "models": {
+    "interview_agent": "deepseek/deepseek-chat (deepseek-v4-flash)",
+    "stakeholder": "deepseek/deepseek-chat (deepseek-v4-flash)"
+  },
+  "prompt_version": "stakeholder fidelity rules (Ground Truth only / no speculation / no false denial / negative-check / progressive disclosure / unknown handling)",
+  "method": "manual classification by reading each run's full stakeholder (user) messages against the quotation Ground Truth, cross-checked with a keyword heuristic (scripts/stakeholder_fidelity_classify.py). The heuristic is a rough scan and may over/under-flag; the manual reading is authoritative.",
+  "runs": {
+    "run_00_seed3000": {
+      "termination": "user_stop",
+      "approval_disclosed": true,
+      "month_end_disclosed": true,
+      "unknown_month_end_reason_handled": true,
+      "failures": ["none"],
+      "note": "Approval surfaced during normal-flow exploration (mild, natural), never denied; month-end disclosed when asked and reason kept unknown."
+    },
+    "run_01_seed3001": {
+      "termination": "user_stop",
+      "approval_disclosed": true,
+      "month_end_disclosed": true,
+      "unknown_month_end_reason_handled": true,
+      "failures": ["improper_negative_answer"],
+      "note": "Said 'I don't have any other steps or branches' before disclosing approval + month-end in the very next turn (self-corrected)."
+    },
+    "run_02_seed3002": {
+      "termination": "user_stop",
+      "approval_disclosed": true,
+      "month_end_disclosed": true,
+      "unknown_month_end_reason_handled": true,
+      "failures": ["none"]
+    },
+    "run_03_seed3003": {
+      "termination": "user_stop",
+      "approval_disclosed": true,
+      "month_end_disclosed": true,
+      "unknown_month_end_reason_handled": true,
+      "failures": ["premature_disclosure"],
+      "note": "Volunteered the month-end summary while answering a question about the send step (mild; month-end is periodic, not part of that question's scope)."
+    },
+    "run_04_seed3004": {
+      "termination": "user_stop",
+      "approval_disclosed": true,
+      "month_end_disclosed": false,
+      "unknown_month_end_reason_handled": false,
+      "failures": ["none"],
+      "note": "Month-end withheld because the agent never asked about month-end/periodic/recurring - correct progressive disclosure (withholding unasked facts, not denying them)."
+    }
+  },
+  "summary": {
+    "unsupported_fact": 0,
+    "contradicted_known_fact": 0,
+    "improper_negative_answer": 1,
+    "premature_disclosure": 1,
+    "fabricated_unknown": 0,
+    "none": 3,
+    "approval_disclosure_rate": "5/5",
+    "month_end_disclosure_rate": "4/5 (run_04 not asked about month-end -> correctly withheld)",
+    "unknown_rationale_preserved": "5/5 runs that discussed month-end kept the reason unknown"
+  },
+  "comparison_pre_fix": {
+    "unsupported_fact_mentions": "3 in 2 runs (seed 1002/1004): invented 'customer info missing -> look into it / contact customer'",
+    "contradicted_known_fact": "seed 1004 denied the approval branch ('No, there aren't any other steps or branches')"
+  },
+  "comparison_post_fix": {
+    "unsupported_fact_mentions": 0,
+    "contradicted_known_fact": 0,
+    "approval_disclosed": "5/5"
+  }
+}

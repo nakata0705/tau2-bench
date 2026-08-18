@@ -920,6 +920,82 @@ def test_lab_task_present():
 
 
 # ---------------------------------------------------------------------------
+# Stakeholder prompt fidelity rules (deterministic config/prompt checks)
+# ---------------------------------------------------------------------------
+
+
+def _task_instructions(task_id: str) -> str:
+    task = next(t for t in get_tasks() if t.id == task_id)
+    return task.user_scenario.instructions.task_instructions or ""
+
+
+def _task_scenario_str(task_id: str) -> str:
+    task = next(t for t in get_tasks() if t.id == task_id)
+    return str(task.user_scenario).lower()
+
+
+def test_stakeholder_ground_truth_only_no_speculation_rule():
+    ti = _task_instructions(SCENARIO).lower()
+    assert "answer only from your known info" in ti
+    assert "only source of business facts" in ti
+    assert "plausible does not mean known" in ti
+    assert "do not use general business common sense to fill gaps" in ti
+    assert "do not add any process step" in ti
+    # The rule is also visible in the full prompt the LLM actually receives.
+    assert "plausible does not mean known" in _task_scenario_str(SCENARIO)
+
+
+def test_stakeholder_no_false_denial_of_known_fact():
+    ti = _task_instructions(SCENARIO).lower()
+    assert "never deny a fact that is in your known info" in ti
+
+
+def test_stakeholder_negative_answer_relevant_fact_check():
+    ti = _task_instructions(SCENARIO).lower()
+    assert "before giving a negative answer" in ti
+    assert "re-check whether any known fact is relevant" in ti
+
+
+def test_stakeholder_progressive_disclosure_no_volunteering():
+    ti = _task_instructions(SCENARIO).lower()
+    assert "do not dump everything at once" in ti
+    assert "keep unasked facts to yourself" in ti
+    assert "normal flow" in ti and "month-end" in ti and "approval" in ti
+    assert "periodic" in ti or "recurring" in ti or "monthly" in ti
+
+
+def test_stakeholder_unknown_no_speculation():
+    ti = _task_instructions(SCENARIO).lower()
+    assert "if asked about something not in your known info, do not guess" in ti
+    assert "never invent, guess, or speculate" in ti
+
+
+def test_stakeholder_quotation_instructions_consistent_with_truth():
+    ti = _task_instructions(SCENARIO).lower()
+    # approval -> credit risk (a visible Known fact)
+    assert "approval" in ti and "credit risk management" in ti
+    # month-end -> exists as a known fact but rationale is unknown
+    assert "month-end excel" in ti
+    assert "you do not know the reason" in ti
+    assert "vague impression that accounting needs it" in ti
+
+
+def test_stakeholder_instructions_ja_present():
+    ti = _task_instructions(JA_SCENARIO)
+    assert ti  # non-empty
+    assert "plausible" in ti.lower() or "plausible は known ではありません" in ti
+    assert "否定" in ti  # no-false-denial rule present
+    assert "月末" in ti and "与信リスク管理" in ti
+
+
+def test_stakeholder_instructions_lab_present():
+    ti = _task_instructions(LAB_SCENARIO).lower()
+    assert "answer only from your known info" in ti
+    assert "plausible does not mean known" in ti
+    assert "never invent anything you do not know" in ti
+
+
+# ---------------------------------------------------------------------------
 # Conservative node matching (missing nodes must NOT be matched away)
 # ---------------------------------------------------------------------------
 
