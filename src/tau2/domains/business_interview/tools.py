@@ -11,7 +11,6 @@ state in the final DAG.
 from typing import Optional
 
 from tau2.data_model.tasks import Task
-from tau2.domains.business_interview.claims import build_provenance_ledger
 from tau2.domains.business_interview.dag import (
     BusinessDAG,
     ConceptRef,
@@ -25,17 +24,31 @@ from tau2.domains.business_interview.dag import (
     Observation,
 )
 from tau2.domains.business_interview.evaluation import EvaluationResult, evaluate
+from tau2.domains.business_interview.facts import (
+    StakeholderFactLedger,
+)
 from tau2.domains.business_interview.scenario import get_scenario
 from tau2.environment.toolkit import ToolKitBase, ToolType, is_tool
 
 
 class InterviewTools(ToolKitBase):
-    """Tools to infer the business DAG from stakeholder observations."""
+    """Tools to infer the business DAG from stakeholder observations.
+
+    ``fact_ledger`` is the private sidecar ledger (used_fact_ids per turn),
+    shared with the environment and the stakeholder simulator adapter. It is
+    evaluator-only: no tool exposes it, and it is never serialized into the
+    Agent-visible DB.
+    """
 
     db: InterviewDB
 
-    def __init__(self, db: InterviewDB) -> None:
+    def __init__(
+        self, db: InterviewDB, fact_ledger: Optional[StakeholderFactLedger] = None
+    ) -> None:
         super().__init__(db)
+        self.fact_ledger = (
+            fact_ledger if fact_ledger is not None else StakeholderFactLedger()
+        )
 
     # ------------------------------------------------------------- helpers
 
@@ -810,18 +823,18 @@ class InterviewTools(ToolKitBase):
 
     def _evaluate(self, sc) -> EvaluationResult:
         """Evaluate against the scenario truth+spec under the scenario's
-        stakeholder visibility, using the hidden claim catalog and the hidden
-        stakeholder provenance ledger (both evaluator-only; never exposed to
-        the Agent)."""
+        stakeholder visibility, using the hidden TruthClaim catalog, the
+        private StakeholderFact catalog, and the private used-fact sidecar
+        ledger (all evaluator-only; never exposed to the Agent)."""
 
-        provenance = build_provenance_ledger(self.db, sc.claims, sc.stop_phrases)
         return evaluate(
             self.db,
             sc.truth,
             sc.spec,
             sc.stakeholder,
             claims=sc.claims,
-            provenance=provenance,
+            facts=sc.facts,
+            used_facts=self.fact_ledger.used_fact_ids(),
         )
 
     def assert_finish_interview(self) -> bool:

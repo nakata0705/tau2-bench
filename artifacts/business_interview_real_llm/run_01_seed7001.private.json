@@ -1,0 +1,77 @@
+{
+  "task_id": "quotation_workflow_1",
+  "used_fact_ids_by_turn": {
+    "6": [
+      "quotation.receive_request"
+    ],
+    "19": [
+      "quotation.check_customer",
+      "quotation.create"
+    ],
+    "25": [
+      "quotation.receive_request",
+      "quotation.check_customer"
+    ],
+    "45": [
+      "quotation.receive_request",
+      "quotation.check_customer",
+      "quotation.create"
+    ],
+    "64": [
+      "quotation.month_end_summary"
+    ],
+    "79": [
+      "quotation.check_customer"
+    ],
+    "85": [
+      "quotation.create"
+    ],
+    "93": [
+      "quotation.receive_request"
+    ],
+    "101": [
+      "quotation.receive_request"
+    ],
+    "109": [
+      "quotation.month_end_summary"
+    ],
+    "115": [
+      "quotation.month_end_summary"
+    ],
+    "121": [
+      "quotation.create"
+    ]
+  },
+  "stakeholder_facts": {
+    "quotation.receive_request": {
+      "id": "quotation.receive_request",
+      "text": "You receive quotation requests from customers.",
+      "supported_claim_ids": [
+        "r.writes.tc_request"
+      ]
+    },
+    "quotation.check_customer": {
+      "id": "quotation.check_customer",
+      "text": "When a quotation request is received, you check the customer's information in the CRM.",
+      "supported_claim_ids": [
+        "cc.reads.tc_customer"
+      ]
+    },
+    "quotation.create": {
+      "id": "quotation.create",
+      "text": "You create the quotation using the customer and pricing information.",
+      "supported_claim_ids": [
+        "cq.reads.tc_customer",
+        "cq.reads.tc_pricing",
+        "cq.writes.tc_quote"
+      ]
+    },
+    "quotation.month_end_summary": {
+      "id": "quotation.month_end_summary",
+      "text": "At month-end, you send a summary of the quotation information to the Accounting team as an Excel file.",
+      "supported_claim_ids": [
+        "me.writes.tc_excel_summary"
+      ]
+    }
+  }
+}

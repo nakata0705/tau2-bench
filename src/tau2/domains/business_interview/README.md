@@ -106,29 +106,60 @@ failure. There are NO read/write aliases anywhere in the global resolver.
 | `validate_dag()` | Review the DAG's internal structural consistency (no GT reference) |
 | `finish_interview(summary?)` | Close the interview (rejects a structurally invalid DAG) |
 
-## Hidden Truth claims + stakeholder provenance (`claims.py`)
+## Hidden Truth claims + private StakeholderFacts (`claims.py`, `facts.py`)
 
-The benchmark privately records which Truth claim each stakeholder utterance
-came from:
+The benchmark's private business knowledge is structured, not textual:
 
-- **Claim** — one evaluator-only Truth claim: a stakeholder-visible read/write
-  fact (Truth node + axis + Truth data concept), e.g. `cq.writes.tc_quote`,
-  `cc.reads.tc_customer`, `cq.reads.tc_pricing`. Only claims allowed by the
-  scenario's `StakeholderFilter` enter the private catalog — hidden axes
-  (`sq.reads`, `sq.writes`, `me.reads`, ...) produce **no** claims and can never
-  be referenced.
-- **Provenance ledger** — for every stakeholder (user) message, the simulator
-  side deterministically records which claims the utterance expressed and
-  which surface terms it used (`build_provenance_ledger`). This is private
-  metadata emitted with the natural response; it contains no Ground Truth
-  canonical labels.
-- **Validation** — `validate_ledger` rejects unknown claim ids and claims
-  outside stakeholder visibility.
+    StakeholderFact
+       ├─ public natural language ─▶ Agent ─▶ Agent-local DataConcept
+       └─ private used_fact_ids ─▶ TruthClaims
+                                      ▲
+    ConceptRef ─▶ Observation ─▶ turn ┘
 
-The Agent never sees claim ids, the catalog, or the ledger: they exist only in
-`claims.py` and the evaluator's inputs; the ledger is not part of
-`InterviewDB`, tool outputs, or serialized state. The evaluator **never infers
-semantic support by reading Observation text** — it consumes the ledger.
+- **TruthClaim** — one evaluator-only Truth claim: a stakeholder-visible
+  read/write fact (Truth node + axis + Truth data concept), e.g.
+  `cq.writes.tc_quote`, `cc.reads.tc_customer`, `cq.reads.tc_pricing`. Only
+  claims allowed by the scenario's `StakeholderFilter` enter the private
+  catalog — hidden axes (`sq.reads`, `sq.writes`, `me.reads`, ...) produce
+  **no** claims and can never be referenced.
+- **StakeholderFact** — a hidden structured business fact of the stakeholder
+  (``id``, natural ``text``, ``supported_claim_ids``). The stakeholder
+  simulator answers **only from these facts** and returns a **private sidecar**
+  (``used_fact_ids``) alongside its natural-language response; only the message
+  enters the conversation. Fact/claim ids are evaluator/simulator-private.
+- **Sidecar ledger** (`StakeholderFactLedger`) — stores ``used_fact_ids``
+  against that exact stakeholder message's turn. Provenance is **never
+  derived or reconstructed from message text**.
+- **Validation** — at response ingestion (and again in the evaluator),
+  ``used_fact_ids`` are validated deterministically: every id exists, belongs
+  to this stakeholder, every supported TruthClaim exists, and every claim is
+  stakeholder-visible. Invalid metadata is rejected.
+
+The Agent never sees fact ids, claim ids, the catalogs, or the ledger: they
+live only in `claims.py` / `facts.py` and the evaluator's inputs; the ledger is
+not part of `InterviewDB`, tool outputs, or serialized state. The evaluator
+**never infers semantic support by reading Observation text** — it consumes
+only the private provenance.
+
+## Stakeholder simulator (`user_simulator.py`)
+
+The ``business_interview_user`` user implementation is a small adapter over
+tau2's ``UserSimulator`` that preserves the public-message/private-sidecar
+separation:
+
+- the stakeholder LLM's system prompt carries the hidden StakeholderFacts
+  (id + text) and the JSON sidecar contract
+  ``{"message": ..., "used_fact_ids": [...]}``;
+- only ``message`` becomes the ``UserMessage``; ``used_fact_ids`` travel on a
+  private, never-serialized field and the environment stores them in the
+  private ledger against the exact turn;
+- the stakeholder speaks naturally (it need not copy fact text), never exposes
+  fact ids in its natural-language output, and keeps the persona/conversation
+  instructions (disclosure, unknown behavior) separate from the facts.
+
+The stakeholder simulator naturalizes facts. The Agent LLM interprets
+language. Private instrumentation records Truth provenance. The evaluator
+binds provenance; it does no NLP semantic matching.
 
 ## Evaluation (`evaluation.py`)
 
@@ -159,28 +190,43 @@ supports a claim.
 
 ### Evaluator binding (reads/writes)
 
-For each matched node+axis, the evaluator:
+For each matched node+axis, the evaluator grounds each visible `ConceptRef`
+through private provenance only:
+
+    ConceptRef ─▶ cited Observation ids ─▶ Observation.turn
+        ─▶ private used_fact_ids ─▶ supported TruthClaims ─▶ Truth data concept
 
 1. maps the Agent node to its Truth node with the existing node matching;
 2. determines the expected hidden Truth claims for that node+axis;
-3. inspects **only** the `ConceptRef`/concept's cited Observation ids;
-4. requires the **hidden provenance ledger** to support the expected claim
-   (i.e. the cited Observation privately expressed that claim);
-5. binds the agent-local concept id to the Truth data concept.
+3. follows the ref/concept's cited Observation ids into the private
+   used-fact ledger (never reading Observation text);
+4. keeps the TruthClaims at this node+axis that the cited facts support;
+5. binds the agent-local concept id to the Truth data concept(s) its
+   citations support, requiring a **unique perfect matching** between used
+   Agent concepts and visible Truth data concepts.
 
-A local concept is valid only if all its grounded visible uses bind to **ONE**
-Truth data concept. Failures:
+This deterministically enforces the concept invariants:
 
-- no cited Observation supports the expected claim → unsupported ref;
-- one local concept binds to multiple Truth concepts → `concept_correctness` 0;
-- multiple agent concept ids represent the same Truth concept across visible
-  slots without being merged → `concept_correctness` 0;
-- a hidden read/write axis is asserted → epistemic failure.
+- one Agent concept may bind to only **one** Truth data concept (a concept
+  whose citations pin it to several Truth concepts is unassignable);
+- one visible Truth data concept must use **one** Agent concept identity
+  (duplicate/split concepts for one Truth concept fail until merged;
+  merging repairs them);
+- merging distinct Truth concepts into one Agent concept fails.
+
+Thus one `customer_information` concept may be reused across `cc.reads` and
+`cq.reads` regardless of its label. Failures:
+
+- no cited Observation supports an expected claim → unsupported ref;
+- no unique perfect concept binding exists → `concept_correctness` 0;
+- a hidden read/write axis is asserted → epistemic failure (private
+  provenance never rescues a hidden assertion).
 
 Labels are never compared: the evaluator does not know or care whether the
 agent wrote “quote”, “quotation”, “the price doc”, or anything else. Wording
 alone cannot create a match; an authentic-but-unrelated Observation cannot
-ground a ref.
+support a claim; identical text with different private provenance grounds
+differently.
 
 ### Stakeholder-visibility scoring
 

@@ -1,11 +1,15 @@
-"""Scenarios for the agent-local-concept business_interview benchmark (v4).
+"""Scenarios for the fact-provenance business_interview benchmark (v5).
 
 A scenario is a **Truth DAG** (a plain ``BusinessDAG`` whose reads/writes are
 ``ConceptRef``\\ s into evaluator-only Truth data concepts), an evaluator-only
-``EvaluationSpec`` (concepts for node/edge/necessity matching), the
-stakeholder filter(s), and the **hidden claim catalog** (``claims.py``): the
-private stakeholder fact catalog binding visible Truth read/write concepts to
-the natural surface terms the stakeholder uses.
+``EvaluationSpec`` (concepts for node/edge/necessity matching), the stakeholder
+filter(s), the **hidden claim catalog** (``claims.py``: visible Truth
+read/write facts), and the **private StakeholderFact catalog** (``facts.py``):
+the hidden structured business facts the stakeholder simulator answers from.
+
+There are **no surface-term tables and no stop phrases**: the simulator gets
+structured facts and returns private ``used_fact_ids``; the evaluator binds
+Agent-local concepts through that private provenance, never through wording.
 
 The Truth DAG and the agent's inferred DAG use the same class; Truth concept
 ids are evaluator-only and need not equal Agent concept ids.
@@ -14,7 +18,7 @@ ids are evaluator-only and need not equal Agent concept ids.
 from dataclasses import dataclass, replace
 from typing import Optional
 
-from tau2.domains.business_interview.claims import Claim, build_claims
+from tau2.domains.business_interview.claims import TruthClaim, build_claims
 from tau2.domains.business_interview.dag import (
     BusinessDAG,
     ConceptRef,
@@ -25,6 +29,7 @@ from tau2.domains.business_interview.dag import (
     Node,
 )
 from tau2.domains.business_interview.evaluation import EvaluationSpec, TruthNodeSpec
+from tau2.domains.business_interview.facts import StakeholderFact
 from tau2.domains.business_interview.stakeholder import StakeholderFilter
 
 JA_SCENARIO_SUFFIX = "_ja"
@@ -144,45 +149,66 @@ def quotation_truth() -> BusinessDAG:
     )
 
 
-# Natural surface terms per visible Truth (node, axis, concept) — the
-# stakeholder's private known-info wording (EN). Keys must match the claims
-# builder's expectations; only visible axes appear.
-QUOTATION_SURFACE_TERMS_EN: dict[tuple[str, str, str], list[str]] = {
-    ("r", "writes", "tc_request"): ["request", "quotation request"],
-    ("cc", "reads", "tc_customer"): [
-        "customer",
-        "customer information",
-        "customer's information",
-    ],
-    ("cq", "reads", "tc_customer"): [
-        "customer",
-        "customer information",
-        "customer's information",
-    ],
-    ("cq", "reads", "tc_pricing"): ["pricing", "pricing information"],
-    ("cq", "writes", "tc_quote"): ["quotation", "quotations"],
-    ("me", "writes", "tc_excel_summary"): [
-        "summary of quotation information",
-        "summary of the quotation information",
-    ],
-}
-
-QUOTATION_SURFACE_TERMS_JA: dict[tuple[str, str, str], list[str]] = {
-    ("r", "writes", "tc_request"): ["見積依頼", "依頼"],
-    ("cc", "reads", "tc_customer"): ["顧客情報", "顧客"],
-    ("cq", "reads", "tc_customer"): ["顧客情報", "顧客"],
-    ("cq", "reads", "tc_pricing"): ["価格情報", "価格"],
-    ("cq", "writes", "tc_quote"): ["見積書", "見積"],
-    ("me", "writes", "tc_excel_summary"): ["見積情報の集計", "月次の集計"],
-}
-
-# Phrases that consume a span without supporting any claim (the simulator
-# knows "quotation information" is not the quote object).
-QUOTATION_STOP_PHRASES: tuple[str, ...] = (
-    "quotation information",
-    "quotation summary",
-    "見積情報",
-)
+# Hidden structured StakeholderFacts for the quotation sales stakeholder.
+# Fact ids are the SAME across EN and JA (semantic fact identities are
+# shared); only the natural wording differs. Fact/claim ids are
+# evaluator/simulator-private and never visible to the Agent.
+def quotation_facts(locale: str = "en") -> dict[str, StakeholderFact]:
+    """The private StakeholderFact catalog for quotation (EN or JA wording)."""
+    if locale == "ja":
+        text = {
+            "quotation.receive_request": ("お客様から見積依頼を受け付けます。"),
+            "quotation.check_customer": (
+                "依頼を受け付けたら、CRMで顧客情報を確認します。"
+            ),
+            "quotation.create": ("顧客情報と価格情報を使って見積書を作成します。"),
+            "quotation.month_end_summary": (
+                "月末には、見積情報の集計をExcelファイルとして経理チームに送ります。"
+            ),
+        }
+    else:
+        text = {
+            "quotation.receive_request": (
+                "You receive quotation requests from customers."
+            ),
+            "quotation.check_customer": (
+                "When a quotation request is received, you check the "
+                "customer's information in the CRM."
+            ),
+            "quotation.create": (
+                "You create the quotation using the customer and pricing information."
+            ),
+            "quotation.month_end_summary": (
+                "At month-end, you send a summary of the quotation "
+                "information to the Accounting team as an Excel file."
+            ),
+        }
+    return {
+        "quotation.receive_request": StakeholderFact(
+            id="quotation.receive_request",
+            text=text["quotation.receive_request"],
+            supported_claim_ids=["r.writes.tc_request"],
+        ),
+        "quotation.check_customer": StakeholderFact(
+            id="quotation.check_customer",
+            text=text["quotation.check_customer"],
+            supported_claim_ids=["cc.reads.tc_customer"],
+        ),
+        "quotation.create": StakeholderFact(
+            id="quotation.create",
+            text=text["quotation.create"],
+            supported_claim_ids=[
+                "cq.reads.tc_customer",
+                "cq.reads.tc_pricing",
+                "cq.writes.tc_quote",
+            ],
+        ),
+        "quotation.month_end_summary": StakeholderFact(
+            id="quotation.month_end_summary",
+            text=text["quotation.month_end_summary"],
+            supported_claim_ids=["me.writes.tc_excel_summary"],
+        ),
+    }
 
 
 def quotation_spec() -> EvaluationSpec:
@@ -191,8 +217,8 @@ def quotation_spec() -> EvaluationSpec:
     The expressions are aliases/paraphrases the evaluator uses to match the
     agent's free-text **actions** to the Truth nodes; ``primitive`` is the
     expected generic operation. There is NO read/write equivalence here —
-    reads/writes bind through hidden claim provenance (``claims.py``).
-    This metadata is never shown to the agent.
+    reads/writes bind through hidden fact provenance (``facts.py``). This
+    metadata is never shown to the agent.
     """
     return EvaluationSpec(
         truth_nodes={
@@ -296,10 +322,12 @@ def quotation_spec() -> EvaluationSpec:
     )
 
 
-def quotation_claims(locale: str = "en") -> dict[str, Claim]:
-    """The hidden claim catalog for the quotation scenario (EN or JA)."""
-    terms = QUOTATION_SURFACE_TERMS_EN if locale == "en" else QUOTATION_SURFACE_TERMS_JA
-    return build_claims(quotation_truth(), quotation_sales_filter(), terms)
+def quotation_claims() -> dict[str, TruthClaim]:
+    """The hidden TruthClaim catalog for the quotation scenario.
+
+    Claims are locale-independent (they reference Truth ids only).
+    """
+    return build_claims(quotation_truth(), quotation_sales_filter())
 
 
 def quotation_sales_filter() -> StakeholderFilter:
@@ -417,13 +445,26 @@ def lab_sample_truth() -> BusinessDAG:
     )
 
 
-LAB_SURFACE_TERMS: dict[tuple[str, str, str], list[str]] = {
-    ("n1", "reads", "tc_sample"): ["sample", "specimen"],
-}
+def lab_sample_facts() -> dict[str, StakeholderFact]:
+    """The private StakeholderFact catalog for the lab technician.
+
+    Only ``n1.reads.tc_sample`` is stakeholder-visible, so the catalog is a
+    single fact. Hidden derived read/write artifacts are deliberately NOT
+    supported by any fact (hidden axes stay unset — epistemic restraint).
+    """
+    return {
+        "lab.accession_sample": StakeholderFact(
+            id="lab.accession_sample",
+            text=(
+                "When a specimen arrives, you accession it — you record it as received."
+            ),
+            supported_claim_ids=["n1.reads.tc_sample"],
+        )
+    }
 
 
-def lab_sample_claims() -> dict[str, Claim]:
-    return build_claims(lab_sample_truth(), lab_sample_filter(), LAB_SURFACE_TERMS)
+def lab_sample_claims() -> dict[str, TruthClaim]:
+    return build_claims(lab_sample_truth(), lab_sample_filter())
 
 
 def lab_sample_spec() -> EvaluationSpec:
@@ -493,8 +534,8 @@ class Scenario:
     truth: BusinessDAG
     spec: EvaluationSpec
     stakeholder: StakeholderFilter
-    claims: dict[str, Claim]
-    stop_phrases: tuple[str, ...] = ()
+    claims: dict[str, TruthClaim]
+    facts: dict[str, StakeholderFact]
 
 
 _SCENARIOS: dict[str, Scenario] = {
@@ -503,8 +544,8 @@ _SCENARIOS: dict[str, Scenario] = {
         truth=quotation_truth(),
         spec=quotation_spec(),
         stakeholder=quotation_sales_filter(),
-        claims=quotation_claims("en"),
-        stop_phrases=QUOTATION_STOP_PHRASES,
+        claims=quotation_claims(),
+        facts=quotation_facts("en"),
     ),
     "lab_sample_flow": Scenario(
         scenario_id="lab_sample_flow",
@@ -512,6 +553,7 @@ _SCENARIOS: dict[str, Scenario] = {
         spec=lab_sample_spec(),
         stakeholder=lab_sample_filter(),
         claims=lab_sample_claims(),
+        facts=lab_sample_facts(),
     ),
 }
 
@@ -532,6 +574,7 @@ def get_scenario(scenario_id: Optional[str]) -> Optional[Scenario]:
     if sc is None:
         return None
     if scenario_id is not None and scenario_id.endswith(JA_SCENARIO_SUFFIX):
-        # JA locale: same truth/spec/filter, JA claim catalog
-        return replace(sc, claims=quotation_claims("ja"))
+        # JA locale: same truth/spec/filter/claims, JA fact wording.
+        # Fact ids and claim ids are shared across locales.
+        return replace(sc, facts=quotation_facts("ja"))
     return sc

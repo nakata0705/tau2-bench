@@ -1,9 +1,10 @@
 from pathlib import Path
 from typing import Optional
 
-from tau2.data_model.message import Message
+from tau2.data_model.message import Message, UserMessage
 from tau2.data_model.tasks import Task
 from tau2.domains.business_interview.dag import InterviewDB
+from tau2.domains.business_interview.facts import StakeholderFactLedger
 from tau2.domains.business_interview.tools import InterviewTools
 from tau2.domains.business_interview.utils import (
     BUSINESS_INTERVIEW_POLICY_PATH,
@@ -20,12 +21,37 @@ class BusinessInterviewEnvironment(Environment):
     environment-controlled ledger). The agent can then capture stakeholder
     (user) messages as Observations via ``observe_message``; it never writes
     Observation text itself.
+
+    ``fact_ledger`` is the private sidecar ledger: when a stakeholder (user)
+    message carries private ``used_fact_ids`` (from the fact-grounded
+    stakeholder simulator), they are validated deterministically and stored
+    against that exact message's turn. Only the public message content ever
+    enters the conversation; the ledger is never Agent-visible.
     """
 
+    def __init__(
+        self, *args, fact_ledger: Optional[StakeholderFactLedger] = None, **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+        self.fact_ledger: StakeholderFactLedger = (
+            fact_ledger if fact_ledger is not None else StakeholderFactLedger()
+        )
+
     def on_message(self, message: Message) -> None:
-        if self.tools is None or getattr(self.tools, "db", None) is None:
+        tools = self.tools
+        if tools is None:
             return
-        db = self.tools.db
+        db = getattr(tools, "db", None)
+        if db is None:
+            return
+        turn = len(db.messages)
+        if isinstance(message, UserMessage):
+            used_fact_ids = getattr(message, "stakeholder_used_fact_ids", None)
+            if used_fact_ids:
+                # Private sidecar: validate deterministically (catalog present
+                # in live runs) and store against this exact message's turn.
+                # Invalid metadata is rejected loudly.
+                self.fact_ledger.bind(turn, list(used_fact_ids))
         db.messages.append(
             {
                 "role": str(getattr(message, "role", "")),
@@ -39,17 +65,26 @@ def get_environment(solo_mode: bool = False) -> Environment:
 
     There is no pre-existing data: the database only accumulates the
     conversation, the authentic Observations captured from stakeholder messages,
-    and the inferred DAG.
+    and the inferred DAG. The private used-fact ledger is created here and
+    shared with the tools (and, via the environment, with the fact-grounded
+    stakeholder simulator adapter).
     """
     db = InterviewDB()
-    tools = InterviewTools(db)
-    with open(BUSINESS_INTERVIEW_POLICY_PATH, "r") as fp:
-        policy = fp.read()
+    ledger = StakeholderFactLedger()
+    tools = InterviewTools(db, fact_ledger=ledger)
+    try:
+        with open(BUSINESS_INTERVIEW_POLICY_PATH, "r") as fp:
+            policy = fp.read()
+    except OSError as exc:
+        raise RuntimeError(
+            f"cannot read business_interview policy at {BUSINESS_INTERVIEW_POLICY_PATH}: {exc}"
+        ) from exc
     env = BusinessInterviewEnvironment(
         domain_name="business_interview",
         policy=policy,
         tools=tools,
         user_tools=None,  # The stakeholder is a plain conversational user.
+        fact_ledger=ledger,
     )
     if solo_mode:
         env.set_solo_mode(True)

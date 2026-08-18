@@ -19,19 +19,17 @@ Truth concepts through private per-utterance claim support (`claims.py`). The
 earlier static author-declared label table (`EvaluationSpec.data_expressions`)
 was removed.
 
-The remaining static piece is the **simulator-side surface-term table** used to
-derive the hidden provenance ledger:
+> **Update (private-fact-provenance refactor):** the simulator-side surface-term
+> table this note targets no longer exists. Surface terms, stop phrases and
+> text parsing were removed entirely; the stakeholder simulator now answers
+> from hidden structured **StakeholderFacts** and returns a private
+> **used_fact_ids** sidecar (`facts.py`, `user_simulator.py`). The evaluator
+> binds Agent-local concepts through that private provenance only. The
+> terminology-agreement questions below remain relevant as a future mechanism
+> for *changing* the facts' wording during the interview, but the static
+> synonym-table premise of section 0 is obsolete.
 
-```python
-QUOTATION_SURFACE_TERMS_EN = {
-    ("cq", "writes", "tc_quote"): ["quotation", "quotations"],
-    ...
-}
-```
-
-This is deterministic and private, but the surface terms a stakeholder can use
-are fixed at scenario-authoring time. The conversation itself produces
-**terminology agreements** the
+The conversation itself produces **terminology agreements** the
 stakeholder explicitly confirms ("Is 'the quotation' the same thing you send
 later?" → "Yes."), and those agreements are currently ignored by the
 evaluator.

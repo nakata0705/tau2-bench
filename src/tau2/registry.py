@@ -37,6 +37,9 @@ from tau2.domains.business_interview.environment import (
 from tau2.domains.business_interview.environment import (
     get_tasks_split as business_interview_domain_get_tasks_split,
 )
+from tau2.domains.business_interview.user_simulator import (
+    StakeholderUserSimulator as BusinessInterviewStakeholderUserSimulator,
+)
 from tau2.domains.mock.environment import get_environment as mock_domain_get_environment
 from tau2.domains.mock.environment import get_tasks as mock_domain_get_tasks
 from tau2.domains.retail.environment import (
@@ -291,6 +294,11 @@ try:
     # User implementations
     registry.register_user(UserSimulator, "user_simulator")
     registry.register_user(DummyUser, "dummy_user")
+    # Fact-grounded stakeholder simulator (business_interview): answers only
+    # from hidden StakeholderFacts and returns a private used_fact_ids sidecar.
+    registry.register_user(
+        BusinessInterviewStakeholderUserSimulator, "business_interview_user"
+    )
     try:
         from tau2.user.user_simulator_streaming import VoiceStreamingUserSimulator
 
@@ -340,8 +348,12 @@ try:
     registry.register_domain(
         telecom_domain_get_environment_workflow_policy, "telecom-workflow"
     )
-    registry.register_tasks(telecom_domain_get_tasks_full, "telecom_full")
-    registry.register_tasks(telecom_domain_get_tasks_small, "telecom_small")
+    registry.register_tasks(
+        lambda _split: telecom_domain_get_tasks_full(), "telecom_full"
+    )
+    registry.register_tasks(
+        lambda _split: telecom_domain_get_tasks_small(), "telecom_small"
+    )
     registry.register_tasks(
         telecom_domain_get_tasks,
         "telecom",

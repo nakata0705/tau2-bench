@@ -119,7 +119,12 @@ class ToolCall(BaseModel):
                 # Collect all remaining lines as JSON
                 json_lines = lines[i + 1 :]
                 json_str = "\n".join(json_lines)
-                arguments = json.loads(json_str)
+                try:
+                    arguments = json.loads(json_str)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(
+                        f"cannot parse tool-call arguments JSON: {json_str[:200]!r}"
+                    ) from exc
                 break
 
             i += 1
@@ -274,14 +279,16 @@ class ParticipantMessageBase(BaseModel):
     def _encode_bytes_to_base64(cls, value):
         """Encode bytes to base64 string if needed."""
         if isinstance(value, (bytes, bytearray)):
-            return audio_bytes_to_string(value)
+            return audio_bytes_to_string(bytes(value))
         return value
 
     # ------------------------
     # 🧠 Helpers
     # ------------------------
 
-    def validate(self):  # NOTE: It would be better to do this in the Pydantic model
+    def validate(
+        self,
+    ):  # NOTE: It would be better to do this in the Pydantic model  # pyright: ignore[reportIncompatibleMethodOverride]
         """Ensure that the message has either text/audio content or tool calls."""
         if not (self.has_content() or self.is_tool_call()):
             raise ValueError(
@@ -361,7 +368,8 @@ class ParticipantMessageBase(BaseModel):
             lines.append(f"content: {self.content}")
         if self.is_tool_call():
             lines.append("ToolCalls:")
-            lines.extend([str(tc) for tc in self.tool_calls])
+            if self.tool_calls is not None:
+                lines.extend([str(tc) for tc in self.tool_calls])
         if self.chunk_id is not None:
             lines.append(f"chunk_id: {self.chunk_id}")
         lines.append(f"is_final_chunk: {self.is_final_chunk}")
@@ -390,7 +398,7 @@ class AssistantMessage(ParticipantMessageBase):
     The regular constructor still works and accepts all fields.
     """
 
-    role: AssistantRole = Field(description="The role of the message sender.")
+    role: AssistantRole = Field(description="The role of the message sender.")  # pyright: ignore[reportIncompatibleVariableOverride]
 
     @classmethod
     def text(
@@ -476,7 +484,23 @@ class UserMessage(ParticipantMessageBase):
     The regular constructor still works and accepts all fields.
     """
 
-    role: UserRole = Field(description="The role of the message sender.")
+    role: UserRole = Field(description="The role of the message sender.")  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    # PRIVATE benchmark metadata (business_interview only): the hidden
+    # used_fact_ids a fact-grounded stakeholder simulator returns alongside its
+    # natural-language response. Only the content enters the conversation; this
+    # field is consumed solely by the domain environment (sidecar binding) and
+    # is excluded from every serialization, so private fact/claim ids can never
+    # appear in Agent-visible messages, artifacts, or state.
+    stakeholder_used_fact_ids: Optional[list[str]] = Field(
+        default=None,
+        exclude=True,
+        repr=False,
+        description=(
+            "Private benchmark sidecar (used_fact_ids) of a stakeholder "
+            "response; never serialized or Agent-visible."
+        ),
+    )
 
     @classmethod
     def text(

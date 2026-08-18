@@ -1,4 +1,4 @@
-"""Evaluator for the open-world business_interview benchmark (v6 — agent-local concepts).
+"""Evaluator for the open-world business_interview benchmark (v7 — private fact provenance).
 
 The agent's inferred ``BusinessDAG`` (open-world free-text actions, optional
 generic primitives, authentic Observation provenance) is compared to the scenario
@@ -6,13 +6,21 @@ Truth DAG — both use the same ``BusinessDAG`` class.
 
 **Reads/writes are agent-local data concepts.** The Agent LLM, not the
 evaluator, interprets stakeholder wording variation: it creates local
-``DataConcept``\ s, attaches observed ``ConceptTerm``\ s, and reuses concept ids
-in ``ConceptRef``\ s. The evaluator binds each agent-local concept to a hidden
-Truth data concept through **hidden stakeholder provenance** (``claims.py``):
-privately, every stakeholder utterance is recorded as supporting the Truth
-claims it expressed; an agent ref grounds a claim only when the Observations it
-cites carry that hidden support. The evaluator never infers semantic support by
-reading Observation text and never compares labels to Ground Truth.
+``DataConcept``s, attaches observed ``ConceptTerm``s, and reuses concept ids
+in ``ConceptRef``s. The evaluator binds each agent-local concept to a hidden
+Truth data concept through **private stakeholder fact provenance**
+(``facts.py``): every stakeholder message privately records the ids of the
+structured facts it used; an agent ref grounds a claim only when the
+Observations it cites lead, through their turns, to used facts that support that
+claim:
+
+    ConceptRef -> Observation ids -> Observation.turn -> private used_fact_ids
+        -> supported TruthClaims -> Truth data concept
+
+The evaluator never infers semantic support by reading Observation text and
+never compares labels to Ground Truth. Wording variation is the Agent LLM's
+job; private instrumentation records Truth provenance; the evaluator binds
+provenance — it does no NLP semantic matching.
 
 **Benchmark vs production separation.** In production there is no ground truth;
 here a hidden ground truth exists and only the evaluator uses it to score
@@ -41,7 +49,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from tau2.domains.business_interview.aliases import norm_role, norm_system
-from tau2.domains.business_interview.claims import Claim
+from tau2.domains.business_interview.claims import TruthClaim
 from tau2.domains.business_interview.concepts import resolve_primitive
 from tau2.domains.business_interview.dag import (
     BusinessDAG,
@@ -50,6 +58,7 @@ from tau2.domains.business_interview.dag import (
     InferredValue,
     InterviewDB,
 )
+from tau2.domains.business_interview.facts import StakeholderFact
 from tau2.domains.business_interview.stakeholder import StakeholderFilter
 
 _TOKEN_RE = __import__("re").compile(r"[a-z0-9]+")
@@ -382,7 +391,7 @@ def _match_nodes(agent: BusinessDAG, truth: BusinessDAG, spec: EvaluationSpec):
 
 
 # ---------------------------------------------------------------------------
-# Data concepts: hidden-claim binding (no label comparison, no synonyms)
+# Data concepts: private-fact binding (no label comparison, no synonyms)
 # ---------------------------------------------------------------------------
 
 
@@ -406,87 +415,104 @@ def _obs_turn(db: InterviewDB, obs_id: str) -> Optional[int]:
     return None
 
 
-def _term_covers(term_text: str, recorded_terms: list[str]) -> bool:
-    """True if the agent's term text matches a recorded surface term (used only
-    to disambiguate observations that express several claims)."""
-    t = " ".join(term_text.lower().split())
-    return any(
-        t == " ".join(rt.lower().split()) or t in rt.lower() or rt.lower() in t
-        for rt in recorded_terms
-    )
+def _validate_used_facts(
+    used_facts: dict[int, list[str]],
+    facts: dict[str, StakeholderFact],
+    claims: dict[str, TruthClaim],
+    stakeholder: Optional[StakeholderFilter],
+) -> None:
+    """Deterministically reject invalid private fact metadata.
+
+    Every used fact id must exist in the scenario's fact catalog (existence
+    implies it belongs to this stakeholder); every supported TruthClaim must
+    exist; every claim must be stakeholder-visible. Raises ``ValueError``.
+    """
+    for turn, fact_ids in (used_facts or {}).items():
+        for fid in fact_ids:
+            fact = (facts or {}).get(fid)
+            if fact is None:
+                raise ValueError(
+                    f"used_fact_id {fid!r} (turn {turn}) is not in the "
+                    f"scenario's StakeholderFact catalog"
+                )
+            for cid in fact.supported_claim_ids:
+                claim = (claims or {}).get(cid)
+                if claim is None:
+                    raise ValueError(
+                        f"fact {fid!r} (turn {turn}) supports unknown "
+                        f"TruthClaim id {cid!r}"
+                    )
+                if (
+                    stakeholder is not None
+                    and claim.axis
+                    not in stakeholder.visible_attributes_for(claim.node_id)
+                ):
+                    raise ValueError(
+                        f"fact {fid!r} (turn {turn}) supports claim {cid!r} "
+                        f"which is outside stakeholder visibility"
+                    )
 
 
-def _bind_ref(
+def _ref_supported_claims(
     agent: BusinessDAG,
     db: InterviewDB,
-    claims: dict[str, Claim],
-    ledger: dict[int, dict[str, list[str]]],
+    facts: dict[str, StakeholderFact],
+    claims: dict[str, TruthClaim],
+    used_facts: dict[int, list[str]],
     tnid: str,
     axis: str,
     ref: ConceptRef,
-) -> list[Claim]:
-    """Bind one agent ConceptRef at a matched Truth node+axis to hidden claims.
+) -> list[TruthClaim]:
+    """The TruthClaims at this node+axis supported by one agent ConceptRef.
 
-    1. Collect the expected claims for this Truth node+axis.
-    2. Inspect only the ref/concept's cited Observation ids; a claim is
-       supported when the hidden provenance ledger records that the cited
-       Observation expressed it.
-    3. If several claims are supported by the same Observation (one utterance
-       can express several facts), disambiguate with the concept's term texts
-       against the recorded surface terms; a concept whose terms match none
-       binds nothing (unsupported).
+    The chain is provenance-only:
 
-    Returns the bound claims (empty = unsupported ref).
+        ConceptRef -> cited Observation ids -> Observation.turn
+            -> private used_fact_ids -> supported TruthClaims
+            -> keep those for this node+axis
+
+    ``preferred_label``, ``ConceptTerm.text`` and ``Observation.text`` are
+    never inspected to decide semantic correctness. Empty = unsupported ref.
     """
     expected = [c for c in claims.values() if c.node_id == tnid and c.axis == axis]
     if not expected:
         return []
-    supported: list[Claim] = []
-    for c in expected:
-        for obs_id in _ref_observation_ids(agent, ref):
-            turn = _obs_turn(db, obs_id)
-            if turn is None:
-                continue
-            if c.id in ledger.get(turn, {}):
-                supported.append(c)
-                break
-    if not supported:
-        return []
-    if len(supported) == 1:
-        return supported
-    # multiple claims supported by the cited observations: keep only the ones
-    # whose recorded surface terms are covered by the concept's own term texts
-    concept = agent.data_concepts.get(ref.concept_id)
-    matched: list[Claim] = []
-    for c in supported:
-        recorded = [
-            t for entry in ledger.values() if c.id in entry for t in entry[c.id]
-        ]
-        if any(
-            _term_covers(term.text, recorded)
-            for term in (concept.terms if concept is not None else [])
-        ):
-            matched.append(c)
-    return matched
+    supported: set[str] = set()
+    for obs_id in _ref_observation_ids(agent, ref):
+        turn = _obs_turn(db, obs_id)
+        if turn is None:
+            continue
+        for fid in used_facts.get(turn, []):
+            fact = facts.get(fid)
+            if fact is None:
+                raise ValueError(
+                    f"used_fact_id {fid!r} (turn {turn}) is not in the "
+                    f"scenario's StakeholderFact catalog"
+                )
+            supported.update(fact.supported_claim_ids)
+    return [c for c in expected if c.id in supported]
 
 
 def _data_axis_score(
     agent: BusinessDAG,
     db: InterviewDB,
-    claims: dict[str, Claim],
-    ledger: dict[int, dict[str, list[str]]],
+    facts: dict[str, StakeholderFact],
+    claims: dict[str, TruthClaim],
+    used_facts: dict[int, list[str]],
     tnid: str,
     anid: str,
     axis: str,
     visible: bool,
 ) -> tuple[float, int]:
-    """Score one reads/writes axis of a matched node (concept binding).
+    """Score one reads/writes axis of a matched node (claim grounding).
 
     Visible axis: recall over expected hidden claims (each must be grounded by
-    at least one agent ref) times precision over agent refs (each must bind to
-    at least one expected claim). Returns (score, unsupported_ref_count).
+    at least one agent ref whose cited Observations privately support it) times
+    precision over agent refs (each must support at least one expected claim).
+    Returns (score, unsupported_ref_count).
 
-    Hidden axis (prior gate): correct only when nothing is asserted.
+    Hidden axis (prior gate): correct only when nothing is asserted — private
+    provenance can never rescue a hidden assertion.
     """
     refs = [r for r in getattr(agent.nodes[anid], axis) if r.asserted]
     if not visible:
@@ -500,36 +526,85 @@ def _data_axis_score(
     valid = 0
     unsupported = 0
     for ref in refs:
-        bound = _bind_ref(agent, db, claims, ledger, tnid, axis, ref)
-        if not bound:
+        supported = _ref_supported_claims(
+            agent, db, facts, claims, used_facts, tnid, axis, ref
+        )
+        if not supported:
             unsupported += 1
             continue
         valid += 1
-        for c in bound:
+        for c in supported:
             grounded[c.id] = True
     recall = sum(grounded.values()) / len(expected)
     precision = valid / len(refs)
     return recall * precision, unsupported
 
 
+def _count_perfect_matchings(
+    left: list[str],
+    allowed: dict[str, set[str]],
+    right: list[str],
+    limit: int = 2,
+) -> int:
+    """Count perfect matchings (bijections left->right within ``allowed``),
+    stopping early at ``limit``. Deterministic: left/right are processed in
+    sorted order. Used to enforce the concept invariants.
+    """
+    count = 0
+    used_right: set[str] = set()
+    match: dict[str, str] = {}
+
+    def backtrack(i: int) -> None:
+        nonlocal count
+        if count >= limit:
+            return
+        if i == len(left):
+            count += 1
+            return
+        for t in sorted(allowed.get(left[i], set())):
+            if t in used_right:
+                continue
+            used_right.add(t)
+            match[left[i]] = t
+            backtrack(i + 1)
+            del match[left[i]]
+            used_right.discard(t)
+            if count >= limit:
+                return
+
+    backtrack(0)
+    return count
+
+
 def _concept_bindings(
     agent: BusinessDAG,
     db: InterviewDB,
-    claims: dict[str, Claim],
-    ledger: dict[int, dict[str, list[str]]],
+    facts: dict[str, StakeholderFact],
+    claims: dict[str, TruthClaim],
+    used_facts: dict[int, list[str]],
     mapping: dict[str, str],
     stakeholder: Optional[StakeholderFilter],
 ) -> tuple[float, dict[str, set[str]], dict[str, set[str]]]:
     """Concept-level binding integrity across all matched visible slots.
 
-    - one agent-local concept must bind to ONE Truth data concept;
-    - one Truth data concept must be represented by ONE agent concept id
-      (separate ids for the same visible object fail until merged).
+    The evaluator binds each agent-local concept to the Truth data concepts
+    its citations support, and then requires the binding to be a **unique
+    perfect matching** between used agent concepts and visible Truth data
+    concepts. This deterministically enforces, without any text inspection:
+
+    - one agent concept may bind to only one Truth data concept (an agent
+      concept whose citations pin it to several Truth concepts is unassignable);
+    - one visible Truth data concept must use one Agent concept identity
+      (duplicate/split agent concepts for one Truth concept make the matching
+      impossible or non-unique; merging repairs it);
+    - merging distinct Truth concepts into one agent concept fails (the merged
+      concept's citation-supported set spans several Truth concepts).
 
     Returns (concept_correctness, agent->truth, truth->agent) maps.
     """
-    agent_to_truth: dict[str, set[str]] = {}
-    truth_to_agent: dict[str, set[str]] = {}
+    # per-concept candidate truth concepts = intersection over the concept's
+    # refs of the truth concepts supported at each ref's slot
+    candidates: dict[str, set[str]] = {}
     for anid, tnid in mapping.items():
         visible = (
             set(("actor", "system", "reads", "writes"))
@@ -542,13 +617,36 @@ def _concept_bindings(
             for ref in getattr(agent.nodes[anid], axis):
                 if not ref.asserted:
                     continue
-                for c in _bind_ref(agent, db, claims, ledger, tnid, axis, ref):
-                    agent_to_truth.setdefault(ref.concept_id, set()).add(c.concept_id)
-                    truth_to_agent.setdefault(c.concept_id, set()).add(ref.concept_id)
-    violations = sum(1 for v in agent_to_truth.values() if len(v) > 1) + sum(
-        1 for v in truth_to_agent.values() if len(v) > 1
+                supported = _ref_supported_claims(
+                    agent, db, facts, claims, used_facts, tnid, axis, ref
+                )
+                truth_ids = {c.concept_id for c in supported}
+                if truth_ids:
+                    prev = candidates.setdefault(ref.concept_id, set(truth_ids))
+                    candidates[ref.concept_id] = prev & truth_ids
+    # truth concepts that carry at least one visible claim
+    truth_concepts = sorted({c.concept_id for c in claims.values()})
+    agent_concepts = sorted(candidates)
+    if not agent_concepts:
+        return 1.0, {}, {t: set() for t in truth_concepts}
+    # a concept whose citations leave no single Truth concept is unassignable
+    unassignable = [c for c in agent_concepts if not candidates[c]]
+    # a perfect matching covers BOTH sides: every used agent concept binds to
+    # exactly one Truth data concept and every visible Truth data concept is
+    # represented by exactly one agent concept
+    n_matchings = (
+        0
+        if unassignable or len(agent_concepts) != len(truth_concepts)
+        else _count_perfect_matchings(agent_concepts, candidates, truth_concepts)
     )
-    return (0.0 if violations else 1.0), agent_to_truth, truth_to_agent
+    agent_to_truth: dict[str, set[str]] = {
+        c: set(candidates[c]) for c in agent_concepts
+    }
+    truth_to_agent: dict[str, set[str]] = {t: set() for t in truth_concepts}
+    for c in agent_concepts:
+        for t in candidates[c]:
+            truth_to_agent[t].add(c)
+    return (1.0 if n_matchings == 1 else 0.0), agent_to_truth, truth_to_agent
 
 
 _PREDICATE_STOP = {
@@ -788,22 +886,28 @@ def evaluate(
     spec: EvaluationSpec,
     stakeholder: Optional[StakeholderFilter] = None,
     *,
-    claims: Optional[dict[str, Claim]] = None,
-    provenance: Optional[dict[int, dict[str, list[str]]]] = None,
+    claims: Optional[dict[str, TruthClaim]] = None,
+    facts: Optional[dict[str, StakeholderFact]] = None,
+    used_facts: Optional[dict[int, list[str]]] = None,
 ) -> EvaluationResult:
     """Evaluate the inferred DAG against the hidden Truth.
 
-    ``claims`` is the hidden claim catalog (``Scenario.claims``) and
-    ``provenance`` the hidden stakeholder provenance ledger
-    (``build_provenance_ledger``). Both are evaluator-only; the Agent never
-    sees them. Without provenance, no ConceptRef can ground a Truth claim.
+    ``claims`` is the hidden TruthClaim catalog (``Scenario.claims``),
+    ``facts`` the private StakeholderFact catalog (``Scenario.facts``) and
+    ``used_facts`` the private sidecar ledger (``{turn: [used_fact_ids]}``,
+    ``StakeholderFactLedger.used_fact_ids()``). All three are evaluator-only;
+    the Agent never sees them. Invalid private metadata is rejected
+    deterministically (unknown fact id / claim id / out-of-visibility claim).
+    Without provenance, no ConceptRef can ground a Truth claim.
     """
     agent = db.dag if db.dag is not None else BusinessDAG()
     protocol = db.interview_complete
     dag_created = len(agent.nodes) > 0
     dag_valid = agent.is_valid
     claims = claims or {}
-    ledger = provenance or {}
+    facts = facts or {}
+    ledger = used_facts or {}
+    _validate_used_facts(ledger, facts, claims, stakeholder)
 
     # ---- node matching -----------------------------------------------------
     mapping = _match_nodes(agent, truth, spec)
@@ -885,10 +989,26 @@ def evaluate(
             "system", an.system, tn.system, spec, "system" in visible
         )
         read_score, read_unsupported = _data_axis_score(
-            agent, db, claims, ledger, tnid, anid, "reads", "reads" in visible
+            agent,
+            db,
+            facts,
+            claims,
+            ledger,
+            tnid,
+            anid,
+            "reads",
+            "reads" in visible,
         )
         write_score, write_unsupported = _data_axis_score(
-            agent, db, claims, ledger, tnid, anid, "writes", "writes" in visible
+            agent,
+            db,
+            facts,
+            claims,
+            ledger,
+            tnid,
+            anid,
+            "writes",
+            "writes" in visible,
         )
         read_hits += read_score
         write_hits += write_score
@@ -901,7 +1021,7 @@ def evaluate(
 
     # ---- concept binding integrity ------------------------------------------
     concept_correctness, agent_to_truth, truth_to_agent = _concept_bindings(
-        agent, db, claims, ledger, mapping, stakeholder
+        agent, db, facts, claims, ledger, mapping, stakeholder
     )
 
     # ---- necessity correctness ---------------------------------------------

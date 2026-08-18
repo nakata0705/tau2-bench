@@ -83,7 +83,7 @@ class DataConcept(BaseModel):
 
     The Agent LLM decides whether different stakeholder expressions refer to
     one concept; it creates a ``DataConcept``, attaches observed
-    ``ConceptTerm``\ s, and reuses its ``id`` consistently in ``ConceptRef``\ s
+    ``ConceptTerm``s, and reuses its ``id`` consistently in ``ConceptRef``s
     across nodes. Concept ids are arbitrary and agent-local; the evaluator
     never compares labels to Ground Truth.
     """

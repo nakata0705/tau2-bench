@@ -8,6 +8,7 @@ this layer and construct instances directly.
 
 import uuid
 from copy import deepcopy
+from inspect import signature
 from pathlib import Path
 from typing import Optional, Union
 
@@ -32,6 +33,19 @@ from tau2.user.user_simulator_base import FullDuplexUser, HalfDuplexUser
 from tau2.user_simulation_voice_presets import (
     get_or_load_task_voice_config,
 )
+
+
+def _safe_backchannel_ticks(
+    threshold_seconds, tick_duration_seconds
+):
+    """Convert a backchannel threshold (seconds) to ticks; None stays None."""
+    if threshold_seconds is None or tick_duration_seconds is None:
+        return None
+    try:
+        return int(threshold_seconds / tick_duration_seconds)
+    except (TypeError, ValueError, ZeroDivisionError):
+        return None
+
 
 # =============================================================================
 # Low-level build functions (no RunConfig needed)
@@ -174,6 +188,16 @@ def build_user(
     if issubclass(UserConstructor, UserSimulator):
         user_kwargs["persona_config"] = persona_config
 
+    # Domain-local user adapters may declare extra wiring hooks (e.g. the
+    # business_interview fact-grounded stakeholder needs the task and the
+    # environment's private fact ledger). Pass them only when the constructor
+    # explicitly accepts them, so the generic user simulators are untouched.
+    init_params = signature(UserConstructor.__init__).parameters
+    if "task" in init_params:
+        user_kwargs["task"] = task
+    if "environment" in init_params:
+        user_kwargs["environment"] = environment
+
     return UserConstructor(**user_kwargs)
 
 
@@ -238,24 +262,22 @@ def build_voice_user(
 
     # Get voice config for this task (from pre-sampled file or sample on the fly)
     task_seed = seed + hash(task.id) % 1000000
+    synthesis_config = task_voice_settings.synthesis_config
+    if synthesis_config is None:
+        synthesis_config = SynthesisConfig()
+        task_voice_settings.synthesis_config = synthesis_config
     sampled_voice_config = get_or_load_task_voice_config(
         domain=domain,
         task_id=task.id,
         task_seed=task_seed,
         complexity=speech_complexity,
-        synthesis_config=task_voice_settings.synthesis_config,
+        synthesis_config=synthesis_config,
     )
 
     # Update synthesis_config with merged effect configs
-    task_voice_settings.synthesis_config.channel_effects_config = (
-        sampled_voice_config.channel_effects_config
-    )
-    task_voice_settings.synthesis_config.source_effects_config = (
-        sampled_voice_config.source_effects_config
-    )
-    task_voice_settings.synthesis_config.speech_effects_config = (
-        sampled_voice_config.speech_effects_config
-    )
+    synthesis_config.channel_effects_config = sampled_voice_config.channel_effects_config
+    synthesis_config.source_effects_config = sampled_voice_config.source_effects_config
+    synthesis_config.speech_effects_config = sampled_voice_config.speech_effects_config
 
     # Set speech environment
     speech_environment = sampled_voice_config.to_speech_environment(task_seed)
@@ -272,7 +294,7 @@ def build_voice_user(
     from tau2.user.user_simulator_streaming import VoiceStreamingUserSimulator
 
     return VoiceStreamingUserSimulator(
-        tools=user_tools,
+        tools=user_tools or [],
         instructions=user_instructions,
         llm=llm,
         llm_args=llm_args,
@@ -282,13 +304,9 @@ def build_voice_user(
         wait_to_respond_threshold_self=audio_native_config.wait_to_respond_threshold_self_ticks,
         yield_threshold_when_interrupted=audio_native_config.yield_threshold_when_interrupted_ticks,
         yield_threshold_when_interrupting=audio_native_config.yield_threshold_when_interrupting_ticks,
-        backchannel_min_threshold=(
-            int(
-                sampled_voice_config.backchannel_min_threshold
-                / audio_native_config.tick_duration_seconds
-            )
-            if sampled_voice_config.backchannel_min_threshold is not None
-            else None
+        backchannel_min_threshold=_safe_backchannel_ticks(
+            sampled_voice_config.backchannel_min_threshold,
+            audio_native_config.tick_duration_seconds,
         ),
         backchannel_max_threshold=audio_native_config.backchannel_max_threshold_ticks,
         backchannel_poisson_rate=audio_native_config.backchannel_poisson_rate,
@@ -384,8 +402,10 @@ def build_text_orchestrator(
     if seed is None:
         seed = config.seed
 
-    solo_mode = registry.get_agent_metadata(
-        config.effective_agent, "solo_mode", default=False
+    solo_mode = bool(
+        registry.get_agent_metadata(
+            config.effective_agent, "solo_mode", default=False
+        )
     )
     domain = config.domain
     env_kwargs = _build_env_kwargs(config, task)
@@ -410,6 +430,12 @@ def build_text_orchestrator(
         persona_config=user_persona_config,
         solo_mode=solo_mode,
     )
+
+    if not isinstance(agent, HalfDuplexAgent):
+        raise ValueError(
+            "build_text_orchestrator requires a half-duplex agent; "
+            f"got {type(agent).__name__}"
+        )
 
     orchestrator = Orchestrator(
         domain=domain,
@@ -479,8 +505,10 @@ def build_voice_orchestrator(
         seed = config.seed
 
     # Solo mode is not supported for voice/full-duplex runs
-    solo_mode = registry.get_agent_metadata(
-        config.effective_agent, "solo_mode", default=False
+    solo_mode = bool(
+        registry.get_agent_metadata(
+            config.effective_agent, "solo_mode", default=False
+        )
     )
     if solo_mode:
         raise ValueError(
@@ -488,6 +516,8 @@ def build_voice_orchestrator(
             f"but solo mode is not supported for voice/full-duplex runs."
         )
 
+    # NOTE: voice/full-duplex runs have no separate user; the user is a
+    # streaming actor and the FullDuplexOrchestrator accepts it directly.
     domain = config.domain
     env_kwargs = _build_env_kwargs(config, task)
 
@@ -499,6 +529,12 @@ def build_voice_orchestrator(
         audio_native_config=config.audio_native_config,
         audio_taps_dir=audio_taps_dir,
     )
+
+    if not isinstance(agent, FullDuplexAgent):
+        raise ValueError(
+            "build_voice_orchestrator requires a full-duplex agent; "
+            f"got {type(agent).__name__}"
+        )
 
     user = build_voice_user(
         environment,

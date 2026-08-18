@@ -3,10 +3,16 @@
 
 Runs the REAL tau2 pipeline (Interview Agent <-> Stakeholder LLM) on the
 ``quotation_workflow_1`` scenario a small number of times using DeepSeek for
-BOTH the Interview Agent and the Stakeholder LLM. It captures the natural
-language conversation, the tool calls, the final inferred DAG, the domain
-evaluator metrics (structural/necessity/evidence/quality_pass), the standard
-tau2 reward, and any errors.
+BOTH the Interview Agent and the Stakeholder LLM. The stakeholder runs through
+the fact-grounded ``business_interview_user`` simulator: it answers only from
+hidden StakeholderFacts and returns a private ``used_fact_ids`` sidecar, which
+the environment stores privately per turn (never in Agent-visible state).
+
+The script captures the natural language conversation, the tool calls, the
+final inferred DAG, the private sidecar ledger (in a separate
+``*.private.json`` artifact), the domain evaluator metrics
+(structural/necessity/evidence/quality_pass), the standard tau2 reward, a
+private-ID leakage scan, and any errors.
 
 This is an EXPLORATORY, MANUAL experiment only:
 - It is NOT part of the pytest suite.
@@ -41,6 +47,7 @@ USER_MODEL = "deepseek/deepseek-chat"
 LLM_ARGS = {"temperature": 0.0}
 
 TASK_ID = "quotation_workflow_1"
+USER_IMPLEMENTATION = "business_interview_user"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ARTIFACT_DIR = REPO_ROOT / "artifacts" / "business_interview_real_llm"
@@ -132,11 +139,48 @@ def dag_to_dict(dag) -> dict:
     }
 
 
-def run_once(run_index: int, seed: int) -> dict:
-    """Run quotation_workflow_1 once with DeepSeek and return a full dump."""
+def _leakage_scan(dump: dict, private_ids: set[str]) -> list[str]:
+    """Scan every Agent-visible surface for private fact/claim ids.
+
+    Agent-visible surfaces: conversation contents, tool calls, observations,
+    summaries, the final DAG (labels/terms/ids), the DB ledger, evaluator
+    metrics. Private ids must never appear on any of them.
+    """
+    leaks: list[str] = []
+
+    def check(surface: str, blob: str) -> None:
+        for pid in private_ids:
+            if pid in blob:
+                leaks.append(f"{surface} contains private id {pid!r}")
+
+    for i, m in enumerate(dump.get("conversation") or []):
+        check(f"conversation[{i}].content", str(m.get("content") or ""))
+        for tc in m.get("tool_calls") or []:
+            check(f"conversation[{i}].tool_calls", json.dumps(tc))
+    for o in dump.get("observations") or []:
+        check(f"observation {o.get('id')}", json.dumps(o))
+    for nid, node in (dump.get("final_dag") or {}).get("nodes", {}).items():
+        check(f"final_dag.nodes[{nid}]", json.dumps(node))
+    for cid, concept in (dump.get("final_dag") or {}).get("data_concepts", {}).items():
+        check(f"final_dag.data_concepts[{cid}]", json.dumps(concept))
+    for eid, edge in (dump.get("final_dag") or {}).get("edges", {}).items():
+        check(f"final_dag.edges[{eid}]", json.dumps(edge))
+    for i, m in enumerate(dump.get("db_messages_ledger") or []):
+        check(f"db_messages_ledger[{i}]", json.dumps(m))
+    check("summary", str(dump.get("summary") or ""))
+    check("evaluator_metrics", json.dumps(dump.get("evaluator_metrics") or {}))
+    check("reward_info", json.dumps(dump.get("reward_info") or {}))
+    return leaks
+
+
+def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
+    """Run quotation_workflow_1 once with DeepSeek.
+
+    Returns ``(public_dump, private_payload)``: the Agent-visible dump and the
+    evaluator-only private sidecar ledger (kept in a separate artifact).
+    """
     # Importing inside the function keeps the script import-light and explicit.
     from tau2.data_model.simulation import TextRunConfig
-    from tau2.domains.business_interview.claims import build_provenance_ledger
     from tau2.domains.business_interview.evaluation import evaluate
     from tau2.domains.business_interview.scenario import get_scenario
     from tau2.evaluator.evaluator import EvaluationType
@@ -145,13 +189,13 @@ def run_once(run_index: int, seed: int) -> dict:
     from tau2.runner.simulation import run_simulation
 
     # --- task ---------------------------------------------------------------
-    tasks = registry.get_tasks_loader("business_interview")(task_split_name="base_en")
+    tasks = registry.get_tasks_loader("business_interview")("base_en")
     task = next(t for t in tasks if t.id == TASK_ID)
 
-    config = TextRunConfig(
+    config = TextRunConfig(  # pyright: ignore[reportCallIssue] - pydantic defaults
         domain="business_interview",
         agent="llm_agent",
-        user="user_simulator",
+        user=USER_IMPLEMENTATION,
         llm_agent=AGENT_MODEL,
         llm_user=USER_MODEL,
         llm_args_agent=dict(LLM_ARGS),
@@ -170,25 +214,30 @@ def run_once(run_index: int, seed: int) -> dict:
 
     started = time.time()
     errors: list[str] = []
+    result = None
     try:
         result = run_simulation(orchestrator, evaluation_type=EvaluationType.ALL)
     except Exception as exc:  # noqa: BLE001 - capture whatever happened
         errors.append("".join(traceback.format_exception_only(type(exc), exc)))
         logger.exception("simulation raised")
-        result = None
     elapsed = time.time() - started
 
-    # Capture the interview DB from the live environment (domain state).
+    # Capture the interview DB and the PRIVATE used-fact ledger from the live
+    # environment. The ledger is never part of the DB and never Agent-visible.
     db = None
+    env_tools = getattr(orchestrator.environment, "tools", None)
     try:
-        db = orchestrator.environment.tools.db
+        db = getattr(env_tools, "db", None)
     except Exception as exc:  # noqa: BLE001
         errors.append(f"could not read db: {exc}")
+    fact_ledger = getattr(orchestrator.environment, "fact_ledger", None)
+    used_facts = fact_ledger.used_fact_ids() if fact_ledger is not None else {}
 
     # --- domain evaluator ---------------------------------------------------
     eval_result = None
     truth_dag = None
     spec_dump = None
+    scenario = None
     try:
         scenario = get_scenario(TASK_ID)
         if scenario is None:
@@ -202,9 +251,8 @@ def run_once(run_index: int, seed: int) -> dict:
                 scenario.spec,
                 scenario.stakeholder,
                 claims=scenario.claims,
-                provenance=build_provenance_ledger(
-                    db, scenario.claims, scenario.stop_phrases
-                ),
+                facts=scenario.facts,
+                used_facts=used_facts,
             ).model_dump(mode="json")
             if db is not None
             else None
@@ -214,7 +262,7 @@ def run_once(run_index: int, seed: int) -> dict:
 
     # --- conversation / messages ---------------------------------------------
     messages = []
-    if result is not None:
+    if result is not None and result.messages is not None:
         for m in result.messages:
             messages.append(
                 {
@@ -236,7 +284,7 @@ def run_once(run_index: int, seed: int) -> dict:
 
     reward_info = None
     termination_reason = None
-    if result is not None:
+    if result is not None and result.reward_info is not None:
         rw = result.reward_info
         reward_info = {
             "reward": rw.reward,
@@ -245,6 +293,17 @@ def run_once(run_index: int, seed: int) -> dict:
         }
         termination_reason = result.termination_reason
 
+    resolved_agent_model = AGENT_MODEL
+    resolved_user_model = USER_MODEL
+    if result is not None and result.info is not None:
+        info = result.info
+        agent_info = info.get("agent_info") if isinstance(info, dict) else None
+        user_info = info.get("user_info") if isinstance(info, dict) else None
+        if agent_info is not None and getattr(agent_info, "llm", None):
+            resolved_agent_model = agent_info.llm
+        if user_info is not None and getattr(user_info, "llm", None):
+            resolved_user_model = user_info.llm
+
     dump = {
         "run_index": run_index,
         "run_id": f"run_{run_index:02d}_{simulation_id}",
@@ -252,17 +311,10 @@ def run_once(run_index: int, seed: int) -> dict:
         "seed": seed,
         "agent_model": AGENT_MODEL,
         "user_model": USER_MODEL,
+        "user_implementation": USER_IMPLEMENTATION,
         "llm_args": LLM_ARGS,
-        "resolved_agent_model": (
-            result.info.agent_info.llm
-            if result and getattr(result.info, "agent_info", None)
-            else AGENT_MODEL
-        ),
-        "resolved_user_model": (
-            result.info.user_info.llm
-            if result and getattr(result.info, "user_info", None)
-            else USER_MODEL
-        ),
+        "resolved_agent_model": resolved_agent_model,
+        "resolved_user_model": resolved_user_model,
         "termination_reason": termination_reason,
         "reward_info": reward_info,
         "elapsed_seconds": round(elapsed, 2),
@@ -290,7 +342,29 @@ def run_once(run_index: int, seed: int) -> dict:
         "db_messages_ledger": (db.messages if db is not None else []),
         "interview_complete": bool(db.interview_complete) if db is not None else None,
     }
-    return dump
+
+    # --- private-ID leakage scan ---------------------------------------------
+    private_ids: set[str] = set()
+    if scenario is not None:
+        private_ids.update(scenario.facts.keys())
+        for fact in scenario.facts.values():
+            private_ids.update(fact.supported_claim_ids)
+    leakage = _leakage_scan(dump, private_ids)
+    dump["private_id_leakage"] = leakage
+
+    # The PRIVATE sidecar ledger + fact catalog: kept out of the Agent-visible
+    # dump and written to a separate artifact by main().
+    private_payload = {
+        "task_id": TASK_ID,
+        "used_fact_ids_by_turn": used_facts,
+        "stakeholder_facts": (
+            {fid: fact.model_dump() for fid, fact in scenario.facts.items()}
+            if scenario is not None
+            else {}
+        ),
+    }
+    dump["private_used_facts_artifact"] = f"run_{run_index:02d}_seed{seed}.private.json"
+    return dump, private_payload
 
 
 def main() -> int:
@@ -307,7 +381,7 @@ def main() -> int:
     runs = max(args.runs, 1)
     logger.info(
         "Manual smoke experiment: business_interview / quotation_workflow_1 "
-        "with DeepSeek (agent+stakeholder). runs={}",
+        "with DeepSeek (agent + fact-grounded stakeholder). runs={}",
         runs,
     )
 
@@ -316,14 +390,22 @@ def main() -> int:
     for i in range(runs):
         seed = args.seed_base + i
         logger.info("Starting run {} / {} (seed={})", i + 1, runs, seed)
-        dump = run_once(i, seed)
+        dump, private_payload = run_once(i, seed)
         out_path = ARTIFACT_DIR / f"run_{i:02d}_seed{seed}.json"
+        private_path = ARTIFACT_DIR / f"run_{i:02d}_seed{seed}.private.json"
         try:
             with open(out_path, "w", encoding="utf-8") as fp:
                 json.dump(dump, fp, indent=2, ensure_ascii=False)
         except OSError as exc:
             raise SystemExit(f"cannot write {out_path}: {exc}")
-        logger.info("Wrote {}", out_path)
+        # Private sidecar ledger (used_fact_ids per turn) — evaluator-only,
+        # kept separate from the Agent-visible dump.
+        try:
+            with open(private_path, "w", encoding="utf-8") as fp:
+                json.dump(private_payload, fp, indent=2, ensure_ascii=False)
+        except OSError as exc:
+            raise SystemExit(f"cannot write {private_path}: {exc}")
+        logger.info("Wrote {} (+ private ledger {})", out_path, private_path)
 
         summaries.append(
             {
@@ -354,6 +436,7 @@ def main() -> int:
                 "fabricated_edge_count": (dump["evaluator_metrics"] or {}).get(
                     "fabricated_edge_count"
                 ),
+                "private_id_leakage": dump["private_id_leakage"],
                 "errors": dump["errors"],
                 "elapsed_seconds": dump["elapsed_seconds"],
                 "artifact": str(out_path.relative_to(REPO_ROOT)),
@@ -368,6 +451,7 @@ def main() -> int:
                     "task_id": TASK_ID,
                     "agent_model": AGENT_MODEL,
                     "user_model": USER_MODEL,
+                    "user_implementation": USER_IMPLEMENTATION,
                     "llm_args": LLM_ARGS,
                     "num_runs": len(summaries),
                     "runs": summaries,
