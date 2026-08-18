@@ -728,6 +728,15 @@ def _mk_tool_message(traj, tools, cid, name, args):
 
 
 def _reference_trajectory(node_ids: tuple = ("a", "b", "c", "d", "e", "f")):
+    # Per-node visible attributes for the quotation sales stakeholder (matches
+    # tasks.json known_info). Hidden attributes must be left unset so the
+    # reference trajectory obeys the stakeholder contract.
+    sid_to_truth = {"a": "r", "b": "cc", "c": "cq", "d": "ap", "e": "sq", "f": "me"}
+    sc = get_scenario(SCENARIO)
+    visible_by_sid = {
+        sid: sc.stakeholder.visible_attributes_for(tid)
+        for sid, tid in sid_to_truth.items()
+    }
     include = set(node_ids)
     traj = []
     tools = InterviewTools(InterviewDB())
@@ -757,16 +766,21 @@ def _reference_trajectory(node_ids: tuple = ("a", "b", "c", "d", "e", "f")):
             traj, tools, f"c{cid}", "observe_message", {"message_id": f"sm_{sm}"}
         )
         cid += 1
+        vis = visible_by_sid[sid]
         args = {
             "node_id": sid,
             "action": action,
             "primitive": _PRIM_BY_SID[sid],
-            "actor": actor,
-            "system": system,
-            "reads": reads,
-            "writes": writes,
             "observation_id": oid,
         }
+        if "actor" in vis:
+            args["actor"] = actor
+        if "system" in vis:
+            args["system"] = system
+        if "reads" in vis:
+            args["reads"] = reads
+        if "writes" in vis:
+            args["writes"] = writes
         _mk_tool_message(traj, tools, f"c{cid}", "add_node", args)
     if "d" in include:
         cid += 1
@@ -1448,3 +1462,184 @@ def test_coarse_node_refinement_end_to_end_valid():
             "send_quotation",
         ]
     )
+
+
+# ---------------------------------------------------------------------------
+# Stakeholder-visibility contract (scoring aligned with known_info)
+# ---------------------------------------------------------------------------
+
+
+def _build_faithful_contract(tools: InterviewTools, ja: bool = False):
+    """Build a quotation DAG that asserts ONLY stakeholder-knowable attributes
+    (per the sales StakeholderFilter), with authentic Observation provenance.
+
+    Hidden attributes (ap system/reads/writes, sq reads/writes, me reads) are
+    left unset — the correct epistemic-restraint behavior.
+    """
+    actions = _JA_ACTIONS if ja else [t[1] for t in _TRUTH_NODES]
+    node_data = list(zip(_TRUTH_NODES, actions))
+    # per-node visible axes for the quotation sales stakeholder
+    sc = get_scenario(JA_SCENARIO if ja else SCENARIO)
+    visible_by_sid = {
+        sid: sc.stakeholder.visible_attributes_for(tid)
+        for sid, tid in {
+            "a": "r",
+            "b": "cc",
+            "c": "cq",
+            "d": "ap",
+            "e": "sq",
+            "f": "me",
+        }.items()
+    }
+    node_map = {"a": "a", "b": "b", "c": "c", "d": "d", "e": "e", "f": "f"}
+    _ingest(tools, "assistant", "Hello.")
+    for (sid, _, actor, system, reads, writes), action in node_data:
+        vis = visible_by_sid[sid]
+        oid = _claim_obs(tools, _node_obs_text(action, actor, system, reads, writes))
+        tools.add_node(
+            node_map[sid],
+            action,
+            primitive=_PRIM_BY_SID[sid],
+            actor=actor if "actor" in vis else None,
+            system=system if "system" in vis else None,
+            reads=reads if "reads" in vis else None,
+            writes=writes if "writes" in vis else None,
+            observation_id=oid,
+        )
+    rationale = "与信リスク管理のため" if ja else "for credit risk management"
+    doid = _claim_obs(tools, f"The approval is {rationale}.")
+    tools.set_node_necessity("d", rationale=rationale, observation_id=doid)
+    tools.set_node_necessity("f")
+    action_by_sid = {sid: action for (sid, _, _, _, _, _), action in node_data}
+    for eid, frm, to, pred in [
+        ("e1", "a", "b", None),
+        ("e2", "b", "c", None),
+        ("e3", "c", "d", "100万円超" if ja else "amount over 1,000,000"),
+        ("e4", "c", "e", "100万円以下" if ja else "amount at or below 1,000,000"),
+        ("e5", "d", "e", None),
+        ("e6", "c", "f", "月末" if ja else "month-end"),
+    ]:
+        fa, ta = action_by_sid[frm], action_by_sid[to]
+        etext = f"After {fa}, we {ta}." + (f" when {pred}." if pred else "")
+        eoid = _claim_obs(tools, etext)
+        tools.add_edge(eid, frm, to, predicate=pred, observation_id=eoid)
+    tools.set_dag_endpoints(start_node_id="a", end_node_ids=["e", "f"])
+    tools.finish_interview()
+
+
+def _eval_contract(tools: InterviewTools, scenario: str = SCENARIO):
+    sc = get_scenario(scenario)
+    return evaluate(tools.db, sc.truth, sc.spec, sc.stakeholder)
+
+
+def test_faithful_contract_reconstruction_achieves_structural_pass():
+    tools = _tools()
+    _build_faithful_contract(tools)
+    res = _eval_contract(tools)
+    assert res.structural_pass is True
+    assert res.actor_correctness == 1.0
+    assert res.system_correctness == 1.0
+    assert res.read_correctness == 1.0
+    assert res.write_correctness == 1.0
+    # hidden attrs left unset should also keep evidence hygiene intact
+    assert res.evidence_pass is True
+    assert res.quality_pass is True
+
+
+def test_leaving_ap_system_and_unsupported_reads_writes_unset_is_correct():
+    tools = _tools()
+    _build_faithful_contract(tools)
+    res = _eval_contract(tools)
+    # ap.system, ap.reads, ap.writes, sq.reads, sq.writes, me.reads are hidden;
+    # leaving them unset is correct, so each axis scores 1.0.
+    assert res.system_correctness == 1.0
+    assert res.read_correctness == 1.0
+    assert res.write_correctness == 1.0
+
+
+def test_asserting_hidden_ap_system_is_incorrect():
+    tools = _tools()
+    _build_faithful_contract(tools)
+    # Asserting ap.system=quoting (which equals the hidden Truth) is STILL wrong:
+    # the stakeholder cannot know it, so epistemic restraint is required.
+    tools.db.dag.nodes["d"].system = InferredValue(
+        value="quoting", confidence=1.0, observation_ids=["obs_x"]
+    )
+    res = _eval_contract(tools)
+    assert res.system_correctness < 1.0
+    assert res.structural_pass is False
+
+
+def test_asserting_hidden_ap_reads_is_incorrect():
+    tools = _tools()
+    _build_faithful_contract(tools)
+    tools.db.dag.nodes["d"].reads = [
+        InferredValue(value="quote", confidence=1.0, observation_ids=["obs_x"])
+    ]
+    res = _eval_contract(tools)
+    assert res.read_correctness < 1.0
+    assert res.structural_pass is False
+
+
+def test_wrong_visible_attribute_still_fails():
+    tools = _tools()
+    _build_faithful_contract(tools)
+    # cq.system IS visible; a wrong value must still fail.
+    tools.db.dag.nodes["c"].system = InferredValue(
+        value="erp", confidence=1.0, observation_ids=["obs_x"]
+    )
+    res = _eval_contract(tools)
+    assert res.system_correctness < 1.0
+    assert res.structural_pass is False
+
+
+def test_contract_preserves_topology_predicate_necessity_evidence():
+    # Topology / predicates / necessity / evidence requirements are unchanged:
+    # the faithful-contract build still passes all gates.
+    tools = _tools()
+    _build_faithful_contract(tools)
+    res = _eval_contract(tools)
+    assert res.node_recall == 1.0
+    assert res.node_precision == 1.0
+    assert res.edge_recall == 1.0
+    assert res.edge_precision == 1.0
+    assert res.predicate_correctness == 1.0
+    assert res.necessity_pass is True
+    assert res.evidence_pass is True
+    assert res.provenance_authenticity_pass is True
+    assert res.structural_pass is True
+
+
+def test_contract_en_ja_equivalent():
+    en = _tools()
+    _build_faithful_contract(en, ja=False)
+    ja = _tools()
+    _build_faithful_contract(ja, ja=True)
+    ren = _eval_contract(en, SCENARIO)
+    rja = _eval_contract(ja, JA_SCENARIO)
+    for attr in (
+        "structural_pass",
+        "actor_correctness",
+        "system_correctness",
+        "read_correctness",
+        "write_correctness",
+        "necessity_pass",
+        "evidence_pass",
+    ):
+        assert getattr(ren, attr) == getattr(rja, attr), attr
+    assert ren.structural_pass is True
+
+
+def test_contract_lab_sample_flow_still_works():
+    # Lab known_info provides a defensible basis for every GT read/write
+    # artifact, so all axes are visible and the existing faithful build passes
+    # under the same visibility-aware evaluator.
+    tools = _tools()
+    _build_lab(tools)
+    res = _eval_contract(tools, LAB_SCENARIO)
+    assert res.quality_pass is True
+    assert res.structural_pass is True
+    assert res.actor_correctness == 1.0
+    assert res.system_correctness == 1.0
+    assert res.read_correctness == 1.0
+    assert res.write_correctness == 1.0

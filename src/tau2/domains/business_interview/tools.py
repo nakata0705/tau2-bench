@@ -20,7 +20,7 @@ from tau2.domains.business_interview.dag import (
     Node,
     Observation,
 )
-from tau2.domains.business_interview.evaluation import evaluate
+from tau2.domains.business_interview.evaluation import EvaluationResult, evaluate
 from tau2.domains.business_interview.scenario import get_scenario
 from tau2.environment.toolkit import ToolKitBase, ToolType, is_tool
 
@@ -629,6 +629,11 @@ class InterviewTools(ToolKitBase):
 
     # ------------------------------------------------------------- assertions
 
+    def _evaluate(self, sc) -> EvaluationResult:
+        """Evaluate against the scenario truth+spec under the scenario's
+        stakeholder visibility."""
+        return evaluate(self.db, sc.truth, sc.spec, sc.stakeholder)
+
     def assert_finish_interview(self) -> bool:
         return self.db.interview_complete
 
@@ -636,20 +641,20 @@ class InterviewTools(ToolKitBase):
         sc = get_scenario(scenario_id)
         if sc is None:
             return False
-        return evaluate(self.db, sc.truth, sc.spec).structural_pass
+        return self._evaluate(sc).structural_pass
 
     def assert_necessity_handled(self, scenario_id: str) -> bool:
         sc = get_scenario(scenario_id)
         if sc is None:
             return False
-        return evaluate(self.db, sc.truth, sc.spec).necessity_pass
+        return self._evaluate(sc).necessity_pass
 
     def assert_evidence_backed(self, scenario_id: str) -> bool:
         """True if every asserted claim is traceable to a recorded Observation."""
         sc = get_scenario(scenario_id)
         if sc is None:
             return False
-        return evaluate(self.db, sc.truth, sc.spec).evidence_pass
+        return self._evaluate(sc).evidence_pass
 
     # ------------------------------------------------------------- diagnostics
 
@@ -657,4 +662,4 @@ class InterviewTools(ToolKitBase):
         sc = get_scenario(task.id if task is not None else None)
         if sc is None:
             return None
-        return evaluate(self.db, sc.truth, sc.spec).model_dump(mode="json")
+        return self._evaluate(sc).model_dump(mode="json")

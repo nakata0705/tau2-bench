@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field
 from tau2.domains.business_interview.aliases import norm_role, norm_system
 from tau2.domains.business_interview.concepts import resolve_primitive
 from tau2.domains.business_interview.dag import BusinessDAG, InferredValue, InterviewDB
+from tau2.domains.business_interview.stakeholder import StakeholderFilter
 
 _TOKEN_RE = __import__("re").compile(r"[a-z0-9]+")
 
@@ -557,8 +558,55 @@ def _agent_edge(agent: BusinessDAG, af: str, at: str):
     return None
 
 
+def _attribute_ok(
+    axis: str,
+    agent_value,
+    truth_value,
+    spec: EvaluationSpec,
+    visible: bool,
+) -> float:
+    """Score one actor/system/reads/writes axis for one matched node.
+
+    ``visible=True`` (stakeholder can know it): compare the agent value to the
+    Truth value using the current matching behavior.
+
+    ``visible=False`` (hidden from the stakeholder): the correct behavior is to
+    leave it unset/empty; an asserted/invented value is incorrect. We return 1.0
+    for unset and 0.0 for any asserted value (even if it happens to equal the
+    hidden Truth).
+
+    ``agent_value``/``truth_value`` are ``InferredValue`` for actor/system and
+    lists of ``InferredValue`` for reads/writes.
+    """
+    if axis in ("actor", "system"):
+        if visible:
+            if axis == "actor":
+                return (
+                    1.0
+                    if norm_role(agent_value.value) == norm_role(truth_value.value)
+                    else 0.0
+                )
+            return (
+                1.0
+                if norm_system(agent_value.value) == norm_system(truth_value.value)
+                else 0.0
+            )
+        # hidden: correct only when unset/not asserted
+        return 1.0 if not agent_value.asserted else 0.0
+    # reads / writes
+    if visible:
+        return _data_recall(
+            [v.value for v in agent_value], [v.value for v in truth_value]
+        )
+    # hidden: correct only when the list has no asserted entry
+    return 1.0 if not any(v.asserted for v in agent_value) else 0.0
+
+
 def evaluate(
-    db: InterviewDB, truth: BusinessDAG, spec: EvaluationSpec
+    db: InterviewDB,
+    truth: BusinessDAG,
+    spec: EvaluationSpec,
+    stakeholder: Optional[StakeholderFilter] = None,
 ) -> EvaluationResult:
     agent = db.dag if db.dag is not None else BusinessDAG()
     protocol = db.interview_complete
@@ -632,15 +680,22 @@ def evaluate(
     for anid, tnid in mapping.items():
         an = agent.nodes[anid]
         tn = truth.nodes[tnid]
-        if norm_role(an.actor.value) == norm_role(tn.actor.value):
-            actor_hits += 1
-        if norm_system(an.system.value) == norm_system(tn.system.value):
-            system_hits += 1
-        read_hits += _data_recall(
-            [r.value for r in an.reads], [r.value for r in tn.reads]
+        visible = (
+            set(("actor", "system", "reads", "writes"))
+            if stakeholder is None
+            else stakeholder.visible_attributes_for(tnid)
         )
-        write_hits += _data_recall(
-            [w.value for w in an.writes], [w.value for w in tn.writes]
+        actor_hits += _attribute_ok(
+            "actor", an.actor, tn.actor, spec, "actor" in visible
+        )
+        system_hits += _attribute_ok(
+            "system", an.system, tn.system, spec, "system" in visible
+        )
+        read_hits += _attribute_ok(
+            "reads", an.reads, tn.reads, spec, "reads" in visible
+        )
+        write_hits += _attribute_ok(
+            "writes", an.writes, tn.writes, spec, "writes" in visible
         )
     nm = len(mapping) or 1
     actor_correctness = actor_hits / nm
@@ -666,7 +721,11 @@ def evaluate(
                 else:
                     nec_hits += 1
             else:
-                if aval.asserted and _necessity_value_ok(aval.value, tval, spec):
+                if (
+                    aval.asserted
+                    and aval.value is not None
+                    and _necessity_value_ok(aval.value, tval, spec)
+                ):
                     nec_hits += 1
     necessity_correctness = nec_hits / nec_total if nec_total else 1.0
 

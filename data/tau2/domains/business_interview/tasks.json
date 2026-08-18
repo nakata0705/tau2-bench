@@ -132,14 +132,7 @@
             "action": "approve high-value quotation",
             "primitive": "approve",
             "actor": "manager",
-            "reads": [
-              "quote"
-            ],
-            "writes": [
-              "approval"
-            ],
-            "observation_id": "obs_15",
-            "system": "quoting"
+            "observation_id": "obs_15"
           },
           "info": "Reference: node d."
         },
@@ -159,12 +152,6 @@
             "action": "send quotation to customer",
             "primitive": "send",
             "actor": "sales",
-            "reads": [
-              "quote"
-            ],
-            "writes": [
-              "sent_quote"
-            ],
             "observation_id": "obs_19",
             "system": "email"
           },
@@ -186,9 +173,6 @@
             "action": "send quotation summary to accounting at month-end",
             "primitive": "send",
             "actor": "sales",
-            "reads": [
-              "quote"
-            ],
             "writes": [
               "excel_summary"
             ],
@@ -524,14 +508,7 @@
             "action": "approve high-value quotation",
             "primitive": "approve",
             "actor": "manager",
-            "reads": [
-              "quote"
-            ],
-            "writes": [
-              "approval"
-            ],
-            "observation_id": "obs_15",
-            "system": "quoting"
+            "observation_id": "obs_15"
           },
           "info": "Reference: node d."
         },
@@ -551,12 +528,6 @@
             "action": "send quotation to customer",
             "primitive": "send",
             "actor": "sales",
-            "reads": [
-              "quote"
-            ],
-            "writes": [
-              "sent_quote"
-            ],
             "observation_id": "obs_19",
             "system": "email"
           },
@@ -578,9 +549,6 @@
             "action": "send quotation summary to accounting at month-end",
             "primitive": "send",
             "actor": "sales",
-            "reads": [
-              "quote"
-            ],
             "writes": [
               "excel_summary"
             ],

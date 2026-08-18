@@ -88,6 +88,32 @@ diagnostic primitive correctness. A wrong actor / system / read / write / action
 lowers the corresponding correctness; a wrong edge / predicate / necessity lowers
 its metric.
 
+### Stakeholder-visibility scoring
+
+The full Truth DAG is the benchmark author's process model and may contain
+information **not available to the interviewed stakeholder**. Which actor /
+system / reads / writes attributes a stakeholder can actually assert is defined
+by the scenario's `StakeholderFilter` (`scenario.stakeholder`), per node.
+
+For each matched node and each of actor/system/reads/writes:
+
+- **visible** attribute (the stakeholder can know it): the agent value is
+  compared against the Truth value using the current matching behavior — a
+  wrong value fails;
+- **hidden** attribute (the stakeholder cannot know it): the **correct** agent
+  behavior is to leave it **unset / empty**. An asserted value is **incorrect**
+  even if it happens to equal the full hidden Truth — the benchmark rewards
+  epistemic restraint, not fabrication.
+
+Hidden attributes are **not** ignored and **not** simply dropped from scoring;
+asserting one is penalized. Node actions, topology, predicates, necessity, and
+other Truth structure are not affected by visibility. Necessity keeps its own
+known-unknown handling: a fabricated necessity claim is still penalized.
+
+`evaluate(db, truth, spec, stakeholder)` receives the stakeholder visibility; the
+`InterviewTools` assertion hooks pass `scenario.stakeholder` automatically.
+
+
 **Evidence hygiene** (`evidence_pass` / `provenance_authenticity_pass`)
 deterministically guarantees only that every asserted claim references a **real,
 authentic stakeholder Observation** — captured from an actual user message via
@@ -107,6 +133,12 @@ A stakeholder is a `StakeholderFilter` over the single Truth DAG: which nodes /
 edges / attributes / necessity properties it can observe. Multiple filters can be
 applied to the same Truth DAG; `apply` returns a filtered DAG so hidden
 information never leaks to the simulator.
+
+`StakeholderFilter` supports **per-node** visibility of actor / system / reads /
+writes via `visible_node_attributes` (a node listed there is limited to exactly
+those axes; a node not listed uses the global `visible_attributes`). `evaluate()`
+uses this to score a hidden attribute as correct only when the agent leaves it
+unset (see “Stakeholder-visibility scoring”).
 
 ## Scenario
 

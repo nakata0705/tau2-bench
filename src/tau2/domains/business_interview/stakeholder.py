@@ -31,28 +31,47 @@ class StakeholderFilter(BaseModel):
 
     - ``visible_node_ids`` / ``visible_edge_ids``: which nodes / edges are visible.
     - ``visible_attributes``: which of actor / system / reads / writes are visible.
+    - ``visible_node_attributes``: **per-node** visibility of actor / system /
+      reads / writes. A node listed here is limited to exactly these attributes;
+      a node not listed uses the global ``visible_attributes``.
     - ``visible_necessity``: per node id, which necessity props are visible
       (an absent node id => no necessity is visible for it).
+
+    The full Truth may contain information not available to this stakeholder;
+    ``visible_*`` define what the stakeholder can actually assert. Hidden
+    (non-visible) attributes are expected to remain unknown, not invented.
     """
 
     name: str
     visible_node_ids: list[str] = Field(default_factory=list)
     visible_edge_ids: list[str] = Field(default_factory=list)
     visible_attributes: list[str] = Field(default_factory=list)
+    visible_node_attributes: dict[str, list[str]] = Field(default_factory=dict)
     visible_necessity: dict[str, list[str]] = Field(default_factory=dict)
+
+    def visible_attributes_for(self, node_id: str) -> set[str]:
+        """The set of visible actor/system/reads/writes for ``node_id``.
+
+        Per-node visibility wins when present; otherwise the global
+        ``visible_attributes`` applies.
+        """
+        if node_id in self.visible_node_attributes:
+            return set(self.visible_node_attributes[node_id])
+        return set(self.visible_attributes)
 
     def apply(self, truth: BusinessDAG) -> BusinessDAG:
         """Return a filtered DAG containing only visible information."""
         visible_nodes = set(self.visible_node_ids)
         visible_edges = set(self.visible_edge_ids)
-        attr_set = set(self.visible_attributes)
 
         new_nodes: dict[str, Node] = {}
         for nid, node in truth.nodes.items():
             if nid not in visible_nodes:
                 continue
             new_nodes[nid] = _filtered_node(
-                node, attr_set, self.visible_necessity.get(nid, [])
+                node,
+                self.visible_attributes_for(nid),
+                self.visible_necessity.get(nid, []),
             )
 
         new_edges: dict[str, Edge] = {}
@@ -104,6 +123,13 @@ def _filter_value(v: Optional[InferredValue]) -> Optional[InferredValue]:
     )
 
 
+def _clone_value(v: InferredValue) -> InferredValue:
+    """Clone a non-optional InferredValue (used for Node attributes)."""
+    return InferredValue(
+        value=v.value, confidence=v.confidence, observation_ids=list(v.observation_ids)
+    )
+
+
 def _filtered_node(node: Node, attr_set: set[str], visible_nec: list[str]) -> Node:
     def keep(attr: str) -> bool:
         return attr in attr_set
@@ -113,16 +139,16 @@ def _filtered_node(node: Node, attr_set: set[str], visible_nec: list[str]) -> No
         nec_props: dict[str, InferredValue] = {}
         for prop in _NECESSITY_PROPS:
             if prop in visible_nec:
-                nec_props[prop] = _filter_value(getattr(node.necessity, prop))
+                nec_props[prop] = _clone_value(getattr(node.necessity, prop))
         necessity = Necessity(**nec_props) if nec_props else None
 
     return Node(
         id=node.id,
-        action=_filter_value(node.action),
-        actor=_filter_value(node.actor) if keep("actor") else InferredValue(),
-        system=_filter_value(node.system) if keep("system") else InferredValue(),
-        reads=[_filter_value(r) for r in node.reads] if keep("reads") else [],
-        writes=[_filter_value(w) for w in node.writes] if keep("writes") else [],
+        action=_clone_value(node.action),
+        actor=_clone_value(node.actor) if keep("actor") else InferredValue(),
+        system=_clone_value(node.system) if keep("system") else InferredValue(),
+        reads=[_clone_value(r) for r in node.reads] if keep("reads") else [],
+        writes=[_clone_value(w) for w in node.writes] if keep("writes") else [],
         necessity=necessity,
         observation_ids=list(node.observation_ids),
     )

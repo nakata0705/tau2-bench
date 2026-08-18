@@ -219,19 +219,40 @@ def quotation_spec() -> EvaluationSpec:
 
 def quotation_sales_filter() -> StakeholderFilter:
     """The sales employee. Knows the whole workflow and the approval rationale,
-    but cannot explain the month-end step's necessity."""
+    but cannot explain the month-end step's necessity, and does not know where the
+    approval happens, nor the approval/send/month-end read+write data artifacts.
+
+    Per-node attribute visibility matches tasks.json ``known_info``:
+    - r: actor, writes
+    - cc: actor, system, reads
+    - cq: actor, system, reads, writes
+    - ap: actor (system/reads/writes hidden; rationale via necessity)
+    - sq: actor, system (reads/writes hidden)
+    - me: actor, system, writes (reads hidden; necessity unknown)
+    """
     return StakeholderFilter(
         name="sales",
         visible_node_ids=["r", "cc", "cq", "ap", "sq", "me"],
         visible_edge_ids=["e1", "e2", "e3", "e4", "e5", "e6"],
-        visible_attributes=["actor", "system", "reads", "writes"],
+        visible_node_attributes={
+            "r": ["actor", "writes"],
+            "cc": ["actor", "system", "reads"],
+            "cq": ["actor", "system", "reads", "writes"],
+            "ap": ["actor"],
+            "sq": ["actor", "system"],
+            "me": ["actor", "system", "writes"],
+        },
         visible_necessity={"ap": ["rationale"], "me": []},
     )
 
 
 def quotation_finance_filter() -> StakeholderFilter:
     """A finance/audit stakeholder: sees the month-end step's rationale but not
-    the approval-branch credit-risk rationale. Used to show multiple filters."""
+    the approval-branch credit-risk rationale. Used to show multiple filters.
+
+    The finance stakeholder only sees the month-end tail; per-node attribute
+    visibility for the nodes it can see is kept at the global default (all four
+    axes visible) since this filter is a demonstrative/secondary filter."""
     return StakeholderFilter(
         name="finance",
         visible_node_ids=["cq", "sq", "me"],
@@ -339,7 +360,15 @@ def lab_sample_filter() -> StakeholderFilter:
         name="lab tech",
         visible_node_ids=["n1", "n2", "n3", "n4"],
         visible_edge_ids=["l1", "l2", "l3"],
-        visible_attributes=["actor", "system", "reads", "writes"],
+        visible_node_attributes={
+            # The lab known_info provides a defensible basis for every read/write
+            # artifact the GT models (sample, accessioned/conditioned sample,
+            # seasoned chamber, batch approval), so all axes are visible.
+            "n1": ["actor", "system", "reads", "writes"],
+            "n2": ["actor", "system", "reads", "writes"],
+            "n3": ["actor", "system", "reads", "writes"],
+            "n4": ["actor", "system", "reads", "writes"],
+        },
         visible_necessity={},
     )
 
