@@ -112,60 +112,244 @@ def _tokens(text: Optional[str]) -> set[str]:
     return set(_TOKEN_RE.findall((text or "").lower()))
 
 
-def _match_score(text: Optional[str], spec: TruthNodeSpec) -> int:
+# Common function words / connectors that carry no node-identity signal. These
+# are dropped before counting action overlap so a single weak shared token (e.g.
+# "the", "to", "customer") can never, by itself, justify a match. Single-char
+# tokens (possessive remnants like ``s``) are also ignored.
+_STOPWORDS = frozenset(
+    [
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "but",
+        "nor",
+        "of",
+        "for",
+        "to",
+        "in",
+        "on",
+        "at",
+        "by",
+        "with",
+        "from",
+        "as",
+        "into",
+        "onto",
+        "before",
+        "after",
+        "during",
+        "we",
+        "you",
+        "us",
+        "our",
+        "ours",
+        "i",
+        "me",
+        "my",
+        "mine",
+        "it",
+        "its",
+        "he",
+        "him",
+        "his",
+        "she",
+        "her",
+        "hers",
+        "they",
+        "them",
+        "their",
+        "theirs",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "am",
+        "do",
+        "does",
+        "did",
+        "done",
+        "doing",
+        "have",
+        "has",
+        "had",
+        "having",
+        "will",
+        "would",
+        "shall",
+        "should",
+        "can",
+        "could",
+        "may",
+        "might",
+        "must",
+        "that",
+        "this",
+        "these",
+        "those",
+        "there",
+        "here",
+        "which",
+        "who",
+        "whom",
+        "whose",
+        "what",
+        "how",
+        "why",
+        "when",
+        "then",
+        "than",
+        "if",
+        "else",
+        "not",
+        "no",
+        "none",
+        "yes",
+        "also",
+        "too",
+        "very",
+        "so",
+        "such",
+        "about",
+        "around",
+        "over",
+        "under",
+        "up",
+        "down",
+        "out",
+        "again",
+        "still",
+        "yet",
+        "already",
+        "all",
+        "any",
+        "each",
+        "every",
+        "some",
+        "both",
+        "few",
+        "more",
+        "most",
+        "other",
+        "another",
+        "been",
+        "get",
+        "gets",
+        "got",
+        "use",
+        "uses",
+        "used",
+        "using",
+        "make",
+        "makes",
+        "made",
+    ]
+)
+
+
+# Minimum number of *significant* (non-stopword) shared tokens required before
+# an action can be considered a candidate match. A single weak shared token is
+# never enough. (Full-expression containment and actor/system agreement can
+# still qualify/rank a candidate — see below.)
+_MIN_NODE_OVERLAP = 2
+
+
+def _sig_tokens(text: Optional[str]) -> set[str]:
+    """Significant (non-stopword, len>1) tokens of ``text``."""
+    return {t for t in _tokens(text) if len(t) > 1 and t not in _STOPWORDS}
+
+
+def _has_cjk(text: str) -> bool:
+    """True if ``text`` contains CJK/kana characters (which ``_TOKEN_RE`` can't
+    tokenize, so JA matching relies on substring containment instead)."""
+    return any(ord(c) > 0x2E7F for c in text)
+
+
+def _node_overlap(text: Optional[str], spec: TruthNodeSpec) -> int:
+    """Best significant-token overlap between the agent action and any hidden
+    scenario-local expression for a Truth node."""
     if not text:
         return 0
-    t = text.lower()
-    at = _tokens(text)
+    at = _sig_tokens(text)
     best = 0
     for expr in spec.expressions:
-        e = expr.lower()
-        ov = len(at & _tokens(expr))
+        ov = len(at & _sig_tokens(expr))
+        if ov > best:
+            best = ov
+    return best
+
+
+def _expression_contained(text: Optional[str], spec: TruthNodeSpec) -> bool:
+    """True if a whole hidden expression is a substring of the agent action (or
+    vice versa). This is the primary signal for JA / non-Latin text where token
+    overlap is 0, and a strong standalone signal for EN. Only meaningful phrases
+    (>=2 significant tokens, or CJK content) are considered, so a single common
+    token can never match by substring alone."""
+    t = (text or "").lower()
+    for expr in spec.expressions:
+        e = (expr or "").lower()
+        if not e:
+            continue
+        sig = _sig_tokens(e)
+        if not sig and not _has_cjk(e):
+            continue
         if e in t or t in e:
-            ov += 1
-        best = max(best, ov)
-    return best
+            return True
+    return False
 
 
-def _pick_tiebreak(agent_node, cands: list[str], truth: BusinessDAG) -> str:
-    rec_actor = norm_role(agent_node.actor.value)
-    rec_system = norm_system(agent_node.system.value)
-    best = cands[0]
-    best_score = -1
-    for tid in cands:
-        tn = truth.nodes[tid]
-        score = 0
-        if rec_actor == norm_role(tn.actor.value):
-            score += 2
-        if rec_system == norm_system(tn.system.value):
-            score += 1
-        if score > best_score:
-            best_score = score
-            best = tid
-    return best
+def _attribute_match(node, tnode) -> int:
+    """Actor/system agreement as a **reinforcement** bonus. It is used only to
+    rank candidates that already cleared the action gate — it never rescues a
+    weak/ambiguous action match on its own."""
+    bonus = 0
+    ra = norm_role(node.actor.value)
+    if ra and ra == norm_role(tnode.actor.value):
+        bonus += 2
+    rs = norm_system(node.system.value)
+    if rs and rs == norm_system(tnode.system.value):
+        bonus += 1
+    return bonus
 
 
 def _match_nodes(agent: BusinessDAG, truth: BusinessDAG, spec: EvaluationSpec):
-    """Map agent node id -> truth node id using the hidden EvaluationSpec."""
-    used: set[str] = set()
-    mapping: dict[str, str] = {}
+    """Map agent node id -> truth node id using the hidden EvaluationSpec.
+
+    Conservative, deterministic matching:
+    - An agent node is a candidate for a Truth node iff it shares >=2 significant
+      tokens with some hidden expression, OR contains a whole hidden expression.
+    - Actor/system agreement adds a ranking bonus (reinforcement, not rescue).
+    - Candidates are assigned greedily by (overlap, bonus) descending, so an
+      agent node with low confidence is left unmatched rather than forced onto a
+      Truth node it barely resembles. Agent node ids are ignored (arbitrary ids
+      allowed). No embeddings / LLM judge are used.
+    """
+    candidates: list[tuple[int, int, str, str]] = []
     for nid, node in agent.nodes.items():
         text = node.action.value
         if not text:
             continue
-        scored = [
-            (tid, _match_score(text, spec.truth_nodes[tid]))
-            for tid in spec.truth_nodes
-            if tid not in used
-        ]
-        scored = [(t, s) for t, s in scored if s > 0]
-        if not scored:
+        for tid, tspec in spec.truth_nodes.items():
+            overlap = _node_overlap(text, tspec)
+            if overlap < _MIN_NODE_OVERLAP and not _expression_contained(text, tspec):
+                continue
+            bonus = _attribute_match(node, truth.nodes[tid])
+            candidates.append((overlap, bonus, nid, tid))
+    # Highest overlap first; actor/system agreement breaks ties. Deterministic.
+    candidates.sort(key=lambda c: (c[0], c[1]), reverse=True)
+    used_truth: set[str] = set()
+    assigned: set[str] = set()
+    mapping: dict[str, str] = {}
+    for overlap, bonus, nid, tid in candidates:
+        if nid in assigned or tid in used_truth:
             continue
-        best = max(s for _, s in scored)
-        cands = [t for t, s in scored if s == best]
-        chosen = _pick_tiebreak(node, cands, truth) if len(cands) > 1 else cands[0]
-        used.add(chosen)
-        mapping[nid] = chosen
+        mapping[nid] = tid
+        assigned.add(nid)
+        used_truth.add(tid)
     return mapping
 
 

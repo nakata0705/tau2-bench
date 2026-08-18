@@ -906,3 +906,145 @@ def test_tasks_and_split_load():
 def test_lab_task_present():
     assert get_scenario(LAB_SCENARIO) is not None
     assert any(t.id == LAB_SCENARIO for t in get_tasks())
+
+
+# ---------------------------------------------------------------------------
+# Conservative node matching (missing nodes must NOT be matched away)
+# ---------------------------------------------------------------------------
+
+from tau2.domains.business_interview.evaluation import _match_nodes  # noqa: E402
+
+
+def _drop_node(tools: InterviewTools, nid: str) -> None:
+    """Remove a node and any incident edges from the built DAG."""
+    dag = tools.db.dag
+    dag.nodes.pop(nid, None)
+    for eid in list(dag.edges):
+        e = dag.edges[eid]
+        if e.from_node == nid or e.to_node == nid:
+            del dag.edges[eid]
+
+
+def _add_node(tools: InterviewTools, nid: str, action: str) -> None:
+    oid = _claim_obs(tools, action)
+    tools.add_node(nid, action, observation_id=oid)
+
+
+def test_missing_month_end_node_lowers_node_recall():
+    """When the month-end node is absent, node_recall must be < 1.0 (not
+    salvaged by fuzzy-matching an unrelated node onto it)."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    _drop_node(tools, "f")  # month-end node removed
+    res = _eval(tools)
+    assert res.node_recall < 1.0
+
+
+def test_missing_approval_node_lowers_node_recall():
+    """When the approval node is absent, node_recall must be < 1.0."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    _drop_node(tools, "d")  # approval node removed
+    res = _eval(tools)
+    assert res.node_recall < 1.0
+
+
+def test_fabricated_node_not_mapped_to_missing_truth_node():
+    """An unrelated/fabricated agent node must not be assigned to a Truth node
+    that is actually missing (approval here)."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    _drop_node(tools, "d")  # approval absent
+    _add_node(tools, "fab", "handle escalation to the legal team")
+    sc = get_scenario(SCENARIO)
+    mapping = _match_nodes(tools.db.dag, sc.truth, sc.spec)
+    assert "fab" not in mapping  # fabricated node stays unmatched
+    assert "d" not in set(mapping.values())  # approval truth node stays unmatched
+    assert _eval(tools).node_recall < 1.0
+
+
+def test_weak_single_token_overlap_does_not_match():
+    """A node sharing only one weak common token with a Truth node must not be
+    assigned to it."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    _add_node(tools, "weak", "send the file")
+    sc = get_scenario(SCENARIO)
+    mapping = _match_nodes(tools.db.dag, sc.truth, sc.spec)
+    assert "weak" not in mapping
+    assert _eval(tools).node_precision < 1.0
+
+
+def test_valid_quotation_reconstruction_recall_precision_1():
+    """The valid quotation reference reconstruction still maps 1:1."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    res = _eval(tools)
+    assert res.node_recall == 1.0
+    assert res.node_precision == 1.0
+
+
+def test_arbitrary_ids_and_reasonable_paraphrase_match():
+    """Arbitrary agent node ids with reasonable paraphrases (not exact hidden
+    expressions) must still match the correct Truth nodes 1:1."""
+    tools = _tools()
+    node_data = [
+        ("n0", "we receive a quotation request from the customer"),
+        ("n1", "check the customer details in the CRM"),
+        ("n2", "create the quote in the quoting system"),
+        ("n3", "get manager approval for high value quotes"),
+        ("n4", "send the quotation to the customer by email"),
+        ("n5", "at month end send the quotation summary to accounting"),
+    ]
+    for nid, action in node_data:
+        _add_node(tools, nid, action)
+    tools.set_dag_endpoints(start_node_id="n0", end_node_ids=["n4", "n5"])
+    tools.finish_interview()
+    res = _eval(tools)
+    assert res.node_recall == 1.0
+    assert res.node_precision == 1.0
+
+
+def test_approval_node_not_mismatched_to_month_end():
+    """Regression: the DeepSeek smoke failure. An approval node whose action
+    mentions send/quotation/customer must map to the approval Truth node (ap),
+    NOT to the month-end node (me), so a missing month-end is not hidden."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    _drop_node(tools, "f")  # month-end absent
+    # Re-point the approval node's action at the smoke-style wording.
+    tools.db.dag.nodes["d"].action = InferredValue(
+        value="Get approval from a manager before sending the quotation to the customer",
+        confidence=1.0,
+    )
+    sc = get_scenario(SCENARIO)
+    mapping = _match_nodes(tools.db.dag, sc.truth, sc.spec)
+    assert mapping["d"] == "ap"  # approval node -> approval Truth node
+    assert "me" not in set(mapping.values())  # month-end stays unmatched
+    res = _eval(tools)
+    assert res.node_recall < 1.0  # missing month-end reflected
+
+
+def test_edge_metrics_not_inflated_by_node_mismatch():
+    """Edge recall/precision must not be inflated by a node being mis-mapped
+    onto a missing Truth node. With month-end absent and no month-end node, the
+    month-end edge (e6) must not count toward recall."""
+    tools = _tools()
+    _build(tools, evidence=True)
+    _drop_node(tools, "f")  # month-end absent (drops e6 c->f)
+    res = _eval(tools)
+    # Truth edge e6 (cq->me) is unmatchable; recall is over 6 truth edges.
+    assert res.edge_recall <= 5 / 6
+
+
+def test_en_ja_matching_still_equivalent_after_conservative_gate():
+    """EN and JA full reconstructions remain equivalent under the new gate."""
+    en = _tools()
+    _build(en, ja=False)
+    ja = _tools()
+    _build(ja, ja=True)
+    ren = _eval(en, SCENARIO)
+    rja = _eval(ja, JA_SCENARIO)
+    assert ren.node_recall == 1.0 and rja.node_recall == 1.0
+    assert ren.node_precision == 1.0 and rja.node_precision == 1.0
+    assert ren.quality_pass is True and rja.quality_pass is True
