@@ -114,8 +114,9 @@ def _ingest(tools: InterviewTools, role: str = "user", content: str = "") -> int
 
 
 def _claim_obs(tools: InterviewTools, text: str) -> str:
-    turn = _ingest(tools, "user", text)
-    return tools.observe_turn(turn)
+    _ingest(tools, "user", text)
+    sm_id = tools.observe_latest_stakeholder_message()
+    return tools.observe_message(sm_id)
 
 
 def _node_obs_text(action, actor, system, reads, writes) -> str:
@@ -534,14 +535,22 @@ def test_en_ja_equivalent():
 def test_observation_authenticity_invariants():
     tools = _tools()
     turn = _ingest(tools, "user", "We receive requests.")
-    oid = tools.observe_turn(turn)
+    assert tools.observe_latest_stakeholder_message() == "sm_1"
+    oid = tools.observe_message("sm_1")
     assert oid == f"obs_{turn}"
-    assert tools.observe_turn(turn) == oid  # idempotent
+    assert tools.observe_message("sm_1") == oid  # idempotent
+    # fabricated / nonexistent message ids are rejected
     with pytest.raises(ValueError):
-        tools.observe_turn(99)
+        tools.observe_message("sm_99")
+    with pytest.raises(ValueError):
+        tools.observe_message("sm_0")
+    with pytest.raises(ValueError):
+        tools.observe_message("not_a_message_id")
+    # assistant messages cannot be observed (no sm id exists for them)
     _ingest(tools, "assistant", "I am the agent.")
+    assert tools.list_stakeholder_messages().count("sm_") == 1
     with pytest.raises(ValueError):
-        tools.observe_turn(len(tools.db.messages) - 1)
+        tools.observe_message("sm_2")  # only one user message exists
 
 
 def test_necessity_correct_and_fabricated():
@@ -693,7 +702,8 @@ def test_hidden_truth_not_leaked_to_agent():
         [
             InterviewTools.add_node.__doc__ or "",
             InterviewTools.add_edge.__doc__ or "",
-            InterviewTools.observe_turn.__doc__ or "",
+            InterviewTools.observe_message.__doc__ or "",
+            InterviewTools.observe_latest_stakeholder_message.__doc__ or "",
             InterviewTools.set_node_necessity.__doc__ or "",
         ]
     ).lower()
@@ -735,15 +745,16 @@ def _reference_trajectory(node_ids: tuple = ("a", "b", "c", "d", "e", "f")):
     node_specs = [
         (sid, t[1], t) for sid, t in zip("abcdef", _TRUTH_NODES) if sid in include
     ]
+    sm = 0
     for sid, action, (_, _, actor, system, reads, writes) in node_specs:
         cid += 1
+        sm += 1
         statement = _node_obs_text(action, actor, system, reads, writes)
         um = UserMessage(role="user", content=statement)
         traj.append(um)
         tools.db.messages.append({"role": "user", "content": statement})
-        turn = len(tools.db.messages) - 1
         oid = _mk_tool_message(
-            traj, tools, f"c{cid}", "observe_turn", {"turn_idx": turn}
+            traj, tools, f"c{cid}", "observe_message", {"message_id": f"sm_{sm}"}
         )
         cid += 1
         args = {
@@ -759,13 +770,13 @@ def _reference_trajectory(node_ids: tuple = ("a", "b", "c", "d", "e", "f")):
         _mk_tool_message(traj, tools, f"c{cid}", "add_node", args)
     if "d" in include:
         cid += 1
+        sm += 1
         statement = "The approval is for credit risk management."
         um = UserMessage(role="user", content=statement)
         traj.append(um)
         tools.db.messages.append({"role": "user", "content": statement})
-        turn = len(tools.db.messages) - 1
         oid = _mk_tool_message(
-            traj, tools, f"c{cid}", "observe_turn", {"turn_idx": turn}
+            traj, tools, f"c{cid}", "observe_message", {"message_id": f"sm_{sm}"}
         )
         cid += 1
         _mk_tool_message(
@@ -795,14 +806,14 @@ def _reference_trajectory(node_ids: tuple = ("a", "b", "c", "d", "e", "f")):
         if frm not in include or to not in include:
             continue
         cid += 1
+        sm += 1
         fa, ta = action_by_sid[frm], action_by_sid[to]
         statement = f"After {fa}, we {ta}." + (f" when {pred}." if pred else "")
         um = UserMessage(role="user", content=statement)
         traj.append(um)
         tools.db.messages.append({"role": "user", "content": statement})
-        turn = len(tools.db.messages) - 1
         oid = _mk_tool_message(
-            traj, tools, f"c{cid}", "observe_turn", {"turn_idx": turn}
+            traj, tools, f"c{cid}", "observe_message", {"message_id": f"sm_{sm}"}
         )
         cid += 1
         args = {"edge_id": eid, "from_node": frm, "to_node": to, "observation_id": oid}
@@ -1048,3 +1059,150 @@ def test_en_ja_matching_still_equivalent_after_conservative_gate():
     assert ren.node_recall == 1.0 and rja.node_recall == 1.0
     assert ren.node_precision == 1.0 and rja.node_precision == 1.0
     assert ren.quality_pass is True and rja.quality_pass is True
+
+
+# ---------------------------------------------------------------------------
+# Observation capture UX (stable stakeholder message ids, no turn_idx)
+# ---------------------------------------------------------------------------
+
+
+def _ingest_and_observe(tools: InterviewTools, text: str) -> str:
+    """Add a user message then capture it via latest id + observe_message."""
+    _ingest(tools, "user", text)
+    sm_id = tools.observe_latest_stakeholder_message()
+    return tools.observe_message(sm_id)
+
+
+def test_list_stakeholder_messages_returns_stable_ids():
+    tools = _tools()
+    _ingest(tools, "assistant", "Hello.")
+    _ingest(tools, "user", "Sure, that's fine.")
+    _ingest(tools, "assistant", "How does it start?")
+    _ingest(tools, "user", "The process starts when a customer sends a request.")
+    listing = tools.list_stakeholder_messages()
+    lines = [ln for ln in listing.splitlines()]
+    assert lines[0].startswith("sm_1:")
+    assert lines[1].startswith("sm_2:")
+    assert "turn" not in listing  # primary id is the stable sm_ id, not a turn index
+
+
+def test_observe_message_by_id_creates_correct_observation():
+    tools = _tools()
+    _ingest(tools, "user", "First statement.")
+    _ingest(tools, "user", "Second statement.")
+    oid = tools.observe_message("sm_2")
+    obs = next(o for o in tools.db.observations if o.id == oid)
+    assert obs.text == "Second statement."
+    assert obs.source_id == "stakeholder"
+    # observation's turn points at the real ledger index of that user message
+    assert tools.db.messages[obs.turn]["content"] == "Second statement."
+    # re-capture is idempotent
+    assert tools.observe_message("sm_2") == oid
+
+
+def test_invalid_and_fabricated_message_ids_rejected():
+    tools = _tools()
+    _ingest(tools, "user", "Only one real message.")
+    for bad in ("sm_0", "sm_2", "sm_99", "turn_3", "foo"):
+        with pytest.raises(ValueError):
+            tools.observe_message(bad)
+    # no user messages at all -> latest fails
+    empty = _tools()
+    with pytest.raises(ValueError):
+        empty.observe_latest_stakeholder_message()
+
+
+def test_assistant_tool_messages_cannot_be_observed():
+    tools = _tools()
+    _ingest(tools, "assistant", "I ask a question.")
+    _ingest(tools, "user", "A real stakeholder statement.")
+    _ingest(tools, "tool", "a tool result")
+    listing = tools.list_stakeholder_messages()
+    assert listing.count("sm_") == 1  # only the user message got an sm id
+    assert "sm_1" in listing
+    sm_id = tools.observe_latest_stakeholder_message()
+    assert sm_id == "sm_1"
+    oid = tools.observe_message(sm_id)
+    obs = next(o for o in tools.db.observations if o.id == oid)
+    assert obs.text == "A real stakeholder statement."
+
+
+def test_observe_latest_returns_newest_user_message_id():
+    tools = _tools()
+    _ingest_and_observe(tools, "First.")
+    _ingest(tools, "assistant", "ok")
+    assert tools.observe_latest_stakeholder_message() == "sm_1"  # still first
+    oid = _ingest_and_observe(tools, "Second.")
+    assert tools.observe_latest_stakeholder_message() == "sm_2"
+    obs = next(o for o in tools.db.observations if o.id == oid)
+    assert obs.text == "Second."
+    assert obs.order == 1  # second captured observation
+
+
+def test_multiple_stakeholder_messages_ids_stable_and_unique():
+    tools = _tools()
+    texts = [f"message number {i}" for i in range(5)]
+    for t in texts:
+        _ingest(tools, "user", t)
+    listing = tools.list_stakeholder_messages()
+    ids = [ln.split(":")[0].strip() for ln in listing.splitlines()]
+    assert ids == ["sm_1", "sm_2", "sm_3", "sm_4", "sm_5"]
+    assert len(set(ids)) == len(ids)  # unique
+    # each maps to the right text
+    for i, t in enumerate(texts):
+        oid = tools.observe_message(f"sm_{i + 1}")
+        obs = next(o for o in tools.db.observations if o.id == oid)
+        assert obs.text == t
+
+
+def test_observation_capture_survives_set_state_replay():
+    """Replaying a conversation via environment.set_state restores the same
+    stable sm ids and observations (deterministic, append-only ledger)."""
+    from tau2.data_model.message import (
+        AssistantMessage,
+        ToolCall,
+        ToolMessage,
+        UserMessage,
+    )
+    from tau2.domains.business_interview.environment import get_environment
+
+    env = get_environment()
+    traj = []
+
+    def push(msg):
+        traj.append(msg)
+        env.on_message(msg)  # mirror the live ledger (all roles appended)
+        return msg
+
+    def observe_and_record(name, args):
+        cid = len(traj)
+        tc = ToolCall(id=f"c{cid}", name=name, arguments=args)
+        push(AssistantMessage(role="assistant", tool_calls=[tc]))
+        res = getattr(env.tools, name)(**args)
+        push(ToolMessage(role="tool", id=f"c{cid}", content=res))
+        return res
+
+    push(AssistantMessage(role="assistant", content="Hello."))
+    push(UserMessage(role="user", content="First stakeholder statement."))
+    oid1 = observe_and_record("observe_message", {"message_id": "sm_1"})
+    push(UserMessage(role="user", content="Second stakeholder statement."))
+    oid2 = observe_and_record("observe_message", {"message_id": "sm_2"})
+    push(AssistantMessage(role="assistant", content="done"))
+
+    # Build a fresh environment and replay the same trajectory via set_state.
+    replay = get_environment()
+    replay.set_state(
+        initialization_data=None,
+        initialization_actions=None,
+        message_history=list(traj),
+        strict=False,
+    )
+    listing = replay.tools.list_stakeholder_messages()
+    assert listing.splitlines()[0].startswith("sm_1:")
+    assert "sm_2:" in listing
+    assert len(replay.tools.db.observations) == 2
+    texts = {o.text for o in replay.tools.db.observations}
+    assert "First stakeholder statement." in texts
+    assert "Second stakeholder statement." in texts
+    assert oid1 in {o.id for o in replay.tools.db.observations}
+    assert oid2 in {o.id for o in replay.tools.db.observations}

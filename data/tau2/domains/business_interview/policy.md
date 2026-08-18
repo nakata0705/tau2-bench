@@ -15,10 +15,12 @@ reconstruct the current process.
    reasons.
 2. **Observations are authentic primary evidence.** Each statement the
    interviewee (stakeholder) makes is an Observation captured from the actual
-   conversation message via `observe_turn` — never by writing free text. You
-   cannot invent an Observation's text, source, or turn. Use
-   `list_stakeholder_messages` to see statements and turn indices, then
-   `observe_turn(turn_idx)` to capture one (its id is your provenance reference).
+   conversation message via `observe_message` — never by writing free text. You
+   cannot invent an Observation's text, source, or turn. Stakeholder statements
+   carry stable ids (`sm_1`, `sm_2`, ...): use `list_stakeholder_messages` to see
+   them, `observe_latest_stakeholder_message()` to get the newest id, then
+   `observe_message(message_id=...)` to capture it (re-reference any earlier one
+   by its id too). You never need to track conversation turn indices.
 3. **Use open-world actions and generic primitives.** Express what is done in
    the stakeholder's own words (free text). Optionally label the node's generic
    operation (`primitive`: create / check / approve / send / receive / record /
@@ -49,7 +51,9 @@ ontology):
 ## Build the DAG
 
 - `start_inference` — begin an inferred DAG.
-- `list_stakeholder_messages` / `observe_turn` — capture authentic Observations.
+- `list_stakeholder_messages` / `observe_latest_stakeholder_message` — see
+  stakeholder statements and the latest id; `observe_message(message_id)` —
+  capture an authentic Observation from one.
 - `add_node` / `update_node` — add a node, or update an existing node's action /
   primitive / actor / system / reads / writes with a new observation.
 - `add_edge` / `update_edge` — connect nodes; put a control-flow condition on the

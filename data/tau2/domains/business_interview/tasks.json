@@ -41,9 +41,9 @@
         },
         {
           "action_id": "inf_2",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 3
+            "message_id": "sm_2"
           },
           "info": "Reference: capture stakeholder turn 3."
         },
@@ -65,9 +65,9 @@
         },
         {
           "action_id": "inf_4",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 7
+            "message_id": "sm_3"
           },
           "info": "Reference: capture stakeholder turn 7."
         },
@@ -90,9 +90,9 @@
         },
         {
           "action_id": "inf_6",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 11
+            "message_id": "sm_4"
           },
           "info": "Reference: capture stakeholder turn 11."
         },
@@ -118,9 +118,9 @@
         },
         {
           "action_id": "inf_8",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 15
+            "message_id": "sm_5"
           },
           "info": "Reference: capture stakeholder turn 15."
         },
@@ -145,9 +145,9 @@
         },
         {
           "action_id": "inf_10",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 19
+            "message_id": "sm_6"
           },
           "info": "Reference: capture stakeholder turn 19."
         },
@@ -172,9 +172,9 @@
         },
         {
           "action_id": "inf_12",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 23
+            "message_id": "sm_7"
           },
           "info": "Reference: capture stakeholder turn 23."
         },
@@ -217,9 +217,9 @@
         },
         {
           "action_id": "inf_16",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 27
+            "message_id": "sm_8"
           },
           "info": "Reference: capture stakeholder turn 27."
         },
@@ -236,9 +236,9 @@
         },
         {
           "action_id": "inf_18",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 31
+            "message_id": "sm_9"
           },
           "info": "Reference: capture stakeholder turn 31."
         },
@@ -255,9 +255,9 @@
         },
         {
           "action_id": "inf_20",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 35
+            "message_id": "sm_10"
           },
           "info": "Reference: capture stakeholder turn 35."
         },
@@ -275,9 +275,9 @@
         },
         {
           "action_id": "inf_22",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 39
+            "message_id": "sm_11"
           },
           "info": "Reference: capture stakeholder turn 39."
         },
@@ -295,9 +295,9 @@
         },
         {
           "action_id": "inf_24",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 43
+            "message_id": "sm_12"
           },
           "info": "Reference: capture stakeholder turn 43."
         },
@@ -314,9 +314,9 @@
         },
         {
           "action_id": "inf_26",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 47
+            "message_id": "sm_13"
           },
           "info": "Reference: capture stakeholder turn 47."
         },
@@ -433,9 +433,9 @@
         },
         {
           "action_id": "inf_2",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 3
+            "message_id": "sm_2"
           },
           "info": "Reference: capture stakeholder turn 3."
         },
@@ -457,9 +457,9 @@
         },
         {
           "action_id": "inf_4",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 7
+            "message_id": "sm_3"
           },
           "info": "Reference: capture stakeholder turn 7."
         },
@@ -482,9 +482,9 @@
         },
         {
           "action_id": "inf_6",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 11
+            "message_id": "sm_4"
           },
           "info": "Reference: capture stakeholder turn 11."
         },
@@ -510,9 +510,9 @@
         },
         {
           "action_id": "inf_8",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 15
+            "message_id": "sm_5"
           },
           "info": "Reference: capture stakeholder turn 15."
         },
@@ -537,9 +537,9 @@
         },
         {
           "action_id": "inf_10",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 19
+            "message_id": "sm_6"
           },
           "info": "Reference: capture stakeholder turn 19."
         },
@@ -564,9 +564,9 @@
         },
         {
           "action_id": "inf_12",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 23
+            "message_id": "sm_7"
           },
           "info": "Reference: capture stakeholder turn 23."
         },
@@ -609,9 +609,9 @@
         },
         {
           "action_id": "inf_16",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 27
+            "message_id": "sm_8"
           },
           "info": "Reference: capture stakeholder turn 27."
         },
@@ -628,9 +628,9 @@
         },
         {
           "action_id": "inf_18",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 31
+            "message_id": "sm_9"
           },
           "info": "Reference: capture stakeholder turn 31."
         },
@@ -647,9 +647,9 @@
         },
         {
           "action_id": "inf_20",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 35
+            "message_id": "sm_10"
           },
           "info": "Reference: capture stakeholder turn 35."
         },
@@ -667,9 +667,9 @@
         },
         {
           "action_id": "inf_22",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 39
+            "message_id": "sm_11"
           },
           "info": "Reference: capture stakeholder turn 39."
         },
@@ -687,9 +687,9 @@
         },
         {
           "action_id": "inf_24",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 43
+            "message_id": "sm_12"
           },
           "info": "Reference: capture stakeholder turn 43."
         },
@@ -706,9 +706,9 @@
         },
         {
           "action_id": "inf_26",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 47
+            "message_id": "sm_13"
           },
           "info": "Reference: capture stakeholder turn 47."
         },
@@ -824,9 +824,9 @@
         },
         {
           "action_id": "inf_2",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 1
+            "message_id": "sm_2"
           },
           "info": "observe."
         },
@@ -850,9 +850,9 @@
         },
         {
           "action_id": "inf_4",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 4
+            "message_id": "sm_3"
           },
           "info": "observe."
         },
@@ -874,9 +874,9 @@
         },
         {
           "action_id": "inf_6",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 7
+            "message_id": "sm_4"
           },
           "info": "observe."
         },
@@ -901,9 +901,9 @@
         },
         {
           "action_id": "inf_8",
-          "name": "observe_turn",
+          "name": "observe_message",
           "arguments": {
-            "turn_idx": 10
+            "message_id": "sm_5"
           },
           "info": "observe."
         },

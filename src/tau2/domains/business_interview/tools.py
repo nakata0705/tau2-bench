@@ -111,7 +111,8 @@ class InterviewTools(ToolKitBase):
         This is destructive: it discards the previous inferred DAG and any
         captured Observations, and resets the interview. The conversation ledger
         (the stakeholder's actual messages) is kept — observations are re-captured
-        from it with ``observe_turn``. Call it once at the beginning.
+        from it with ``observe_message`` / ``observe_latest_stakeholder_message``.
+        Call it once at the beginning.
 
         Args:
             name: Optional name for the DAG.
@@ -125,59 +126,99 @@ class InterviewTools(ToolKitBase):
         self.db.summary = None
         return "Inference started (previous DAG and observations discarded)."
 
+    def _stakeholder_entries(self) -> list[tuple[str, int, str]]:
+        """Deterministic list of stakeholder messages as (stable id, ledger turn,
+        content). The id is ``sm_N`` where N is the ordinal of the user message in
+        the (append-only) conversation ledger, so ids are stable and unique even
+        across state replay / ``set_state``.
+        """
+        entries = []
+        counter = 0
+        for i, msg in enumerate(self.db.messages):
+            if msg.get("role") == "user":
+                counter += 1
+                entries.append((f"sm_{counter}", i, msg.get("content") or ""))
+        return entries
+
+    def _capture_user_message(self, turn: int, content: str) -> str:
+        """Capture a user message already validated as a stakeholder message.
+
+        Idempotent: re-capturing the same ledger turn returns the same
+        observation id. The observation's text/turn come from the actual ledger,
+        so evaluator provenance-authenticity is preserved.
+        """
+        for obs in self.db.observations:
+            if obs.turn == turn:
+                return obs.id
+        obs = Observation(
+            id=f"obs_{turn}",
+            source_id="stakeholder",
+            text=content,
+            order=len(self.db.observations),
+            turn=turn,
+        )
+        self.db.observations.append(obs)
+        return obs.id
+
     @is_tool(ToolType.WRITE)
-    def observe_turn(self, turn_idx: int) -> str:
-        """Capture the stakeholder message at ``turn_idx`` as an Observation.
+    def observe_message(self, message_id: str) -> str:
+        """Capture the stakeholder message with ``message_id`` as an Observation.
+
+        Message ids look like ``sm_1``, ``sm_2``, ... and are listed by
+        ``list_stakeholder_messages``. Prefer
+        ``observe_latest_stakeholder_message`` right after the stakeholder
+        speaks; use this to re-reference an earlier message by its stable id.
 
         The Observation's text, source and turn are taken from the actual
         conversation message — you cannot write arbitrary text. The capture is
-        idempotent: capturing the same turn again returns the same observation id.
+        idempotent: re-capturing the same message returns the same observation id.
 
-        Only user (stakeholder) messages can be observed; assistant / tool
-        messages and nonexistent turns are rejected.
+        Only user (stakeholder) messages can be observed; a fabricated or
+        non-stakeholder message id is rejected.
 
         Args:
-            turn_idx: The conversation message index to observe.
+            message_id: The stable stakeholder message id (e.g. ``"sm_3"``).
 
         Returns:
             The observation id (use it as provenance on nodes / edges /
             necessity).
         """
-        if turn_idx < 0 or turn_idx >= len(self.db.messages):
-            raise ValueError(f"no message at turn {turn_idx}")
-        msg = self.db.messages[turn_idx]
-        if msg.get("role") != "user":
-            raise ValueError(
-                f"turn {turn_idx} is not a stakeholder (user) message; "
-                f"role={msg.get('role')}"
-            )
-        for obs in self.db.observations:
-            if obs.turn == turn_idx:
-                return obs.id
-        obs = Observation(
-            id=f"obs_{turn_idx}",
-            source_id="stakeholder",
-            text=msg.get("content") or "",
-            order=len(self.db.observations),
-            turn=turn_idx,
-        )
-        self.db.observations.append(obs)
-        return obs.id
+        for sm_id, turn, content in self._stakeholder_entries():
+            if sm_id == message_id:
+                return self._capture_user_message(turn, content)
+        raise ValueError(f"no stakeholder message with id {message_id!r}")
+
+    @is_tool(ToolType.READ)
+    def observe_latest_stakeholder_message(self) -> str:
+        """Return the id of the most recent stakeholder (user) message.
+
+        Then call ``observe_message(message_id=...)`` to capture that message as
+        an Observation. This lets you act on the newest statement without
+        tracking conversation turn indices. (It is a read — it does not itself
+        create an Observation — so it is deterministic under state replay.)
+
+        Returns:
+            The stable id of the latest stakeholder message (e.g. ``"sm_3"``).
+        """
+        entries = self._stakeholder_entries()
+        if not entries:
+            raise ValueError("no stakeholder (user) message has been recorded yet")
+        return entries[-1][0]
 
     @is_tool(ToolType.READ)
     def list_stakeholder_messages(self) -> str:
-        """List the stakeholder (user) messages with their turn indices.
+        """List the stakeholder (user) messages by their stable message ids.
 
-        Use this to find the turn index of a stakeholder statement before
-        calling ``observe_turn``.
+        Use ``observe_message(message_id)`` to capture a specific one, or
+        ``observe_latest_stakeholder_message()`` for the most recent.
 
         Returns:
-            A numbered list of stakeholder messages.
+            A list of stakeholder messages keyed by stable id (``sm_1``, ...).
         """
-        lines = []
-        for i, msg in enumerate(self.db.messages):
-            if msg.get("role") == "user":
-                lines.append(f"turn {i}: {msg.get('content')}")
+        lines = [
+            f"{sm_id}: {content}"
+            for sm_id, turn, content in self._stakeholder_entries()
+        ]
         return "\n".join(lines) if lines else "(no stakeholder messages yet)"
 
     @is_tool(ToolType.WRITE)

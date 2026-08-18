@@ -18,7 +18,7 @@ class BusinessInterviewEnvironment(Environment):
 
     Every conversation message is recorded into ``db.messages`` (an
     environment-controlled ledger). The agent can then capture stakeholder
-    (user) messages as Observations via ``observe_turn``; it never writes
+    (user) messages as Observations via ``observe_message``; it never writes
     Observation text itself.
     """
 

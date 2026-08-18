@@ -269,7 +269,7 @@ class InterviewDB(DB):
 
     ``messages`` is an environment-controlled ledger of the conversation
     (role + content per message index); ``observations`` are derived only from
-    user (stakeholder) messages via ``observe_turn``.
+    user (stakeholder) messages via ``observe_message``.
     """
 
     dag: Optional[BusinessDAG] = Field(default=None)

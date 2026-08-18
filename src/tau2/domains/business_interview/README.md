@@ -49,8 +49,9 @@ resolver; they live in the hidden `EvaluationSpec`.
 | Tool | Purpose |
 |------|---------|
 | `start_inference(name?)` | Begin an inferred DAG (destructive to prior DAG + captured Observations) |
-| `list_stakeholder_messages()` | See the stakeholder statements and their turn indices |
-| `observe_turn(turn_idx)` | **Capture** a stakeholder (user) message at a turn as an authentic Observation (idempotent) |
+| `list_stakeholder_messages()` | See the stakeholder statements by stable id (`sm_1`, ...) |
+| `observe_latest_stakeholder_message()` | Return the id of the most recent stakeholder message (`sm_N`) |
+| `observe_message(message_id)` | **Capture** a stakeholder message by id (e.g. `sm_3`) as an authentic Observation (idempotent) |
 | `add_node(node_id, action, primitive?, ...)` | Add a node (action is open-world free text; primitive is optional) |
 | `update_node(node_id, ...)` | Update an existing node's attributes / evidence |
 | `attach_observation(node_id, observation_id)` | Attach an observation to a node (multiple per node) |
@@ -88,7 +89,7 @@ its metric.
 **Evidence hygiene** (`evidence_pass` / `provenance_authenticity_pass`)
 deterministically guarantees only that every asserted claim references a **real,
 authentic stakeholder Observation** — captured from an actual user message via
-`observe_turn`, not fabricated, and existing. It does **not** re-interpret the
+`observe_message`, not fabricated, and existing. It does **not** re-interpret the
 Observation *text* to decide whether it semantically supports the claim. Because
 the stakeholder may rephrase the same Ground Truth differently on every run, the
 evaluator deliberately does not gate on token / substring / negation semantic
@@ -137,7 +138,8 @@ uv run pytest tests/test_domains/test_business_interview/
 ## Design notes
 
 - **Truth and Inferred DAGs are the same class.** No GT-only node/edge types.
-- **Observations are authentic primary evidence** (via `observe_turn`); immutable;
+- **Observations are authentic primary evidence** (via `observe_message` /
+  `observe_latest_stakeholder_message`); immutable;
   multiple observations attach to one node.
 - **Actions are open-world free text**; primitive is an optional generic
   operation, with `unclassified` for unknown operations.
