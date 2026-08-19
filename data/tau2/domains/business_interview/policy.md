@@ -62,10 +62,15 @@ ontology):
   capture an authentic Observation from one.
 - `add_node` / `update_node` — add a node, or update an existing node's
   activity / actor / system / reads / writes / necessity_rationale references.
-- `add_edge` / `update_edge` — connect nodes; put a condition concept on the
-  edge (`condition` = None means unconditional). A branch is several outgoing
-  edges with different conditions. Edges need stakeholder evidence too: cite
-  the Observation where the relation was stated.
+  Concept kinds are enforced: activity->activity, actor->actor, system->system,
+  reads/writes->data, rationale->rationale.
+- `add_edge` / `update_edge` — connect nodes; put a condition concept
+  (kind=condition) on the edge (`condition` = None means unconditional). A
+  branch is several outgoing edges with different conditions. Edges need
+  stakeholder evidence too: cite the Observation where the relation was stated.
+- `set_graph_endpoints` — declare the start node (where the process begins; it
+  may still receive incoming edges when the process loops) and the end nodes.
+  Declare both before finishing.
 - `remove_node` — remove a node and its incident edges (used to drop obsolete /
   superseded / coarse placeholder nodes).
 - `validate_graph` — review the graph's internal structural consistency before
@@ -88,9 +93,12 @@ information refines your understanding — update the graph to match it.
 - Do not finish with obsolete, duplicate, or superseded nodes.
 
 Before `finish_interview`, call `validate_graph` and make the graph structurally
-consistent: no dangling edges, no unknown concept references, and conditions
-matching your current understanding. `finish_interview` will refuse a
-structurally invalid graph and list the errors; fix them and finish again.
+consistent: no dangling edges, no unknown concept references, declared
+start/end, and conditions matching your current understanding. `finish_interview`
+will refuse a structurally invalid graph, missing endpoints, or referenced
+`hypothesized` concepts and list the errors; fix them and finish again. A
+successful `finish_interview` completes the episode immediately — do not
+continue asking questions afterwards.
 
 ## Record data as glossary concepts
 
@@ -111,11 +119,15 @@ what the thing is:
   e.g. one actor concept across every node that role performs, one data
   concept across every step that reads or writes the same object. Reuse is
   how you prove a concept's identity.
-- **Add observed terms to the same concept** (`add_concept_term`) when the
-  stakeholder later uses a different wording that you judge to refer to the
-  same thing — attach the Observation span where that wording was said. It is
-  YOUR judgment: you decide whether two expressions are one thing; the
-  evaluator does not decide that for you.
+- **Record mentions, not terminology.** Add Observation spans you believe
+  refer to the concept as `mentions` (`add_concept_mention`). A mention only
+  means you believe the span refers to this local concept — the stakeholder
+  merely using a phrase does NOT establish terminology.
+- **Record explicit terminology agreements separately.** If YOU propose a term
+  and the stakeholder explicitly confirms it, record
+  `record_terminology_agreement(concept_id, term, evidence)` with the
+  Observation span of the confirmation. It is YOUR judgment which expressions
+  are one thing; the evaluator does not decide that for you.
 - **If you split one thing into two concepts by mistake**, merge them later
   (`merge_concepts`) once the stakeholder confirms they are the same; every
   reference is re-pointed for you. Only merge concepts of the same kind.
@@ -133,11 +145,16 @@ your current glossary at any time.
 Concepts start as **hypothesized**. Before you finish the interview, resolve
 every concept you actually reference:
 
-- `confirm_concept` — when authentic stakeholder evidence confirms the
-  concept's identity (you must cite at least one Observation span). Use
-  `partial=True` when only part of the concept is confirmed.
-- `mark_concept_unknown` — when the stakeholder cannot clarify it.
-- `mark_concept_disputed` — when stakeholder statements conflict.
+- `confirm_concept(concept_id, evidence, partial=False)` — only when the
+  stakeholder genuinely confirmed the concept's identity: cite the Observation
+  span(s) of that confirmation (the evidence must correspond to the
+  stakeholder's private assertions of this concept's claims; a mere earlier
+  mention is not confirmation, and one span may confirm at most one concept).
+  Use `partial=True` when only part of the concept is confirmed.
+- `mark_concept_unknown(concept_id, evidence)` — when the stakeholder could
+  not assert the concept (e.g. said they do not know); cite the evidence.
+- `mark_concept_disputed(concept_id, evidence)` — when stakeholder statements
+  conflict; cite evidence from at least two distinct Observations.
 
 `finish_interview` refuses while any **referenced** concept is still
 `hypothesized` — resolve them first.

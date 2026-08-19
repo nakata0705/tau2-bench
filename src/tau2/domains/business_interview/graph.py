@@ -1,19 +1,25 @@
-"""Unified Agent-local glossary + business process graph (v8 — provenance-only).
+"""Unified Agent-local glossary + business process graph (v9 — graph context).
 
 The interview's product is a **BusinessProcessGraph**: nodes (what happens, by
 whom, on what data) and directed edges (with optional conditions), both
 referencing a **glossary** of Agent-local ``BusinessConcept``\\ s. Concepts are
 typed (``ConceptKind``) and carry a validation status; every claim in the graph
-cites **EvidenceRef**\\ s — exact spans of immutable stakeholder Observations.
+cites **EvidenceRef**\\ s — spans of immutable stakeholder Observations.
 
-There is no DAG terminology and no acyclicity requirement: **cycles are valid**
-(a process may revisit a step). There is no ``LoopNode``.
+**Mention != terminology.** A ``BusinessConcept`` records ``mentions`` (spans
+the Agent believes refer to this local concept); its ``display_label`` is
+working text, irrelevant to evaluation. An explicit terminology agreement with
+the stakeholder is recorded separately (``TerminologyAgreement``).
 
-The evaluator derives correctness **only** through private provenance (see
-``evaluation.py``): ConceptRef -> EvidenceRef -> exact Observation span ->
-private stakeholder assertion -> StakeholderFact -> TruthClaim -> Truth
-concept. None of the text fields here (labels, descriptions, terms, quotes)
-are ever interpreted semantically by the evaluator.
+Truth semantics live at **graph positions**: every TruthClaim belongs to a
+context (a Truth node or edge), and node contexts carry their full incoming
+topology (``TruthNodeContext``). Cycles are valid — there is no acyclicity
+requirement and no ``LoopNode``.
+
+The evaluator derives correctness **only** through private provenance:
+ConceptRef -> EvidenceRef -> Observation span -> private assertion ->
+TruthClaim -> Truth concept. None of the text fields here (labels,
+descriptions, mentions, quotes) are ever interpreted semantically.
 """
 
 from typing import Literal, Optional
@@ -34,12 +40,13 @@ EdgeProperty = Literal["condition", "edge_exists"]
 
 
 class EvidenceRef(BaseModel):
-    """One exact span of an immutable Observation cited as evidence.
+    """One span of an immutable Observation cited as evidence.
 
     ``quote`` must be an exact substring occurrence of the immutable
     Observation's text; ``occurrence`` selects which occurrence (0-based) when
     the quote appears multiple times. Validity is checked deterministically
-    (the evaluator never infers what the quote *means*).
+    (the evaluator never infers what the quote *means*). The span resolves to
+    concrete character offsets in the Observation text.
     """
 
     observation_id: str
@@ -48,28 +55,43 @@ class EvidenceRef(BaseModel):
         default=0, description="0-based occurrence index of ``quote``."
     )
 
+    def resolve_span(self, text: str) -> Optional[tuple[int, int]]:
+        """Resolve to (start, end) character offsets in ``text``, or None when
+        the quote/occurrence does not exactly match ``text``."""
+        if not self.quote:
+            return None
+        start = -1
+        for _ in range(self.occurrence + 1):
+            start = text.find(self.quote, start + 1)
+            if start == -1:
+                return None
+        return (start, start + len(self.quote))
 
-class ConceptTerm(BaseModel):
-    """One observed wording of a concept, with its supporting evidence."""
 
-    text: str
-    evidence: list[EvidenceRef] = Field(default_factory=list)
+def spans_correspond(a: tuple[int, int], b: tuple[int, int]) -> bool:
+    """True when two spans correspond: one contains the other (or they are
+    equal). Deterministic character-span relation — no semantic matching."""
+    return (a[0] <= b[0] and b[1] <= a[1]) or (b[0] <= a[0] and a[1] <= b[1])
 
 
 class BusinessConcept(BaseModel):
-    """An Agent-local glossary concept (a business object / role / activity).
+    """An Agent-local glossary concept (a business thing of one ConceptKind).
 
-    Agent ids are local and arbitrary; labels/descriptions are the Agent's own
-    wording and are never compared to Truth. ``validation_status`` tracks the
-    Agent's confidence in the concept's identity; ``validation_evidence``
-    records the authentic stakeholder evidence behind confirmations.
+    Agent ids are local and arbitrary; ``display_label`` / ``description`` are
+    the Agent's own working text and are never compared to Truth.
+    ``mentions`` are Observation spans the Agent believes refer to this
+    concept — a mention is NOT a terminology agreement. ``validation_status``
+    tracks the Agent's confidence in the concept's identity;
+    ``validation_evidence`` records the stakeholder evidence behind the
+    status (genuine confirmation requires evidence corresponding to a private
+    assertion of the concept's claims; unknown/disputed also need evidence).
     """
 
     id: str
     kind: ConceptKind
-    preferred_label: str
+    display_label: str
     description: str = Field(default="")
-    terms: list[ConceptTerm] = Field(default_factory=list)
+    mentions: list[EvidenceRef] = Field(default_factory=list)
     validation_status: ValidationStatus = Field(default="hypothesized")
     validation_evidence: list[EvidenceRef] = Field(default_factory=list)
 
@@ -79,11 +101,22 @@ class BusinessConcept(BaseModel):
         return self.validation_status != "hypothesized"
 
 
+class TerminologyAgreement(BaseModel):
+    """A recorded explicit terminology agreement: the Agent proposed ``term``
+    for ``concept_id`` and the stakeholder confirmed it (evidenced by an
+    Observation span). Recorded separately from mere mentions."""
+
+    concept_id: str
+    term: str
+    stakeholder_id: str = Field(default="stakeholder")
+    evidence: list[EvidenceRef] = Field(default_factory=list)
+
+
 class ConceptRef(BaseModel):
     """A reference from a node/edge to an Agent-local glossary concept.
 
-    ``evidence`` cites the exact Observation spans that support using this
-    concept at this slot. ``confidence`` in [0, 1]; 0 = unasserted.
+    ``evidence`` cites the Observation spans that support using this concept
+    at this slot. ``confidence`` in [0, 1]; 0 = unasserted.
     """
 
     concept_id: str
@@ -144,8 +177,9 @@ class Edge(BaseModel):
     """A directed edge between two nodes.
 
     ``from_node`` / ``to_node`` are structural identities (node ids), not
-    concepts. ``condition`` optionally references a condition concept.
-    ``evidence`` cites the Observation spans supporting the relation.
+    concepts. ``condition`` optionally references a condition concept
+    (kind=condition). ``evidence`` cites the Observation spans supporting the
+    relation.
     """
 
     id: str
@@ -170,10 +204,23 @@ def _node_property_refs(node: "Node") -> dict[str, list[ConceptRef]]:
     }
 
 
+class TruthNodeContext(BaseModel):
+    """The workflow position of one Truth node: its id, ALL incoming Truth
+    edges, and whether it is the start node (start nodes may still have
+    incoming edges when cycles exist). Resolved from the Truth graph — never
+    duplicated in claims."""
+
+    node_id: str
+    incoming_edge_ids: list[str] = Field(default_factory=list)
+    is_start: bool = Field(default=False)
+
+
 class BusinessProcessGraph(BaseModel):
     """A business process graph: nodes, edges, and the Agent-local glossary.
 
     Cycles are valid — there is deliberately no acyclicity validation.
+    ``start_node_id`` / ``end_node_ids`` restore explicit start/end semantics
+    (Truth contexts use ``is_start``; the Agent declares endpoints too).
     """
 
     id: str = Field(default="graph")
@@ -181,17 +228,35 @@ class BusinessProcessGraph(BaseModel):
     nodes: dict[str, Node] = Field(default_factory=dict)
     edges: dict[str, Edge] = Field(default_factory=dict)
     concepts: dict[str, BusinessConcept] = Field(default_factory=dict)
+    terminology_agreements: list[TerminologyAgreement] = Field(default_factory=list)
+    start_node_id: Optional[str] = Field(default=None)
+    end_node_ids: list[str] = Field(default_factory=list)
 
     # ---------------------------------------------------------------- graph utils
 
     def successors(self, node_id: str) -> list[str]:
         return [e.to_node for e in self.edges.values() if e.from_node == node_id]
 
+    def incoming_edges(self, node_id: str) -> list[str]:
+        return [e.id for e in self.edges.values() if e.to_node == node_id]
+
+    def node_contexts(self) -> dict[str, TruthNodeContext]:
+        """TruthNodeContext per node: ALL incoming edges + start flag."""
+        return {
+            nid: TruthNodeContext(
+                node_id=nid,
+                incoming_edge_ids=sorted(self.incoming_edges(nid)),
+                is_start=(nid == self.start_node_id),
+            )
+            for nid in self.nodes
+        }
+
     def structure_errors(self) -> list[str]:
         """Internal self-consistency errors (empty = well-formed).
 
-        Checks only references and required fields — cycles are valid and
-        never reported as errors. Nothing here references hidden Ground Truth.
+        Checks references, required fields and declared endpoints — cycles are
+        valid and never reported as errors. Nothing here references hidden
+        Ground Truth.
         """
         errors: list[str] = []
         for nid, node in self.nodes.items():
@@ -217,6 +282,11 @@ class BusinessProcessGraph(BaseModel):
                     f"edge {eid}: condition references unknown concept "
                     f"{edge.condition.concept_id!r}"
                 )
+        if self.start_node_id is not None and self.start_node_id not in self.nodes:
+            errors.append(f"start node not found: {self.start_node_id}")
+        for eid in self.end_node_ids:
+            if eid not in self.nodes:
+                errors.append(f"end node not found: {eid}")
         return errors
 
     @property

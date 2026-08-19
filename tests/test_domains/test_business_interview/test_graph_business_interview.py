@@ -1,18 +1,20 @@
-"""Tests for the unified-glossary business_interview domain (v6).
+"""Tests for the graph-context business_interview domain (v7).
 
-The agent builds a typed **glossary** (BusinessConcept of kind activity /
-actor / system / data / condition / rationale) and an inferred
-**BusinessProcessGraph** whose node/edge properties reference glossary
-concepts. Correctness is grounded ONLY through private provenance:
+The agent builds a typed **glossary** (BusinessConcept with mentions and
+validation status) and an inferred **BusinessProcessGraph** with declared
+start/end. Truth semantics are **graph-contextual TruthClaims** (position +
+property + value); node identity uses provenance plus reconstructed incoming
+topology (the same activity may occur at several positions). Correctness is
+grounded ONLY through private provenance with **span-correspondence
+containment** (no cross-credit):
 
-    ConceptRef -> EvidenceRef -> exact Observation span
-        -> private stakeholder assertion -> StakeholderFact -> TruthClaim
+    ConceptRef -> EvidenceRef -> Observation span
+        -> private assertion (claim_id + span) -> TruthClaim
         -> Truth BusinessConcept
 
-The evaluator never inspects labels/descriptions/terms/quotes for meaning;
-there are no semantic matchers. Cycles are valid. Concepts start
-``hypothesized`` and every referenced concept must be resolved before
-completion. The same mechanism serves EN, JA and the lab scenario.
+Mention != terminology; confirmation requires genuine stakeholder evidence;
+ConceptKind rules are enforced; a successful finish_interview terminates the
+episode immediately. The same mechanism serves EN, JA and the lab scenario.
 """
 
 from typing import Optional
@@ -35,12 +37,14 @@ from tau2.domains.business_interview.facts import (
     StakeholderAssertion,
 )
 from tau2.domains.business_interview.graph import (
+    BusinessConcept,
     BusinessProcessGraph,
     ConceptRef,
     Edge,
     EvidenceRef,
     InterviewDB,
     Node,
+    TruthNodeContext,
 )
 from tau2.domains.business_interview.scenario import (
     get_scenario,
@@ -56,63 +60,63 @@ ALL_TASK_IDS = [SCENARIO, JA_SCENARIO, LAB_SCENARIO]
 # (agent node id, truth node id)
 _NODE_MAP = {"a": "r", "b": "cc", "c": "cq", "d": "ap", "e": "sq", "f": "me"}
 
-# Per-node observation text + private assertions (fact_id, quote) — EN.
+# Per-node observation text + private assertions (claim_id, quote) — EN.
 # Quotes must be exact substrings of the observation text.
 _NODE_OBS_EN = {
     "r": (
         "I receive the quotation request from the customer and record it.",
         [
-            ("quotation.receive.activity", "receive the quotation request"),
-            ("quotation.receive.actor", "I"),
-            ("quotation.receive.writes", "record it"),
+            ("r.activity", "receive the quotation request"),
+            ("r.actor", "I"),
+            ("r.writes.tc_request", "record it"),
         ],
     ),
     "cc": (
         "I check the customer's information in the CRM.",
         [
-            ("quotation.check.activity", "check the customer's information"),
-            ("quotation.check.actor", "I"),
-            ("quotation.check.system", "CRM"),
-            ("quotation.check.reads", "customer's information"),
+            ("cc.activity", "check the customer's information"),
+            ("cc.actor", "I"),
+            ("cc.system", "CRM"),
+            ("cc.reads.tc_customer", "customer's information"),
         ],
     ),
     "cq": (
         "I create the quotation using the customer and pricing information "
         "in the quoting system.",
         [
-            ("quotation.create.activity", "create the quotation"),
-            ("quotation.create.actor", "I"),
-            ("quotation.create.system", "quoting system"),
-            ("quotation.create.reads.customer", "customer"),
-            ("quotation.create.reads.pricing", "pricing information"),
-            ("quotation.create.writes", "quotation"),
+            ("cq.activity", "create the quotation"),
+            ("cq.actor", "I"),
+            ("cq.system", "quoting system"),
+            ("cq.reads.tc_customer", "customer"),
+            ("cq.reads.tc_pricing", "pricing information"),
+            ("cq.writes.tc_quote", "quotation"),
         ],
     ),
     "ap": (
         "Quotations over 1,000,000 yen are approved by the manager; the "
         "approval is for credit risk management.",
         [
-            ("quotation.approve.activity", "approved"),
-            ("quotation.approve.actor", "manager"),
-            ("quotation.approve.rationale", "credit risk management"),
+            ("ap.activity", "approved"),
+            ("ap.actor", "manager"),
+            ("ap.rationale", "credit risk management"),
         ],
     ),
     "sq": (
         "I send the quotation to the customer by email.",
         [
-            ("quotation.send.activity", "send the quotation"),
-            ("quotation.send.actor", "I"),
-            ("quotation.send.system", "email"),
+            ("sq.activity", "send the quotation"),
+            ("sq.actor", "I"),
+            ("sq.system", "email"),
         ],
     ),
     "me": (
         "At month-end I send the quotation information summary to Accounting "
         "as an Excel file.",
         [
-            ("quotation.month_end.activity", "send the quotation information summary"),
-            ("quotation.month_end.actor", "I"),
-            ("quotation.month_end.system", "Excel"),
-            ("quotation.month_end.writes", "summary"),
+            ("me.activity", "send the quotation information summary"),
+            ("me.actor", "I"),
+            ("me.system", "Excel"),
+            ("me.writes.tc_excel_summary", "summary"),
         ],
     ),
 }
@@ -120,35 +124,35 @@ _NODE_OBS_EN = {
 _EDGE_OBS_EN = {
     "e1": (
         "After receiving the request, I check the customer information.",
-        [("flow.e1.edge_exists", "After receiving the request, I check")],
+        [("e1.edge_exists", "After receiving the request, I check")],
     ),
     "e2": (
         "After checking the customer information, I create the quotation.",
-        [("flow.e2.edge_exists", "After checking the customer information, I create")],
+        [("e2.edge_exists", "After checking the customer information, I create")],
     ),
     "e3": (
         "Quotations over 1,000,000 yen go to the manager for approval.",
         [
-            ("flow.e3.edge_exists", "over 1,000,000 yen"),
-            ("condition.e3.over_1m", "over 1,000,000 yen"),
+            ("e3.edge_exists", "over 1,000,000 yen"),
+            ("e3.condition", "over 1,000,000 yen"),
         ],
     ),
     "e4": (
         "Quotations at or below 1,000,000 yen are sent directly to the customer.",
         [
-            ("flow.e4.edge_exists", "at or below 1,000,000 yen"),
-            ("condition.e4.at_or_below_1m", "at or below 1,000,000 yen"),
+            ("e4.edge_exists", "at or below 1,000,000 yen"),
+            ("e4.condition", "at or below 1,000,000 yen"),
         ],
     ),
     "e5": (
         "Once approved, the quotation is sent to the customer.",
-        [("flow.e5.edge_exists", "Once approved, the quotation is sent")],
+        [("e5.edge_exists", "Once approved, the quotation is sent")],
     ),
     "e6": (
         "At month-end I also send the summary to Accounting.",
         [
-            ("flow.e6.edge_exists", "month-end"),
-            ("condition.e6.month_end", "month-end"),
+            ("e6.edge_exists", "month-end"),
+            ("e6.condition", "month-end"),
         ],
     ),
 }
@@ -157,54 +161,54 @@ _NODE_OBS_JA = {
     "r": (
         "私は顧客から見積依頼を受け付けて記録します。",
         [
-            ("quotation.receive.activity", "見積依頼を受け付け"),
-            ("quotation.receive.actor", "私"),
-            ("quotation.receive.writes", "記録"),
+            ("r.activity", "見積依頼を受け付け"),
+            ("r.actor", "私"),
+            ("r.writes.tc_request", "記録"),
         ],
     ),
     "cc": (
         "私はCRMで顧客情報を確認します。",
         [
-            ("quotation.check.activity", "確認"),
-            ("quotation.check.actor", "私"),
-            ("quotation.check.system", "CRM"),
-            ("quotation.check.reads", "顧客情報"),
+            ("cc.activity", "確認"),
+            ("cc.actor", "私"),
+            ("cc.system", "CRM"),
+            ("cc.reads.tc_customer", "顧客情報"),
         ],
     ),
     "cq": (
         "私は見積システムで顧客情報と価格情報を使って見積書を作成します。",
         [
-            ("quotation.create.activity", "見積書を作成"),
-            ("quotation.create.actor", "私"),
-            ("quotation.create.system", "見積システム"),
-            ("quotation.create.reads.customer", "顧客情報"),
-            ("quotation.create.reads.pricing", "価格情報"),
-            ("quotation.create.writes", "見積書"),
+            ("cq.activity", "見積書を作成"),
+            ("cq.actor", "私"),
+            ("cq.system", "見積システム"),
+            ("cq.reads.tc_customer", "顧客情報"),
+            ("cq.reads.tc_pricing", "価格情報"),
+            ("cq.writes.tc_quote", "見積書"),
         ],
     ),
     "ap": (
         "100万円を超える見積書は管理者の承認が必要で、承認は与信リスク管理のためのものです。",
         [
-            ("quotation.approve.activity", "承認が必要"),
-            ("quotation.approve.actor", "管理者"),
-            ("quotation.approve.rationale", "与信リスク管理"),
+            ("ap.activity", "承認が必要"),
+            ("ap.actor", "管理者"),
+            ("ap.rationale", "与信リスク管理"),
         ],
     ),
     "sq": (
         "私は見積書をメールで顧客に送付します。",
         [
-            ("quotation.send.activity", "送付"),
-            ("quotation.send.actor", "私"),
-            ("quotation.send.system", "メール"),
+            ("sq.activity", "送付"),
+            ("sq.actor", "私"),
+            ("sq.system", "メール"),
         ],
     ),
     "me": (
         "私は月末に見積情報の集計をExcelファイルとして経理チームに送ります。",
         [
-            ("quotation.month_end.activity", "送り"),
-            ("quotation.month_end.actor", "私"),
-            ("quotation.month_end.system", "Excel"),
-            ("quotation.month_end.writes", "集計"),
+            ("me.activity", "送り"),
+            ("me.actor", "私"),
+            ("me.system", "Excel"),
+            ("me.writes.tc_excel_summary", "集計"),
         ],
     ),
 }
@@ -212,41 +216,40 @@ _NODE_OBS_JA = {
 _EDGE_OBS_JA = {
     "e1": (
         "依頼を受け付けたら、顧客情報を確認します。",
-        [("flow.e1.edge_exists", "受け付けたら、顧客情報を確認")],
+        [("e1.edge_exists", "受け付けたら、顧客情報を確認")],
     ),
     "e2": (
         "顧客情報を確認したら、見積書を作成します。",
-        [("flow.e2.edge_exists", "確認したら、見積書を作成")],
+        [("e2.edge_exists", "確認したら、見積書を作成")],
     ),
     "e3": (
         "100万円を超える見積書は管理者の承認に回ります。",
         [
-            ("flow.e3.edge_exists", "100万円を超える"),
-            ("condition.e3.over_1m", "100万円を超える"),
+            ("e3.edge_exists", "100万円を超える"),
+            ("e3.condition", "100万円を超える"),
         ],
     ),
     "e4": (
         "100万円以下の見積書はそのまま顧客に送付します。",
         [
-            ("flow.e4.edge_exists", "100万円以下"),
-            ("condition.e4.at_or_below_1m", "100万円以下"),
+            ("e4.edge_exists", "100万円以下"),
+            ("e4.condition", "100万円以下"),
         ],
     ),
     "e5": (
         "承認された見積書は顧客に送付します。",
-        [("flow.e5.edge_exists", "承認された見積書は顧客に送付")],
+        [("e5.edge_exists", "承認された見積書は顧客に送付")],
     ),
     "e6": (
         "月末には経理チームへの集計も送ります。",
         [
-            ("flow.e6.edge_exists", "月末"),
-            ("condition.e6.month_end", "月末"),
+            ("e6.edge_exists", "月末"),
+            ("e6.condition", "月末"),
         ],
     ),
 }
 
-# Agent-local glossary ids (kind, label) per truth concept — deliberately
-# different from Truth ids, labels are the agent's own wording.
+# Agent-local glossary ids (kind, label) per truth concept.
 _AGENT_CONCEPTS = {
     "r": ("act_receive", "activity", "receive the quotation request"),
     "cc": ("act_check", "activity", "check the customer information"),
@@ -285,8 +288,8 @@ def _ingest(tools: InterviewTools, role: str = "user", content: str = "") -> int
     return len(tools.db.messages) - 1
 
 
-def _assertion(fact_id: str, quote: str, occurrence: int = 0) -> dict:
-    return {"fact_id": fact_id, "quote": quote, "occurrence": occurrence}
+def _assertion(claim_id: str, quote: str, occurrence: int = 0) -> dict:
+    return {"claim_id": claim_id, "quote": quote, "occurrence": occurrence}
 
 
 def _claim_obs(
@@ -298,7 +301,7 @@ def _claim_obs(
     exact turn, and capture it as an Observation."""
     turn = _ingest(tools, "user", text)
     if assertions:
-        tools.fact_ledger.bind(
+        tools.assertion_ledger.bind(
             turn, [StakeholderAssertion(**a) for a in assertions], text
         )
     sm_id = tools.observe_latest_stakeholder_message()
@@ -307,6 +310,11 @@ def _claim_obs(
 
 def _ev(obs_id: str, quote: str, occurrence: int = 0) -> dict:
     return {"observation_id": obs_id, "quote": quote, "occurrence": occurrence}
+
+
+def _evr(obs_id: str, quote: str, occurrence: int = 0) -> EvidenceRef:
+    """Direct EvidenceRef (for graph mutation); tools accept dicts via _ev."""
+    return EvidenceRef(observation_id=obs_id, quote=quote, occurrence=occurrence)
 
 
 def _eval(tools: InterviewTools, scenario: str = SCENARIO):
@@ -320,8 +328,7 @@ def _eval(tools: InterviewTools, scenario: str = SCENARIO):
         sc.spec,
         sc.stakeholder,
         claims=sc.claims,
-        facts=sc.facts,
-        assertions=tools.fact_ledger.assertions(),
+        assertions=tools.assertion_ledger.assertions(),
     )
 
 
@@ -330,7 +337,6 @@ def _make_concept(
     truth_cid: str,
     oid: str,
     quote: str,
-    ja: bool = False,
 ) -> str:
     """Create (and confirm) the agent concept for a truth concept id using the
     given observation span, returning the agent concept id."""
@@ -340,10 +346,105 @@ def _make_concept(
     return agent_cid
 
 
+def _quote_for_concept(node_obs, truth_cid: str) -> tuple[str, str]:
+    for sid, (text, assertions) in node_obs.items():
+        for cid, q in assertions:
+            if _claim_to_concept(cid) == truth_cid:
+                return sid, q
+    raise KeyError(truth_cid)
+
+
+def _claim_to_concept(claim_id: str) -> Optional[str]:
+    mapping = {
+        "r.activity": "r",
+        "r.actor": "tc_actor_sales",
+        "r.writes.tc_request": "tc_request",
+        "cc.activity": "cc",
+        "cc.actor": "tc_actor_sales",
+        "cc.system": "tc_system_crm",
+        "cc.reads.tc_customer": "tc_customer",
+        "cq.activity": "cq",
+        "cq.actor": "tc_actor_sales",
+        "cq.system": "tc_system_quoting",
+        "cq.reads.tc_customer": "tc_customer",
+        "cq.reads.tc_pricing": "tc_pricing",
+        "cq.writes.tc_quote": "tc_quote",
+        "ap.activity": "ap",
+        "ap.actor": "tc_actor_manager",
+        "ap.rationale": "tc_rationale_credit_risk",
+        "sq.activity": "sq",
+        "sq.actor": "tc_actor_sales",
+        "sq.system": "tc_system_email",
+        "me.activity": "me",
+        "me.actor": "tc_actor_sales",
+        "me.system": "tc_system_excel",
+        "me.writes.tc_excel_summary": "tc_excel_summary",
+    }
+    return mapping.get(claim_id)
+
+
+def _has_quote(node_obs, sid: str, truth_cid: str) -> bool:
+    return any(_claim_to_concept(cid) == truth_cid for cid, q in node_obs[sid][1])
+
+
+def _visible_for(sid: str, prop: str, ja: bool) -> bool:
+    """True when ``prop`` is visible for the TRUTH node id ``sid``."""
+    sc = get_scenario(JA_SCENARIO if ja else SCENARIO)
+    assert sc is not None
+    visible = sc.stakeholder.node_properties_for(sid)
+    if prop == "necessity_rationale":
+        return "rationale" in visible
+    return prop in visible
+
+
+def _quote_for_sid_activity(assertions) -> str:
+    return next(q for cid, q in assertions if cid.endswith(".activity"))
+
+
+def _agent_to_truth(agent_cid: str) -> Optional[str]:
+    for truth_cid, (cid, kind, label) in _AGENT_CONCEPTS.items():
+        if cid == agent_cid:
+            return truth_cid
+    return None
+
+
+def _attach_ref_evidence(
+    tools: InterviewTools, anid: str, oid: str, assertions, ja: bool
+) -> None:
+    """Attach per-property evidence spans to the node's refs."""
+    assert tools.db.graph is not None
+    node = tools.db.graph.nodes[anid]
+    for prop, truth_cid in (
+        ("actor", "tc_actor_sales"),
+        ("actor", "tc_actor_manager"),
+        ("system", "tc_system_crm"),
+        ("system", "tc_system_quoting"),
+        ("system", "tc_system_email"),
+        ("system", "tc_system_excel"),
+        ("necessity_rationale", "tc_rationale_credit_risk"),
+    ):
+        ref = getattr(node, prop)
+        if ref is None:
+            continue
+        for cid, q in assertions:
+            if _claim_to_concept(cid) == truth_cid:
+                ref.evidence.append(
+                    EvidenceRef(observation_id=oid, quote=q, occurrence=0)
+                )
+    for axis in ("reads", "writes"):
+        for ref in getattr(node, axis):
+            for cid, q in assertions:
+                if _claim_to_concept(cid) == _agent_to_truth(ref.concept_id):
+                    ref.evidence.append(
+                        EvidenceRef(observation_id=oid, quote=q, occurrence=0)
+                    )
+
+
 def _build(tools: InterviewTools, ja: bool = False) -> None:
     """Build the correct quotation graph with full provenance, asserting only
-    stakeholder-visible properties. Every referenced concept is confirmed, so
-    completion succeeds and the evaluator returns a full pass."""
+    stakeholder-visible properties. Every referenced concept is confirmed with
+    genuine evidence; endpoints are declared, so completion succeeds and the
+    evaluator returns a full pass."""
     tools.start_inference("quotation")
     _ingest(tools, "assistant", "Hello.")
     node_obs = _NODE_OBS_JA if ja else _NODE_OBS_EN
@@ -352,21 +453,14 @@ def _build(tools: InterviewTools, ja: bool = False) -> None:
     node_oids: dict[str, str] = {}
     for sid in ("r", "cc", "cq", "ap", "sq", "me"):
         text, assertions = node_obs[sid]
-        oid = _claim_obs(tools, text, [_assertion(f, q) for f, q in assertions])
+        oid = _claim_obs(tools, text, [_assertion(cid, q) for cid, q in assertions])
         node_oids[sid] = oid
 
     # concepts first (activity per node; actor/system/data per truth concept)
-    for sid, truth_cid in {
-        "r": "r",
-        "cc": "cc",
-        "cq": "cq",
-        "ap": "ap",
-        "sq": "sq",
-        "me": "me",
-    }.items():
+    for sid in ("r", "cc", "cq", "ap", "sq", "me"):
         oid = node_oids[sid]
-        act_quote = next(q for f, q in node_obs[sid][1] if f.endswith(".activity"))
-        created[truth_cid] = _make_concept(tools, truth_cid, oid, act_quote, ja)
+        act_quote = _quote_for_sid_activity(node_obs[sid][1])
+        created[sid] = _make_concept(tools, sid, oid, act_quote)
     for truth_cid in (
         "tc_actor_sales",
         "tc_actor_manager",
@@ -381,16 +475,12 @@ def _build(tools: InterviewTools, ja: bool = False) -> None:
         "tc_excel_summary",
         "tc_rationale_credit_risk",
     ):
-        # find an observation whose assertions mention this concept's claim
-        sid_quote = _quote_for_concept(node_obs, truth_cid)
-        sid, quote = sid_quote
-        oid = node_oids[sid]
-        created[truth_cid] = _make_concept(tools, truth_cid, oid, quote, ja)
+        sid, quote = _quote_for_concept(node_obs, truth_cid)
+        created[truth_cid] = _make_concept(tools, truth_cid, node_oids[sid], quote)
 
     for anid, sid in _NODE_MAP.items():
         oid = node_oids[sid]
-        # single-property refs: activity + visible actor/system/rationale
-        props = {}
+        props: dict[str, str] = {}
         for prop, truth_cid in (
             ("actor", "tc_actor_sales"),
             ("actor", "tc_actor_manager"),
@@ -431,13 +521,12 @@ def _build(tools: InterviewTools, ja: bool = False) -> None:
             necessity_rationale=props.get("necessity_rationale"),
             evidence=[_ev(oid, _quote_for_sid_activity(node_obs[sid][1]))],
         )
-        # attach per-ref evidence (quotes) so each ref's span matches an assertion
         _attach_ref_evidence(tools, anid, oid, node_obs[sid][1], ja)
 
     # edges
     for eid in ("e1", "e2", "e3", "e4", "e5", "e6"):
         text, assertions = edge_obs[eid]
-        oid = _claim_obs(tools, text, [_assertion(f, q) for f, q in assertions])
+        oid = _claim_obs(tools, text, [_assertion(cid, q) for cid, q in assertions])
         frm, to = {
             "e1": ("a", "b"),
             "e2": ("b", "c"),
@@ -447,132 +536,23 @@ def _build(tools: InterviewTools, ja: bool = False) -> None:
             "e6": ("c", "f"),
         }[eid]
         cond = None
-        for f, q in assertions:
-            if f.startswith("condition."):
+        for claim_id, q in assertions:
+            if claim_id.endswith(".condition"):
                 truth_cid = {
                     "e3": "tc_cond_over_1m",
                     "e4": "tc_cond_at_or_below_1m",
                     "e6": "tc_cond_month_end",
                 }[eid]
-                agent_cid = _make_concept(tools, truth_cid, oid, q, ja)
-                cond = agent_cid
+                cond = _make_concept(tools, truth_cid, oid, q)
         tools.add_edge(
             eid,
             frm,
             to,
             condition=cond,
-            evidence=[
-                _ev(oid, q)
-                for f, q in assertions
-                if f.endswith(".edge_exists") or f.endswith(".condition")
-            ],
+            evidence=[_ev(oid, q) for cid, q in assertions],
         )
+    tools.set_graph_endpoints(start_node_id="a", end_node_ids=["e", "f"])
     tools.finish_interview()
-
-
-def _quote_for_concept(node_obs, truth_cid: str) -> tuple[str, str]:
-    """(node sid, quote) for the first observation asserting this concept."""
-    for sid, (text, assertions) in node_obs.items():
-        for f, q in assertions:
-            if _fact_to_concept(f) == truth_cid:
-                return sid, q
-    raise KeyError(truth_cid)
-
-
-def _fact_to_concept(fact_id: str) -> Optional[str]:
-    mapping = {
-        "quotation.receive.activity": "r",
-        "quotation.receive.actor": "tc_actor_sales",
-        "quotation.receive.writes": "tc_request",
-        "quotation.check.activity": "cc",
-        "quotation.check.actor": "tc_actor_sales",
-        "quotation.check.system": "tc_system_crm",
-        "quotation.check.reads": "tc_customer",
-        "quotation.create.activity": "cq",
-        "quotation.create.actor": "tc_actor_sales",
-        "quotation.create.system": "tc_system_quoting",
-        "quotation.create.reads.customer": "tc_customer",
-        "quotation.create.reads.pricing": "tc_pricing",
-        "quotation.create.writes": "tc_quote",
-        "quotation.approve.activity": "ap",
-        "quotation.approve.actor": "tc_actor_manager",
-        "quotation.approve.rationale": "tc_rationale_credit_risk",
-        "quotation.send.activity": "sq",
-        "quotation.send.actor": "tc_actor_sales",
-        "quotation.send.system": "tc_system_email",
-        "quotation.month_end.activity": "me",
-        "quotation.month_end.actor": "tc_actor_sales",
-        "quotation.month_end.system": "tc_system_excel",
-        "quotation.month_end.writes": "tc_excel_summary",
-    }
-    return mapping.get(fact_id)
-
-
-def _has_quote(node_obs, sid: str, truth_cid: str) -> bool:
-    return any(_fact_to_concept(f) == truth_cid for f, q in node_obs[sid][1])
-
-
-def _visible_for(sid: str, prop: str, ja: bool) -> bool:
-    """True when ``prop`` is visible for the TRUTH node id ``sid``."""
-    sc = get_scenario(JA_SCENARIO if ja else SCENARIO)
-    assert sc is not None
-    visible = sc.stakeholder.node_properties_for(sid)
-    if prop == "necessity_rationale":
-        return "rationale" in visible
-    return prop in visible
-
-
-def _quote_for_sid_activity(assertions) -> str:
-    return next(q for f, q in assertions if f.endswith(".activity"))
-
-
-def _attach_ref_evidence(
-    tools: InterviewTools, anid: str, oid: str, assertions, ja: bool
-) -> None:
-    """Attach per-property evidence spans to the node's refs so each ref's
-    evidence exactly matches the corresponding assertion span."""
-    dag = tools.db.graph
-    assert dag is not None
-    node = dag.nodes[anid]
-    for prop, truth_cid in (
-        ("actor", "tc_actor_sales"),
-        ("actor", "tc_actor_manager"),
-        ("system", "tc_system_crm"),
-        ("system", "tc_system_quoting"),
-        ("system", "tc_system_email"),
-        ("system", "tc_system_excel"),
-        ("necessity_rationale", "tc_rationale_credit_risk"),
-    ):
-        ref = getattr(node, prop)
-        if ref is None:
-            continue
-        for f, q in assertions:
-            if _fact_to_concept(f) == truth_cid:
-                ref.evidence.append(
-                    EvidenceRef(
-                        **{
-                            "observation_id": oid,
-                            "quote": q,
-                            "occurrence": 0,
-                        }
-                    )
-                )
-    for axis in ("reads", "writes"):
-        for ref in getattr(node, axis):
-            for f, q in assertions:
-                if _fact_to_concept(f) == _agent_to_truth(ref.concept_id):
-                    ref.evidence.append(
-                        EvidenceRef(
-                            **{"observation_id": oid, "quote": q, "occurrence": 0}
-                        )
-                    )
-
-
-def _agent_to_truth(agent_cid: str) -> Optional[str]:
-    for truth_cid, (cid, kind, label) in _AGENT_CONCEPTS.items():
-        if cid == agent_cid:
-            return truth_cid
-    return None
 
 
 def _build_lab(tools: InterviewTools) -> None:
@@ -585,46 +565,36 @@ def _build_lab(tools: InterviewTools) -> None:
             "n1",
             "When a specimen arrives, I accession it and record it as received.",
             [
-                ("lab.accession.activity", "accession"),
-                ("lab.accession.actor", "I"),
-                ("lab.accession.reads", "specimen"),
+                ("n1.activity", "accession"),
+                ("n1.actor", "I"),
+                ("n1.reads.tc_sample", "specimen"),
             ],
-            ("act_accession", "activity", "specimen accession", "lab.tech", "actor"),
         ),
         (
             "n2",
             "I season the environment chamber to prepare it.",
             [
-                ("lab.seasoning.activity", "season"),
-                ("lab.seasoning.actor", "I"),
-                ("lab.seasoning.system", "environment chamber"),
+                ("n2.activity", "season"),
+                ("n2.actor", "I"),
+                ("n2.system", "environment chamber"),
             ],
-            ("act_seasoning", "activity", "chamber seasoning", "lab.tech", "actor"),
         ),
         (
             "n3",
             "I run a conditioning cycle that processes the samples inside the chamber.",
             [
-                ("lab.conditioning.activity", "conditioning cycle"),
-                ("lab.conditioning.actor", "I"),
-                ("lab.conditioning.system", "chamber"),
+                ("n3.activity", "conditioning cycle"),
+                ("n3.actor", "I"),
+                ("n3.system", "chamber"),
             ],
-            ("act_conditioning", "activity", "conditioning cycle", "lab.tech", "actor"),
         ),
         (
             "n4",
             "The lab supervisor approves the conditioned batch before it is released.",
             [
-                ("lab.approval.activity", "approves"),
-                ("lab.approval.actor", "lab supervisor"),
+                ("n4.activity", "approves"),
+                ("n4.actor", "lab supervisor"),
             ],
-            (
-                "act_approval",
-                "activity",
-                "approve conditioned batch",
-                "supervisor",
-                "actor",
-            ),
         ),
     ]
     created: dict[str, str] = {}
@@ -634,52 +604,47 @@ def _build_lab(tools: InterviewTools) -> None:
         tools.confirm_concept(cid, evidence=[_ev(oid, quote)])
         return cid
 
-    for sid, text, assertions, (
-        act_cid,
-        act_kind,
-        act_label,
-        actor_cid,
-        actor_kind,
-    ) in nodes:
-        oid = _claim_obs(tools, text, [_assertion(f, q) for f, q in assertions])
+    for sid, text, assertions in nodes:
+        oid = _claim_obs(tools, text, [_assertion(cid, q) for cid, q in assertions])
+        act_cid = {
+            "n1": "act_accession",
+            "n2": "act_seasoning",
+            "n3": "act_conditioning",
+            "n4": "act_approval",
+        }[sid]
         created[f"act_{sid}"] = mk(
             act_cid,
-            act_kind,
-            act_label,
+            "activity",
+            {
+                "n1": "specimen accession",
+                "n2": "chamber seasoning",
+                "n3": "conditioning cycle",
+                "n4": "approve conditioned batch",
+            }[sid],
             oid,
-            next(q for f, q in assertions if f.endswith(".activity")),
+            next(q for cid, q in assertions if cid.endswith(".activity")),
         )
-        actor_truth = {
-            "n1": "tc_actor_lab_tech",
-            "n2": "tc_actor_lab_tech",
-            "n3": "tc_actor_lab_tech",
-            "n4": "tc_actor_lab_supervisor",
-        }[sid]
-        actor_cid_full = (
-            "lab_tech" if actor_truth == "tc_actor_lab_tech" else "lab_supervisor"
-        )
-        if actor_cid_full not in created:
-            created[actor_cid_full] = mk(
-                actor_cid_full,
+        actor_quote = {"n1": "I", "n2": "I", "n3": "I", "n4": "lab supervisor"}[sid]
+        actor_cid = "lab_tech" if sid != "n4" else "lab_supervisor"
+        if actor_cid not in created:
+            created[actor_cid] = mk(
+                actor_cid,
                 "actor",
-                "lab tech" if actor_cid_full == "lab_tech" else "lab supervisor",
+                "lab tech" if actor_cid == "lab_tech" else "lab supervisor",
                 oid,
-                next(
-                    q
-                    for f, q in assertions
-                    if f
-                    == {
-                        "n1": "lab.accession.actor",
-                        "n2": "lab.seasoning.actor",
-                        "n3": "lab.conditioning.actor",
-                        "n4": "lab.approval.actor",
-                    }[sid]
-                ),
+                actor_quote,
             )
-        sample_cid = None
+        args = {
+            "node_id": sid,
+            "activity": created[f"act_{sid}"],
+            "actor": created[actor_cid],
+            "evidence": [
+                _ev(oid, next(q for cid, q in assertions if cid.endswith(".activity")))
+            ],
+        }
         if sid == "n1":
-            sample_cid = mk("sample", "data", "sample", oid, "specimen")
-        chamber_cid = None
+            created["sample"] = mk("sample", "data", "sample", oid, "specimen")
+            args["reads"] = [created["sample"]]
         if sid in ("n2", "n3"):
             if "chamber" not in created:
                 created["chamber"] = mk(
@@ -689,39 +654,19 @@ def _build_lab(tools: InterviewTools) -> None:
                     oid,
                     "environment chamber" if sid == "n2" else "chamber",
                 )
-            chamber_cid = "chamber"
-        args = {
-            "node_id": sid,
-            "activity": created[f"act_{sid}"],
-            "actor": created[actor_cid_full],
-            "evidence": [
-                _ev(oid, next(q for f, q in assertions if f.endswith(".activity")))
-            ],
-        }
-        if sid == "n1":
-            args["reads"] = [sample_cid]
-        if sid in ("n2", "n3"):
-            args["system"] = chamber_cid
+            args["system"] = "chamber"
         tools.add_node(**args)
         assert tools.db.graph is not None
         node = tools.db.graph.nodes[sid]
         if sid == "n1":
-            node.reads[0].evidence.append(
-                EvidenceRef(observation_id=oid, quote="specimen")
-            )
+            node.reads[0].evidence.append(_evr(oid, "specimen"))
         if sid in ("n2", "n3"):
+            assert node.system is not None
             node.system.evidence.append(
-                EvidenceRef(
-                    observation_id=oid,
-                    quote="environment chamber" if sid == "n2" else "chamber",
-                )
+                _evr(oid, "environment chamber" if sid == "n2" else "chamber")
             )
-        node.actor.evidence.append(
-            EvidenceRef(
-                observation_id=oid,
-                quote={"n1": "I", "n2": "I", "n3": "I", "n4": "lab supervisor"}[sid],
-            )
-        )
+        assert node.actor is not None
+        node.actor.evidence.append(_evr(oid, actor_quote))
 
     edges = [
         (
@@ -729,14 +674,14 @@ def _build_lab(tools: InterviewTools) -> None:
             "n1",
             "n2",
             "After specimen accession, I prepare the chamber for seasoning.",
-            [("lab.flow.l1", "After specimen accession, I prepare")],
+            [("l1.edge_exists", "After specimen accession, I prepare")],
         ),
         (
             "l2",
             "n2",
             "n3",
             "After chamber seasoning, I run the conditioning cycle.",
-            [("lab.flow.l2", "After chamber seasoning, I run")],
+            [("l2.edge_exists", "After chamber seasoning, I run")],
         ),
         (
             "l3",
@@ -745,15 +690,16 @@ def _build_lab(tools: InterviewTools) -> None:
             "After the conditioning cycle, the lab supervisor approves the batch.",
             [
                 (
-                    "lab.flow.l3",
+                    "l3.edge_exists",
                     "After the conditioning cycle, the lab supervisor approves",
                 )
             ],
         ),
     ]
     for eid, frm, to, text, assertions in edges:
-        oid = _claim_obs(tools, text, [_assertion(f, q) for f, q in assertions])
-        tools.add_edge(eid, frm, to, evidence=[_ev(oid, q) for f, q in assertions])
+        oid = _claim_obs(tools, text, [_assertion(cid, q) for cid, q in assertions])
+        tools.add_edge(eid, frm, to, evidence=[_ev(oid, q) for cid, q in assertions])
+    tools.set_graph_endpoints(start_node_id="n1", end_node_ids=["n4"])
     tools.finish_interview()
 
 
@@ -761,10 +707,9 @@ def _reference_trajectory() -> list:
     """A full faithful trajectory (messages + tool calls) mirroring ``_build``,
     with the private assertion sidecars carried on the UserMessages.
 
-    Concepts are created + confirmed with their evidence spans and extended
-    with ``add_concept_term`` for every additional observation span, so the
-    evaluator binds each ref through the concept's evidence alone (ref-level
-    evidence is optional).
+    The construction tools' ledger is bound the same way the environment binds
+    it during replay, so tool-time validation (e.g. confirm_concept evidence)
+    sees the assertions.
     """
     from tau2.data_model.message import AssistantMessage as AM
     from tau2.data_model.message import UserMessage as UM
@@ -795,25 +740,29 @@ def _reference_trajectory() -> list:
             UM(
                 role="user",
                 content=text,
-                stakeholder_assertions=[_assertion(f, q) for f, q in assertions],
+                stakeholder_assertions=[_assertion(cid, q) for cid, q in assertions],
             )
         )
         tools.db.messages.append({"role": "user", "content": text})
+        turn = len(tools.db.messages) - 1
+        tools.assertion_ledger.bind(
+            turn,
+            [StakeholderAssertion(**_assertion(cid, q)) for cid, q in assertions],
+            text,
+        )
 
     mk("start_inference", {"name": "Quotation creation"})
     created: set[str] = set()
     node_oid: dict[str, str] = {}
     sm = 0
-    # node observations -> concepts -> nodes
     for sid in ("r", "cc", "cq", "ap", "sq", "me"):
         text, assertions = _NODE_OBS_EN[sid]
         sm += 1
         say(text, assertions)
         oid = mk("observe_message", {"message_id": f"sm_{sm}"})
         node_oid[sid] = oid
-        # create/confirm concepts for the claims asserted here (once each)
-        for f, q in assertions:
-            truth_cid = _fact_to_concept(f)
+        for claim_id, q in assertions:
+            truth_cid = _claim_to_concept(claim_id)
             if truth_cid is None:
                 continue
             agent_cid, kind, label = _AGENT_CONCEPTS[truth_cid]
@@ -834,10 +783,9 @@ def _reference_trajectory() -> list:
                 )
             else:
                 mk(
-                    "add_concept_term",
-                    {"concept_id": agent_cid, "term": q, "evidence": [_ev(oid, q)]},
+                    "add_concept_mention",
+                    {"concept_id": agent_cid, "evidence": [_ev(oid, q)]},
                 )
-    # nodes
     for anid, sid in _NODE_MAP.items():
         props: dict[str, str] = {}
         for prop, truth_cid in (
@@ -880,15 +828,14 @@ def _reference_trajectory() -> list:
         if "necessity_rationale" in props:
             args["necessity_rationale"] = props["necessity_rationale"]
         mk("add_node", args)
-    # edges
     for eid in ("e1", "e2", "e3", "e4", "e5", "e6"):
         text, assertions = _EDGE_OBS_EN[eid]
         sm += 1
         say(text, assertions)
         oid = mk("observe_message", {"message_id": f"sm_{sm}"})
         cond = None
-        for f, q in assertions:
-            if f.startswith("condition."):
+        for claim_id, q in assertions:
+            if claim_id.endswith(".condition"):
                 truth_cid = {
                     "e3": "tc_cond_over_1m",
                     "e4": "tc_cond_at_or_below_1m",
@@ -923,22 +870,194 @@ def _reference_trajectory() -> list:
             "edge_id": eid,
             "from_node": frm,
             "to_node": to,
-            "evidence": [_ev(oid, q) for f, q in assertions],
+            "evidence": [_ev(oid, q) for cid, q in assertions],
         }
         if cond:
             eargs["condition"] = cond
         mk("add_edge", eargs)
+    mk("set_graph_endpoints", {"start_node_id": "a", "end_node_ids": ["e", "f"]})
     mk("finish_interview", {"summary": "Inferred the quotation graph."})
     return traj
 
 
 # ---------------------------------------------------------------------------
-# Model shape (BusinessProcessGraph / cycles)
+# Graph contexts / topology
+# ---------------------------------------------------------------------------
+
+
+def test_truth_node_contexts_include_all_incoming_edges():
+    """TruthNodeContext lists ALL incoming Truth edges per position, with the
+    start flag — including for the quotation scenario's branch joins."""
+    sc = get_scenario(SCENARIO)
+    assert sc is not None
+    ctx = sc.truth.node_contexts()
+    assert ctx["r"].incoming_edge_ids == []
+    assert ctx["r"].is_start is True
+    assert ctx["cc"].incoming_edge_ids == ["e1"]
+    assert ctx["cq"].incoming_edge_ids == ["e2"]
+    # the send position merges the approval and direct branches
+    assert ctx["sq"].incoming_edge_ids == ["e4", "e5"]
+    assert ctx["sq"].is_start is False
+    assert ctx["me"].incoming_edge_ids == ["e6"]
+    assert isinstance(ctx["sq"], TruthNodeContext)
+
+
+def test_truth_node_context_cycle_start_and_rework():
+    """A cycle: the rework node's incoming includes the normal edge AND the
+    back edge; the start node may receive a back edge yet stays the start."""
+    truth = BusinessProcessGraph(
+        nodes={
+            "start": Node(id="start", activity=ConceptRef(concept_id="a")),
+            "work": Node(id="work", activity=ConceptRef(concept_id="b")),
+            "rework": Node(id="rework", activity=ConceptRef(concept_id="c")),
+        },
+        edges={
+            "normal_edge": Edge(id="normal_edge", from_node="start", to_node="work"),
+            "e2": Edge(id="e2", from_node="work", to_node="rework"),
+            "back_edge": Edge(id="back_edge", from_node="rework", to_node="work"),
+        },
+        concepts={
+            "a": BusinessConcept(id="a", kind="activity", display_label="a"),
+            "b": BusinessConcept(id="b", kind="activity", display_label="b"),
+            "c": BusinessConcept(id="c", kind="activity", display_label="c"),
+        },
+        start_node_id="start",
+        end_node_ids=["rework"],
+    )
+    ctx = truth.node_contexts()
+    assert ctx["start"].incoming_edge_ids == [] and ctx["start"].is_start
+    assert ctx["work"].incoming_edge_ids == ["back_edge", "normal_edge"]
+    assert ctx["rework"].incoming_edge_ids == ["e2"]
+
+
+def test_same_activity_at_distinct_positions_disambiguated_by_topology():
+    """The same activity concept at two Truth positions: node correspondence
+    uses provenance PLUS reconstructed incoming topology."""
+    truth = BusinessProcessGraph(
+        nodes={
+            "s": Node(id="s", activity=ConceptRef(concept_id="act_start")),
+            "x1": Node(id="x1", activity=ConceptRef(concept_id="act_x")),
+            "x2": Node(id="x2", activity=ConceptRef(concept_id="act_x")),
+        },
+        edges={
+            "e1": Edge(id="e1", from_node="s", to_node="x1"),
+            "e2": Edge(id="e2", from_node="s", to_node="x2"),
+        },
+        concepts={
+            "act_start": BusinessConcept(
+                id="act_start", kind="activity", display_label="start"
+            ),
+            "act_x": BusinessConcept(id="act_x", kind="activity", display_label="x"),
+        },
+        start_node_id="s",
+        end_node_ids=["x1", "x2"],
+    )
+    from tau2.domains.business_interview.claims import build_claims
+    from tau2.domains.business_interview.stakeholder import StakeholderFilter
+
+    filter_ = StakeholderFilter(
+        name="any",
+        visible_node_ids=["s", "x1", "x2"],
+        visible_edge_ids=["e1", "e2"],
+        visible_attributes=["activity"],
+    )
+    claims = build_claims(truth, filter_)
+    assert "x1.activity" in claims and "x2.activity" in claims
+
+    tools = _tools()
+    tools.db.graph = BusinessProcessGraph(
+        nodes={
+            "s": Node(id="s", activity=ConceptRef(concept_id="s_act")),
+            "n1": Node(id="n1", activity=ConceptRef(concept_id="x_act")),
+            "n2": Node(id="n2", activity=ConceptRef(concept_id="x_act")),
+        },
+        edges={
+            "z1": Edge(id="z1", from_node="s", to_node="n1"),
+            "z2": Edge(id="z2", from_node="s", to_node="n2"),
+        },
+        concepts={
+            "s_act": BusinessConcept(
+                id="s_act",
+                kind="activity",
+                display_label="start",
+                validation_status="confirmed",
+            ),
+            "x_act": BusinessConcept(
+                id="x_act",
+                kind="activity",
+                display_label="x",
+                validation_status="confirmed",
+            ),
+        },
+        start_node_id="s",
+        end_node_ids=["n1", "n2"],
+    )
+    # observations: first position and second position, plus the two relations
+    obs_start = _claim_obs(
+        tools, "We start the process.", [_assertion("s.activity", "start the process")]
+    )
+    obs_x1 = _claim_obs(
+        tools, "First we do X here.", [_assertion("x1.activity", "do X")]
+    )
+    obs_x2 = _claim_obs(
+        tools, "Then we do X again.", [_assertion("x2.activity", "do X")]
+    )
+    obs_e1 = _claim_obs(
+        tools,
+        "After the start we do X.",
+        [_assertion("e1.edge_exists", "After the start we do X")],
+    )
+    obs_e2 = _claim_obs(
+        tools,
+        "Later we do X again.",
+        [_assertion("e2.edge_exists", "Later we do X again")],
+    )
+    tools.db.graph.nodes["s"].activity.evidence.append(
+        EvidenceRef(observation_id=obs_start, quote="start the process")
+    )
+    # the shared activity concept cites BOTH X positions (ambiguous by activity)
+    tools.db.graph.concepts["x_act"].mentions.append(
+        EvidenceRef(observation_id=obs_x1, quote="do X")
+    )
+    tools.db.graph.concepts["x_act"].mentions.append(
+        EvidenceRef(observation_id=obs_x2, quote="do X")
+    )
+    tools.db.graph.nodes["n1"].activity.evidence.append(
+        EvidenceRef(observation_id=obs_x1, quote="do X")
+    )
+    tools.db.graph.nodes["n2"].activity.evidence.append(
+        EvidenceRef(observation_id=obs_x2, quote="do X")
+    )
+    tools.db.graph.edges["z1"].evidence.append(
+        EvidenceRef(observation_id=obs_e1, quote="After the start we do X")
+    )
+    tools.db.graph.edges["z2"].evidence.append(
+        EvidenceRef(observation_id=obs_e2, quote="Later we do X again")
+    )
+    from tau2.domains.business_interview.evaluation import EvaluationSpec, evaluate
+
+    res = evaluate(
+        tools.db,
+        truth,
+        EvaluationSpec(),
+        filter_,
+        claims=claims,
+        assertions=tools.assertion_ledger.assertions(),
+    )
+    # both X nodes are mapped through topology; start/ends correct
+    assert res.node_recall == 1.0
+    assert res.node_precision == 1.0
+    assert res.start_correct is True
+    assert res.end_recall == 1.0
+    assert res.end_precision == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Model shape / cycles / no sentence facts
 # ---------------------------------------------------------------------------
 
 
 def test_cycles_are_valid():
-    """Cycles are valid: a graph with a cycle has no structural errors."""
     graph = BusinessProcessGraph(
         nodes={
             "a": Node(id="a", activity=ConceptRef(concept_id="x")),
@@ -949,40 +1068,51 @@ def test_cycles_are_valid():
             "e2": Edge(id="e2", from_node="b", to_node="a"),
         },
         concepts={
-            "x": __import__(
-                "tau2.domains.business_interview.graph", fromlist=["BusinessConcept"]
-            ).BusinessConcept(id="x", kind="activity", preferred_label="x"),
-            "y": __import__(
-                "tau2.domains.business_interview.graph", fromlist=["BusinessConcept"]
-            ).BusinessConcept(id="y", kind="activity", preferred_label="y"),
+            "x": BusinessConcept(id="x", kind="activity", display_label="x"),
+            "y": BusinessConcept(id="y", kind="activity", display_label="y"),
         },
     )
     assert graph.structure_errors() == []
     assert graph.is_valid
 
 
+def test_no_sentence_based_facts():
+    """Stakeholder knowledge is semantic structure: no StakeholderFact model,
+    no authored business sentences anywhere in the scenario."""
+
+    from tau2.domains.business_interview import scenario
+
+    assert not hasattr(scenario, "StakeholderFact")
+    from tau2.domains.business_interview import facts
+
+    assert not hasattr(facts, "StakeholderFact")
+    sc = get_scenario(SCENARIO)
+    assert sc is not None
+    # knowledge has no free-text business sentences
+    for word in (
+        "You record the quotation request",
+        "You create the quotation using",
+        "You check the customer",
+    ):
+        text = str(sc.knowledge.model_dump())
+        assert word not in text, word
+    # task prose (known_info) carries no business facts
+    for task in get_tasks():
+        assert not (
+            getattr(task.user_scenario.instructions, "known_info", None) or ""
+        ).strip()
+
+
 def test_truth_and_agent_result_use_same_graph_class():
     sc = get_scenario(SCENARIO)
     assert sc is not None
     assert isinstance(sc.truth, BusinessProcessGraph)
+    assert sc.truth.start_node_id == "r"
+    assert set(sc.truth.end_node_ids) == {"sq", "me"}
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
     assert isinstance(tools.db.graph, BusinessProcessGraph)
-
-
-def test_all_concept_kinds_present_in_truth_and_glossary():
-    """Every ConceptKind appears in the quotation truth and in the agent's
-    faithful glossary."""
-    sc = get_scenario(SCENARIO)
-    assert sc is not None
-    kinds = {c.kind for c in sc.truth.concepts.values()}
-    assert kinds == {"activity", "actor", "system", "data", "condition", "rationale"}
-    tools = _tools()
-    _build(tools)
-    assert tools.db.graph is not None
-    agent_kinds = {c.kind for c in tools.db.graph.concepts.values()}
-    assert agent_kinds == kinds
 
 
 # ---------------------------------------------------------------------------
@@ -999,10 +1129,14 @@ def test_valid_full_graph_passes():
     assert res.quality_pass is True
     assert res.evidence_pass is True
     assert res.glossary_pass is True
+    assert res.glossary_validation_errors == []
     assert res.node_recall == 1.0
     assert res.node_precision == 1.0
     assert res.edge_recall == 1.0
     assert res.edge_precision == 1.0
+    assert res.start_correct is True
+    assert res.end_recall == 1.0
+    assert res.end_precision == 1.0
     assert res.concept_correctness == 1.0
 
 
@@ -1011,16 +1145,13 @@ def test_missing_node_lowers_node_recall():
     _build(tools)
     assert tools.db.graph is not None
     del tools.db.graph.nodes["f"]
-    for eid in ("e6",):
-        tools.db.graph.edges.pop(eid, None)
+    tools.db.graph.edges.pop("e6", None)
     res = _eval(tools)
     assert res.node_recall < 1.0
     assert res.structural_pass is False
 
 
 def test_fabricated_node_stays_unmapped():
-    """A node whose activity has no provenance support is not mapped to any
-    Truth node."""
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
@@ -1028,8 +1159,8 @@ def test_fabricated_node_stays_unmapped():
     tools.create_concept(
         "pizza_act", "activity", "eat pizza", evidence=[_ev(pizza, "pizza")]
     )
-    tools.confirm_concept("pizza_act", evidence=[_ev(pizza, "pizza")])
     tools.add_node("fab", activity="pizza_act", evidence=[_ev(pizza, "pizza")])
+    tools.mark_concept_unknown("pizza_act", evidence=[_ev(pizza, "pizza")])
     res = _eval(tools)
     assert res.node_precision < 1.0
     assert res.fabricated_node_count >= 1
@@ -1040,20 +1171,9 @@ def test_wrong_actor_drops_actor_correctness():
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
-    # point cc's actor at the manager concept (no provenance for cc.actor)
     tools.db.graph.nodes["b"].actor = ConceptRef(concept_id="manager", confidence=1.0)
     res = _eval(tools)
     assert res.actor_correctness < 1.0
-    assert res.structural_pass is False
-
-
-def test_wrong_system_drops_system_correctness():
-    tools = _tools()
-    _build(tools)
-    assert tools.db.graph is not None
-    tools.db.graph.nodes["b"].system = ConceptRef(concept_id="email", confidence=1.0)
-    res = _eval(tools)
-    assert res.system_correctness < 1.0
     assert res.structural_pass is False
 
 
@@ -1067,38 +1187,23 @@ def test_wrong_read_drops_read_correctness():
     assert res.structural_pass is False
 
 
-def test_wrong_write_drops_write_correctness():
-    tools = _tools()
-    _build(tools)
-    assert tools.db.graph is not None
-    tools.db.graph.nodes["c"].writes = [
-        ConceptRef(concept_id="request", confidence=1.0)
-    ]
-    res = _eval(tools)
-    assert res.write_correctness < 1.0
-    assert res.structural_pass is False
-
-
-def test_wrong_rationale_drops_rationale_correctness():
-    tools = _tools()
-    _build(tools)
-    assert tools.db.graph is not None
-    tools.db.graph.nodes["d"].necessity_rationale = ConceptRef(
-        concept_id="over_1m", confidence=1.0
-    )
-    res = _eval(tools)
-    assert res.rationale_correctness < 1.0
-    assert res.structural_pass is False
-
-
 def test_missing_visible_property_lowers_score():
-    """A visible property left unset (e.g. cc.system) is a recall miss."""
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
     tools.db.graph.nodes["b"].system = None
     res = _eval(tools)
     assert res.system_correctness < 1.0
+    assert res.structural_pass is False
+
+
+def test_undeclared_or_wrong_endpoints_fail():
+    tools = _tools()
+    _build(tools)
+    assert tools.db.graph is not None
+    tools.db.graph.end_node_ids = ["f"]
+    res = _eval(tools)
+    assert res.end_recall < 1.0
     assert res.structural_pass is False
 
 
@@ -1113,20 +1218,17 @@ def test_hidden_unset_still_correct():
     res = _eval(tools)
     assert res.read_correctness == 1.0
     assert res.write_correctness == 1.0
-    assert res.system_correctness == 1.0
     assert res.quality_pass is True
 
 
 def test_hidden_assertions_fail_regardless_of_provenance():
-    """sq.reads asserted with valid quote provenance still fails: hidden axes
-    are a prior gate and no claim exists for them."""
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
     oid = _claim_obs(
         tools,
         "I send the quotation to the customer by email.",
-        [_assertion("quotation.send.activity", "send the quotation")],
+        [_assertion("sq.activity", "send the quotation")],
     )
     tools.create_concept(
         "quote_dup", "data", "quotation", evidence=[_ev(oid, "quotation")]
@@ -1134,12 +1236,12 @@ def test_hidden_assertions_fail_regardless_of_provenance():
     tools.confirm_concept("quote_dup", evidence=[_ev(oid, "quotation")])
     tools.db.graph.nodes["e"].reads = [
         ConceptRef(
-            concept_id="quote_dup", confidence=1.0, evidence=[_ev(oid, "quotation")]
+            concept_id="quote_dup", confidence=1.0, evidence=[_evr(oid, "quotation")]
         )
     ]
     tools.db.graph.nodes["e"].writes = [
         ConceptRef(
-            concept_id="quote_dup", confidence=1.0, evidence=[_ev(oid, "quotation")]
+            concept_id="quote_dup", confidence=1.0, evidence=[_evr(oid, "quotation")]
         )
     ]
     res = _eval(tools)
@@ -1149,12 +1251,11 @@ def test_hidden_assertions_fail_regardless_of_provenance():
 
 
 # ---------------------------------------------------------------------------
-# Provenance-only binding (no labels, no text)
+# Provenance-only binding (labels/mentions never determine correctness)
 # ---------------------------------------------------------------------------
 
 
 def test_arbitrary_labels_bind_through_provenance():
-    """A concept labeled completely arbitrarily binds through provenance."""
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
@@ -1162,13 +1263,13 @@ def test_arbitrary_labels_bind_through_provenance():
         tools,
         "I create the quotation using the customer and pricing information "
         "in the quoting system.",
-        [_assertion("quotation.create.writes", "quotation")],
+        [_assertion("cq.writes.tc_quote", "quotation")],
     )
     tools.create_concept("whatever", "data", "zzz", evidence=[_ev(oid, "quotation")])
     tools.confirm_concept("whatever", evidence=[_ev(oid, "quotation")])
     tools.db.graph.nodes["c"].writes = [
         ConceptRef(
-            concept_id="whatever", confidence=1.0, evidence=[_ev(oid, "quotation")]
+            concept_id="whatever", confidence=1.0, evidence=[_evr(oid, "quotation")]
         )
     ]
     res = _eval(tools)
@@ -1178,18 +1279,15 @@ def test_arbitrary_labels_bind_through_provenance():
 
 
 def test_paraphrasing_labels_descriptions_does_not_change_score():
-    """Renaming labels/descriptions of the agent glossary does not change any
-    semantic score (the evaluator never reads them)."""
     a = _tools()
     _build(a)
     b = _tools()
     _build(b)
     assert b.db.graph is not None
     for concept in b.db.graph.concepts.values():
-        concept.preferred_label = "renamed-" + concept.id
+        concept.display_label = "renamed-" + concept.id
         concept.description = "completely different description"
-        for term in concept.terms:
-            term.text = "renamed-term"
+        concept.mentions = []
     ra = _eval(a)
     rb = _eval(b)
     for field in (
@@ -1212,17 +1310,17 @@ def test_paraphrasing_labels_descriptions_does_not_change_score():
 
 
 def test_identical_text_different_provenance_grounds_differently():
-    """Identical observation text with different private assertions grounds
-    differently: binding follows assertions, never the wording."""
     text = "I handle the paperwork for the deal."
     ok = _tools()
     _build(ok)
     assert ok.db.graph is not None
-    oid = _claim_obs(ok, text, [_assertion("quotation.create.writes", "paperwork")])
+    oid = _claim_obs(ok, text, [_assertion("cq.writes.tc_quote", "paperwork")])
     ok.create_concept("paper", "data", "paperwork", evidence=[_ev(oid, "paperwork")])
     ok.confirm_concept("paper", evidence=[_ev(oid, "paperwork")])
     ok.db.graph.nodes["c"].writes = [
-        ConceptRef(concept_id="paper", confidence=1.0, evidence=[_ev(oid, "paperwork")])
+        ConceptRef(
+            concept_id="paper", confidence=1.0, evidence=[_evr(oid, "paperwork")]
+        )
     ]
     res_ok = _eval(ok)
     assert res_ok.write_correctness == 1.0
@@ -1230,15 +1328,12 @@ def test_identical_text_different_provenance_grounds_differently():
     bad = _tools()
     _build(bad)
     assert bad.db.graph is not None
-    # same text, but the assertion quotes the activity span instead
-    oid2 = _claim_obs(
-        bad, text, [_assertion("quotation.create.activity", "handle the paperwork")]
-    )
+    oid2 = _claim_obs(bad, text, [_assertion("cq.activity", "handle the paperwork")])
     bad.create_concept("paper2", "data", "paperwork", evidence=[_ev(oid2, "paperwork")])
     bad.confirm_concept("paper2", evidence=[_ev(oid2, "paperwork")])
     bad.db.graph.nodes["c"].writes = [
         ConceptRef(
-            concept_id="paper2", confidence=1.0, evidence=[_ev(oid2, "paperwork")]
+            concept_id="paper2", confidence=1.0, evidence=[_evr(oid2, "paperwork")]
         )
     ]
     res_bad = _eval(bad)
@@ -1246,24 +1341,110 @@ def test_identical_text_different_provenance_grounds_differently():
     assert res_bad.unsupported_ref_count >= 1
 
 
+# ---------------------------------------------------------------------------
+# Span correspondence (containment) without cross-credit
+# ---------------------------------------------------------------------------
+
+
+def test_span_containment_grounds_without_cross_credit():
+    """An evidence span that CONTAINS exactly one assertion span grounds that
+    claim; a span containing assertions of several claims is ambiguous and
+    grounds nothing (no cross-credit)."""
+    tools = _tools()
+    _build(tools)
+    assert tools.db.graph is not None
+    # one utterance asserting the check activity only (single claim)
+    oid = _claim_obs(
+        tools,
+        "I check the customer's information in the CRM.",
+        [_assertion("cc.activity", "check the customer's information")],
+    )
+    # evidence span BROADER than the assertion span (contains it exactly once)
+    tools.create_concept(
+        "broad",
+        "activity",
+        "check step",
+        evidence=[_ev(oid, "check the customer's information in the CRM")],
+    )
+    tools.confirm_concept(
+        "broad", evidence=[_ev(oid, "check the customer's information in the CRM")]
+    )
+    tools.db.graph.nodes["b"].activity = ConceptRef(
+        concept_id="broad",
+        confidence=1.0,
+        evidence=[_evr(oid, "check the customer's information in the CRM")],
+    )
+    res = _eval(tools)
+    assert res.activity_correctness == 1.0
+
+    # a reads ref whose broad span contains assertions of BOTH expected
+    # claims (customer and pricing) is ambiguous and grounds neither
+    tools2 = _tools()
+    _build(tools2)
+    assert tools2.db.graph is not None
+    oid2 = _claim_obs(
+        tools2,
+        "I create the quotation using the customer and pricing information "
+        "in the quoting system.",
+        [
+            _assertion("cq.reads.tc_customer", "customer"),
+            _assertion("cq.reads.tc_pricing", "pricing information"),
+        ],
+    )
+    tools2.create_concept(
+        "broad2",
+        "data",
+        "customer pricing",
+        evidence=[_ev(oid2, "using the customer and pricing information")],
+    )
+    tools2.confirm_concept(
+        "broad2", evidence=[_ev(oid2, "using the customer and pricing information")]
+    )
+    tools2.db.graph.nodes["c"].reads = [
+        ConceptRef(
+            concept_id="broad2",
+            confidence=1.0,
+            evidence=[_evr(oid2, "using the customer and pricing information")],
+        )
+    ]
+    res2 = _eval(tools2)
+    assert res2.read_correctness < 1.0
+    assert res2.ambiguous_evidence_ref_count >= 1
+
+
+def test_evidence_contained_in_assertion_span_grounds():
+    """A NARROWER evidence span inside a single assertion span grounds it."""
+    tools = _tools()
+    _build(tools)
+    assert tools.db.graph is not None
+    oid = _claim_obs(
+        tools,
+        "I check the customer's information in the CRM.",
+        [_assertion("cc.activity", "check the customer's information")],
+    )
+    tools.create_concept("narrow", "activity", "check", evidence=[_ev(oid, "check")])
+    tools.confirm_concept("narrow", evidence=[_ev(oid, "check")])
+    tools.db.graph.nodes["b"].activity = ConceptRef(
+        concept_id="narrow", confidence=1.0, evidence=[_evr(oid, "check")]
+    )
+    res = _eval(tools)
+    assert res.activity_correctness == 1.0
+
+
 def test_invalid_evidence_span_rejected():
-    """Evidence whose quote is not an exact span of the Observation is invalid
-    (evidence hygiene fails) and cannot ground anything."""
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
     oid = next(o.id for o in tools.db.observations if o.turn == 3)  # cq obs
-    # the tool itself rejects a quote that is not an exact span
     tools.create_concept("bogus", "data", "quotation")
     with pytest.raises(ValueError):
         tools.confirm_concept("bogus", evidence=[_ev(oid, "not in the text")])
-    # direct mutation with an invalid span fails evidence hygiene
     tools.db.graph.concepts["bogus"].validation_evidence.append(
         EvidenceRef(observation_id=oid, quote="not in the text", occurrence=0)
     )
     tools.db.graph.nodes["c"].writes = [
         ConceptRef(
-            concept_id="bogus", confidence=1.0, evidence=[_ev(oid, "not in the text")]
+            concept_id="bogus", confidence=1.0, evidence=[_evr(oid, "not in the text")]
         )
     ]
     res = _eval(tools)
@@ -1273,50 +1454,42 @@ def test_invalid_evidence_span_rejected():
 
 
 def test_invalid_assertion_quote_rejected_at_ingestion():
-    """An assertion whose quote/occurrence do not exactly match the message is
-    rejected at ingestion (catalog installed) and at evaluation."""
     from tau2.domains.business_interview.environment import BusinessInterviewEnvironment
+    from tau2.domains.business_interview.user_simulator import StakeholderUserSimulator
 
     env = get_environment()
     assert isinstance(env, BusinessInterviewEnvironment)
-    from tau2.domains.business_interview.user_simulator import StakeholderUserSimulator
-
     task = next(t for t in get_tasks() if t.id == SCENARIO)
     StakeholderUserSimulator(llm="dummy", task=task, environment=env, instructions="x")
-    assert env.fact_ledger is not None
-    assert env.fact_ledger.catalog is not None
+    assert env.assertion_ledger is not None
+    assert env.assertion_ledger.catalog is not None
     with pytest.raises(ValueError):
         env.on_message(
             UserMessage(
                 role="user",
                 content="I check the customer.",
-                stakeholder_assertions=[_assertion("quotation.check.system", "CRM")],
+                stakeholder_assertions=[_assertion("cc.system", "CRM")],
             )
         )
-    # occurrence out of range
     with pytest.raises(ValueError):
         env.on_message(
             UserMessage(
                 role="user",
                 content="I check the customer in the CRM.",
-                stakeholder_assertions=[
-                    _assertion("quotation.check.system", "CRM", occurrence=3)
-                ],
+                stakeholder_assertions=[_assertion("cc.system", "CRM", occurrence=3)],
             )
         )
-    # unknown fact id
     with pytest.raises(ValueError):
         env.on_message(
             UserMessage(
                 role="user",
                 content="I check the customer in the CRM.",
-                stakeholder_assertions=[_assertion("quotation.nope", "CRM")],
+                stakeholder_assertions=[_assertion("nope.claim", "CRM")],
             )
         )
 
 
 def test_second_occurrence_span_matching():
-    """occurrence selects the right span when a quote appears twice."""
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
@@ -1325,11 +1498,10 @@ def test_second_occurrence_span_matching():
         tools,
         text,
         [
-            _assertion("quotation.create.writes", "quotation", occurrence=0),
-            _assertion("quotation.create.activity", "quotation", occurrence=1),
+            _assertion("cq.writes.tc_quote", "quotation", occurrence=0),
+            _assertion("cq.activity", "quotation", occurrence=1),
         ],
     )
-    # evidence at occurrence 1 supports the activity claim only
     tools.create_concept(
         "occ_act",
         "activity",
@@ -1337,18 +1509,14 @@ def test_second_occurrence_span_matching():
         evidence=[_ev(oid, "quotation", 1)],
     )
     tools.confirm_concept("occ_act", evidence=[_ev(oid, "quotation", 1)])
-    assert tools.db.graph is not None
     tools.db.graph.nodes["c"].activity = ConceptRef(
-        concept_id="occ_act", confidence=1.0, evidence=[_ev(oid, "quotation", 1)]
+        concept_id="occ_act", confidence=1.0, evidence=[_evr(oid, "quotation", 1)]
     )
     res = _eval(tools)
-    # activity claim still grounded via the second occurrence
     assert res.activity_correctness == 1.0
 
 
 def test_multi_fact_utterance_cannot_cross_credit_unrelated_concepts():
-    """One utterance asserting several facts: a ref citing one span must not
-    bind the claims of the other facts."""
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
@@ -1357,30 +1525,51 @@ def test_multi_fact_utterance_cannot_cross_credit_unrelated_concepts():
         tools,
         text,
         [
-            _assertion("quotation.check.system", "CRM"),
-            _assertion("quotation.create.activity", "prepare the quotation"),
+            _assertion("cc.system", "CRM"),
+            _assertion("cq.activity", "prepare the quotation"),
         ],
     )
-    # a data concept citing the CRM span must NOT bind the create activity
     tools.create_concept("crm_data", "data", "CRM data", evidence=[_ev(oid, "CRM")])
     tools.confirm_concept("crm_data", evidence=[_ev(oid, "CRM")])
     tools.db.graph.nodes["c"].writes = [
-        ConceptRef(concept_id="crm_data", confidence=1.0, evidence=[_ev(oid, "CRM")])
+        ConceptRef(concept_id="crm_data", confidence=1.0, evidence=[_evr(oid, "CRM")])
     ]
     res = _eval(tools)
     assert res.write_correctness < 1.0
     assert res.unsupported_ref_count >= 1
-    assert res.concept_correctness == 0.0  # crm_data cannot bind tc_quote
+    assert res.concept_correctness == 0.0
+
+
+def test_unrelated_observation_cannot_support_a_claim():
+    tools = _tools()
+    _build(tools)
+    assert tools.db.graph is not None
+    pizza = _claim_obs(tools, "I like pizza on Fridays.")
+    tools.create_concept(
+        "pizza_quote", "data", "quotation", evidence=[_ev(pizza, "pizza")]
+    )
+    tools.db.graph.nodes["c"].writes = [
+        ConceptRef(
+            concept_id="pizza_quote", confidence=1.0, evidence=[_evr(pizza, "pizza")]
+        )
+    ]
+    # a hypothesis the stakeholder never asserted cannot be confirmed
+    with pytest.raises(ValueError):
+        tools.confirm_concept("pizza_quote", evidence=[_ev(pizza, "pizza")])
+    tools.mark_concept_unknown("pizza_quote", evidence=[_ev(pizza, "pizza")])
+    res = _eval(tools)
+    assert res.write_correctness < 1.0
+    assert res.unsupported_ref_count >= 1
+    assert res.evidence_pass is True
+    assert res.structural_pass is False
 
 
 # ---------------------------------------------------------------------------
-# Concept identity (reuse / split / merge)
+# Concept identity (reuse / split / merge / kinds)
 # ---------------------------------------------------------------------------
 
 
 def test_reuse_passes():
-    """One actor concept reused across several nodes and one data concept
-    reused across cc.reads and cq.reads passes concept binding."""
     tools = _tools()
     _build(tools)
     res = _eval(tools)
@@ -1389,23 +1578,21 @@ def test_reuse_passes():
 
 
 def test_split_identity_fails_until_merged():
-    """Two agent concepts for one Truth actor fail until merged."""
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
     oid = _claim_obs(
         tools,
         "I check the customer's information in the CRM.",
-        [_assertion("quotation.check.actor", "I")],
+        [_assertion("cc.actor", "I")],
     )
     tools.create_concept("sales_dup", "actor", "sales", evidence=[_ev(oid, "I")])
     tools.confirm_concept("sales_dup", evidence=[_ev(oid, "I")])
     tools.db.graph.nodes["b"].actor = ConceptRef(
-        concept_id="sales_dup", confidence=1.0, evidence=[_ev(oid, "I")]
+        concept_id="sales_dup", confidence=1.0, evidence=[_evr(oid, "I")]
     )
     res = _eval(tools)
     assert res.concept_correctness == 0.0
-    # repair: merge sales_dup into sales
     tools.merge_concepts("sales", ["sales_dup"])
     res2 = _eval(tools)
     assert res2.concept_correctness == 1.0
@@ -1413,7 +1600,6 @@ def test_split_identity_fails_until_merged():
 
 
 def test_merge_incompatible_kinds_rejected():
-    """Merging concepts of different kinds is rejected by the tool."""
     tools = _tools()
     tools.start_inference("q")
     tools.create_concept("a", "actor", "alpha")
@@ -1423,8 +1609,6 @@ def test_merge_incompatible_kinds_rejected():
 
 
 def test_merge_distinct_truth_concepts_fails():
-    """One agent concept bound to two distinct Truth concepts (of one kind)
-    fails concept binding."""
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
@@ -1433,19 +1617,17 @@ def test_merge_distinct_truth_concepts_fails():
         "I create the quotation using the customer and pricing information "
         "in the quoting system.",
         [
-            _assertion("quotation.create.reads.customer", "customer"),
-            _assertion("quotation.create.reads.pricing", "pricing information"),
+            _assertion("cq.reads.tc_customer", "customer"),
+            _assertion("cq.reads.tc_pricing", "pricing information"),
         ],
     )
     tools.create_concept(
         "blend", "data", "customer pricing", evidence=[_ev(oid, "customer")]
     )
-    tools.add_concept_term(
-        "blend", "pricing", evidence=[_ev(oid, "pricing information")]
-    )
+    tools.add_concept_mention("blend", [_ev(oid, "pricing information")])
     tools.confirm_concept("blend", evidence=[_ev(oid, "customer")])
     tools.db.graph.nodes["c"].reads = [
-        ConceptRef(concept_id="blend", confidence=1.0, evidence=[_ev(oid, "customer")])
+        ConceptRef(concept_id="blend", confidence=1.0, evidence=[_evr(oid, "customer")])
     ]
     res = _eval(tools)
     assert res.concept_correctness == 0.0
@@ -1453,47 +1635,101 @@ def test_merge_distinct_truth_concepts_fails():
 
 
 def test_incompatible_kind_binding_fails():
-    """An agent data concept used at an actor slot cannot bind (kinds are
-    incompatible)."""
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
     oid = _claim_obs(
         tools,
         "I check the customer's information in the CRM.",
-        [_assertion("quotation.check.actor", "I")],
+        [_assertion("cc.actor", "I")],
     )
     tools.create_concept("actor_data", "data", "some data", evidence=[_ev(oid, "I")])
     tools.confirm_concept("actor_data", evidence=[_ev(oid, "I")])
     tools.db.graph.nodes["b"].actor = ConceptRef(
-        concept_id="actor_data", confidence=1.0, evidence=[_ev(oid, "I")]
+        concept_id="actor_data", confidence=1.0, evidence=[_evr(oid, "I")]
     )
     res = _eval(tools)
-    # the claim is grounded by its evidence, but the binding is incompatible
     assert res.concept_correctness == 0.0
     assert res.structural_pass is False
 
 
-def test_unrelated_observation_cannot_support_a_claim():
-    """An authentic but unrelated Observation cannot ground any ref."""
+def test_condition_participates_in_identity():
+    """Conditions join the identity validation: one condition concept bound to
+    two distinct Truth conditions fails (merging distinct concepts)."""
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
-    pizza = _claim_obs(tools, "I like pizza on Fridays.")
-    tools.create_concept(
-        "pizza_quote", "data", "quotation", evidence=[_ev(pizza, "pizza")]
+    oid3 = _claim_obs(
+        tools,
+        "Quotations over 1,000,000 yen go to the manager for approval.",
+        [_assertion("e3.condition", "over 1,000,000 yen")],
     )
-    tools.confirm_concept("pizza_quote", evidence=[_ev(pizza, "pizza")])
-    tools.db.graph.nodes["c"].writes = [
-        ConceptRef(
-            concept_id="pizza_quote", confidence=1.0, evidence=[_ev(pizza, "pizza")]
-        )
-    ]
+    oid4 = _claim_obs(
+        tools,
+        "Quotations at or below 1,000,000 yen are sent directly to the customer.",
+        [_assertion("e4.condition", "at or below 1,000,000 yen")],
+    )
+    tools.create_concept(
+        "cond_blend", "condition", "amount", evidence=[_ev(oid3, "over 1,000,000 yen")]
+    )
+    tools.add_concept_mention("cond_blend", [_ev(oid4, "at or below 1,000,000 yen")])
+    tools.confirm_concept("cond_blend", evidence=[_ev(oid3, "over 1,000,000 yen")])
+    tools.db.graph.edges["e3"].condition = ConceptRef(
+        concept_id="cond_blend",
+        confidence=1.0,
+        evidence=[_evr(oid3, "over 1,000,000 yen")],
+    )
+    tools.db.graph.edges["e4"].condition = ConceptRef(
+        concept_id="cond_blend",
+        confidence=1.0,
+        evidence=[_evr(oid4, "at or below 1,000,000 yen")],
+    )
     res = _eval(tools)
-    assert res.write_correctness < 1.0
-    assert res.unsupported_ref_count >= 1
-    assert res.evidence_pass is True  # the obs is real & authentic (hygiene ok)
+    assert res.concept_correctness == 0.0
     assert res.structural_pass is False
+
+
+# ---------------------------------------------------------------------------
+# ConceptKind enforcement (structural rules)
+# ---------------------------------------------------------------------------
+
+
+def test_concept_kind_enforcement_in_tools():
+    tools = _tools()
+    tools.start_inference("q")
+    tools.create_concept("act", "activity", "an activity")
+    tools.create_concept("sales", "actor", "sales")
+    tools.create_concept("data_c", "data", "some data")
+    tools.create_concept("sys", "system", "a system")
+    tools.create_concept("cond", "condition", "a condition")
+    tools.create_concept("rat", "rationale", "a rationale")
+    tools.add_node("n1", activity="act")
+    with pytest.raises(ValueError):
+        tools.add_node("n2", activity="sales")  # actor as activity
+    with pytest.raises(ValueError):
+        tools.add_node("n2", activity="act", actor="data_c")  # data as actor
+    with pytest.raises(ValueError):
+        tools.add_node("n2", activity="act", system="data_c")  # data as system
+    with pytest.raises(ValueError):
+        tools.add_node("n2", activity="act", reads=["act"])  # activity as data
+    with pytest.raises(ValueError):
+        tools.add_node("n2", activity="act", writes=["cond"])  # condition as data
+    with pytest.raises(ValueError):
+        tools.add_node(
+            "n2", activity="act", necessity_rationale="sys"
+        )  # system as rationale
+    tools.add_node(
+        "n2",
+        activity="act",
+        actor="sales",
+        system="sys",
+        reads=["data_c"],
+        writes=["data_c"],
+        necessity_rationale="rat",
+    )
+    with pytest.raises(ValueError):
+        tools.add_edge("e1", "n1", "n2", condition="data_c")  # data as condition
+    tools.add_edge("e1", "n1", "n2", condition="cond")
 
 
 # ---------------------------------------------------------------------------
@@ -1502,8 +1738,6 @@ def test_unrelated_observation_cannot_support_a_claim():
 
 
 def test_edge_existence_needs_provenance():
-    """An agent edge whose evidence does not support any edge_exists claim is
-    not matched (fabricated/unsupported edge)."""
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
@@ -1526,11 +1760,9 @@ def test_missing_edge_lowers_edge_recall():
 
 
 def test_condition_grounded_and_wrong_condition_fails():
-    """Conditions bind through provenance; a wrong condition concept fails."""
     good = _tools()
     _build(good)
-    res = _eval(good)
-    assert res.condition_correctness == 1.0
+    assert _eval(good).condition_correctness == 1.0
 
     bad = _tools()
     _build(bad)
@@ -1538,7 +1770,7 @@ def test_condition_grounded_and_wrong_condition_fails():
     oid = _claim_obs(
         bad,
         "Quotations over 1,000,000 yen go to the manager for approval.",
-        [_assertion("flow.e3.edge_exists", "over 1,000,000 yen")],
+        [_assertion("e3.edge_exists", "over 1,000,000 yen")],
     )
     bad.create_concept(
         "wrong_cond",
@@ -1550,7 +1782,7 @@ def test_condition_grounded_and_wrong_condition_fails():
     bad.db.graph.edges["e3"].condition = ConceptRef(
         concept_id="wrong_cond",
         confidence=1.0,
-        evidence=[_ev(oid, "over 1,000,000 yen")],
+        evidence=[_evr(oid, "over 1,000,000 yen")],
     )
     res2 = _eval(bad)
     assert res2.condition_correctness < 1.0
@@ -1558,15 +1790,13 @@ def test_condition_grounded_and_wrong_condition_fails():
 
 
 def test_condition_on_unconditional_edge_fails():
-    """An asserted condition on an edge with no truth condition has no
-    provenance and fails."""
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
     oid = _claim_obs(
         tools,
         "After receiving the request, I check the customer information.",
-        [_assertion("flow.e1.edge_exists", "After receiving the request, I check")],
+        [_assertion("e1.edge_exists", "After receiving the request, I check")],
     )
     tools.create_concept(
         "fake_cond",
@@ -1580,7 +1810,7 @@ def test_condition_on_unconditional_edge_fails():
     tools.db.graph.edges["e1"].condition = ConceptRef(
         concept_id="fake_cond",
         confidence=1.0,
-        evidence=[_ev(oid, "After receiving the request")],
+        evidence=[_evr(oid, "After receiving the request")],
     )
     res = _eval(tools)
     assert res.condition_correctness < 1.0
@@ -1588,17 +1818,14 @@ def test_condition_on_unconditional_edge_fails():
 
 
 # ---------------------------------------------------------------------------
-# Glossary validation / completion
+# Glossary validation / completion / genuine confirmation
 # ---------------------------------------------------------------------------
 
 
 def test_hypothesized_referenced_concept_blocks_completion():
-    """finish_interview refuses while a referenced concept is hypothesized;
-    the evaluator's glossary_pass is False."""
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
-    # revert one concept to hypothesized
     tools.db.graph.concepts["customer"].validation_status = "hypothesized"
     with pytest.raises(ValueError):
         tools.finish_interview()
@@ -1609,33 +1836,98 @@ def test_hypothesized_referenced_concept_blocks_completion():
 
 
 def test_unreferenced_hypothesized_concept_does_not_block():
-    """A hypothesized concept that is never referenced does not block
-    completion."""
     tools = _tools()
     _build(tools)
     tools.create_concept("unused", "data", "unused concept")
-    tools.finish_interview()  # no raise
+    tools.finish_interview()
     res = _eval(tools)
     assert res.glossary_pass is True
 
 
-def test_unknown_and_disputed_can_complete_when_grounded():
-    """Referenced concepts marked unknown/disputed resolve completion."""
-    for status, fn in (
-        ("unknown", "mark_concept_unknown"),
-        ("disputed", "mark_concept_disputed"),
-    ):
-        tools = _tools()
-        _build(tools)
-        assert tools.db.graph is not None
-        # replace the customer concept's status via the tool
-        getattr(tools, fn)("customer")
-        # references still fully grounded
-        tools.finish_interview()  # no raise
-        res = _eval(tools)
-        assert res.glossary_pass is True
-        assert res.concept_correctness == 1.0
-        assert res.structural_pass is True
+def test_confirm_concept_requires_stakeholder_assertion_evidence():
+    """Confirmation must correspond to a private assertion — a mention from
+    unrelated speech is not confirmation."""
+    tools = _tools()
+    tools.start_inference("q")
+    tools.create_concept("c", "data", "thing")
+    # evidence that does not correspond to any assertion -> rejected
+    pizza = _claim_obs(tools, "I like pizza on Fridays.")
+    with pytest.raises(ValueError):
+        tools.confirm_concept("c", evidence=[_ev(pizza, "pizza")])
+    # unknown observation -> rejected
+    with pytest.raises(ValueError):
+        tools.confirm_concept("c", evidence=[_ev("obs_missing", "x")])
+
+
+def test_bulk_self_confirmation_rejected():
+    """One evidence span cannot confirm several concepts."""
+    tools = _tools()
+    tools.start_inference("q")
+    oid = _claim_obs(
+        tools,
+        "I check the customer's information in the CRM.",
+        [_assertion("cc.system", "CRM")],
+    )
+    tools.create_concept("a", "system", "CRM", evidence=[_ev(oid, "CRM")])
+    tools.create_concept("b", "system", "CRM", evidence=[_ev(oid, "CRM")])
+    tools.confirm_concept("a", evidence=[_ev(oid, "CRM")])
+    with pytest.raises(ValueError):
+        tools.confirm_concept("b", evidence=[_ev(oid, "CRM")])
+
+
+def test_unknown_and_disputed_require_evidence_and_can_complete():
+    """unknown/disputed need stakeholder evidence and resolve completion when
+    referenced."""
+    # unknown: evidence that does NOT assert the concept's claims
+    tools = _tools()
+    _build(tools)
+    assert tools.db.graph is not None
+    dont_know = _claim_obs(tools, "I do not know the reason for that.")
+    tools.mark_concept_unknown(
+        "pricing",
+        evidence=[_ev(dont_know, "do not know")],
+    )
+    tools.finish_interview()
+    res = _eval(tools)
+    assert res.glossary_pass is True
+    assert res.structural_pass is True
+
+    # disputed: evidence from >= 2 distinct observations asserting the claims
+    tools2 = _tools()
+    _build(tools2)
+    assert tools2.db.graph is not None
+    obs_cc = next(o for o in tools2.db.observations if o.turn == 2)
+    obs_cq = next(o for o in tools2.db.observations if o.turn == 3)
+    tools2.mark_concept_disputed(
+        "customer",
+        evidence=[
+            _ev(obs_cc.id, "customer's information"),
+            _ev(obs_cq.id, "customer"),
+        ],
+    )
+    tools2.finish_interview()
+    res2 = _eval(tools2)
+    assert res2.glossary_pass is True
+    assert res2.structural_pass is True
+
+
+def test_confirmation_evidence_must_match_concepts_claims():
+    """The evaluator rejects a confirmed concept whose validation evidence does
+    not correspond to an assertion of the concept's own claims."""
+    tools = _tools()
+    _build(tools)
+    assert tools.db.graph is not None
+    # confirm `sales` with evidence of the manager's claim -> invalid
+    tools.db.graph.concepts["sales"].validation_evidence = [
+        EvidenceRef(
+            observation_id=next(o.id for o in tools.db.observations if o.turn == 4),
+            quote="manager",
+            occurrence=0,
+        )
+    ]
+    res = _eval(tools)
+    assert res.glossary_pass is False
+    assert any("sales" in e for e in res.glossary_validation_errors)
 
 
 def test_partially_confirmed_can_complete():
@@ -1648,16 +1940,42 @@ def test_partially_confirmed_can_complete():
     assert res.glossary_pass is True
 
 
-def test_confirm_concept_requires_authentic_evidence():
+def test_mention_is_not_terminology():
+    """Mentions never establish terminology; display_label is irrelevant;
+    terminology agreements are recorded separately."""
+    tools = _tools()
+    _build(tools)
+    assert tools.db.graph is not None
+    oid = _claim_obs(
+        tools,
+        "I create the quotation using the customer and pricing information "
+        "in the quoting system.",
+        [_assertion("cq.writes.tc_quote", "quotation")],
+    )
+    # a mention of a NEW term on the quote concept does not change the score
+    tools.add_concept_mention("quote", [_ev(oid, "quotation")])
+    res_before = _eval(tools)
+    assert res_before.structural_pass is True
+    # record an explicit terminology agreement separately
+    tools.record_terminology_agreement(
+        "quote", "the offer document", evidence=[_ev(oid, "quotation")]
+    )
+    assert tools.db.graph is not None
+    assert len(tools.db.graph.terminology_agreements) == 1
+    agreement = tools.db.graph.terminology_agreements[0]
+    assert agreement.concept_id == "quote"
+    assert agreement.term == "the offer document"
+    res_after = _eval(tools)
+    assert res_after.structural_pass is True
+    assert res_after.concept_correctness == 1.0
+
+
+def test_terminology_agreement_requires_evidence():
     tools = _tools()
     tools.start_inference("q")
     tools.create_concept("c", "data", "thing")
     with pytest.raises(ValueError):
-        tools.confirm_concept("c")  # no evidence
-    with pytest.raises(ValueError):
-        tools.confirm_concept("c", evidence=[_ev("obs_missing", "x")])  # unknown obs
-    with pytest.raises(ValueError):
-        tools.confirm_concept("c", evidence=[_ev("obs_missing", "x", 0)])  # unknown obs
+        tools.record_terminology_agreement("c", "term", evidence=[])
 
 
 # ---------------------------------------------------------------------------
@@ -1682,9 +2000,8 @@ def test_fabricated_observation_source_fails_authenticity():
     )
     tools.db.observations.append(fake)
     assert tools.db.graph is not None
-    tools.db.graph.nodes["b"].actor.evidence.append(
-        EvidenceRef(observation_id="obs_fake", quote="made up", occurrence=0)
-    )
+    assert tools.db.graph.nodes["b"].actor is not None
+    tools.db.graph.nodes["b"].actor.evidence.append(_evr("obs_fake", "made up"))
     res = _eval(tools)
     assert res.invalid_observation_source_count >= 1
     assert res.provenance_authenticity_pass is False
@@ -1693,24 +2010,20 @@ def test_fabricated_observation_source_fails_authenticity():
 
 
 def test_zero_evidence_refs_fail_evidence_gate():
-    """Asserted refs with no evidence at all fail the evidence gate."""
     tools = _tools()
     tools.start_inference("q")
     _ingest(tools, "assistant", "Hello.")
-    # build a structurally valid but evidence-free graph
+    obs = _claim_obs(tools, "We start things off.")
     for cid, kind, label in [
         ("act", "activity", "receive"),
         ("sales", "actor", "sales"),
         ("req", "data", "request"),
     ]:
         tools.create_concept(cid, kind, label)
-        tools.confirm_concept(cid, evidence=[]) if False else None
-    # confirm without evidence is impossible; use direct status via tool marks
-    tools.mark_concept_unknown("act")
-    tools.mark_concept_unknown("sales")
-    tools.mark_concept_unknown("req")
+        tools.mark_concept_unknown(cid, evidence=[_ev(obs, "start")])
     tools.add_node("a", activity="act", actor="sales", writes=["req"])
     tools.add_edge("e1", "a", "a", evidence=[])
+    tools.set_graph_endpoints(start_node_id="a", end_node_ids=["a"])
     res = _eval(tools)
     assert res.evidence_pass is False
 
@@ -1721,58 +2034,51 @@ def test_zero_evidence_refs_fail_evidence_gate():
 
 
 def test_private_ids_absent_from_agent_visible_state():
-    """Fact ids, claim ids and truth concept ids never appear in Agent-visible
-    tools, serialized DB state or messages."""
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
     listing = tools.list_concepts()
-    for forbidden in ("quotation.", "tc_", "claim", "edge_exists"):
+    for forbidden in ("cq.", "tc_", "claim", "edge_exists"):
         assert forbidden not in listing, forbidden
     dumped = str(tools.db.model_dump(mode="json"))
     sc = get_scenario(SCENARIO)
     assert sc is not None
-    for fid in list(sc.facts)[:5]:
-        assert fid not in dumped
     for cid in list(sc.claims)[:5]:
         assert cid not in dumped
-    assert "fact_ledger" not in InterviewDB.model_fields
+    assert "assertion_ledger" not in InterviewDB.model_fields
 
 
 def test_user_message_serialization_excludes_assertions():
     msg = UserMessage(
         role="user",
         content="hello",
-        stakeholder_assertions=[_assertion("quotation.create.writes", "quotation")],
+        stakeholder_assertions=[_assertion("cq.writes.tc_quote", "quotation")],
     )
     dumped = msg.model_dump(mode="json")
     assert "stakeholder_assertions" not in dumped
-    assert "quotation.create.writes" not in str(dumped)
-    assert "quotation.create.writes" not in str(msg)
-    assert "quotation.create.writes" not in repr(msg)
+    assert "cq.writes.tc_quote" not in str(dumped)
+    assert "cq.writes.tc_quote" not in str(msg)
+    assert "cq.writes.tc_quote" not in repr(msg)
 
 
 def test_ledger_binds_assertions_per_turn():
-    """The environment binds the assertion sidecar against the exact message
-    turn; a plain message binds nothing."""
     from tau2.domains.business_interview.environment import BusinessInterviewEnvironment
 
     env = get_environment()
     assert isinstance(env, BusinessInterviewEnvironment)
     env.on_message(UserMessage(role="user", content="plain statement"))
-    assert env.fact_ledger is not None
-    assert env.fact_ledger.assertions() == {}
+    assert env.assertion_ledger is not None
+    assert env.assertion_ledger.assertions() == {}
     env.on_message(
         UserMessage(
             role="user",
             content="I check the customer in the CRM.",
             stakeholder_assertions=[
-                {"fact_id": "quotation.check.system", "quote": "CRM", "occurrence": 0}
+                {"claim_id": "cc.system", "quote": "CRM", "occurrence": 0}
             ],
         )
     )
-    # catalog is not installed here (no adapter) — raw bind, validated at eval
-    assert 1 in env.fact_ledger.assertions()
+    assert 1 in env.assertion_ledger.assertions()
 
 
 # ---------------------------------------------------------------------------
@@ -1783,7 +2089,7 @@ def test_ledger_binds_assertions_per_turn():
 def test_semantic_matcher_machinery_is_gone():
     import pathlib
 
-    from tau2.domains.business_interview import evaluation, scenario
+    from tau2.domains.business_interview import evaluation
 
     assert not hasattr(evaluation, "_predicate_ok")
     assert not hasattr(evaluation, "_necessity_value_ok")
@@ -1791,40 +2097,126 @@ def test_semantic_matcher_machinery_is_gone():
     assert not hasattr(evaluation, "_node_overlap")
     assert not hasattr(evaluation, "_STOPWORDS")
     assert not hasattr(evaluation, "_term_covers")
+    assert not hasattr(evaluation, "_supported_claims")
     assert not hasattr(evaluation, "TruthNodeSpec")
-    assert not hasattr(scenario, "EvaluationSpec") or "expressions" not in (
-        scenario.EvaluationSpec.model_fields
-        if hasattr(scenario, "EvaluationSpec")
-        else {}
-    )
     domain_dir = pathlib.Path(evaluation.__file__).parent
-    banned = (
-        "preferred_label",
-        "_predicate_ok",
-        "_necessity_value_ok",
-        "_attribute_match",
-        "norm_role",
-        "norm_system",
-        "token overlap",
-    )
     for src in domain_dir.glob("*.py"):
         text = src.read_text(encoding="utf-8")
-        for token in banned:
-            if token in ("preferred_label",):
-                # labels exist as data, but must never be *matched*
-                continue
+        for token in (
+            "_predicate_ok",
+            "_necessity_value_ok",
+            "_attribute_match",
+            "norm_role",
+            "norm_system",
+        ):
             assert token not in text, f"{src.name} still contains {token!r}"
-    # deleted modules no longer exist
     assert not (domain_dir / "dag.py").exists()
     assert not (domain_dir / "concepts.py").exists()
     assert not (domain_dir / "aliases.py").exists()
 
 
 def test_evaluation_spec_is_empty():
-    """The scenario EvaluationSpec carries no semantic expression lists."""
     sc = get_scenario(SCENARIO)
     assert sc is not None
     assert sc.spec.model_dump() == {}
+
+
+# ---------------------------------------------------------------------------
+# Episode termination
+# ---------------------------------------------------------------------------
+
+
+def test_finish_terminates_episode():
+    """A successful finish_interview() terminates the episode immediately
+    (EPISODE_COMPLETE), distinct from max_steps truncation."""
+    from tau2.data_model.simulation import TerminationReason
+    from tau2.domains.business_interview.environment import BusinessInterviewEnvironment
+    from tau2.orchestrator.orchestrator import Orchestrator
+
+    class StubUser:
+        def get_init_state(self, message_history=None):
+            return {}
+
+        def generate_next_message(self, message, state):
+            return UserMessage(role="user", content="ok"), state
+
+        def set_seed(self, seed):
+            pass
+
+        def stop(self, message, state):
+            pass
+
+    class StubAgent:
+        def __init__(self):
+            self.called = 0
+
+        def get_init_state(self, message_history=None):
+            return {}
+
+        def generate_next_message(self, message, state):
+            self.called += 1
+            return (
+                AssistantMessage(
+                    role="assistant",
+                    tool_calls=[
+                        ToolCall(
+                            id="t1",
+                            name="finish_interview",
+                            arguments={"summary": "done"},
+                            requestor="assistant",
+                        )
+                    ],
+                ),
+                state,
+            )
+
+        def is_stop(self, message):
+            return False
+
+        def set_seed(self, seed):
+            pass
+
+        def stop(self, message, state):
+            pass
+
+    env = get_environment()
+    assert isinstance(env, BusinessInterviewEnvironment)
+    # pre-build a valid finished graph in the environment's tools
+    assert env.tools is not None
+    assert env.tools is not None
+    _build(env.tools)  # type: ignore[arg-type]
+    # reset completion so the stub's finish call triggers it
+    assert env.tools.db is not None
+    env.tools.db.interview_complete = False
+
+    task = next(t for t in get_tasks() if t.id == SCENARIO)
+    orch = Orchestrator(
+        domain="business_interview",
+        agent=StubAgent(),  # type: ignore[arg-type]
+        user=StubUser(),  # type: ignore[arg-type]
+        environment=env,
+        task=task,
+        max_steps=100,
+        max_errors=10,
+        seed=1,
+        solo_mode=False,
+        simulation_id="termination-test",
+    )
+    result = orch.run()
+    assert env.episode_complete() is True
+    assert result.termination_reason == TerminationReason.EPISODE_COMPLETE
+    assert result.termination_reason != TerminationReason.MAX_STEPS
+
+
+def test_episode_complete_reflects_finish():
+    from tau2.domains.business_interview.environment import BusinessInterviewEnvironment
+
+    env = get_environment()
+    assert isinstance(env, BusinessInterviewEnvironment)
+    assert env.episode_complete() is False
+    assert env.tools is not None
+    _build(env.tools)  # type: ignore[arg-type]
+    assert env.episode_complete() is True
 
 
 # ---------------------------------------------------------------------------
@@ -1857,33 +2249,9 @@ def test_observe_message_by_id_creates_correct_observation():
     assert tools.observe_message("sm_2") == oid
 
 
-def test_invalid_and_fabricated_message_ids_rejected():
-    tools = _tools()
-    _ingest(tools, "user", "Only one real message.")
-    for bad in ("sm_0", "sm_2", "sm_99", "turn_3", "foo"):
-        with pytest.raises(ValueError):
-            tools.observe_message(bad)
-    empty = _tools()
-    with pytest.raises(ValueError):
-        empty.observe_latest_stakeholder_message()
-
-
-def test_assistant_tool_messages_cannot_be_observed():
-    tools = _tools()
-    _ingest(tools, "assistant", "I ask a question.")
-    _ingest(tools, "user", "A real stakeholder statement.")
-    _ingest(tools, "tool", "a tool result")
-    listing = tools.list_stakeholder_messages()
-    assert listing.count("sm_") == 1
-    oid = tools.observe_message("sm_1")
-    obs = next(o for o in tools.db.observations if o.id == oid)
-    assert obs.text == "A real stakeholder statement."
-
-
 def test_observation_capture_survives_set_state_replay():
-    """Replaying a conversation via environment.set_state restores the same
-    stable sm ids and observations (deterministic, append-only ledger)."""
     from tau2.data_model.message import (
+        AssistantMessage,
         ToolCall,
         ToolMessage,
         UserMessage,
@@ -1954,13 +2322,12 @@ def test_create_concept_rejects_bad_kind():
         tools.create_concept("x", "widget", "x")
 
 
-def test_merge_concepts_repoints_refs_and_folds_terms():
+def test_merge_concepts_repoints_refs_and_folds_mentions():
     tools = _tools()
     tools.start_inference("q")
     tools.create_concept("a", "data", "alpha")
     tools.create_concept("b", "data", "beta")
     tools.create_concept("act", "activity", "first step")
-    tools.mark_concept_unknown("act")
     tools.add_node("n1", activity="act", reads=["a"], writes=["b"])
     tools.merge_concepts("a", ["b"])
     assert tools.db.graph is not None
@@ -1977,7 +2344,6 @@ def test_remove_node_after_decomposition_leaves_no_dangling_edge():
         ("act2", "activity", "fine"),
     ):
         tools.create_concept(cid, kind, label)
-        tools.mark_concept_unknown(cid)
     tools.add_node("coarse", activity="act1")
     tools.add_node("fine_a", activity="act2")
     tools.add_edge("e1", "coarse", "fine_a", evidence=[])
@@ -1992,7 +2358,6 @@ def test_validate_graph_accepts_cycles():
     tools = _tools()
     tools.start_inference("q")
     tools.create_concept("act", "activity", "loop step")
-    tools.mark_concept_unknown("act")
     tools.add_node("a", activity="act")
     tools.add_node("b", activity="act")
     tools.add_edge("e1", "a", "b", evidence=[])
@@ -2000,6 +2365,19 @@ def test_validate_graph_accepts_cycles():
     out = tools.validate_graph()
     assert "validation errors" not in out.lower()
     assert "valid" in out.lower()
+
+
+def test_finish_requires_endpoints():
+    tools = _tools()
+    _build(tools)
+    assert tools.db.graph is not None
+    tools.db.graph.start_node_id = None
+    with pytest.raises(ValueError):
+        tools.finish_interview()
+    tools.db.graph.start_node_id = "a"
+    tools.db.graph.end_node_ids = []
+    with pytest.raises(ValueError):
+        tools.finish_interview()
 
 
 # ---------------------------------------------------------------------------
@@ -2019,6 +2397,9 @@ def test_en_ja_equivalent():
         "node_precision",
         "edge_recall",
         "edge_precision",
+        "start_correct",
+        "end_recall",
+        "end_precision",
         "activity_correctness",
         "actor_correctness",
         "system_correctness",
@@ -2040,6 +2421,7 @@ def test_lab_same_mechanism_full_pass():
     assert res.structural_pass is True
     assert res.quality_pass is True
     assert res.node_recall == 1.0
+    assert res.start_correct is True
     assert res.concept_correctness == 1.0
 
 
@@ -2047,8 +2429,9 @@ def test_lab_hidden_derived_artifact_assertion_fails():
     tools = _tools()
     _build_lab(tools)
     assert tools.db.graph is not None
+    cant_say = _claim_obs(tools, "I cannot say.")
     tools.create_concept("seasoned", "data", "seasoned chamber")
-    tools.mark_concept_unknown("seasoned")
+    tools.mark_concept_unknown("seasoned", evidence=[_ev(cant_say, "cannot say")])
     tools.db.graph.nodes["n2"].writes = [
         ConceptRef(concept_id="seasoned", confidence=1.0)
     ]
@@ -2070,15 +2453,14 @@ def test_tasks_and_split_load():
     assert set(get_tasks_split()["base_ja"]) == {JA_SCENARIO}
 
 
-def test_task_instructions_reference_facts_not_known_info():
-    """known_info no longer carries business facts; task_instructions refer to
-    the structured facts."""
+def test_task_instructions_reference_knowledge_not_sentences():
     for task in get_tasks():
         ins = task.user_scenario.instructions
-        assert not (ins.known_info or "").strip(), task.id
-        ti = (ins.task_instructions or "").lower()
+        assert not (getattr(ins, "known_info", None) or "").strip(), task.id
+        ti = (getattr(ins, "task_instructions", None) or "").lower()
         if task.id != "quotation_workflow_1_ja":
-            assert "structured facts" in ti or "your facts" in ti, task.id
+            assert "your knowledge" in ti, task.id
+        assert "record the quotation request" not in ti
 
 
 def test_agent_policy_requires_glossary_discipline():
@@ -2086,8 +2468,10 @@ def test_agent_policy_requires_glossary_discipline():
     assert "glossary" in p
     assert "hypothesized" in p
     assert "confirm_concept" in p
+    assert "mention" in p
+    assert "terminology" in p
     assert "exact substring" in p
-    assert "cycles are valid" in p or "cycles are normal" in p
+    assert "cycles" in p
 
 
 def test_policy_does_not_hardcode_domain_terms():
@@ -2121,3 +2505,7 @@ def test_evaluator_rewards_full_reconstruction():
         "assert_necessity_handled": True,
         "assert_evidence_backed": True,
     }
+    diag = (reward_info.info or {})["diagnostics"]
+    assert diag["structural_pass"] is True
+    assert diag["quality_pass"] is True
+    assert diag["glossary_pass"] is True

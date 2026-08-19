@@ -1,16 +1,21 @@
-"""Agent tools for the unified-glossary business_interview benchmark (v5).
+"""Agent tools for the graph-context business_interview benchmark (v6).
 
 The agent records **Observations** (immutable evidence), builds a private
 **glossary** of typed ``BusinessConcept``\\ s (activity / actor / system / data /
 condition / rationale), and constructs an inferred **BusinessProcessGraph**
 whose node/edge properties reference glossary concepts. Every claim cites
-**EvidenceRef**\\ s — exact spans (quote + occurrence) of authentic
-Observations.
+**EvidenceRef**\\ s — spans of authentic Observations.
 
-Glossary lifecycle: concepts start ``hypothesized``; the agent confirms them
-with authentic stakeholder evidence (``confirm_concept``), marks them unknown
-or disputed, merges mistakenly split concepts, and must resolve every
-*referenced* concept before ``finish_interview``.
+**Mention != terminology**: a concept's ``mentions`` are Observation spans the
+Agent believes refer to it; an explicit terminology agreement with the
+stakeholder is recorded separately (``record_terminology_agreement``).
+Confirmation (``confirm_concept``) must represent actual stakeholder
+confirmation of concept identity — evidence must correspond to a private
+assertion of the concept's claims, and one evidence span may back at most one
+concept (no bulk self-confirmation). ``unknown``/``disputed`` also require
+stakeholder evidence. Structural ConceptKind rules are enforced: activity ->
+activity, actor -> actor, system -> system, reads/writes -> data,
+rationale -> rationale, edge condition -> condition.
 """
 
 from typing import Optional
@@ -19,25 +24,32 @@ from pydantic import ValidationError
 
 from tau2.data_model.tasks import Task
 from tau2.domains.business_interview.evaluation import EvaluationResult, evaluate
-from tau2.domains.business_interview.facts import StakeholderFactLedger
+from tau2.domains.business_interview.facts import (
+    StakeholderAssertionLedger,
+)
 from tau2.domains.business_interview.graph import (
     BusinessConcept,
     BusinessProcessGraph,
     ConceptRef,
-    ConceptTerm,
     Edge,
     EvidenceRef,
     InterviewDB,
     Node,
     Observation,
+    TerminologyAgreement,
 )
 from tau2.domains.business_interview.scenario import get_scenario
 from tau2.environment.toolkit import ToolKitBase, ToolType, is_tool
 
-_SINGLE_PROPS = ("actor", "system", "necessity_rationale")
-_SINGLE_PROP_NAMES = {
+_KINDS = ("activity", "actor", "system", "data", "condition", "rationale")
+
+# Structural ConceptKind rules per node property / edge property.
+_PROPERTY_KIND: dict[str, str] = {
+    "activity": "activity",
     "actor": "actor",
     "system": "system",
+    "reads": "data",
+    "writes": "data",
     "necessity_rationale": "rationale",
 }
 
@@ -53,19 +65,24 @@ def _ev(value: dict) -> EvidenceRef:
 class InterviewTools(ToolKitBase):
     """Tools to infer the business process graph from stakeholder observations.
 
-    ``fact_ledger`` is the private assertion sidecar ledger, shared with the
-    environment and the stakeholder simulator adapter. It is evaluator-only:
-    no tool exposes it, and it is never serialized into the Agent-visible DB.
+    ``assertion_ledger`` is the private assertion sidecar ledger, shared with
+    the environment and the stakeholder simulator adapter. It is
+    evaluator-only: no tool exposes it, and it is never serialized into the
+    Agent-visible DB.
     """
 
     db: InterviewDB
 
     def __init__(
-        self, db: InterviewDB, fact_ledger: Optional[StakeholderFactLedger] = None
+        self,
+        db: InterviewDB,
+        assertion_ledger: Optional[StakeholderAssertionLedger] = None,
     ) -> None:
         super().__init__(db)
-        self.fact_ledger = (
-            fact_ledger if fact_ledger is not None else StakeholderFactLedger()
+        self.assertion_ledger = (
+            assertion_ledger
+            if assertion_ledger is not None
+            else StakeholderAssertionLedger()
         )
 
     # ------------------------------------------------------------- helpers
@@ -120,6 +137,14 @@ class InterviewTools(ToolKitBase):
         for cid in concept_ids or []:
             self._concept(cid)
 
+    def _require_kind(self, concept_id: str, expected_kind: str, where: str) -> None:
+        concept = self._concept(concept_id)
+        if concept.kind != expected_kind:
+            raise ValueError(
+                f"{where}: concept {concept_id!r} has kind {concept.kind!r} but "
+                f"requires kind {expected_kind!r}"
+            )
+
     @staticmethod
     def _ref(
         concept_id: str, confidence: float = 1.0, evidence: Optional[list] = None
@@ -129,6 +154,12 @@ class InterviewTools(ToolKitBase):
             confidence=confidence,
             evidence=list(evidence or []),
         )
+
+    @staticmethod
+    def _refs(concept_ids: Optional[list[str]]) -> list[ConceptRef]:
+        return [
+            ConceptRef(concept_id=cid, confidence=1.0) for cid in (concept_ids or [])
+        ]
 
     # ------------------------------------------------------------- glossary
 
@@ -141,11 +172,9 @@ class InterviewTools(ToolKitBase):
         description: Optional[str] = None,
         evidence: Optional[list] = None,
     ) -> str:
-        """Create an Agent-local glossary concept (a business object / role /
-        activity / system / condition / rationale).
+        """Create an Agent-local glossary concept (a business thing of one kind).
 
-        Create one concept when you first discover something the stakeholder
-        names, choosing the kind that matches what it is:
+        Choose the kind that matches what the thing is:
         - activity: what is done (a step)
         - actor: who does it
         - system: which system/tool is used
@@ -153,18 +182,19 @@ class InterviewTools(ToolKitBase):
         - condition: a branch condition / threshold
         - rationale: why a step is needed
 
-        Concepts start as ``hypothesized``. Use the stakeholder's own wording
-        as the label and cite the Observation span that introduced it.
+        Concepts start as ``hypothesized``. ``label`` is your working display
+        label (never evaluated). ``evidence`` spans are recorded as
+        **mentions** — Observation spans you believe refer to this concept; a
+        mention is not a terminology agreement.
 
         Args:
             concept_id: Your own identifier for this concept (reuse it
                 consistently in node/edge references).
             kind: activity | actor | system | data | condition | rationale.
-            label: The preferred label (stakeholder wording).
+            label: The display label (your working text).
             description: Optional free-text description (never evaluated).
-            evidence: Optional list of evidence refs
-                [{"observation_id", "quote", "occurrence"}] supporting this
-                concept (quote must be an exact span of that Observation).
+            evidence: Optional mention spans
+                [{"observation_id", "quote", "occurrence"}].
 
         Returns:
             A confirmation message.
@@ -172,61 +202,84 @@ class InterviewTools(ToolKitBase):
         graph = self._graph()
         if concept_id in graph.concepts:
             raise ValueError(f"concept already exists: {concept_id}")
-        if kind not in (
-            "activity",
-            "actor",
-            "system",
-            "data",
-            "condition",
-            "rationale",
-        ):
-            raise ValueError(
-                f"kind must be one of activity/actor/system/data/condition/rationale, "
-                f"got {kind!r}"
-            )
+        if kind not in _KINDS:
+            raise ValueError(f"kind must be one of {'/'.join(_KINDS)}, got {kind!r}")
         evs = self._require_evidence(evidence)
         graph.concepts[concept_id] = BusinessConcept(
             id=concept_id,
             kind=kind,  # type: ignore[arg-type]
-            preferred_label=label,
+            display_label=label,
             description=description or "",
-            terms=[ConceptTerm(text=label, evidence=list(evs))] if evs else [],
+            mentions=list(evs),
             validation_status="hypothesized",
-            validation_evidence=list(evs),
+            validation_evidence=[],
         )
         return f"Created {kind} concept {concept_id} (label: {label!r})."
 
     @is_tool(ToolType.WRITE)
-    def add_concept_term(
+    def add_concept_mention(
         self,
         concept_id: str,
-        term: str,
-        evidence: Optional[list] = None,
+        evidence: list,
     ) -> str:
-        """Add an observed term to an existing concept.
+        """Record an Observation span as a mention of a concept.
 
-        When the stakeholder later uses a different wording that you decide
-        refers to the same concept, record that wording as another term of the
-        same concept (with the Observation span where it was said).
+        A mention means only: you believe this span refers to this local
+        concept. It does NOT establish terminology — record an explicit
+        terminology agreement separately when the stakeholder confirms a term.
 
         Args:
-            concept_id: The concept to extend.
-            term: The observed wording (as the stakeholder said it).
-            evidence: Optional evidence refs for this term.
+            concept_id: The concept the span refers to.
+            evidence: Mention spans [{"observation_id", "quote", "occurrence"}].
 
         Returns:
             A confirmation message.
         """
         concept = self._concept(concept_id)
         evs = self._require_evidence(evidence)
-        if any(t.text == term for t in concept.terms):
-            existing = next(t for t in concept.terms if t.text == term)
-            for ev in evs:
-                if ev not in existing.evidence:
-                    existing.evidence.append(ev)
-            return f"Term {term!r} already recorded on {concept_id}."
-        concept.terms.append(ConceptTerm(text=term, evidence=evs))
-        return f"Added term {term!r} to concept {concept_id}."
+        for ev in evs:
+            if ev not in concept.mentions:
+                concept.mentions.append(ev)
+        return f"Recorded {len(evs)} mention(s) on {concept_id}."
+
+    @is_tool(ToolType.WRITE)
+    def record_terminology_agreement(
+        self,
+        concept_id: str,
+        term: str,
+        evidence: list,
+    ) -> str:
+        """Record an explicit terminology agreement: you proposed ``term`` for
+        this concept and the stakeholder confirmed it.
+
+        Record this ONLY when the stakeholder explicitly agreed to the term in
+        the interview. The evidence must cite the Observation span where the
+        stakeholder confirmed (or used) the term.
+
+        Args:
+            concept_id: The concept the term refers to.
+            term: The agreed term.
+            evidence: Evidence spans of the confirmation (required).
+
+        Returns:
+            A confirmation message.
+        """
+        self._concept(concept_id)
+        evs = self._require_evidence(evidence)
+        if not evs:
+            raise ValueError(
+                f"record_terminology_agreement requires evidence spans for {concept_id}"
+            )
+        graph = self._graph()
+        graph.terminology_agreements.append(
+            TerminologyAgreement(
+                concept_id=concept_id,
+                term=term,
+                stakeholder_id="stakeholder",
+                evidence=evs,
+            )
+        )
+        return f"Recorded terminology agreement: {term!r} for {concept_id}."
 
     @is_tool(ToolType.WRITE)
     def update_concept_description(
@@ -234,18 +287,8 @@ class InterviewTools(ToolKitBase):
         concept_id: str,
         description: str,
     ) -> str:
-        """Update the free-text description of a concept.
-
-        Descriptions are working notes for yourself — the evaluator never
-        compares them to anything.
-
-        Args:
-            concept_id: The concept to update.
-            description: The new description.
-
-        Returns:
-            A confirmation message.
-        """
+        """Update the free-text description of a concept (working notes only;
+        never evaluated)."""
         concept = self._concept(concept_id)
         concept.description = description
         return f"Updated description of {concept_id}."
@@ -258,11 +301,10 @@ class InterviewTools(ToolKitBase):
     ) -> str:
         """Merge concepts you previously split by mistake.
 
-        Only concepts of the SAME kind can be merged (merging different kinds
-        would conflate distinct business concepts and is rejected). Every node
-        / edge reference is re-pointed to ``target_concept_id`` and the source
-        concepts' terms and validation evidence are folded into the target.
-        The source concepts are removed.
+        Only concepts of the SAME kind can be merged. Every node/edge
+        reference is re-pointed to ``target_concept_id`` and the source
+        concepts' mentions, validation evidence and terminology agreements are
+        folded into the target. The source concepts are removed.
 
         Args:
             target_concept_id: The concept to keep.
@@ -280,7 +322,9 @@ class InterviewTools(ToolKitBase):
                     f"cannot merge {src.id} (kind {src.kind}) into "
                     f"{target.id} (kind {target.kind}): kinds differ"
                 )
-            target.terms.extend(src.terms)
+            for ev in src.mentions:
+                if ev not in target.mentions:
+                    target.mentions.append(ev)
             for ev in src.validation_evidence:
                 if ev not in target.validation_evidence:
                     target.validation_evidence.append(ev)
@@ -310,6 +354,9 @@ class InterviewTools(ToolKitBase):
                 and edge.condition.concept_id in source_concept_ids
             ):
                 edge.condition.concept_id = target_concept_id
+        for agreement in graph.terminology_agreements:
+            if agreement.concept_id in source_concept_ids:
+                agreement.concept_id = target_concept_id
         for cid in source_concept_ids:
             del graph.concepts[cid]
         return (
@@ -317,24 +364,38 @@ class InterviewTools(ToolKitBase):
             "all references re-pointed."
         )
 
+    def _assertion_correspondence(self, evidence: list[EvidenceRef]) -> set[str]:
+        """Claims whose private assertions correspond (span containment) to
+        the given evidence spans — ALL of them (no ambiguity filter, since
+        confirmation only needs the stakeholder to have asserted the
+        concept's identity in that span). Deterministic."""
+        from tau2.domains.business_interview.evaluation import (
+            _corresponding_claim_ids,
+        )
+
+        return _corresponding_claim_ids(
+            self.db, self.assertion_ledger.assertions(), evidence
+        )
+
     @is_tool(ToolType.WRITE)
     def confirm_concept(
         self,
         concept_id: str,
-        evidence: Optional[list] = None,
+        evidence: list,
         partial: bool = False,
     ) -> str:
-        """Confirm a concept with authentic stakeholder evidence.
+        """Confirm a concept with genuine stakeholder evidence.
 
-        Confirmation must cite at least one authentic stakeholder Observation
-        span (an EvidenceRef whose quote is an exact span of a recorded
-        Observation). ``partial=True`` records ``partially_confirmed`` (some
-        aspects still open); the default records ``confirmed``.
+        Confirmation must represent actual stakeholder confirmation of the
+        concept's identity: every evidence span must correspond to a private
+        assertion of a claim of this concept (the stakeholder actually used
+        this concept's identity in that message), and a span may back at most
+        one concept (no bulk self-confirmation).
 
         Args:
             concept_id: The concept to confirm.
-            evidence: Evidence refs confirming this concept (required).
-            partial: If True, mark as partially_confirmed instead.
+            evidence: Evidence spans of the confirmation (required).
+            partial: If True, record partially_confirmed instead.
 
         Returns:
             A confirmation message.
@@ -346,45 +407,116 @@ class InterviewTools(ToolKitBase):
                 f"confirm_concept requires at least one authentic evidence ref "
                 f"for {concept_id}"
             )
+        # anti-bulk: a span may back at most one concept's validation evidence
+        graph = self._graph()
+        for ev in evs:
+            for other in graph.concepts.values():
+                if other.id == concept_id:
+                    continue
+                if ev in other.validation_evidence:
+                    raise ValueError(
+                        f"evidence span {ev.observation_id}:{ev.quote!r} "
+                        f"already backs {other.id}; a span cannot confirm "
+                        f"several concepts"
+                    )
+        grounded = self._assertion_correspondence(evs)
+        if not grounded:
+            raise ValueError(
+                f"confirm_concept for {concept_id}: evidence does not "
+                f"correspond to any stakeholder assertion (mention-only "
+                f"speech is not confirmation)"
+            )
         for ev in evs:
             if ev not in concept.validation_evidence:
                 concept.validation_evidence.append(ev)
         concept.validation_status = "partially_confirmed" if partial else "confirmed"  # type: ignore[assignment]
-        return f"Marked {concept_id} as {'partially_confirmed' if partial else 'confirmed'}."
+        return (
+            f"Marked {concept_id} as "
+            f"{'partially_confirmed' if partial else 'confirmed'}."
+        )
 
     @is_tool(ToolType.WRITE)
-    def mark_concept_unknown(self, concept_id: str) -> str:
-        """Mark a concept as unknown (the stakeholder cannot clarify it)."""
+    def mark_concept_unknown(self, concept_id: str, evidence: list) -> str:
+        """Mark a concept as unknown with stakeholder evidence.
+
+        The evidence must be an authentic span from a message where the
+        stakeholder did NOT assert this concept's identity (e.g. the
+        stakeholder said they do not know).
+
+        Args:
+            concept_id: The concept to mark unknown.
+            evidence: Evidence spans (required).
+
+        Returns:
+            A confirmation message.
+        """
         concept = self._concept(concept_id)
+        evs = self._require_evidence(evidence)
+        if not evs:
+            raise ValueError(f"mark_concept_unknown requires evidence for {concept_id}")
+        grounded = self._assertion_correspondence(evs)
+        if grounded:
+            raise ValueError(
+                f"mark_concept_unknown for {concept_id}: evidence corresponds "
+                f"to stakeholder assertions — use confirm_concept or "
+                f"mark_concept_disputed instead"
+            )
+        # a status change replaces the concept's validation evidence
+        concept.validation_evidence = list(evs)
         concept.validation_status = "unknown"  # type: ignore[assignment]
         return f"Marked {concept_id} as unknown."
 
     @is_tool(ToolType.WRITE)
-    def mark_concept_disputed(self, concept_id: str) -> str:
-        """Mark a concept as disputed (conflicting stakeholder statements)."""
+    def mark_concept_disputed(self, concept_id: str, evidence: list) -> str:
+        """Mark a concept as disputed with stakeholder evidence.
+
+        The evidence must come from at least two distinct Observations in
+        which the stakeholder asserted this concept's identity (statements you
+        judge to conflict).
+
+        Args:
+            concept_id: The concept to mark disputed.
+            evidence: Evidence spans from >= 2 distinct Observations
+                (required).
+
+        Returns:
+            A confirmation message.
+        """
         concept = self._concept(concept_id)
+        evs = self._require_evidence(evidence)
+        if len({ev.observation_id for ev in evs}) < 2:
+            raise ValueError(
+                f"mark_concept_disputed for {concept_id}: evidence must come "
+                f"from at least two distinct Observations"
+            )
+        if not evs:
+            raise ValueError(
+                f"mark_concept_disputed requires evidence for {concept_id}"
+            )
+        # a status change replaces the concept's validation evidence
+        concept.validation_evidence = list(evs)
         concept.validation_status = "disputed"  # type: ignore[assignment]
         return f"Marked {concept_id} as disputed."
 
     @is_tool(ToolType.READ)
     def list_concepts(self) -> str:
-        """List your glossary concepts (ids, kinds, labels, terms, status).
-
-        This is your working vocabulary — nothing here comes from any hidden
-        ground truth.
-
-        Returns:
-            One line per concept.
-        """
+        """List your glossary concepts (ids, kinds, labels, mentions, status)."""
         graph = self._graph()
         if not graph.concepts:
             return "(no concepts yet — create one with create_concept)"
         lines = []
         for cid, concept in graph.concepts.items():
-            terms = ", ".join(t.text for t in concept.terms) or "(no terms)"
+            mentions = len(concept.mentions)
+            agreements = [
+                a.term for a in graph.terminology_agreements if a.concept_id == cid
+            ]
+            extra = ""
+            if agreements:
+                extra = f" [agreed terms: {', '.join(agreements)}]"
             lines.append(
-                f"{cid}: [{concept.kind}] {concept.preferred_label!r} "
-                f"[{concept.validation_status}] [terms: {terms}]"
+                f"{cid}: [{concept.kind}] {concept.display_label!r} "
+                f"[{concept.validation_status}] "
+                f"[{mentions} mention(s)]{extra}"
             )
         return "\n".join(lines)
 
@@ -392,20 +524,7 @@ class InterviewTools(ToolKitBase):
 
     @is_tool(ToolType.WRITE)
     def start_inference(self, name: str = "") -> str:
-        """Start building the inferred business process graph.
-
-        This is destructive: it discards the previous inferred graph, glossary
-        and any captured Observations, and resets the interview. The
-        conversation ledger (the stakeholder's actual messages) is kept —
-        observations are re-captured from it with ``observe_message`` /
-        ``observe_latest_stakeholder_message``. Call it once at the beginning.
-
-        Args:
-            name: Optional name for the graph.
-
-        Returns:
-            A confirmation message.
-        """
+        """Start building the inferred business process graph (destructive)."""
         self.db.graph = BusinessProcessGraph(id="graph", name=name)
         self.db.observations = []
         self.db.interview_complete = False
@@ -415,11 +534,6 @@ class InterviewTools(ToolKitBase):
         )
 
     def _stakeholder_entries(self) -> list[tuple[str, int, str]]:
-        """Deterministic list of stakeholder messages as (stable id, ledger turn,
-        content). The id is ``sm_N`` where N is the ordinal of the user message in
-        the (append-only) conversation ledger, so ids are stable and unique even
-        across state replay / ``set_state``.
-        """
         entries = []
         counter = 0
         for i, msg in enumerate(self.db.messages):
@@ -429,12 +543,6 @@ class InterviewTools(ToolKitBase):
         return entries
 
     def _capture_user_message(self, turn: int, content: str) -> str:
-        """Capture a user message already validated as a stakeholder message.
-
-        Idempotent: re-capturing the same ledger turn returns the same
-        observation id. The observation's text/turn come from the actual ledger,
-        so evaluator provenance-authenticity is preserved.
-        """
         for obs in self.db.observations:
             if obs.turn == turn:
                 return obs.id
@@ -452,24 +560,8 @@ class InterviewTools(ToolKitBase):
     def observe_message(self, message_id: str) -> str:
         """Capture the stakeholder message with ``message_id`` as an Observation.
 
-        Message ids look like ``sm_1``, ``sm_2``, ... and are listed by
-        ``list_stakeholder_messages``. Prefer
-        ``observe_latest_stakeholder_message`` right after the stakeholder
-        speaks; use this to re-reference an earlier message by its stable id.
-
-        The Observation's text, source and turn are taken from the actual
-        conversation message — you cannot write arbitrary text. The capture is
-        idempotent: re-capturing the same message returns the same observation id.
-
-        Only user (stakeholder) messages can be observed; a fabricated or
-        non-stakeholder message id is rejected.
-
-        Args:
-            message_id: The stable stakeholder message id (e.g. ``"sm_3"``).
-
-        Returns:
-            The observation id (use it in evidence refs on concepts, nodes and
-            edges).
+        Returns the observation id (use it in evidence refs on concepts, nodes
+        and edges). Idempotent; only user messages can be observed.
         """
         for sm_id, turn, content in self._stakeholder_entries():
             if sm_id == message_id:
@@ -478,16 +570,6 @@ class InterviewTools(ToolKitBase):
 
     @is_tool(ToolType.READ)
     def observe_latest_stakeholder_message(self) -> str:
-        """Return the id of the most recent stakeholder (user) message.
-
-        Then call ``observe_message(message_id=...)`` to capture that message as
-        an Observation. This lets you act on the newest statement without
-        tracking conversation turn indices. (It is a read — it does not itself
-        create an Observation — so it is deterministic under state replay.)
-
-        Returns:
-            The stable id of the latest stakeholder message (e.g. ``"sm_3"``).
-        """
         entries = self._stakeholder_entries()
         if not entries:
             raise ValueError("no stakeholder (user) message has been recorded yet")
@@ -495,14 +577,6 @@ class InterviewTools(ToolKitBase):
 
     @is_tool(ToolType.READ)
     def list_stakeholder_messages(self) -> str:
-        """List the stakeholder (user) messages by their stable message ids.
-
-        Use ``observe_message(message_id)`` to capture a specific one, or
-        ``observe_latest_stakeholder_message()`` for the most recent.
-
-        Returns:
-            A list of stakeholder messages keyed by stable id (``sm_1``, ...).
-        """
         lines = [
             f"{sm_id}: {content}"
             for sm_id, turn, content in self._stakeholder_entries()
@@ -523,9 +597,9 @@ class InterviewTools(ToolKitBase):
     ) -> str:
         """Add a node to the inferred process graph.
 
-        Only create a node when no existing node corresponds to the
-        observation; otherwise update the existing node. Every property is a
-        concept id from your glossary.
+        Every property is a concept id from your glossary and its kind is
+        enforced: activity -> activity, actor -> actor, system -> system,
+        reads/writes -> data, necessity_rationale -> rationale.
 
         Args:
             node_id: Your own identifier for this node.
@@ -534,10 +608,8 @@ class InterviewTools(ToolKitBase):
             system: Concept id (kind=system) for the system/tool (optional).
             reads: Concept ids (kind=data) this node reads (optional).
             writes: Concept ids (kind=data) this node writes (optional).
-            necessity_rationale: Concept id (kind=rationale) for why the node
-                is needed (optional; leave unset when unknown).
-            evidence: Evidence refs supporting this node's activity (optional;
-                add more on individual refs with update_node).
+            necessity_rationale: Concept id (kind=rationale) (optional).
+            evidence: Evidence refs supporting this node's activity (optional).
 
         Returns:
             A confirmation message.
@@ -545,15 +617,19 @@ class InterviewTools(ToolKitBase):
         graph = self._graph()
         if node_id in graph.nodes:
             raise ValueError(f"node already exists: {node_id}")
-        self._require_concepts([activity])
-        self._require_concepts(reads)
-        self._require_concepts(writes)
+        self._require_kind(activity, "activity", "add_node activity")
+        for cid in reads or []:
+            self._require_kind(cid, "data", f"add_node reads[{cid}]")
+        for cid in writes or []:
+            self._require_kind(cid, "data", f"add_node writes[{cid}]")
         if actor is not None:
-            self._concept(actor)
+            self._require_kind(actor, "actor", "add_node actor")
         if system is not None:
-            self._concept(system)
+            self._require_kind(system, "system", "add_node system")
         if necessity_rationale is not None:
-            self._concept(necessity_rationale)
+            self._require_kind(
+                necessity_rationale, "rationale", "add_node necessity_rationale"
+            )
         evs = self._require_evidence(evidence)
         graph.nodes[node_id] = Node(
             id=node_id,
@@ -570,12 +646,6 @@ class InterviewTools(ToolKitBase):
         )
         return f"Added node {node_id}."
 
-    @staticmethod
-    def _refs(concept_ids: Optional[list[str]]) -> list[ConceptRef]:
-        return [
-            ConceptRef(concept_id=cid, confidence=1.0) for cid in (concept_ids or [])
-        ]
-
     @is_tool(ToolType.WRITE)
     def update_node(
         self,
@@ -589,23 +659,7 @@ class InterviewTools(ToolKitBase):
         evidence: Optional[list] = None,
         unset: Optional[list[str]] = None,
     ) -> str:
-        """Update an existing node's property references.
-
-        Args:
-            node_id: The node to update.
-            activity: New activity concept id (optional).
-            actor: New actor concept id (optional).
-            system: New system concept id (optional).
-            reads: New read concept-id list (optional; replaces the list).
-            writes: New write concept-id list (optional; replaces the list).
-            necessity_rationale: New rationale concept id (optional).
-            evidence: Evidence refs to append to the activity reference (optional).
-            unset: List of property names to clear (actor/system/
-                necessity_rationale/reads/writes) (optional).
-
-        Returns:
-            A confirmation message.
-        """
+        """Update an existing node's property references (kinds enforced)."""
         node = self._node(node_id)
         if unset:
             for prop in unset:
@@ -618,22 +672,26 @@ class InterviewTools(ToolKitBase):
                 else:
                     raise ValueError(f"cannot unset property {prop!r}")
         if activity is not None:
-            self._concept(activity)
+            self._require_kind(activity, "activity", "update_node activity")
             node.activity = self._ref(activity)
         if actor is not None:
-            self._concept(actor)
+            self._require_kind(actor, "actor", "update_node actor")
             node.actor = self._ref(actor)
         if system is not None:
-            self._concept(system)
+            self._require_kind(system, "system", "update_node system")
             node.system = self._ref(system)
         if necessity_rationale is not None:
-            self._concept(necessity_rationale)
+            self._require_kind(
+                necessity_rationale, "rationale", "update_node necessity_rationale"
+            )
             node.necessity_rationale = self._ref(necessity_rationale)
         if reads is not None:
-            self._require_concepts(reads)
+            for cid in reads:
+                self._require_kind(cid, "data", "update_node reads")
             node.reads = self._refs(reads)
         if writes is not None:
-            self._require_concepts(writes)
+            for cid in writes:
+                self._require_kind(cid, "data", "update_node writes")
             node.writes = self._refs(writes)
         if evidence:
             evs = self._require_evidence(evidence)
@@ -642,22 +700,7 @@ class InterviewTools(ToolKitBase):
 
     @is_tool(ToolType.WRITE)
     def remove_node(self, node_id: str) -> str:
-        """Remove a node and its incident edges from the inferred graph.
-
-        The graph is a working hypothesis, not an append-only record: you may
-        remove a coarse placeholder node once you have decomposed it into more
-        specific activities.
-
-        This also removes every edge that connects to the node (incoming or
-        outgoing), so no dangling edge is left behind. The stakeholder
-        Observations themselves are kept.
-
-        Args:
-            node_id: The node to remove.
-
-        Returns:
-            A confirmation message listing what was removed.
-        """
+        """Remove a node and its incident edges from the inferred graph."""
         graph = self._graph()
         if node_id not in graph.nodes:
             raise ValueError(f"node not found: {node_id}")
@@ -685,18 +728,15 @@ class InterviewTools(ToolKitBase):
     ) -> str:
         """Add a directed edge between two nodes.
 
-        The edge's existence must be supported by stakeholder evidence
-        (``evidence`` refs citing the Observation where the relation was
-        stated). ``condition`` optionally references a condition concept
-        (kind=condition) for a branch threshold.
+        The edge's existence must be supported by stakeholder evidence.
+        ``condition`` must reference a condition concept (kind=condition).
 
         Args:
             edge_id: Your own identifier for this edge.
             from_node: Source node id.
             to_node: Destination node id.
-            condition: Concept id (kind=condition) for the branch condition
-                (optional).
-            evidence: Evidence refs supporting this relation (required).
+            condition: Concept id (kind=condition) (optional).
+            evidence: Evidence refs supporting this relation.
 
         Returns:
             A confirmation message.
@@ -709,7 +749,7 @@ class InterviewTools(ToolKitBase):
         if to_node not in graph.nodes:
             raise ValueError(f"node not found: {to_node}")
         if condition is not None:
-            self._concept(condition)
+            self._require_kind(condition, "condition", "add_edge condition")
         evs = self._require_evidence(evidence)
         graph.edges[edge_id] = Edge(
             id=edge_id,
@@ -730,19 +770,7 @@ class InterviewTools(ToolKitBase):
         unset_condition: bool = False,
         evidence: Optional[list] = None,
     ) -> str:
-        """Update an edge's endpoints, condition or evidence.
-
-        Args:
-            edge_id: The edge to update.
-            from_node: New source (optional).
-            to_node: New destination (optional).
-            condition: New condition concept id (optional).
-            unset_condition: If True, remove the condition (optional).
-            evidence: Evidence refs to append (optional).
-
-        Returns:
-            A confirmation message.
-        """
+        """Update an edge's endpoints, condition or evidence."""
         edge = self._edge(edge_id)
         graph = self._graph()
         if from_node is not None:
@@ -756,25 +784,50 @@ class InterviewTools(ToolKitBase):
         if unset_condition:
             edge.condition = None
         elif condition is not None:
-            self._concept(condition)
+            self._require_kind(condition, "condition", "update_edge condition")
             edge.condition = self._ref(condition)
         if evidence:
             evs = self._require_evidence(evidence)
             edge.evidence.extend(evs)
         return f"Updated edge {edge_id}."
 
+    @is_tool(ToolType.WRITE)
+    def set_graph_endpoints(
+        self,
+        start_node_id: Optional[str] = None,
+        end_node_ids: Optional[list[str]] = None,
+    ) -> str:
+        """Declare the graph's start and end node(s).
+
+        The start node is the position where the process begins (it may still
+        receive incoming edges when the process loops). End nodes are terminal
+        positions. Declare both before finishing the interview.
+
+        Args:
+            start_node_id: The start node id.
+            end_node_ids: The end node ids.
+
+        Returns:
+            A confirmation message.
+        """
+        graph = self._graph()
+        if start_node_id is not None:
+            if start_node_id not in graph.nodes:
+                raise ValueError(f"node not found: {start_node_id}")
+            graph.start_node_id = start_node_id
+        if end_node_ids is not None:
+            for eid in end_node_ids:
+                if eid not in graph.nodes:
+                    raise ValueError(f"node not found: {eid}")
+            graph.end_node_ids = list(end_node_ids)
+        return "Set graph endpoints."
+
     @is_tool(ToolType.READ)
     def validate_graph(self) -> str:
         """Validate the inferred graph's **internal** structural consistency.
 
-        Reports only self-consistency problems (dangling edges, unknown
-        concept references, missing activity refs, ...). Cycles are VALID and
-        are never reported as errors. This never references the hidden Ground
-        Truth. Call this to review the final structure before
-        ``finish_interview``.
-
-        Returns:
-            The validation result (or the list of structural errors).
+        Cycles are VALID and never reported as errors. This never references
+        the hidden Ground Truth.
         """
         graph = self._graph()
         if not graph.nodes:
@@ -788,14 +841,9 @@ class InterviewTools(ToolKitBase):
     def finish_interview(self, summary: Optional[str] = None) -> str:
         """Mark the interview complete.
 
-        Refuses to finish a structurally invalid graph (dangling edges,
-        unknown concept references, ...) and refuses while any **referenced**
-        concept is still ``hypothesized``: every concept used by a node/edge
-        must be resolved (confirmed / partially_confirmed / disputed /
-        unknown) with ``confirm_concept``, ``mark_concept_unknown`` or
-        ``mark_concept_disputed``. The reported errors are only about the
-        graph's own internal consistency and glossary state — never about the
-        hidden Ground Truth.
+        Refuses a structurally invalid graph, missing declared endpoints, or
+        any **referenced** concept still ``hypothesized``. Completing the
+        interview successfully terminates the episode immediately.
 
         Args:
             summary: Optional summary of what was captured.
@@ -813,6 +861,14 @@ class InterviewTools(ToolKitBase):
             raise ValueError(
                 "Cannot finish: graph is structurally invalid.\n- "
                 + "\n- ".join(errors)
+            )
+        if graph.start_node_id is None:
+            raise ValueError(
+                "Cannot finish: declare the start node with set_graph_endpoints."
+            )
+        if not graph.end_node_ids:
+            raise ValueError(
+                "Cannot finish: declare at least one end node with set_graph_endpoints."
             )
         hypothesized = sorted(
             cid
@@ -835,9 +891,8 @@ class InterviewTools(ToolKitBase):
 
     def _evaluate(self, sc) -> EvaluationResult:
         """Evaluate against the scenario truth+spec under the scenario's
-        stakeholder visibility, using the hidden TruthClaim catalog, the
-        private StakeholderFact catalog, and the private assertion sidecar
-        ledger (all evaluator-only; never exposed to the Agent)."""
+        stakeholder visibility, using the hidden TruthClaim catalog and the
+        private assertion sidecar ledger (evaluator-only)."""
 
         return evaluate(
             self.db,
@@ -845,8 +900,7 @@ class InterviewTools(ToolKitBase):
             sc.spec,
             sc.stakeholder,
             claims=sc.claims,
-            facts=sc.facts,
-            assertions=self.fact_ledger.assertions(),
+            assertions=self.assertion_ledger.assertions(),
         )
 
     def assert_finish_interview(self) -> bool:
@@ -862,11 +916,9 @@ class InterviewTools(ToolKitBase):
         sc = get_scenario(scenario_id)
         if sc is None:
             return False
-        res = self._evaluate(sc)
-        return res.rationale_correctness == 1.0
+        return self._evaluate(sc).rationale_correctness == 1.0
 
     def assert_evidence_backed(self, scenario_id: str) -> bool:
-        """True if every asserted claim is traceable to a recorded Observation."""
         sc = get_scenario(scenario_id)
         if sc is None:
             return False

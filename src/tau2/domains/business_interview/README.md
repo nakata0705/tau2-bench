@@ -1,146 +1,128 @@
-# business_interview (v6 — unified glossary, provenance-only)
+# business_interview (v7 — graph context, provenance-only)
 
 The agent interviews a stakeholder to discover an unknown team's business
-process. The stakeholder simulator answers only from hidden, structured
-**StakeholderFacts** (naturalizing them); the Interview Agent builds its own
-typed **glossary** and an inferred **BusinessProcessGraph**; the evaluator
-scores correctness **only through private provenance** — it performs no
-semantic NLP over Agent or Observation text.
+process. The stakeholder's knowledge is a **projection of the Truth graph**
+(semantic claims at workflow positions + concept views); the stakeholder LLM
+**realizes** the claims it chooses into natural language. The Interview Agent
+builds its own typed **glossary** and an inferred **BusinessProcessGraph**
+with declared start/end; the evaluator scores correctness **only through
+private provenance** — no semantic NLP over Agent or Observation text.
 
-    StakeholderFact
-       ├─ public natural language ─▶ Agent ─▶ Agent-local glossary concept
-       └─ private assertion (fact_id + exact message span) ─▶ TruthClaim
+    TruthClaim (graph position + property + value)
+       ├─ public natural language (realized by the stakeholder) ─▶ Agent concept
+       └─ private assertion (claim_id + exact message span) ─▶ grounding
                                         ▲
-    ConceptRef ─▶ EvidenceRef ─▶ exact Observation span ┘
+    ConceptRef ─▶ EvidenceRef ─▶ Observation span ┘
 
-The stakeholder simulator naturalizes facts. The Agent LLM interprets
-language and maintains concept identity. Private instrumentation records Truth
-provenance. The evaluator binds provenance; it does no NLP semantic matching.
+## Graph-contextual TruthClaims
 
-## Glossary (typed, Agent-local)
+`TruthClaim {context_id, property, concept_id}` — every claim belongs to a
+workflow position:
 
-`create_concept(concept_id, kind, label, description?, evidence?)` — one
-concept per business thing, with a **kind**:
+    cq.activity      -> tc_activity_create_quotation
+    cq.reads         -> tc_customer
+    e3.edge_exists   (structural)
+    e3.condition     -> tc_cond_over_1m
 
-| kind        | what it is                              |
-|-------------|------------------------------------------|
-| `activity`  | what is done (a step)                    |
-| `actor`     | who does it (a role)                     |
-| `system`    | which system / tool is used              |
-| `data`      | a business object / artifact in/out      |
-| `condition` | a branch condition / threshold           |
-| `rationale` | why a step is needed                     |
+`TruthNodeContext {node_id, incoming_edge_ids, is_start}` is resolved from the
+Truth graph and lists **ALL** incoming edges (including back edges in cycles);
+the start flag restores explicit start semantics. Cycles remain valid.
 
-- `add_concept_term(concept_id, term, evidence?)` — record a later, different
-  wording the Agent judges to be the same thing.
-- `update_concept_description(concept_id, description)` — working notes (never
-  evaluated).
-- `merge_concepts(target, sources)` — repair a mistaken split (same-kind only;
-  re-points every reference; merging different kinds is rejected).
-- `confirm_concept(concept_id, evidence?, partial=False)` — resolve a concept
-  with authentic stakeholder evidence (`confirmed` / `partially_confirmed`).
-- `mark_concept_unknown(concept_id)` / `mark_concept_disputed(concept_id)` —
-  resolve without confirmation.
-- `list_concepts()` — see the agent's own glossary.
+## Glossary (mentions, not terminology)
 
-Concepts start **`hypothesized`**. `finish_interview` refuses while any
-**referenced** concept is still hypothesized — resolve them first
-(confirmed / partially_confirmed / disputed / unknown).
+`create_concept(concept_id, kind, label, evidence?)` — one concept per
+business thing, with a kind: activity / actor / system / data / condition /
+rationale. `label` is a working `display_label` (never evaluated).
+
+- `add_concept_mention(concept_id, evidence)` — record Observation spans the
+  Agent believes refer to the concept. **A mention is not terminology.**
+- `record_terminology_agreement(concept_id, term, evidence)` — record an
+  explicit agreement only when the stakeholder confirmed the proposed term.
+- `merge_concepts(target, sources)` — repair a mistaken split (same-kind only).
+- `confirm_concept(concept_id, evidence, partial=False)` — **genuine**
+  confirmation: evidence must correspond to a private assertion of the
+  concept's claims (the stakeholder actually asserted the concept's identity);
+  one evidence span may back at most one concept (no bulk self-confirmation).
+- `mark_concept_unknown(concept_id, evidence)` / `mark_concept_disputed(
+  concept_id, evidence)` — also require stakeholder evidence (unknown: the
+  stakeholder did not assert the concept; disputed: evidence from >= 2
+  distinct Observations).
+
+Concepts start `hypothesized`; `finish_interview` refuses while any
+**referenced** concept is unresolved.
 
 ## Evidence (`EvidenceRef`)
 
-Every claim cites `{"observation_id", "quote", "occurrence"}`:
+`{"observation_id", "quote", "occurrence"}` resolves to a concrete character
+span of the immutable Observation. Grounding uses **span correspondence
+(containment)**: an evidence span that corresponds to exactly one expected
+claim at its slot grounds it; a span corresponding to several expected claims
+at one slot is **ambiguous and grounds nothing** (no cross-credit).
 
-- `quote` must be an **exact substring occurrence** of the immutable
-  Observation; `occurrence` selects which occurrence (0-based).
-- Validity is checked deterministically; the evaluator never infers what a
-  quote *means*.
+## Process graph
 
-Observations are captured from actual stakeholder messages via
-`observe_message` (stable ids `sm_1`, ...) — never written by the agent.
+`add_node` / `update_node` / `remove_node` / `add_edge` / `update_edge` /
+`set_graph_endpoints` / `validate_graph` / `finish_interview`. Structural
+ConceptKind rules are enforced (activity->activity, actor->actor, system->
+system, reads/writes->data, rationale->rationale, condition->condition).
+Cycles are valid; a successful `finish_interview` terminates the episode
+immediately (`EPISODE_COMPLETE`, distinct from `max_steps`).
 
-## Process graph (`BusinessProcessGraph`)
+## Node identity uses topology
 
-- `start_inference(name?)` — begin an inferred graph (destructive).
-- `add_node(node_id, activity, actor?, system?, reads?, writes?,
-  necessity_rationale?, evidence?)` — a node; `activity` is required and all
-  properties are glossary concept ids.
-- `update_node(node_id, ...)` / `remove_node(node_id)` — refine the working
-  hypothesis.
-- `add_edge(edge_id, from_node, to_node, condition?, evidence?)` —
-  `from_node`/`to_node` are structural identities; `condition` is a condition
-  concept; **edge existence needs stakeholder evidence too**.
-- `update_edge(edge_id, ...)` — endpoints / condition / evidence.
-- `validate_graph()` — internal structural consistency (**cycles are valid**
-  and never reported as errors; there is no acyclicity check and no LoopNode).
-- `finish_interview(summary?)` — refuses a structurally invalid graph and any
-  referenced `hypothesized` concept.
+An agent node maps to a Truth node through a deterministic consistent
+assignment of **activity provenance + reconstructed incoming topology**: every
+agent edge with edge-existence provenance must land on a Truth edge between
+the mapped endpoints whose `edge_exists` claim is supported, with conditions
+consistent. The same activity at several positions is disambiguated by
+topology.
 
 ## Private provenance
 
-`StakeholderFact {id, text, supported_claim_ids}` — atomic facts (one
-TruthClaim per fact). The stakeholder LLM returns, alongside its public
-message, a private assertion sidecar:
-
-    {"message": "...", "assertions": [
-      {"fact_id": "quotation.check.system", "quote": "CRM", "occurrence": 0}]}
-
-Only the message enters the conversation. At ingestion the environment
-validates deterministically (fact exists / belongs to the stakeholder /
-supported claims exist and are visible / quote+occurrence exactly match the
-message) and stores the assertions privately against that exact turn
-(`StakeholderFactLedger`). Provenance is **never reconstructed from text**.
+The stakeholder LLM returns `{"message", "assertions": [{claim_id, quote,
+occurrence}]}`; only the message enters the conversation. At ingestion the
+environment validates deterministically (claim exists / visible /
+quote+occurrence exactly match the message) and stores the assertions
+privately against that exact turn. Provenance is never reconstructed from
+text; claim ids never appear in Agent-visible messages, tools, state or
+artifacts.
 
 ## Evaluation (`evaluation.py`)
 
-`TruthClaim {id, subject_kind (node|edge), subject_id, property, concept_id}`
-covers every scored semantic property:
-
-    cq.activity -> tc_activity_create_quotation
-    cq.actor    -> tc_actor_sales
-    cq.reads    -> tc_customer
-    e3.edge_exists
-    e3.condition -> tc_cond_over_1m
-
 Semantic grounding follows only:
 
-    ConceptRef -> EvidenceRef -> exact Observation span
-        -> private assertion -> StakeholderFact -> TruthClaim
-        -> Truth BusinessConcept
+    ConceptRef -> EvidenceRef -> Observation span
+        -> private assertion -> TruthClaim -> Truth BusinessConcept
 
-- **Node identity** comes from the node's `activity` claim binding; **edge
-  identity** from from/to structure + the private `edge_exists` claim.
-- **Concept identity** (per kind): every referenced agent concept must bind to
-  exactly one Truth concept of its own kind (singleton candidates), one
-  visible Truth concept must be represented by exactly one Agent concept, and
-  reuse across slots is required. Splits, ambiguous/merged bindings,
-  incompatible kinds and missing concepts all fail.
-- **Visibility stays prior**: hidden unset → correct, hidden asserted →
-  incorrect; private provenance never rescues a hidden assertion.
-- **Evidence hygiene**: every EvidenceRef must be an exact span of an
-  authentic Observation; asserted refs must carry evidence.
-- **Glossary completion**: `referenced_hypothesized_concepts` blocks the
-  structural pass.
+- Node/edge correspondence via provenance + topology (above).
+- Concept identity per kind (conditions included): every referenced agent
+  concept binds exactly one Truth concept of its own kind; one visible Truth
+  concept is represented by one Agent concept; reuse across slots required.
+- Visibility stays prior: hidden unset -> correct, hidden asserted ->
+  incorrect; provenance never rescues a hidden assertion.
+- Glossary validation: referenced concepts resolved; `confirmed` /
+  `unknown` / `disputed` backed by appropriate stakeholder evidence; no bulk
+  self-confirmation.
+- Start/end correctness and edge conditions are scored.
 
-Deleted machinery (no shims kept): `DataConcept`, `BusinessDAG` +
-acyclicity/endpoint validation, surface terms / stop phrases, action /
-actor-system / predicate / necessity semantic expression matchers, primitive
-resolver, role/system alias normalization, and duplicated business facts in
-`known_info` (facts are the only business-fact source).
+Deleted machinery (no shims): `StakeholderFact` sentences, `ConceptTerm`
+terminology semantics, activity-only node matching, semantic expression
+matchers, primitive resolver, role/system aliases, duplicated task facts, DAG
+terminology/acyclicity.
 
 ## Files
 
 | Module | Purpose |
 | -------- | --------- |
-| `graph.py` | EvidenceRef / BusinessConcept / ConceptRef / Node / Edge / BusinessProcessGraph / Observation / InterviewDB |
-| `claims.py` | TruthClaim + `build_claims` (visibility-filtered) |
-| `facts.py` | StakeholderFact / StakeholderAssertion / catalog / private ledger |
+| `graph.py` | EvidenceRef / BusinessConcept (mentions) / TerminologyAgreement / Node / Edge / BusinessProcessGraph / TruthNodeContext / Observation / InterviewDB |
+| `claims.py` | graph-contextual TruthClaim + `build_claims` (visibility-filtered) |
+| `facts.py` | StakeholderKnowledge / StakeholderAssertion / catalog / private ledger |
 | `stakeholder.py` | StakeholderFilter (per-node/per-edge property visibility) |
-| `scenario.py` | Truth graphs + atomic facts (EN/JA share fact/claim ids) |
-| `evaluation.py` | provenance-only evaluator |
-| `tools.py` | glossary + graph tools |
-| `user_simulator.py` | fact-grounded stakeholder (assertion sidecar) |
-| `environment.py` | conversation ledger + private assertion binding |
+| `scenario.py` | Truth graphs (start/end) + concept views (EN/JA share ids) |
+| `evaluation.py` | provenance-only evaluator (topology matching, span containment) |
+| `tools.py` | glossary + graph tools (kinds enforced, genuine confirmation) |
+| `user_simulator.py` | semantic stakeholder realization (claim-based sidecar) |
+| `environment.py` | conversation ledger + private assertion binding + `episode_complete` |
 
 Run `business_interview_user` as the user implementation; the deterministic
 suite is `tests/test_domains/test_business_interview/`.

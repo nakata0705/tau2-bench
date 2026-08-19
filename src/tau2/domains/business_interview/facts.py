@@ -1,24 +1,25 @@
-"""Private stakeholder facts + assertion sidecar ledger (simulator/evaluator-only).
+"""Stakeholder knowledge + assertion sidecar ledger (simulator/evaluator-only).
 
-The stakeholder simulator's knowledge is a set of hidden, structured
-``StakeholderFact``\\ s:
+The stakeholder's knowledge is a **projection of the Truth graph** — pure
+semantic structure, never authored workflow sentences:
 
-    StakeholderFact:
-        id: str
-        text: str                      # natural wording the simulator may use
-        supported_claim_ids: list[str] # hidden TruthClaims this fact supports
+    StakeholderKnowledge:
+        visible_claim_ids      # claims this stakeholder can assert
+        contextual_knowledge   # graph positions (incoming edges, is_start) + claims
+        concept_views          # local lexical preferences: tc_quote -> "quotation"
 
-Facts are **atomic**: prefer exactly one supported TruthClaim per fact so a
-fact never cross-credits independent claims.
+``concept_views`` are single wordings (not sentences) the stakeholder
+naturally uses for concepts; they carry no workflow facts.
 
 When the stakeholder LLM answers, it returns a **private assertion sidecar**
-alongside its natural-language message:
+alongside its natural-language message, anchoring each claim it used to an
+exact span of the message:
 
     {
       "message": "I check the customer in CRM, then prepare the quotation.",
       "assertions": [
-        {"fact_id": "quotation.check.system", "quote": "CRM", "occurrence": 0},
-        {"fact_id": "quotation.create.activity",
+        {"claim_id": "cc.system", "quote": "CRM", "occurrence": 0},
+        {"claim_id": "cq.activity",
          "quote": "prepare the quotation", "occurrence": 0}
       ]
     }
@@ -26,21 +27,20 @@ alongside its natural-language message:
 Only ``message`` enters the conversation. Each assertion's ``quote`` /
 ``occurrence`` must exactly match a span of that message; the environment
 stores the assertions privately against that exact message/turn
-(``StakeholderFactLedger``). Provenance is **never reconstructed from message
-text** — the evaluator links an Agent ``EvidenceRef`` to an assertion by exact
-span only.
+(``StakeholderAssertionLedger``). Provenance is **never reconstructed from
+message text** — the evaluator links an Agent ``EvidenceRef`` to an assertion
+by character-span correspondence (containment), never by meaning.
 
-- ``StakeholderFactCatalog`` deterministically validates sidecar metadata:
-  every fact id exists and belongs to this stakeholder, every supported
-  TruthClaim exists and is stakeholder-visible.
+- ``StakeholderKnowledgeCatalog`` deterministically validates sidecar
+  metadata: every claim id exists and is stakeholder-visible.
 - ``StakeholderAssertion`` validation additionally checks that
   ``quote``/``occurrence`` exactly match the message text.
-- ``StakeholderFactLedger`` stores assertions keyed by conversation turn. It
-  is private: it is never part of ``InterviewDB``, never serialized into
+- ``StakeholderAssertionLedger`` stores assertions keyed by conversation turn.
+  It is private: it is never part of ``InterviewDB``, never serialized into
   Agent-visible state, and never exposed through tools.
 
-Fact ids and claim ids never appear in Agent-visible messages, tools,
-Observations, summaries, or serialized Agent state.
+Claim ids never appear in Agent-visible messages, tools, Observations,
+summaries, or serialized Agent state.
 """
 
 from typing import Optional
@@ -48,31 +48,18 @@ from typing import Optional
 from pydantic import BaseModel, Field, field_validator
 
 from tau2.domains.business_interview.claims import TruthClaim
+from tau2.domains.business_interview.graph import TruthNodeContext
 from tau2.domains.business_interview.stakeholder import StakeholderFilter
 
 
-class StakeholderFact(BaseModel):
-    """One hidden structured business fact of a stakeholder.
-
-    ``id`` is simulator/evaluator-private; ``text`` is the natural wording the
-    stakeholder may use (the simulator naturalizes it — it need not copy it);
-    ``supported_claim_ids`` are the hidden TruthClaims this fact supports
-    (prefer exactly one — atomic facts).
-    """
-
-    id: str
-    text: str
-    supported_claim_ids: list[str] = Field(default_factory=list)
-
-
 class StakeholderAssertion(BaseModel):
-    """One private annotation: a fact used, anchored to an exact message span.
+    """One private annotation: a claim used, anchored to an exact message span.
 
     ``quote`` must be an exact substring of the stakeholder's message and
     ``occurrence`` must select an existing occurrence of that substring.
     """
 
-    fact_id: str
+    claim_id: str
     quote: str = Field(description="Exact substring of the stakeholder message.")
     occurrence: int = Field(
         default=0, description="0-based occurrence index of ``quote``."
@@ -84,6 +71,20 @@ class StakeholderAssertion(BaseModel):
         if not v.strip():
             raise ValueError("assertion quote must not be empty")
         return v
+
+
+class StakeholderKnowledge(BaseModel):
+    """The semantic knowledge of one stakeholder: a projection of the Truth.
+
+    Pure structure: visible claim ids, the contextual graph knowledge they
+    belong to (node contexts with ALL incoming edges + start flag), and
+    concept views (local lexical preferences, e.g. ``tc_quote ->
+    "quotation"`` — never workflow sentences).
+    """
+
+    visible_claim_ids: list[str] = Field(default_factory=list)
+    contextual_knowledge: dict[str, TruthNodeContext] = Field(default_factory=dict)
+    concept_views: dict[str, str] = Field(default_factory=dict)
 
 
 def message_contains_span(message: Optional[str], quote: str, occurrence: int) -> bool:
@@ -100,34 +101,35 @@ def message_contains_span(message: Optional[str], quote: str, occurrence: int) -
     return True
 
 
-class StakeholderFactCatalog:
-    """Deterministic validation of private fact/assertion metadata.
+class StakeholderKnowledgeCatalog:
+    """Deterministic validation of private assertion metadata.
 
-    The catalog is per-scenario / per-stakeholder: every fact in it belongs to
-    exactly that stakeholder. Validation raises ``ValueError`` on any unknown
-    fact id, unknown supported claim, or claim outside stakeholder visibility.
+    The catalog is per-scenario / per-stakeholder: every claim in it is
+    visible to exactly that stakeholder. Validation raises ``ValueError`` on
+    any unknown claim id, or a quote/occurrence that does not exactly match
+    the message.
     """
 
     def __init__(
         self,
         stakeholder_name: str,
-        facts: dict[str, StakeholderFact],
         claims: dict[str, TruthClaim],
         stakeholder: StakeholderFilter,
+        knowledge: StakeholderKnowledge,
     ) -> None:
         self.stakeholder_name = stakeholder_name
-        self.facts = dict(facts)
         self.claims = dict(claims)
         self.stakeholder = stakeholder
+        self.knowledge = knowledge
 
     @classmethod
-    def from_scenario(cls, scenario) -> "StakeholderFactCatalog":
-        """Build a catalog from a Scenario (facts + claims + filter)."""
+    def from_scenario(cls, scenario) -> "StakeholderKnowledgeCatalog":
+        """Build a catalog from a Scenario (claims + filter + knowledge)."""
         return cls(
             stakeholder_name=scenario.stakeholder.name,
-            facts=scenario.facts,
             claims=scenario.claims,
             stakeholder=scenario.stakeholder,
+            knowledge=scenario.knowledge,
         )
 
     def validate_assertions(
@@ -135,96 +137,46 @@ class StakeholderFactCatalog:
     ) -> None:
         """Reject invalid sidecar metadata deterministically.
 
-        Raises ``ValueError`` if any used fact id is unknown (equivalently:
-        belongs to a different stakeholder), any supported claim does not
-        exist / is outside stakeholder visibility, or the assertion's
-        quote/occurrence do not exactly match the message.
+        Raises ``ValueError`` if any claim id is unknown (equivalently: not
+        visible to this stakeholder), or the assertion's quote/occurrence do
+        not exactly match the message.
         """
         for assertion in assertions:
-            fact = self.facts.get(assertion.fact_id)
-            if fact is None:
+            if assertion.claim_id not in self.claims:
                 raise ValueError(
-                    f"assertion fact_id {assertion.fact_id!r} is not in "
-                    f"stakeholder {self.stakeholder_name!r}'s fact catalog"
+                    f"assertion claim_id {assertion.claim_id!r} is not in "
+                    f"stakeholder {self.stakeholder_name!r}'s visible claims"
                 )
-            for cid in fact.supported_claim_ids:
-                claim = self.claims.get(cid)
-                if claim is None:
-                    raise ValueError(
-                        f"fact {assertion.fact_id!r} supports unknown "
-                        f"TruthClaim id {cid!r}"
-                    )
-                if not self._claim_visible(claim):
-                    raise ValueError(
-                        f"fact {assertion.fact_id!r} supports claim {cid!r} "
-                        f"which is outside stakeholder visibility"
-                    )
             if not message_contains_span(
                 message, assertion.quote, assertion.occurrence
             ):
                 raise ValueError(
-                    f"assertion {assertion.fact_id!r}: quote "
+                    f"assertion {assertion.claim_id!r}: quote "
                     f"{assertion.quote!r} occurrence {assertion.occurrence} "
                     f"does not exactly match the stakeholder message"
                 )
 
-    def _claim_visible(self, claim: TruthClaim) -> bool:
-        if claim.subject_kind == "node":
-            return claim.property in self.stakeholder.node_properties_for(
-                claim.subject_id
-            )
-        if claim.subject_id not in self.stakeholder.visible_edge_ids:
-            return False
-        if claim.property == "condition":
-            return "condition" in self.stakeholder.edge_properties_for(claim.subject_id)
-        return claim.property == "edge_exists"
 
-    def claims_for_assertions(
-        self, assertions: list[StakeholderAssertion]
-    ) -> dict[str, TruthClaim]:
-        """Resolve assertions to their supported TruthClaims (by id).
-
-        Deterministic; callers must validate first (or rely on the
-        evaluator's own validation).
-        """
-        out: dict[str, TruthClaim] = {}
-        for assertion in assertions:
-            fact = self.facts.get(assertion.fact_id)
-            if fact is None:
-                raise ValueError(
-                    f"assertion fact_id {assertion.fact_id!r} is not in the fact catalog"
-                )
-            for cid in fact.supported_claim_ids:
-                claim = self.claims.get(cid)
-                if claim is None:
-                    raise ValueError(
-                        f"fact {assertion.fact_id!r} supports unknown "
-                        f"TruthClaim id {cid!r}"
-                    )
-                out[cid] = claim
-        return out
-
-
-class StakeholderFactLedger:
+class StakeholderAssertionLedger:
     """Private storage of stakeholder assertions keyed by conversation turn
     (the index of the message in ``InterviewDB.messages``).
 
-    The ledger is the **only** source of fact provenance: nothing is ever
-    derived from natural-language text. It is not part of ``InterviewDB`` and
-    is never exposed to the Agent.
+    The ledger is the **only** source of provenance: nothing is ever derived
+    from natural-language text. It is not part of ``InterviewDB`` and is never
+    exposed to the Agent.
     """
 
     def __init__(self) -> None:
-        self._catalog: Optional[StakeholderFactCatalog] = None
+        self._catalog: Optional[StakeholderKnowledgeCatalog] = None
         self._by_turn: dict[int, list[StakeholderAssertion]] = {}
 
-    def install_catalog(self, catalog: StakeholderFactCatalog) -> None:
-        """Attach the stakeholder's fact catalog (enables ingestion-time
+    def install_catalog(self, catalog: StakeholderKnowledgeCatalog) -> None:
+        """Attach the stakeholder's knowledge catalog (enables ingestion-time
         validation). Installed by the stakeholder simulator adapter."""
         self._catalog = catalog
 
     @property
-    def catalog(self) -> Optional[StakeholderFactCatalog]:
+    def catalog(self) -> Optional[StakeholderKnowledgeCatalog]:
         return self._catalog
 
     def bind(
@@ -236,8 +188,8 @@ class StakeholderFactLedger:
         """Record the assertion sidecar of the stakeholder message at ``turn``.
 
         When a catalog is installed, the assertions are validated
-        deterministically first (unknown/foreign fact, unknown or hidden
-        claim, or quote/occurrence mismatch => raise).
+        deterministically first (unknown claim id or quote/occurrence mismatch
+        => raise).
         """
         if self._catalog is not None:
             self._catalog.validate_assertions(assertions, message)

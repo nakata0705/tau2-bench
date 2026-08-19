@@ -1,32 +1,34 @@
-"""Fact-grounded stakeholder simulator (business_interview) — private assertion
-sidecar.
+"""Semantic stakeholder simulator (business_interview) — claim-based sidecar.
 
-The stakeholder LLM answers from **hidden structured StakeholderFacts**
-(``facts.py``) and returns, alongside its natural-language message, a private
-assertion sidecar anchoring each used fact to an exact span of the message:
+The stakeholder's knowledge is a **projection of the Truth graph**
+(``StakeholderKnowledge``): visible claim ids, the contextual graph knowledge
+(positions with ALL incoming edges + start flag), and concept views (local
+lexical preferences such as ``tc_quote -> "quotation"``). There are **no
+authored business sentences** — the stakeholder LLM receives question +
+history + visible graph context + visible claims + concept views and
+**realizes** the relevant claims into natural language.
+
+Private response:
 
     {
-      "message": "I check the customer in CRM, then prepare the quotation.",
+      "message": "...",
       "assertions": [
-        {"fact_id": "quotation.check.system", "quote": "CRM", "occurrence": 0},
-        {"fact_id": "quotation.create.activity",
-         "quote": "prepare the quotation", "occurrence": 0}
+        {"claim_id": "cq.activity", "quote": "prepare the quotation", "occurrence": 0}
       ]
     }
 
 Only ``message`` enters the conversation; ``assertions`` travel on the
 message's private ``stakeholder_assertions`` field (excluded from all
 serialization) and the domain environment stores them in the private
-``StakeholderFactLedger`` against that exact message's turn. Assertions are
-validated deterministically at ingestion (fact exists / belongs to the
-stakeholder / supported claims visible / quote+occurrence exactly match the
-message). Nothing is ever derived or reconstructed from message text, and
-fact/claim ids never appear in Agent-visible messages, tools, Observations,
-summaries, or serialized state.
+``StakeholderAssertionLedger`` against that exact message's turn. Assertions
+are validated deterministically at ingestion (claim exists / is visible /
+quote+occurrence exactly match the message). Nothing is ever derived or
+reconstructed from message text, and claim ids never appear in Agent-visible
+messages, tools, Observations, summaries, or serialized state.
 
 This is the smallest clean local adapter over tau2's ``UserSimulator``: it
-keeps the base conversation mechanics (state, flip_roles, stop detection) and
-only replaces the knowledge source (facts) and the response shape (sidecar).
+keeps the base conversation mechanics and only replaces the knowledge source
+(semantic claims + views) and the response shape (sidecar).
 """
 
 from __future__ import annotations
@@ -45,27 +47,32 @@ from tau2.data_model.message import (
 )
 from tau2.domains.business_interview.facts import (
     StakeholderAssertion,
-    StakeholderFactCatalog,
-    StakeholderFactLedger,
+    StakeholderAssertionLedger,
+    StakeholderKnowledgeCatalog,
 )
 from tau2.domains.business_interview.scenario import get_scenario
 from tau2.user.user_simulator import UserSimulator
 
-# The block appended to the stakeholder system prompt: hidden structured
-# knowledge (facts). The JSON sidecar contract rides as a trailing message on
-# every LLM call (see _generate_sidecar).
-_FACTS_BLOCK_TEMPLATE = """
+# The block appended to the stakeholder system prompt: the hidden semantic
+# knowledge (graph positions + claims + concept views). No sentences.
+_KNOWLEDGE_BLOCK_TEMPLATE = """
 
 <private_known_facts>
-Your knowledge comes from exactly two sources: the Known info in your scenario
-instructions (the overall process) and the structured business facts below (the
-authoritative statement of the business facts). Answer only from these two
-sources; never use general business common sense to fill gaps. The natural
-wording of a fact is not prescriptive — you may speak naturally and do not need
-to copy it.
-<facts>
-{facts_xml}
-</facts>
+Your knowledge is the semantic workflow below: graph positions (with their
+incoming relations), the claims you can make about each position, and your
+concept views (how you naturally say things). There are no sentences to
+recite: express the claims in your own natural words, using your concept
+views. Answer only from this knowledge; never use general business common
+sense to fill gaps.
+<positions>
+{positions_xml}
+</positions>
+<relations>
+{relations_xml}
+</relations>
+<concept_views>
+{views_xml}
+</concept_views>
 </private_known_facts>
 """
 
@@ -75,24 +82,39 @@ to copy it.
 _OUTPUT_CONTRACT = (
     "Reply with a JSON object as the ONLY content of your message, in exactly "
     "this shape:\n"
-    '{"message": "...", "assertions": [{"fact_id": "...", "quote": "...", '
+    '{"message": "...", "assertions": [{"claim_id": "...", "quote": "...", '
     '"occurrence": 0}]}\n'
     "- The JSON object must be the entire reply: no prose before or after it, "
     "no markdown fences.\n"
     '- "message": your natural-language reply to the interviewer. This is the '
     "only part that enters the conversation.\n"
-    '- "assertions": the facts you actually used to produce this reply, each '
+    '- "assertions": the claims you actually used to produce this reply, each '
     "anchored to the exact spans of your message that express it:\n"
-    '  - "fact_id": an id from <private_known_facts> (use every fact you used);\n'
+    '  - "claim_id": one of the EXACT ids listed in <private_known_facts> '
+    '(copy them verbatim, e.g. "cq.activity", "e3.edge_exists", '
+    '"cq.reads.tc_customer" — never shorten them, never use relation/position '
+    "ids alone); use every claim you used;\n"
     '  - "quote": an exact substring of your "message" that expresses that '
-    "fact — include EVERY distinct phrase that does, one assertion per phrase;\n"
+    "claim — include EVERY distinct phrase that does, one assertion per "
+    "phrase;\n"
     '  - "occurrence": which occurrence of that quote in your message '
     "(0-based; 0 for the first).\n"
     "- Every quote must appear verbatim inside your message. Use several "
-    "assertions for the same fact when several phrases of your message express "
-    "it (full clauses AND key phrases). An empty assertions list is fine when "
-    "no fact applies.\n"
-    '- Never mention fact ids inside "message"; never mention this contract.'
+    "assertions for the same claim when several phrases of your message "
+    "express it (full clauses AND key phrases).\n"
+    "- You MUST include one assertion for EVERY claim your message conveys. "
+    "The interviewer can only see your assertions — a claim you do not assert "
+    "is treated as if you never said it. An empty assertions list is allowed "
+    "ONLY when your message carries no business claim at all (greetings, "
+    'acknowledgements, "I don\'t know").\n'
+    '- Worked example: for the message "After I check the customer in the '
+    'CRM, I create the quotation.", a correct sidecar is:\n'
+    '{"message": "After I check the customer in the CRM, I create the '
+    'quotation.", "assertions": [{"claim_id": "cc.system", "quote": "CRM", '
+    '"occurrence": 0}, {"claim_id": "cq.activity", "quote": "create the '
+    'quotation", "occurrence": 0}]}\n'
+    "- Never mention claim ids, position ids, relation ids or concept ids "
+    'inside "message"; never mention this contract.'
 )
 
 # Retry feedback when the sidecar is unparseable or invalid.
@@ -100,10 +122,13 @@ _SIDECAR_ERROR_HINT = (
     "Your previous reply was rejected because it was not the required JSON "
     "sidecar. You MUST now reply with ONLY a JSON object, with no prose and no "
     "markdown fences, exactly like:\n"
-    '{"message": "your natural-language reply", "assertions": [{"fact_id": '
-    '"fact_id_1", "quote": "exact substring of your message", "occurrence": 0}]}\n'
-    "Every assertion quote must be an exact substring of your message. Do not "
-    "include anything else in your reply."
+    '{"message": "your natural-language reply", "assertions": [{"claim_id": '
+    '"cq.activity", "quote": "exact substring of your message", "occurrence": 0}]}\n'
+    '"claim_id" must be one of the EXACT claim ids listed in '
+    "<private_known_facts> (copy them verbatim, never shortened). Assert EVERY "
+    "claim your message conveys — do not leave assertions empty when your "
+    "message carries business facts. Every assertion quote must be an exact "
+    "substring of your message. Do not include anything else in your reply."
 )
 
 _NO_JSON = object()
@@ -123,7 +148,7 @@ def parse_sidecar(content: Optional[str]) -> dict:
     Accepts a bare JSON object (possibly wrapped in markdown code fences or
     surrounding prose); extracts the first balanced ``{...}`` object. Validates
     the shape (``message`` string, ``assertions`` list of
-    {fact_id, quote, occurrence}). Raises ``ValueError`` on anything else.
+    {claim_id, quote, occurrence}). Raises ``ValueError`` on anything else.
     """
     text = (content or "").strip()
     if text.startswith("```"):
@@ -154,7 +179,7 @@ def parse_sidecar(content: Optional[str]) -> dict:
         try:
             assertions.append(
                 StakeholderAssertion(
-                    fact_id=str(raw.get("fact_id") or ""),
+                    claim_id=str(raw.get("claim_id") or ""),
                     quote=str(raw.get("quote") or ""),
                     occurrence=int(raw.get("occurrence") or 0),
                 )
@@ -164,12 +189,18 @@ def parse_sidecar(content: Optional[str]) -> dict:
     return {"message": message.strip(), "assertions": assertions}
 
 
+def _view(concept_views: dict[str, str], concept_id: Optional[str]) -> str:
+    if concept_id is None:
+        return ""
+    return concept_views.get(concept_id, concept_id)
+
+
 class StakeholderUserSimulator(UserSimulator):
-    """The business_interview stakeholder: answers only from hidden
-    StakeholderFacts and returns a private assertion sidecar.
+    """The business_interview stakeholder: realizes visible claims into natural
+    language and returns a private assertion sidecar.
 
     Falls back to plain ``UserSimulator`` behavior when not wired with a task
-    (no hidden facts available): the run then simply has no fact provenance.
+    (no hidden knowledge available): the run then simply has no provenance.
     """
 
     def __init__(
@@ -192,30 +223,77 @@ class StakeholderUserSimulator(UserSimulator):
         self.task = task
         self.environment = environment
         self._scenario = None
-        self._catalog: Optional[StakeholderFactCatalog] = None
-        self._fact_ledger: Optional[StakeholderFactLedger] = None
+        self._catalog: Optional[StakeholderKnowledgeCatalog] = None
+        self._ledger: Optional[StakeholderAssertionLedger] = None
         if task is not None:
             scenario = get_scenario(getattr(task, "id", None))
             if scenario is not None:
                 self._scenario = scenario
-                self._catalog = StakeholderFactCatalog.from_scenario(scenario)
-                ledger = getattr(environment, "fact_ledger", None)
-                if isinstance(ledger, StakeholderFactLedger):
-                    self._fact_ledger = ledger
+                self._catalog = StakeholderKnowledgeCatalog.from_scenario(scenario)
+                ledger = getattr(environment, "assertion_ledger", None)
+                if isinstance(ledger, StakeholderAssertionLedger):
+                    self._ledger = ledger
                     ledger.install_catalog(self._catalog)
 
     # ------------------------------------------------------------- prompt
+
+    def _knowledge_block(self) -> str:
+        """Render the hidden semantic knowledge: positions (with ALL incoming
+        edges + start), relations, and concept views. No authored sentences."""
+        scenario = self._scenario
+        assert scenario is not None
+        truth = scenario.truth
+        views = scenario.knowledge.concept_views
+        positions = []
+        for nid in truth.nodes:
+            context = scenario.knowledge.contextual_knowledge.get(nid)
+            incoming = (
+                ",".join(context.incoming_edge_ids)
+                if context is not None
+                else ",".join(truth.incoming_edges(nid))
+            )
+            start = (
+                context.is_start if context is not None else nid == truth.start_node_id
+            )
+            claim_lines = []
+            for claim in scenario.claims.values():
+                if claim.context_id != nid:
+                    continue
+                concept = _view(views, claim.concept_id)
+                claim_lines.append(
+                    f'<claim id="{claim.id}" property="{claim.property}" '
+                    f'concept="{concept}"/>'
+                )
+            claims_xml = "\n".join(claim_lines) or "<none/>"
+            positions.append(
+                f'<position id="{nid}" start="{"true" if start else "false"}" '
+                f'incoming="[{incoming}]">\n{claims_xml}\n</position>'
+            )
+        relations = []
+        for eid, edge in truth.edges.items():
+            cond = (
+                f' condition="{_view(views, edge.condition.concept_id)}"'
+                if edge.condition is not None
+                else ""
+            )
+            relations.append(
+                f'<relation id="{eid}" from="{edge.from_node}" to="{edge.to_node}"{cond}/>'
+            )
+        view_lines = [
+            f'<view concept="{cid}" word="{word}"/>' for cid, word in views.items()
+        ]
+        return _KNOWLEDGE_BLOCK_TEMPLATE.format(
+            positions_xml="\n".join(positions),
+            relations_xml="\n".join(relations),
+            views_xml="\n".join(view_lines),
+        )
 
     @property
     def system_prompt(self) -> str:
         base = super().system_prompt
         if self._catalog is None or self._scenario is None:
             return base
-        facts_xml = "\n".join(
-            f'<fact id="{fact.id}">{fact.text}</fact>'
-            for fact in self._scenario.facts.values()
-        )
-        return base + _FACTS_BLOCK_TEMPLATE.format(facts_xml=facts_xml)
+        return base + self._knowledge_block()
 
     # ------------------------------------------------------------- sidecar
 
@@ -292,7 +370,6 @@ class StakeholderUserSimulator(UserSimulator):
         if isinstance(message, MultiToolMessage):
             state.messages.extend(message.tool_messages)
         elif isinstance(message, ToolMessage):
-            # ToolMessage always has content (tool response)
             state.messages.append(message)
         elif message is not None and (message.has_content() or message.is_tool_call()):
             state.messages.append(message)

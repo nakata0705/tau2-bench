@@ -740,6 +740,9 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
         # Skip termination checks if we're waiting for environment to respond
         if self.to_role == Role.ENV:
             return
+        # A termination reason already set (e.g. EPISODE_COMPLETE) wins.
+        if self.termination_reason is not None:
+            return
 
         if self.step_count >= self.max_steps:
             self.done = True
@@ -898,6 +901,15 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             self.check_communication_error()
         self.step_count += 1
         self.environment.sync_tools()
+        # Successful episode completion (e.g. business_interview
+        # finish_interview) terminates the episode immediately — distinct
+        # from max_steps truncation. First-set termination reason wins.
+        if (
+            self.termination_reason is None
+            and getattr(self.environment, "episode_complete", lambda: False)()
+        ):
+            self.done = True
+            self.termination_reason = TerminationReason.EPISODE_COMPLETE
 
     def get_trajectory(self) -> list[Message]:
         """

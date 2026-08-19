@@ -82,24 +82,29 @@ def graph_to_dict(graph) -> dict:
     return {
         "id": graph.id,
         "name": graph.name,
+        "start_node_id": graph.start_node_id,
+        "end_node_ids": list(graph.end_node_ids),
         "concepts": {
             cid: {
                 "id": concept.id,
                 "kind": concept.kind,
-                "preferred_label": concept.preferred_label,
+                "display_label": concept.display_label,
                 "description": concept.description,
                 "validation_status": concept.validation_status,
-                "terms": [
-                    {
-                        "text": t.text,
-                        "evidence": _render_evidence(t.evidence),
-                    }
-                    for t in concept.terms
-                ],
+                "mentions": _render_evidence(concept.mentions),
                 "validation_evidence": _render_evidence(concept.validation_evidence),
             }
             for cid, concept in graph.concepts.items()
         },
+        "terminology_agreements": [
+            {
+                "concept_id": a.concept_id,
+                "term": a.term,
+                "stakeholder_id": a.stakeholder_id,
+                "evidence": _render_evidence(a.evidence),
+            }
+            for a in graph.terminology_agreements
+        ],
         "nodes": {
             nid: {
                 "id": node.id,
@@ -218,8 +223,8 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
         db = getattr(env_tools, "db", None)
     except Exception as exc:  # noqa: BLE001
         errors.append(f"could not read db: {exc}")
-    fact_ledger = getattr(orchestrator.environment, "fact_ledger", None)
-    assertions = fact_ledger.assertions() if fact_ledger is not None else {}
+    assertion_ledger = getattr(orchestrator.environment, "assertion_ledger", None)
+    assertions = assertion_ledger.assertions() if assertion_ledger is not None else {}
 
     # --- domain evaluator ---------------------------------------------------
     eval_result = None
@@ -237,7 +242,6 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
                 scenario.spec,
                 scenario.stakeholder,
                 claims=scenario.claims,
-                facts=scenario.facts,
                 assertions=assertions,
             ).model_dump(mode="json")
             if db is not None
@@ -330,23 +334,24 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
     # --- private-ID leakage scan ---------------------------------------------
     private_ids: set[str] = set()
     if scenario is not None:
-        private_ids.update(scenario.facts.keys())
-        for fact in scenario.facts.values():
-            private_ids.update(fact.supported_claim_ids)
+        private_ids.update(scenario.claims.keys())
     leakage = _leakage_scan(dump, private_ids)
     dump["private_id_leakage"] = leakage
 
-    # The PRIVATE assertion ledger + fact catalog: kept out of the Agent-visible
-    # dump and written to a separate artifact by main().
+    # The PRIVATE assertion ledger + claims: kept out of the Agent-visible dump
+    # and written to a separate artifact by main().
     private_payload = {
         "task_id": TASK_ID,
         "assertions_by_turn": {
             str(turn): [a.model_dump() for a in ass] for turn, ass in assertions.items()
         },
-        "stakeholder_facts": (
-            {fid: fact.model_dump() for fid, fact in scenario.facts.items()}
+        "visible_claims": (
+            {cid: claim.model_dump() for cid, claim in scenario.claims.items()}
             if scenario is not None
             else {}
+        ),
+        "concept_views": (
+            scenario.knowledge.concept_views if scenario is not None else {}
         ),
     }
     dump["private_assertions_artifact"] = f"run_{run_index:02d}_seed{seed}.private.json"
@@ -410,6 +415,8 @@ def main() -> int:
                 "edge_recall": metrics.get("edge_recall"),
                 "edge_precision": metrics.get("edge_precision"),
                 "concept_correctness": metrics.get("concept_correctness"),
+                "start_correct": metrics.get("start_correct"),
+                "end_recall": metrics.get("end_recall"),
                 "fabricated_node_count": metrics.get("fabricated_node_count"),
                 "fabricated_edge_count": metrics.get("fabricated_edge_count"),
                 "private_id_leakage": dump["private_id_leakage"],

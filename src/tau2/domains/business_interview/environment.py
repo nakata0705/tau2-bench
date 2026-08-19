@@ -5,7 +5,7 @@ from tau2.data_model.message import Message, UserMessage
 from tau2.data_model.tasks import Task
 from tau2.domains.business_interview.facts import (
     StakeholderAssertion,
-    StakeholderFactLedger,
+    StakeholderAssertionLedger,
 )
 from tau2.domains.business_interview.graph import InterviewDB
 from tau2.domains.business_interview.tools import InterviewTools
@@ -25,20 +25,37 @@ class BusinessInterviewEnvironment(Environment):
     (user) messages as Observations via ``observe_message``; it never writes
     Observation text itself.
 
-    ``fact_ledger`` is the private assertion sidecar ledger: when a
+    ``assertion_ledger`` is the private assertion sidecar ledger: when a
     stakeholder (user) message carries private ``assertions`` (from the
     fact-grounded stakeholder simulator), they are validated deterministically
     and stored against that exact message's turn. Only the public message
     content ever enters the conversation; the ledger is never Agent-visible.
+
+    ``episode_complete`` reports whether the interview was finished — the
+    orchestrator uses it to terminate the episode immediately on a successful
+    ``finish_interview()`` (distinct from max_steps truncation).
     """
 
     def __init__(
-        self, *args, fact_ledger: Optional[StakeholderFactLedger] = None, **kwargs
+        self,
+        *args,
+        assertion_ledger: Optional[StakeholderAssertionLedger] = None,
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        self.fact_ledger: StakeholderFactLedger = (
-            fact_ledger if fact_ledger is not None else StakeholderFactLedger()
+        self.assertion_ledger: StakeholderAssertionLedger = (
+            assertion_ledger
+            if assertion_ledger is not None
+            else StakeholderAssertionLedger()
         )
+
+    def episode_complete(self) -> bool:
+        """True once the interview finished successfully."""
+        tools = self.tools
+        if tools is None:
+            return False
+        db = getattr(tools, "db", None)
+        return bool(db is not None and db.interview_complete)
 
     def on_message(self, message: Message) -> None:
         tools = self.tools
@@ -59,7 +76,7 @@ class BusinessInterviewEnvironment(Environment):
                     StakeholderAssertion(**a) if isinstance(a, dict) else a
                     for a in raw_assertions
                 ]
-                self.fact_ledger.bind(turn, assertions, content)
+                self.assertion_ledger.bind(turn, assertions, content)
         db.messages.append(
             {
                 "role": str(getattr(message, "role", "")),
@@ -73,13 +90,13 @@ def get_environment(solo_mode: bool = False) -> Environment:
 
     There is no pre-existing data: the database only accumulates the
     conversation, the authentic Observations captured from stakeholder messages,
-    and the inferred DAG. The private used-fact ledger is created here and
+    and the inferred graph. The private assertion ledger is created here and
     shared with the tools (and, via the environment, with the fact-grounded
     stakeholder simulator adapter).
     """
     db = InterviewDB()
-    ledger = StakeholderFactLedger()
-    tools = InterviewTools(db, fact_ledger=ledger)
+    ledger = StakeholderAssertionLedger()
+    tools = InterviewTools(db, assertion_ledger=ledger)
     try:
         with open(BUSINESS_INTERVIEW_POLICY_PATH, "r") as fp:
             policy = fp.read()
@@ -92,7 +109,7 @@ def get_environment(solo_mode: bool = False) -> Environment:
         policy=policy,
         tools=tools,
         user_tools=None,  # The stakeholder is a plain conversational user.
-        fact_ledger=ledger,
+        assertion_ledger=ledger,
     )
     if solo_mode:
         env.set_solo_mode(True)

@@ -1,18 +1,14 @@
-"""Scenarios for the unified-glossary business_interview benchmark (v6).
+"""Scenarios for the graph-context business_interview benchmark (v7).
 
 A scenario is a **Truth process graph** (a ``BusinessProcessGraph`` whose
-nodes/edges reference evaluator-only Truth concepts of every ``ConceptKind``:
-activity / actor / system / data / condition / rationale), an evaluator-only
-``EvaluationSpec`` (kept for API stability; contains no semantic matchers —
-everything semantic is expressed as TruthClaims), the stakeholder filter(s),
-the **hidden claim catalog** (``claims.py``) and the **private atomic
-StakeholderFact catalog** (``facts.py``).
-
-There are **no surface-term tables, no stop phrases, no semantic expression
-lists and no duplicated business facts in ``known_info``**: the simulator
-answers from structured facts and returns private assertions (fact id + exact
-message span); the evaluator grounds everything through that private
-provenance, never through wording.
+nodes/edges reference evaluator-only Truth concepts of every ``ConceptKind``,
+with explicit start/end), an evaluator-only ``EvaluationSpec`` (empty — no
+semantic matchers), the stakeholder filter(s), the **hidden claim catalog**
+(``claims.py``: claims keyed by graph position) and the **StakeholderKnowledge**
+(``facts.py``): the stakeholder's projection of the Truth — visible claim ids,
+graph contexts (incoming edges / start) and concept views (lexical
+preferences). There are **no authored business sentences anywhere**: facts are
+semantic structure; the stakeholder LLM realizes them into natural language.
 
 The Truth graph and the agent's inferred graph use the same class; Truth
 concept ids are evaluator-only and need not equal Agent concept ids.
@@ -23,7 +19,7 @@ from typing import Optional
 
 from tau2.domains.business_interview.claims import TruthClaim, build_claims
 from tau2.domains.business_interview.evaluation import EvaluationSpec
-from tau2.domains.business_interview.facts import StakeholderFact
+from tau2.domains.business_interview.facts import StakeholderKnowledge
 from tau2.domains.business_interview.graph import (
     BusinessConcept,
     BusinessProcessGraph,
@@ -41,7 +37,7 @@ def _ref(concept_id: str) -> ConceptRef:
 
 
 def _concept(cid: str, kind: str, label: str) -> BusinessConcept:
-    return BusinessConcept(id=cid, kind=kind, preferred_label=label)  # type: ignore[arg-type]
+    return BusinessConcept(id=cid, kind=kind, display_label=label)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -50,12 +46,8 @@ def _concept(cid: str, kind: str, label: str) -> BusinessConcept:
 
 
 def quotation_truth() -> BusinessProcessGraph:
-    """The quotation workflow Truth graph (cycles allowed; here it is a DAG).
-
-    Reads/writes are ConceptRefs into evaluator-only Truth data concepts;
-    ``tc_quote`` flows through cq.writes / ap.reads / sq.reads / me.reads,
-    but only ``cq.writes`` is stakeholder-visible (see the sales filter).
-    """
+    """The quotation workflow Truth graph (1 start / 2 ends; cycles allowed —
+    here it is a DAG)."""
     return BusinessProcessGraph(
         id="quotation",
         name="Quotation creation",
@@ -181,102 +173,75 @@ def quotation_truth() -> BusinessProcessGraph:
                 condition=_ref("tc_cond_month_end"),
             ),
         },
+        start_node_id="r",
+        end_node_ids=["sq", "me"],
     )
 
 
-# Hidden structured StakeholderFacts for the quotation sales stakeholder.
-# Facts are ATOMIC: exactly one supported TruthClaim per fact, so a fact can
-# never cross-credit independent claims. Fact ids are the SAME across EN and
-# JA (semantic fact identities are shared); only the wording differs.
-def quotation_facts(locale: str = "en") -> dict[str, StakeholderFact]:
-    """The private atomic StakeholderFact catalog for quotation (EN/JA)."""
+# The stakeholder's local lexical preferences (single wordings, never
+# workflow sentences). EN and JA share concept ids; wording differs.
+def quotation_concept_views(locale: str = "en") -> dict[str, str]:
     if locale == "ja":
-        text = {
-            "receive": "お客様から見積依頼を受け付けます。",
-            "record": "見積依頼を記録します。",
-            "check": "CRMで顧客情報を確認します。",
-            "create": "顧客情報と価格情報を使って見積書を作成します。",
-            "create_system": "見積システムで見積書を作成します。",
-            "approve": "100万円を超える見積書は、送付前に管理者の承認が必要です。",
-            "approve_rationale": "この承認は与信リスク管理のためのものです。",
-            "send": "見積書をメールで顧客に送付します。",
-            "month_end": "月末には見積情報の集計を経理チームに送ります。",
-            "month_end_excel": "月末の集計はExcelファイルとして送ります。",
-            "flow_e1": "依頼を受け付けたら、顧客情報を確認します。",
-            "flow_e2": "顧客情報を確認したら、見積書を作成します。",
-            "flow_e3": "100万円を超える見積書は管理者の承認に回ります。",
-            "flow_e4": "100万円以下の見積書はそのまま顧客に送付します。",
-            "flow_e5": "承認された見積書は顧客に送付します。",
-            "flow_e6": "月末には経理チームへの集計も行います。",
-            "cond_over_1m": "100万円を超える場合です。",
-            "cond_at_or_below_1m": "100万円以下の場合です。",
-            "cond_month_end": "月末の場合です。",
+        return {
+            "tc_activity_receive_request": "見積依頼を受け付ける",
+            "tc_activity_check_customer": "顧客情報を確認する",
+            "tc_activity_create_quotation": "見積書を作成する",
+            "tc_activity_approve_quotation": "高額見積書を承認する",
+            "tc_activity_send_quotation": "見積書を顧客に送付する",
+            "tc_activity_send_month_end_summary": "月末の集計を経理に送る",
+            "tc_actor_sales": "営業担当者",
+            "tc_actor_manager": "管理者",
+            "tc_system_crm": "CRM",
+            "tc_system_quoting": "見積システム",
+            "tc_system_email": "メール",
+            "tc_system_excel": "Excel",
+            "tc_request": "見積依頼",
+            "tc_customer": "顧客情報",
+            "tc_pricing": "価格情報",
+            "tc_quote": "見積書",
+            "tc_excel_summary": "見積情報の集計",
+            "tc_cond_over_1m": "100万円超",
+            "tc_cond_at_or_below_1m": "100万円以下",
+            "tc_cond_month_end": "月末",
+            "tc_rationale_credit_risk": "与信リスク管理",
         }
-    else:
-        text = {
-            "receive": "You receive quotation requests from customers.",
-            "record": "You record the quotation request.",
-            "check": "You check the customer's information in the CRM.",
-            "create": "You create the quotation using the customer and pricing information.",
-            "create_system": "You create the quotation in the quoting system.",
-            "approve": "Quotations over 1,000,000 yen must be approved by a manager before they are sent.",
-            "approve_rationale": "The approval is for credit risk management.",
-            "send": "You send the quotation to the customer by email.",
-            "month_end": "At month-end you send a summary of the quotation information to the Accounting team.",
-            "month_end_excel": "At month-end the summary is sent as an Excel file.",
-            "flow_e1": "After receiving the request, you check the customer information.",
-            "flow_e2": "After checking the customer information, you create the quotation.",
-            "flow_e3": "Quotations over 1,000,000 yen go to the manager for approval.",
-            "flow_e4": "Quotations at or below 1,000,000 yen are sent directly to the customer.",
-            "flow_e5": "Once approved, the quotation is sent to the customer.",
-            "flow_e6": "At month-end you also send the summary to Accounting.",
-            "cond_over_1m": "over 1,000,000 yen",
-            "cond_at_or_below_1m": "at or below 1,000,000 yen",
-            "cond_month_end": "month-end",
-        }
-    # (fact id, text key, supported claim id)
-    spec: list[tuple[str, str, str]] = [
-        ("quotation.receive.activity", "receive", "r.activity"),
-        ("quotation.receive.actor", "receive", "r.actor"),
-        ("quotation.receive.writes", "record", "r.writes.tc_request"),
-        ("quotation.check.activity", "check", "cc.activity"),
-        ("quotation.check.actor", "check", "cc.actor"),
-        ("quotation.check.system", "check", "cc.system"),
-        ("quotation.check.reads", "check", "cc.reads.tc_customer"),
-        ("quotation.create.activity", "create", "cq.activity"),
-        ("quotation.create.actor", "create", "cq.actor"),
-        ("quotation.create.system", "create_system", "cq.system"),
-        ("quotation.create.reads.customer", "create", "cq.reads.tc_customer"),
-        ("quotation.create.reads.pricing", "create", "cq.reads.tc_pricing"),
-        ("quotation.create.writes", "create", "cq.writes.tc_quote"),
-        ("quotation.approve.activity", "approve", "ap.activity"),
-        ("quotation.approve.actor", "approve", "ap.actor"),
-        ("quotation.approve.rationale", "approve_rationale", "ap.rationale"),
-        ("quotation.send.activity", "send", "sq.activity"),
-        ("quotation.send.actor", "send", "sq.actor"),
-        ("quotation.send.system", "send", "sq.system"),
-        ("quotation.month_end.activity", "month_end", "me.activity"),
-        ("quotation.month_end.actor", "month_end", "me.actor"),
-        ("quotation.month_end.system", "month_end_excel", "me.system"),
-        ("quotation.month_end.writes", "month_end", "me.writes.tc_excel_summary"),
-        ("flow.e1.edge_exists", "flow_e1", "e1.edge_exists"),
-        ("flow.e2.edge_exists", "flow_e2", "e2.edge_exists"),
-        ("flow.e3.edge_exists", "flow_e3", "e3.edge_exists"),
-        ("flow.e4.edge_exists", "flow_e4", "e4.edge_exists"),
-        ("flow.e5.edge_exists", "flow_e5", "e5.edge_exists"),
-        ("flow.e6.edge_exists", "flow_e6", "e6.edge_exists"),
-        ("condition.e3.over_1m", "cond_over_1m", "e3.condition"),
-        ("condition.e4.at_or_below_1m", "cond_at_or_below_1m", "e4.condition"),
-        ("condition.e6.month_end", "cond_month_end", "e6.condition"),
-    ]
     return {
-        fid: StakeholderFact(
-            id=fid,
-            text=text[key],
-            supported_claim_ids=[claim_id],
-        )
-        for fid, key, claim_id in spec
+        "tc_activity_receive_request": "receive the quotation request",
+        "tc_activity_check_customer": "check the customer information",
+        "tc_activity_create_quotation": "create the quotation",
+        "tc_activity_approve_quotation": "approve the high-value quotation",
+        "tc_activity_send_quotation": "send the quotation to the customer",
+        "tc_activity_send_month_end_summary": "send the month-end summary to Accounting",
+        "tc_actor_sales": "sales employee",
+        "tc_actor_manager": "manager",
+        "tc_system_crm": "CRM",
+        "tc_system_quoting": "quoting system",
+        "tc_system_email": "email",
+        "tc_system_excel": "Excel",
+        "tc_request": "quotation request",
+        "tc_customer": "customer information",
+        "tc_pricing": "pricing information",
+        "tc_quote": "quotation",
+        "tc_excel_summary": "summary of the quotation information",
+        "tc_cond_over_1m": "over 1,000,000 yen",
+        "tc_cond_at_or_below_1m": "at or below 1,000,000 yen",
+        "tc_cond_month_end": "month-end",
+        "tc_rationale_credit_risk": "credit risk management",
     }
+
+
+def quotation_knowledge(locale: str = "en") -> StakeholderKnowledge:
+    """The sales stakeholder's semantic knowledge: the visible claim catalog,
+    the contextual graph knowledge (all incoming edges per position + start),
+    and the local concept views."""
+    truth = quotation_truth()
+    filter_ = quotation_sales_filter()
+    claims = build_claims(truth, filter_)
+    return StakeholderKnowledge(
+        visible_claim_ids=sorted(claims),
+        contextual_knowledge=truth.node_contexts(),
+        concept_views=quotation_concept_views(locale),
+    )
 
 
 def quotation_claims() -> dict[str, TruthClaim]:
@@ -322,8 +287,7 @@ def quotation_sales_filter() -> StakeholderFilter:
 
 def quotation_finance_filter() -> StakeholderFilter:
     """A finance/audit stakeholder: sees the month-end tail with all its
-    properties but not the approval-branch credit-risk rationale. Used to show
-    multiple filters."""
+    properties but not the approval-branch credit-risk rationale."""
     return StakeholderFilter(
         name="finance",
         visible_node_ids=["cq", "sq", "me"],
@@ -342,8 +306,7 @@ def quotation_spec() -> EvaluationSpec:
     """Evaluator-only spec for the quotation scenario.
 
     The spec carries NO semantic matchers: node/edge/property correctness is
-    expressed entirely through hidden TruthClaims + private StakeholderFacts.
-    This object is kept for API stability and is empty.
+    expressed entirely through hidden TruthClaims + private assertions.
     """
     return EvaluationSpec()
 
@@ -354,12 +317,7 @@ def quotation_spec() -> EvaluationSpec:
 
 
 def lab_sample_truth() -> BusinessProcessGraph:
-    """A non-quotation Truth graph (lab sample conditioning).
-
-    Demonstrates open-world domain concepts ("specimen accession",
-    "chamber seasoning", "conditioning cycle") that are not part of any global
-    ontology. Derived read/write artifacts are hidden from the stakeholder.
-    """
+    """A non-quotation Truth graph (lab sample conditioning)."""
     return BusinessProcessGraph(
         id="lab",
         name="Lab sample conditioning",
@@ -433,81 +391,37 @@ def lab_sample_truth() -> BusinessProcessGraph:
             "l2": Edge(id="l2", from_node="n2", to_node="n3"),
             "l3": Edge(id="l3", from_node="n3", to_node="n4"),
         },
+        start_node_id="n1",
+        end_node_ids=["n4"],
     )
 
 
-def lab_sample_facts() -> dict[str, StakeholderFact]:
-    """The private atomic StakeholderFact catalog for the lab technician.
-
-    Only n1 reads (sample) plus the visible activity/actor/system properties
-    are stakeholder-visible; hidden derived read/write artifacts are
-    deliberately NOT supported by any fact (hidden properties stay unset —
-    epistemic restraint).
-    """
-    spec: list[tuple[str, str, str]] = [
-        (
-            "lab.accession.activity",
-            "When a specimen arrives, you accession it — you record it as received.",
-            "n1.activity",
-        ),
-        (
-            "lab.accession.actor",
-            "I am the lab technician who accessions the specimens.",
-            "n1.actor",
-        ),
-        (
-            "lab.accession.reads",
-            "When a specimen arrives, you accession it — you record it as received.",
-            "n1.reads.tc_sample",
-        ),
-        (
-            "lab.seasoning.activity",
-            "You season the environment chamber to prepare it.",
-            "n2.activity",
-        ),
-        ("lab.seasoning.actor", "I season the chamber myself.", "n2.actor"),
-        (
-            "lab.seasoning.system",
-            "The seasoning is done in the environment chamber.",
-            "n2.system",
-        ),
-        (
-            "lab.conditioning.activity",
-            "You run a conditioning cycle that processes the samples inside the chamber.",
-            "n3.activity",
-        ),
-        ("lab.conditioning.actor", "I run the conditioning cycle.", "n3.actor"),
-        (
-            "lab.conditioning.system",
-            "The conditioning cycle runs in the environment chamber.",
-            "n3.system",
-        ),
-        (
-            "lab.approval.activity",
-            "Finally, the lab supervisor approves the conditioned batch before it is released.",
-            "n4.activity",
-        ),
-        ("lab.approval.actor", "The lab supervisor approves the batch.", "n4.actor"),
-        (
-            "lab.flow.l1",
-            "After specimen accession, you prepare the chamber for seasoning.",
-            "l1.edge_exists",
-        ),
-        (
-            "lab.flow.l2",
-            "After chamber seasoning, you run the conditioning cycle.",
-            "l2.edge_exists",
-        ),
-        (
-            "lab.flow.l3",
-            "After the conditioning cycle, the lab supervisor approves the batch.",
-            "l3.edge_exists",
-        ),
-    ]
+def lab_sample_views() -> dict[str, str]:
     return {
-        fid: StakeholderFact(id=fid, text=text, supported_claim_ids=[claim_id])
-        for fid, text, claim_id in spec
+        "tc_activity_accession": "accession the specimen",
+        "tc_activity_seasoning": "season the chamber",
+        "tc_activity_conditioning": "run the conditioning cycle",
+        "tc_activity_batch_approval": "approve the conditioned batch",
+        "tc_actor_lab_tech": "lab technician",
+        "tc_actor_lab_supervisor": "lab supervisor",
+        "tc_system_chamber": "environment chamber",
+        "tc_sample": "sample",
+        "tc_accessioned_sample": "accessioned sample",
+        "tc_seasoned_chamber": "seasoned chamber",
+        "tc_conditioned_sample": "conditioned sample",
+        "tc_batch_approval": "batch approval",
     }
+
+
+def lab_sample_knowledge() -> StakeholderKnowledge:
+    truth = lab_sample_truth()
+    filter_ = lab_sample_filter()
+    claims = build_claims(truth, filter_)
+    return StakeholderKnowledge(
+        visible_claim_ids=sorted(claims),
+        contextual_knowledge=truth.node_contexts(),
+        concept_views=lab_sample_views(),
+    )
 
 
 def lab_sample_claims() -> dict[str, TruthClaim]:
@@ -515,18 +429,14 @@ def lab_sample_claims() -> dict[str, TruthClaim]:
 
 
 def lab_sample_spec() -> EvaluationSpec:
-    """Evaluator-only spec for the lab scenario (no semantic matchers)."""
     return EvaluationSpec()
 
 
 def lab_sample_filter() -> StakeholderFilter:
     """The lab technician. Can state the activities, actors, the
     environment-chamber system, and the raw specimen/sample input, but the GT
-    read/write artifacts (``accessioned sample``, ``seasoned chamber``,
-    ``conditioned sample``, ``batch approval``) are benchmark-derived
-    state/artifact conventions the stakeholder never names. They are therefore
-    hidden: the correct agent behavior is to leave them unset (epistemic
-    restraint), not to invent them.
+    read/write artifacts are hidden: the correct agent behavior is to leave
+    them unset (epistemic restraint), not to invent them.
     """
     return StakeholderFilter(
         name="lab tech",
@@ -549,7 +459,7 @@ class Scenario:
     spec: EvaluationSpec
     stakeholder: StakeholderFilter
     claims: dict[str, TruthClaim]
-    facts: dict[str, StakeholderFact]
+    knowledge: StakeholderKnowledge
 
 
 _SCENARIOS: dict[str, Scenario] = {
@@ -559,7 +469,7 @@ _SCENARIOS: dict[str, Scenario] = {
         spec=quotation_spec(),
         stakeholder=quotation_sales_filter(),
         claims=quotation_claims(),
-        facts=quotation_facts("en"),
+        knowledge=quotation_knowledge("en"),
     ),
     "lab_sample_flow": Scenario(
         scenario_id="lab_sample_flow",
@@ -567,7 +477,7 @@ _SCENARIOS: dict[str, Scenario] = {
         spec=lab_sample_spec(),
         stakeholder=lab_sample_filter(),
         claims=lab_sample_claims(),
-        facts=lab_sample_facts(),
+        knowledge=lab_sample_knowledge(),
     ),
 }
 
@@ -588,7 +498,6 @@ def get_scenario(scenario_id: Optional[str]) -> Optional[Scenario]:
     if sc is None:
         return None
     if scenario_id is not None and scenario_id.endswith(JA_SCENARIO_SUFFIX):
-        # JA locale: same truth/spec/filter/claims, JA fact wording.
-        # Fact ids and claim ids are shared across locales.
-        return replace(sc, facts=quotation_facts("ja"))
+        # JA locale: same truth/spec/filter/claims; JA concept views.
+        return replace(sc, knowledge=quotation_knowledge("ja"))
     return sc

@@ -1259,6 +1259,9 @@ class TerminationReason(str, Enum):
     TOO_MANY_ERRORS = "too_many_errors"
     AGENT_ERROR = "agent_error"
     USER_ERROR = "user_error"
+    EPISODE_COMPLETE = (
+        "episode_complete"  # The episode finished successfully (e.g. finish_interview)
+    )
     INFRASTRUCTURE_ERROR = "infrastructure_error"  # Task failed due to infrastructure (e.g., API disconnect)
     CONTEXT_WINDOW_EXCEEDED = "context_window_exceeded"
     UNEXPECTED_ERROR = "unexpected_error"
