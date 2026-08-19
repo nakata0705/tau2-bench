@@ -1,50 +1,47 @@
-"""Scenarios for the fact-provenance business_interview benchmark (v5).
+"""Scenarios for the unified-glossary business_interview benchmark (v6).
 
-A scenario is a **Truth DAG** (a plain ``BusinessDAG`` whose reads/writes are
-``ConceptRef``\\ s into evaluator-only Truth data concepts), an evaluator-only
-``EvaluationSpec`` (concepts for node/edge/necessity matching), the stakeholder
-filter(s), the **hidden claim catalog** (``claims.py``: visible Truth
-read/write facts), and the **private StakeholderFact catalog** (``facts.py``):
-the hidden structured business facts the stakeholder simulator answers from.
+A scenario is a **Truth process graph** (a ``BusinessProcessGraph`` whose
+nodes/edges reference evaluator-only Truth concepts of every ``ConceptKind``:
+activity / actor / system / data / condition / rationale), an evaluator-only
+``EvaluationSpec`` (kept for API stability; contains no semantic matchers —
+everything semantic is expressed as TruthClaims), the stakeholder filter(s),
+the **hidden claim catalog** (``claims.py``) and the **private atomic
+StakeholderFact catalog** (``facts.py``).
 
-There are **no surface-term tables and no stop phrases**: the simulator gets
-structured facts and returns private ``used_fact_ids``; the evaluator binds
-Agent-local concepts through that private provenance, never through wording.
+There are **no surface-term tables, no stop phrases, no semantic expression
+lists and no duplicated business facts in ``known_info``**: the simulator
+answers from structured facts and returns private assertions (fact id + exact
+message span); the evaluator grounds everything through that private
+provenance, never through wording.
 
-The Truth DAG and the agent's inferred DAG use the same class; Truth concept
-ids are evaluator-only and need not equal Agent concept ids.
+The Truth graph and the agent's inferred graph use the same class; Truth
+concept ids are evaluator-only and need not equal Agent concept ids.
 """
 
 from dataclasses import dataclass, replace
 from typing import Optional
 
 from tau2.domains.business_interview.claims import TruthClaim, build_claims
-from tau2.domains.business_interview.dag import (
-    BusinessDAG,
+from tau2.domains.business_interview.evaluation import EvaluationSpec
+from tau2.domains.business_interview.facts import StakeholderFact
+from tau2.domains.business_interview.graph import (
+    BusinessConcept,
+    BusinessProcessGraph,
     ConceptRef,
-    DataConcept,
     Edge,
-    InferredValue,
-    Necessity,
     Node,
 )
-from tau2.domains.business_interview.evaluation import EvaluationSpec, TruthNodeSpec
-from tau2.domains.business_interview.facts import StakeholderFact
 from tau2.domains.business_interview.stakeholder import StakeholderFilter
 
 JA_SCENARIO_SUFFIX = "_ja"
-
-
-def _iv(value: Optional[str]) -> InferredValue:
-    return InferredValue(value=value)
 
 
 def _ref(concept_id: str) -> ConceptRef:
     return ConceptRef(concept_id=concept_id, confidence=1.0)
 
 
-def _concept(cid: str, label: str) -> DataConcept:
-    return DataConcept(id=cid, preferred_label=label)
+def _concept(cid: str, kind: str, label: str) -> BusinessConcept:
+    return BusinessConcept(id=cid, kind=kind, preferred_label=label)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -52,73 +49,113 @@ def _concept(cid: str, label: str) -> DataConcept:
 # ---------------------------------------------------------------------------
 
 
-def quotation_truth() -> BusinessDAG:
-    """The quotation workflow Truth DAG (1 start / 2 ends).
+def quotation_truth() -> BusinessProcessGraph:
+    """The quotation workflow Truth graph (cycles allowed; here it is a DAG).
 
     Reads/writes are ConceptRefs into evaluator-only Truth data concepts;
     ``tc_quote`` flows through cq.writes / ap.reads / sq.reads / me.reads,
     but only ``cq.writes`` is stakeholder-visible (see the sales filter).
     """
-    return BusinessDAG(
+    return BusinessProcessGraph(
         id="quotation",
         name="Quotation creation",
-        data_concepts={
-            "tc_request": _concept("tc_request", "request"),
-            "tc_customer": _concept("tc_customer", "customer"),
-            "tc_pricing": _concept("tc_pricing", "pricing"),
-            "tc_quote": _concept("tc_quote", "quote"),
-            "tc_approval": _concept("tc_approval", "approval"),
-            "tc_sent_quote": _concept("tc_sent_quote", "sent_quote"),
-            "tc_excel_summary": _concept("tc_excel_summary", "excel_summary"),
+        concepts={
+            # activities
+            "tc_activity_receive_request": _concept(
+                "tc_activity_receive_request", "activity", "receive quotation request"
+            ),
+            "tc_activity_check_customer": _concept(
+                "tc_activity_check_customer", "activity", "check customer information"
+            ),
+            "tc_activity_create_quotation": _concept(
+                "tc_activity_create_quotation", "activity", "create quotation"
+            ),
+            "tc_activity_approve_quotation": _concept(
+                "tc_activity_approve_quotation",
+                "activity",
+                "approve high-value quotation",
+            ),
+            "tc_activity_send_quotation": _concept(
+                "tc_activity_send_quotation", "activity", "send quotation to customer"
+            ),
+            "tc_activity_send_month_end_summary": _concept(
+                "tc_activity_send_month_end_summary",
+                "activity",
+                "send month-end summary to accounting",
+            ),
+            # actors
+            "tc_actor_sales": _concept("tc_actor_sales", "actor", "sales"),
+            "tc_actor_manager": _concept("tc_actor_manager", "actor", "manager"),
+            # systems
+            "tc_system_crm": _concept("tc_system_crm", "system", "crm"),
+            "tc_system_quoting": _concept(
+                "tc_system_quoting", "system", "quoting system"
+            ),
+            "tc_system_email": _concept("tc_system_email", "system", "email"),
+            "tc_system_excel": _concept("tc_system_excel", "system", "excel"),
+            # data
+            "tc_request": _concept("tc_request", "data", "request"),
+            "tc_customer": _concept("tc_customer", "data", "customer"),
+            "tc_pricing": _concept("tc_pricing", "data", "pricing"),
+            "tc_quote": _concept("tc_quote", "data", "quote"),
+            "tc_approval": _concept("tc_approval", "data", "approval"),
+            "tc_sent_quote": _concept("tc_sent_quote", "data", "sent_quote"),
+            "tc_excel_summary": _concept("tc_excel_summary", "data", "excel_summary"),
+            # conditions
+            "tc_cond_over_1m": _concept(
+                "tc_cond_over_1m", "condition", "amount over 1,000,000"
+            ),
+            "tc_cond_at_or_below_1m": _concept(
+                "tc_cond_at_or_below_1m", "condition", "amount at or below 1,000,000"
+            ),
+            "tc_cond_month_end": _concept(
+                "tc_cond_month_end", "condition", "month-end"
+            ),
+            # rationale
+            "tc_rationale_credit_risk": _concept(
+                "tc_rationale_credit_risk", "rationale", "credit risk management"
+            ),
         },
         nodes={
             "r": Node(
                 id="r",
-                action=_iv("receive quotation request"),
-                actor=_iv("sales"),
+                activity=_ref("tc_activity_receive_request"),
+                actor=_ref("tc_actor_sales"),
                 writes=[_ref("tc_request")],
             ),
             "cc": Node(
                 id="cc",
-                action=_iv("check customer information in the CRM"),
-                actor=_iv("sales"),
-                system=_iv("crm"),
+                activity=_ref("tc_activity_check_customer"),
+                actor=_ref("tc_actor_sales"),
+                system=_ref("tc_system_crm"),
                 reads=[_ref("tc_customer")],
             ),
             "cq": Node(
                 id="cq",
-                action=_iv("create quotation in the quoting system"),
-                actor=_iv("sales"),
-                system=_iv("quoting"),
+                activity=_ref("tc_activity_create_quotation"),
+                actor=_ref("tc_actor_sales"),
+                system=_ref("tc_system_quoting"),
                 reads=[_ref("tc_customer"), _ref("tc_pricing")],
                 writes=[_ref("tc_quote")],
             ),
             "ap": Node(
                 id="ap",
-                action=_iv("approve high-value quotation"),
-                actor=_iv("manager"),
-                system=_iv("quoting"),
-                reads=[_ref("tc_quote")],
-                writes=[_ref("tc_approval")],
-                necessity=Necessity(rationale=_iv("for credit risk management")),
+                activity=_ref("tc_activity_approve_quotation"),
+                actor=_ref("tc_actor_manager"),
+                necessity_rationale=_ref("tc_rationale_credit_risk"),
             ),
             "sq": Node(
                 id="sq",
-                action=_iv("send quotation to customer"),
-                actor=_iv("sales"),
-                system=_iv("email"),
-                reads=[_ref("tc_quote")],
-                writes=[_ref("tc_sent_quote")],
+                activity=_ref("tc_activity_send_quotation"),
+                actor=_ref("tc_actor_sales"),
+                system=_ref("tc_system_email"),
             ),
             "me": Node(
                 id="me",
-                action=_iv("send quotation summary to accounting at month-end"),
-                actor=_iv("sales"),
-                system=_iv("excel"),
-                reads=[_ref("tc_quote")],
+                activity=_ref("tc_activity_send_month_end_summary"),
+                actor=_ref("tc_actor_sales"),
+                system=_ref("tc_system_excel"),
                 writes=[_ref("tc_excel_summary")],
-                # rationale / owner / evidence / removal all unknown (no value)
-                necessity=Necessity(),
             ),
         },
         edges={
@@ -128,254 +165,187 @@ def quotation_truth() -> BusinessDAG:
                 id="e3",
                 from_node="cq",
                 to_node="ap",
-                predicate=_iv("amount over 1,000,000"),
+                condition=_ref("tc_cond_over_1m"),
             ),
             "e4": Edge(
                 id="e4",
                 from_node="cq",
                 to_node="sq",
-                predicate=_iv("amount at or below 1,000,000"),
+                condition=_ref("tc_cond_at_or_below_1m"),
             ),
             "e5": Edge(id="e5", from_node="ap", to_node="sq"),
             "e6": Edge(
                 id="e6",
                 from_node="cq",
                 to_node="me",
-                predicate=_iv("month-end"),
+                condition=_ref("tc_cond_month_end"),
             ),
         },
-        start_node_id="r",
-        end_node_ids=["sq", "me"],
     )
 
 
 # Hidden structured StakeholderFacts for the quotation sales stakeholder.
-# Fact ids are the SAME across EN and JA (semantic fact identities are
-# shared); only the natural wording differs. Fact/claim ids are
-# evaluator/simulator-private and never visible to the Agent.
+# Facts are ATOMIC: exactly one supported TruthClaim per fact, so a fact can
+# never cross-credit independent claims. Fact ids are the SAME across EN and
+# JA (semantic fact identities are shared); only the wording differs.
 def quotation_facts(locale: str = "en") -> dict[str, StakeholderFact]:
-    """The private StakeholderFact catalog for quotation (EN or JA wording)."""
+    """The private atomic StakeholderFact catalog for quotation (EN/JA)."""
     if locale == "ja":
         text = {
-            "quotation.receive_request": ("お客様から見積依頼を受け付けます。"),
-            "quotation.check_customer": (
-                "依頼を受け付けたら、CRMで顧客情報を確認します。"
-            ),
-            "quotation.create": ("顧客情報と価格情報を使って見積書を作成します。"),
-            "quotation.month_end_summary": (
-                "月末には、見積情報の集計をExcelファイルとして経理チームに送ります。"
-            ),
+            "receive": "お客様から見積依頼を受け付けます。",
+            "record": "見積依頼を記録します。",
+            "check": "CRMで顧客情報を確認します。",
+            "create": "顧客情報と価格情報を使って見積書を作成します。",
+            "create_system": "見積システムで見積書を作成します。",
+            "approve": "100万円を超える見積書は、送付前に管理者の承認が必要です。",
+            "approve_rationale": "この承認は与信リスク管理のためのものです。",
+            "send": "見積書をメールで顧客に送付します。",
+            "month_end": "月末には見積情報の集計を経理チームに送ります。",
+            "month_end_excel": "月末の集計はExcelファイルとして送ります。",
+            "flow_e1": "依頼を受け付けたら、顧客情報を確認します。",
+            "flow_e2": "顧客情報を確認したら、見積書を作成します。",
+            "flow_e3": "100万円を超える見積書は管理者の承認に回ります。",
+            "flow_e4": "100万円以下の見積書はそのまま顧客に送付します。",
+            "flow_e5": "承認された見積書は顧客に送付します。",
+            "flow_e6": "月末には経理チームへの集計も行います。",
+            "cond_over_1m": "100万円を超える場合です。",
+            "cond_at_or_below_1m": "100万円以下の場合です。",
+            "cond_month_end": "月末の場合です。",
         }
     else:
         text = {
-            "quotation.receive_request": (
-                "You receive quotation requests from customers."
-            ),
-            "quotation.check_customer": (
-                "When a quotation request is received, you check the "
-                "customer's information in the CRM."
-            ),
-            "quotation.create": (
-                "You create the quotation using the customer and pricing information."
-            ),
-            "quotation.month_end_summary": (
-                "At month-end, you send a summary of the quotation "
-                "information to the Accounting team as an Excel file."
-            ),
+            "receive": "You receive quotation requests from customers.",
+            "record": "You record the quotation request.",
+            "check": "You check the customer's information in the CRM.",
+            "create": "You create the quotation using the customer and pricing information.",
+            "create_system": "You create the quotation in the quoting system.",
+            "approve": "Quotations over 1,000,000 yen must be approved by a manager before they are sent.",
+            "approve_rationale": "The approval is for credit risk management.",
+            "send": "You send the quotation to the customer by email.",
+            "month_end": "At month-end you send a summary of the quotation information to the Accounting team.",
+            "month_end_excel": "At month-end the summary is sent as an Excel file.",
+            "flow_e1": "After receiving the request, you check the customer information.",
+            "flow_e2": "After checking the customer information, you create the quotation.",
+            "flow_e3": "Quotations over 1,000,000 yen go to the manager for approval.",
+            "flow_e4": "Quotations at or below 1,000,000 yen are sent directly to the customer.",
+            "flow_e5": "Once approved, the quotation is sent to the customer.",
+            "flow_e6": "At month-end you also send the summary to Accounting.",
+            "cond_over_1m": "over 1,000,000 yen",
+            "cond_at_or_below_1m": "at or below 1,000,000 yen",
+            "cond_month_end": "month-end",
         }
+    # (fact id, text key, supported claim id)
+    spec: list[tuple[str, str, str]] = [
+        ("quotation.receive.activity", "receive", "r.activity"),
+        ("quotation.receive.actor", "receive", "r.actor"),
+        ("quotation.receive.writes", "record", "r.writes.tc_request"),
+        ("quotation.check.activity", "check", "cc.activity"),
+        ("quotation.check.actor", "check", "cc.actor"),
+        ("quotation.check.system", "check", "cc.system"),
+        ("quotation.check.reads", "check", "cc.reads.tc_customer"),
+        ("quotation.create.activity", "create", "cq.activity"),
+        ("quotation.create.actor", "create", "cq.actor"),
+        ("quotation.create.system", "create_system", "cq.system"),
+        ("quotation.create.reads.customer", "create", "cq.reads.tc_customer"),
+        ("quotation.create.reads.pricing", "create", "cq.reads.tc_pricing"),
+        ("quotation.create.writes", "create", "cq.writes.tc_quote"),
+        ("quotation.approve.activity", "approve", "ap.activity"),
+        ("quotation.approve.actor", "approve", "ap.actor"),
+        ("quotation.approve.rationale", "approve_rationale", "ap.rationale"),
+        ("quotation.send.activity", "send", "sq.activity"),
+        ("quotation.send.actor", "send", "sq.actor"),
+        ("quotation.send.system", "send", "sq.system"),
+        ("quotation.month_end.activity", "month_end", "me.activity"),
+        ("quotation.month_end.actor", "month_end", "me.actor"),
+        ("quotation.month_end.system", "month_end_excel", "me.system"),
+        ("quotation.month_end.writes", "month_end", "me.writes.tc_excel_summary"),
+        ("flow.e1.edge_exists", "flow_e1", "e1.edge_exists"),
+        ("flow.e2.edge_exists", "flow_e2", "e2.edge_exists"),
+        ("flow.e3.edge_exists", "flow_e3", "e3.edge_exists"),
+        ("flow.e4.edge_exists", "flow_e4", "e4.edge_exists"),
+        ("flow.e5.edge_exists", "flow_e5", "e5.edge_exists"),
+        ("flow.e6.edge_exists", "flow_e6", "e6.edge_exists"),
+        ("condition.e3.over_1m", "cond_over_1m", "e3.condition"),
+        ("condition.e4.at_or_below_1m", "cond_at_or_below_1m", "e4.condition"),
+        ("condition.e6.month_end", "cond_month_end", "e6.condition"),
+    ]
     return {
-        "quotation.receive_request": StakeholderFact(
-            id="quotation.receive_request",
-            text=text["quotation.receive_request"],
-            supported_claim_ids=["r.writes.tc_request"],
-        ),
-        "quotation.check_customer": StakeholderFact(
-            id="quotation.check_customer",
-            text=text["quotation.check_customer"],
-            supported_claim_ids=["cc.reads.tc_customer"],
-        ),
-        "quotation.create": StakeholderFact(
-            id="quotation.create",
-            text=text["quotation.create"],
-            supported_claim_ids=[
-                "cq.reads.tc_customer",
-                "cq.reads.tc_pricing",
-                "cq.writes.tc_quote",
-            ],
-        ),
-        "quotation.month_end_summary": StakeholderFact(
-            id="quotation.month_end_summary",
-            text=text["quotation.month_end_summary"],
-            supported_claim_ids=["me.writes.tc_excel_summary"],
-        ),
+        fid: StakeholderFact(
+            id=fid,
+            text=text[key],
+            supported_claim_ids=[claim_id],
+        )
+        for fid, key, claim_id in spec
     }
 
 
-def quotation_spec() -> EvaluationSpec:
-    """Hidden, evaluator-only, scenario-local semantic spec.
-
-    The expressions are aliases/paraphrases the evaluator uses to match the
-    agent's free-text **actions** to the Truth nodes; ``primitive`` is the
-    expected generic operation. There is NO read/write equivalence here —
-    reads/writes bind through hidden fact provenance (``facts.py``). This
-    metadata is never shown to the agent.
-    """
-    return EvaluationSpec(
-        truth_nodes={
-            "r": TruthNodeSpec(
-                expressions=[
-                    "receive quotation request",
-                    "receive the request",
-                    "record the quotation request",
-                    "intake request",
-                    "見積依頼を受け付ける",
-                    "見積依頼の受付",
-                    "依頼を受ける",
-                ],
-                primitive="receive",
-            ),
-            "cc": TruthNodeSpec(
-                expressions=[
-                    "check customer information in the CRM",
-                    "check the customer",
-                    "verify customer information",
-                    "customer check in the CRM",
-                    "CRMで顧客情報を確認する",
-                    "顧客情報を確認",
-                    "顧客を確認",
-                ],
-                primitive="check",
-            ),
-            "cq": TruthNodeSpec(
-                expressions=[
-                    "create quotation in the quoting system",
-                    "create the quotation",
-                    "prepare quotation",
-                    "generate a quote",
-                    "見積システムで見積を作成する",
-                    "見積を作成する",
-                    "見積書を作成",
-                ],
-                primitive="create",
-            ),
-            "ap": TruthNodeSpec(
-                expressions=[
-                    "approve high-value quotation",
-                    "manager approval",
-                    "approve the high-value quote",
-                    "high-value quotation approval",
-                    "高額見積を承認する",
-                    "見積を承認する",
-                    "高額承認",
-                ],
-                primitive="approve",
-            ),
-            "sq": TruthNodeSpec(
-                expressions=[
-                    "send quotation to customer",
-                    "send the quotation",
-                    "deliver the quote",
-                    "send quote by email",
-                    "見積を顧客に送付する",
-                    "見積を送付",
-                    "見積書を送る",
-                ],
-                primitive="send",
-            ),
-            "me": TruthNodeSpec(
-                expressions=[
-                    "send quotation summary to accounting at month-end",
-                    "month-end accounting summary",
-                    "send summary to accounting",
-                    "月末に経理へ見積集計を送る",
-                    "月末の見積集計",
-                    "経理へ集計を送る",
-                ],
-                primitive="send",
-            ),
-        },
-        predicate_expressions={
-            "amount over 1,000,000": [
-                "amount over 1,000,000",
-                "over 1,000,000",
-                "100万円超",
-                "100万円を超える",
-            ],
-            "amount at or below 1,000,000": [
-                "amount at or below 1,000,000",
-                "at or below 1,000,000",
-                "100万円以下",
-                "100万円未満",
-            ],
-            "month-end": ["month-end", "monthly", "月末"],
-        },
-        necessity_expressions={
-            "for credit risk management": [
-                "for credit risk management",
-                "credit risk management",
-                "与信リスク管理",
-                "与信リスク管理のため",
-                "credit risk",
-                "与信",
-            ],
-        },
-    )
-
-
 def quotation_claims() -> dict[str, TruthClaim]:
-    """The hidden TruthClaim catalog for the quotation scenario.
-
-    Claims are locale-independent (they reference Truth ids only).
-    """
+    """The hidden TruthClaim catalog for the quotation scenario."""
     return build_claims(quotation_truth(), quotation_sales_filter())
 
 
 def quotation_sales_filter() -> StakeholderFilter:
     """The sales employee. Knows the whole workflow and the approval rationale,
-    but cannot explain the month-end step's necessity, and does not know where the
-    approval happens, nor the approval/send/month-end read+write data artifacts.
+    but cannot explain the month-end step's rationale, and does not know where
+    the approval happens, nor the approval/send/month-end read+write data
+    artifacts.
 
-    Per-node attribute visibility matches tasks.json ``known_info``:
-    - r: actor, writes
-    - cc: actor, system, reads
-    - cq: actor, system, reads, writes
-    - ap: actor (system/reads/writes hidden; rationale via necessity)
-    - sq: actor, system (reads/writes hidden)
-    - me: actor, system, writes (reads hidden; necessity unknown)
+    Per-node property visibility (activity/actor/system/reads/writes/rationale):
+    - r: activity, actor, writes
+    - cc: activity, actor, system, reads
+    - cq: activity, actor, system, reads, writes
+    - ap: activity, actor, rationale
+    - sq: activity, actor, system
+    - me: activity, actor, system, writes
+    Per-edge condition visibility: e3/e4/e6 conditions are known; e1/e2/e5 are
+    unconditional.
     """
     return StakeholderFilter(
         name="sales",
         visible_node_ids=["r", "cc", "cq", "ap", "sq", "me"],
         visible_edge_ids=["e1", "e2", "e3", "e4", "e5", "e6"],
         visible_node_attributes={
-            "r": ["actor", "writes"],
-            "cc": ["actor", "system", "reads"],
-            "cq": ["actor", "system", "reads", "writes"],
-            "ap": ["actor"],
-            "sq": ["actor", "system"],
-            "me": ["actor", "system", "writes"],
+            "r": ["activity", "actor", "writes"],
+            "cc": ["activity", "actor", "system", "reads"],
+            "cq": ["activity", "actor", "system", "reads", "writes"],
+            "ap": ["activity", "actor", "rationale"],
+            "sq": ["activity", "actor", "system"],
+            "me": ["activity", "actor", "system", "writes"],
         },
-        visible_necessity={"ap": ["rationale"], "me": []},
+        visible_edge_attributes={
+            "e3": ["condition"],
+            "e4": ["condition"],
+            "e6": ["condition"],
+        },
     )
 
 
 def quotation_finance_filter() -> StakeholderFilter:
-    """A finance/audit stakeholder: sees the month-end step's rationale but not
-    the approval-branch credit-risk rationale. Used to show multiple filters.
-
-    The finance stakeholder only sees the month-end tail; per-node attribute
-    visibility for the nodes it can see is kept at the global default (all four
-    axes visible) since this filter is a demonstrative/secondary filter."""
+    """A finance/audit stakeholder: sees the month-end tail with all its
+    properties but not the approval-branch credit-risk rationale. Used to show
+    multiple filters."""
     return StakeholderFilter(
         name="finance",
         visible_node_ids=["cq", "sq", "me"],
         visible_edge_ids=["e4", "e6"],
-        visible_attributes=["actor", "system", "reads", "writes"],
-        visible_necessity={
-            "me": ["rationale", "owner", "evidence", "removal_impact"],
-            "ap": [],
+        visible_attributes=["activity", "actor", "system", "reads", "writes"],
+        visible_node_attributes={
+            "cq": ["activity", "actor", "system", "reads", "writes"],
+            "sq": ["activity", "actor", "system", "reads", "writes"],
+            "me": ["activity", "actor", "system", "reads", "writes", "rationale"],
         },
+        visible_edge_attributes={"e6": ["condition"]},
     )
+
+
+def quotation_spec() -> EvaluationSpec:
+    """Evaluator-only spec for the quotation scenario.
+
+    The spec carries NO semantic matchers: node/edge/property correctness is
+    expressed entirely through hidden TruthClaims + private StakeholderFacts.
+    This object is kept for API stability and is empty.
+    """
+    return EvaluationSpec()
 
 
 # ---------------------------------------------------------------------------
@@ -383,54 +353,77 @@ def quotation_finance_filter() -> StakeholderFilter:
 # ---------------------------------------------------------------------------
 
 
-def lab_sample_truth() -> BusinessDAG:
-    """A non-quotation Truth DAG (lab sample conditioning).
+def lab_sample_truth() -> BusinessProcessGraph:
+    """A non-quotation Truth graph (lab sample conditioning).
 
     Demonstrates open-world domain concepts ("specimen accession",
     "chamber seasoning", "conditioning cycle") that are not part of any global
     ontology. Derived read/write artifacts are hidden from the stakeholder.
     """
-    return BusinessDAG(
+    return BusinessProcessGraph(
         id="lab",
         name="Lab sample conditioning",
-        data_concepts={
-            "tc_sample": _concept("tc_sample", "sample"),
+        concepts={
+            "tc_activity_accession": _concept(
+                "tc_activity_accession", "activity", "specimen accession"
+            ),
+            "tc_activity_seasoning": _concept(
+                "tc_activity_seasoning", "activity", "chamber seasoning"
+            ),
+            "tc_activity_conditioning": _concept(
+                "tc_activity_conditioning", "activity", "conditioning cycle"
+            ),
+            "tc_activity_batch_approval": _concept(
+                "tc_activity_batch_approval", "activity", "approve conditioned batch"
+            ),
+            "tc_actor_lab_tech": _concept("tc_actor_lab_tech", "actor", "lab tech"),
+            "tc_actor_lab_supervisor": _concept(
+                "tc_actor_lab_supervisor", "actor", "lab supervisor"
+            ),
+            "tc_system_chamber": _concept(
+                "tc_system_chamber", "system", "environment chamber"
+            ),
+            "tc_sample": _concept("tc_sample", "data", "sample"),
             "tc_accessioned_sample": _concept(
-                "tc_accessioned_sample", "accessioned sample"
+                "tc_accessioned_sample", "data", "accessioned sample"
             ),
-            "tc_seasoned_chamber": _concept("tc_seasoned_chamber", "seasoned chamber"),
+            "tc_seasoned_chamber": _concept(
+                "tc_seasoned_chamber", "data", "seasoned chamber"
+            ),
             "tc_conditioned_sample": _concept(
-                "tc_conditioned_sample", "conditioned sample"
+                "tc_conditioned_sample", "data", "conditioned sample"
             ),
-            "tc_batch_approval": _concept("tc_batch_approval", "batch approval"),
+            "tc_batch_approval": _concept(
+                "tc_batch_approval", "data", "batch approval"
+            ),
         },
         nodes={
             "n1": Node(
                 id="n1",
-                action=_iv("specimen accession"),
-                actor=_iv("lab tech"),
+                activity=_ref("tc_activity_accession"),
+                actor=_ref("tc_actor_lab_tech"),
                 reads=[_ref("tc_sample")],
                 writes=[_ref("tc_accessioned_sample")],
             ),
             "n2": Node(
                 id="n2",
-                action=_iv("chamber seasoning"),
-                actor=_iv("lab tech"),
-                system=_iv("environment chamber"),
+                activity=_ref("tc_activity_seasoning"),
+                actor=_ref("tc_actor_lab_tech"),
+                system=_ref("tc_system_chamber"),
                 writes=[_ref("tc_seasoned_chamber")],
             ),
             "n3": Node(
                 id="n3",
-                action=_iv("conditioning cycle"),
-                actor=_iv("lab tech"),
-                system=_iv("environment chamber"),
+                activity=_ref("tc_activity_conditioning"),
+                actor=_ref("tc_actor_lab_tech"),
+                system=_ref("tc_system_chamber"),
                 reads=[_ref("tc_accessioned_sample")],
                 writes=[_ref("tc_conditioned_sample")],
             ),
             "n4": Node(
                 id="n4",
-                action=_iv("approve conditioned batch"),
-                actor=_iv("lab supervisor"),
+                activity=_ref("tc_activity_batch_approval"),
+                actor=_ref("tc_actor_lab_supervisor"),
                 reads=[_ref("tc_conditioned_sample")],
                 writes=[_ref("tc_batch_approval")],
             ),
@@ -440,26 +433,80 @@ def lab_sample_truth() -> BusinessDAG:
             "l2": Edge(id="l2", from_node="n2", to_node="n3"),
             "l3": Edge(id="l3", from_node="n3", to_node="n4"),
         },
-        start_node_id="n1",
-        end_node_ids=["n4"],
     )
 
 
 def lab_sample_facts() -> dict[str, StakeholderFact]:
-    """The private StakeholderFact catalog for the lab technician.
+    """The private atomic StakeholderFact catalog for the lab technician.
 
-    Only ``n1.reads.tc_sample`` is stakeholder-visible, so the catalog is a
-    single fact. Hidden derived read/write artifacts are deliberately NOT
-    supported by any fact (hidden axes stay unset — epistemic restraint).
+    Only n1 reads (sample) plus the visible activity/actor/system properties
+    are stakeholder-visible; hidden derived read/write artifacts are
+    deliberately NOT supported by any fact (hidden properties stay unset —
+    epistemic restraint).
     """
+    spec: list[tuple[str, str, str]] = [
+        (
+            "lab.accession.activity",
+            "When a specimen arrives, you accession it — you record it as received.",
+            "n1.activity",
+        ),
+        (
+            "lab.accession.actor",
+            "I am the lab technician who accessions the specimens.",
+            "n1.actor",
+        ),
+        (
+            "lab.accession.reads",
+            "When a specimen arrives, you accession it — you record it as received.",
+            "n1.reads.tc_sample",
+        ),
+        (
+            "lab.seasoning.activity",
+            "You season the environment chamber to prepare it.",
+            "n2.activity",
+        ),
+        ("lab.seasoning.actor", "I season the chamber myself.", "n2.actor"),
+        (
+            "lab.seasoning.system",
+            "The seasoning is done in the environment chamber.",
+            "n2.system",
+        ),
+        (
+            "lab.conditioning.activity",
+            "You run a conditioning cycle that processes the samples inside the chamber.",
+            "n3.activity",
+        ),
+        ("lab.conditioning.actor", "I run the conditioning cycle.", "n3.actor"),
+        (
+            "lab.conditioning.system",
+            "The conditioning cycle runs in the environment chamber.",
+            "n3.system",
+        ),
+        (
+            "lab.approval.activity",
+            "Finally, the lab supervisor approves the conditioned batch before it is released.",
+            "n4.activity",
+        ),
+        ("lab.approval.actor", "The lab supervisor approves the batch.", "n4.actor"),
+        (
+            "lab.flow.l1",
+            "After specimen accession, you prepare the chamber for seasoning.",
+            "l1.edge_exists",
+        ),
+        (
+            "lab.flow.l2",
+            "After chamber seasoning, you run the conditioning cycle.",
+            "l2.edge_exists",
+        ),
+        (
+            "lab.flow.l3",
+            "After the conditioning cycle, the lab supervisor approves the batch.",
+            "l3.edge_exists",
+        ),
+    ]
     return {
-        "lab.accession_sample": StakeholderFact(
-            id="lab.accession_sample",
-            text=(
-                "When a specimen arrives, you accession it — you record it as received."
-            ),
-            supported_claim_ids=["n1.reads.tc_sample"],
-        )
+        fid: StakeholderFact(id=fid, text=text, supported_claim_ids=[claim_id])
+        for fid, text, claim_id in spec
     }
 
 
@@ -468,70 +515,37 @@ def lab_sample_claims() -> dict[str, TruthClaim]:
 
 
 def lab_sample_spec() -> EvaluationSpec:
-    return EvaluationSpec(
-        truth_nodes={
-            "n1": TruthNodeSpec(
-                expressions=[
-                    "specimen accession",
-                    "accession the sample",
-                    "receive the specimen",
-                ],
-                primitive="receive",
-            ),
-            "n2": TruthNodeSpec(
-                expressions=[
-                    "chamber seasoning",
-                    "season the chamber",
-                    "prepare the conditioning chamber",
-                ],
-                primitive="create",
-            ),
-            "n3": TruthNodeSpec(
-                expressions=[
-                    "conditioning cycle",
-                    "run the conditioning cycle",
-                    "process samples in the chamber",
-                ],
-                primitive="transform",
-            ),
-            "n4": TruthNodeSpec(
-                expressions=[
-                    "approve conditioned batch",
-                    "approve the batch",
-                    "approve conditioned samples",
-                ],
-                primitive="approve",
-            ),
-        }
-    )
+    """Evaluator-only spec for the lab scenario (no semantic matchers)."""
+    return EvaluationSpec()
 
 
 def lab_sample_filter() -> StakeholderFilter:
-    """The lab technician. Can state the actors, the environment-chamber system,
-    and the raw specimen/sample input, but the GT read/write artifacts
-    (``accessioned sample``, ``seasoned chamber``, ``conditioned sample``,
-    ``batch approval``) are benchmark-derived state/artifact conventions that the
-    stakeholder never names. They are therefore hidden: the correct agent
-    behavior is to leave them unset (epistemic restraint), not to invent them.
+    """The lab technician. Can state the activities, actors, the
+    environment-chamber system, and the raw specimen/sample input, but the GT
+    read/write artifacts (``accessioned sample``, ``seasoned chamber``,
+    ``conditioned sample``, ``batch approval``) are benchmark-derived
+    state/artifact conventions the stakeholder never names. They are therefore
+    hidden: the correct agent behavior is to leave them unset (epistemic
+    restraint), not to invent them.
     """
     return StakeholderFilter(
         name="lab tech",
         visible_node_ids=["n1", "n2", "n3", "n4"],
         visible_edge_ids=["l1", "l2", "l3"],
         visible_node_attributes={
-            "n1": ["actor", "reads"],
-            "n2": ["actor", "system"],
-            "n3": ["actor", "system"],
-            "n4": ["actor"],
+            "n1": ["activity", "actor", "reads"],
+            "n2": ["activity", "actor", "system"],
+            "n3": ["activity", "actor", "system"],
+            "n4": ["activity", "actor"],
         },
-        visible_necessity={},
+        visible_edge_attributes={},
     )
 
 
 @dataclass
 class Scenario:
     scenario_id: str
-    truth: BusinessDAG
+    truth: BusinessProcessGraph
     spec: EvaluationSpec
     stakeholder: StakeholderFilter
     claims: dict[str, TruthClaim]

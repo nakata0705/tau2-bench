@@ -1,523 +1,309 @@
-"""Evaluator for the open-world business_interview benchmark (v7 — private fact provenance).
+"""Evaluator for the open-world business_interview benchmark (v8 — unified
+glossary, provenance-only).
 
-The agent's inferred ``BusinessDAG`` (open-world free-text actions, optional
-generic primitives, authentic Observation provenance) is compared to the scenario
-Truth DAG — both use the same ``BusinessDAG`` class.
+The agent's inferred ``BusinessProcessGraph`` is compared to the scenario Truth
+graph — both use the same class. **Correctness is grounded ONLY through private
+provenance**:
 
-**Reads/writes are agent-local data concepts.** The Agent LLM, not the
-evaluator, interprets stakeholder wording variation: it creates local
-``DataConcept``s, attaches observed ``ConceptTerm``s, and reuses concept ids
-in ``ConceptRef``s. The evaluator binds each agent-local concept to a hidden
-Truth data concept through **private stakeholder fact provenance**
-(``facts.py``): every stakeholder message privately records the ids of the
-structured facts it used; an agent ref grounds a claim only when the
-Observations it cites lead, through their turns, to used facts that support that
-claim:
+    ConceptRef
+      -> EvidenceRef (observation_id, quote, occurrence)
+      -> exact Observation span
+      -> private stakeholder assertion (fact_id, quote, occurrence)
+      -> StakeholderFact
+      -> TruthClaim (subject_kind, subject_id, property, concept_id)
+      -> Truth BusinessConcept
 
-    ConceptRef -> Observation ids -> Observation.turn -> private used_fact_ids
-        -> supported TruthClaims -> Truth data concept
+The evaluator performs **no semantic NLP**: it never inspects
+``preferred_label``, ``description``, ``ConceptTerm.text``, ``Observation.text``
+or ``EvidenceRef.quote`` for meaning; there are no action-expression lists, no
+predicate/necessity expression lists, no actor/system alias tables, no token
+overlap, no synonym dictionaries, no WordNet, no embeddings and no evaluator
+LLM. Quotes are matched to private assertions by exact string span only.
 
-The evaluator never infers semantic support by reading Observation text and
-never compares labels to Ground Truth. Wording variation is the Agent LLM's
-job; private instrumentation records Truth provenance; the evaluator binds
-provenance — it does no NLP semantic matching.
-
-**Benchmark vs production separation.** In production there is no ground truth;
-here a hidden ground truth exists and only the evaluator uses it to score
-deterministically. Scenario-specific domain concepts live in a **hidden
-scenario-local ``EvaluationSpec``** (evaluator-only). The global resolver holds
-only reusable generic primitives (unknown operations resolve to ``unclassified``).
-
-Metrics cover structure (node/edge recall + precision, declared start/end),
-predicate/actor/system/read/write correctness, **concept correctness**
-(agent-local concept bindings), necessity correctness, **primitive correctness**
-(diagnostic; ``unclassified`` is not a failure), and **evidence hygiene**
-(evidence-backedness + Observation authenticity).
-
-**Result correctness vs evidence hygiene.** Result correctness compares the
-inferred DAG against the hidden Ground Truth and is computed by exact Ground
-Truth comparison. Evidence hygiene deterministically guarantees only that each
-asserted claim references a *real, authentic stakeholder Observation* (captured
-from an actual user message, not fabricated). The evaluator never re-interprets
-Observation *text* to decide whether it semantically supports a claim — the
-natural language of the stakeholder is expected to vary, and measuring whether
-an Observation's wording matches a claim is out of scope.
+Node identity is established by the agent node's **activity** claim binding;
+edge identity by from/to structure + the private **edge_exists** claim. Concept
+identity is a per-kind unique perfect matching between used Agent concepts and
+visible Truth concepts. Visibility stays prior: hidden unset -> correct,
+hidden asserted -> incorrect (private provenance never rescues a hidden
+assertion). Interview completion additionally requires that every referenced
+Agent concept is no longer ``hypothesized``.
 """
 
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from tau2.domains.business_interview.aliases import norm_role, norm_system
 from tau2.domains.business_interview.claims import TruthClaim
-from tau2.domains.business_interview.concepts import resolve_primitive
-from tau2.domains.business_interview.dag import (
-    BusinessDAG,
+from tau2.domains.business_interview.facts import (
+    StakeholderAssertion,
+    StakeholderFact,
+    message_contains_span,
+)
+from tau2.domains.business_interview.graph import (
+    BusinessConcept,
+    BusinessProcessGraph,
     ConceptRef,
-    ConceptTerm,
-    InferredValue,
+    EvidenceRef,
     InterviewDB,
 )
-from tau2.domains.business_interview.facts import StakeholderFact
 from tau2.domains.business_interview.stakeholder import StakeholderFilter
 
-_TOKEN_RE = __import__("re").compile(r"[a-z0-9]+")
-
-_NECESSITY_PROPS = ("rationale", "owner", "evidence", "removal_impact")
-
-
-class TruthNodeSpec(BaseModel):
-    """Hidden, scenario-local spec for one Truth node.
-
-    ``expressions`` are evaluator-only aliases/paraphrases used to match the
-    agent's free-text action to this Truth node. ``primitive`` is the expected
-    generic operation (optional). Never shown to the agent.
-    """
-
-    expressions: list[str] = Field(default_factory=list)
-    primitive: Optional[str] = None
+_NODE_PROPS = ("activity", "actor", "system", "reads", "writes", "rationale")
 
 
 class EvaluationSpec(BaseModel):
     """Evaluator-only, scenario-local annotations (hidden from the agent).
 
-    Reads/writes equivalence is NOT expressed here: the Agent LLM creates its
-    own local data concepts and the evaluator binds them to Truth concepts via
-    hidden stakeholder provenance (see ``claims.py``). ``truth_nodes``
-    expressions only help node matching (actions); ``predicate_expressions`` /
-    ``necessity_expressions`` cover edges and necessity values.
+    v8: the spec carries NO semantic matchers. Node/edge/property correctness
+    is expressed entirely through hidden TruthClaims + private
+    StakeholderFacts. Kept as a model for API stability; scenarios may leave
+    it empty.
     """
-
-    truth_nodes: dict[str, TruthNodeSpec] = Field(default_factory=dict)
-    predicate_expressions: dict[str, list[str]] = Field(default_factory=dict)
-    necessity_expressions: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class EvaluationResult(BaseModel):
     protocol_completed: bool
-    dag_created: bool
-    dag_valid: bool
+    graph_created: bool
+    graph_valid: bool
 
     node_recall: float
     node_precision: float
-    domain_concept_correctness: float
     edge_recall: float
     edge_precision: float
-    start_correct: bool
-    end_recall: float
-    end_precision: float
-    predicate_correctness: float
+    activity_correctness: float
     actor_correctness: float
     system_correctness: float
     read_correctness: float
     write_correctness: float
+    rationale_correctness: float
+    condition_correctness: float
     concept_correctness: float
-    unsupported_concept_ref_count: int
-    necessity_correctness: float
-    primitive_correctness: float
+    unsupported_ref_count: int
     fabricated_node_count: int
     fabricated_edge_count: int
-    fabricated_necessity: bool
 
-    # evidence-backedness
+    # glossary completion
+    glossary_pass: bool
+    referenced_hypothesized_concepts: list[str]
+
+    # evidence hygiene
     node_evidence_coverage: float
-    attribute_provenance_coverage: float
+    ref_evidence_coverage: float
     edge_evidence_coverage: float
-    predicate_provenance_coverage: float
-    necessity_provenance_coverage: float
+    invalid_evidence_ref_count: int
     invalid_observation_reference_count: int
-    evidence_pass: bool
-
-    # observation authenticity
     authentic_observation_count: int
     invalid_observation_source_count: int
     orphan_observation_count: int
     provenance_authenticity_pass: bool
+    evidence_pass: bool
 
     structural_pass: bool
-    necessity_pass: bool
     protocol_pass: bool
     quality_pass: bool
 
 
 # ---------------------------------------------------------------------------
-# Matching helpers (open-world, scenario-local)
+# Private metadata validation (deterministic)
 # ---------------------------------------------------------------------------
 
 
-def _tokens(text: Optional[str]) -> set[str]:
-    return set(_TOKEN_RE.findall((text or "").lower()))
-
-
-# Common function words / connectors that carry no node-identity signal. These
-# are dropped before counting action overlap so a single weak shared token (e.g.
-# "the", "to", "customer") can never, by itself, justify a match. Single-char
-# tokens (possessive remnants like ``s``) are also ignored.
-_STOPWORDS = frozenset(
-    [
-        "a",
-        "an",
-        "the",
-        "and",
-        "or",
-        "but",
-        "nor",
-        "of",
-        "for",
-        "to",
-        "in",
-        "on",
-        "at",
-        "by",
-        "with",
-        "from",
-        "as",
-        "into",
-        "onto",
-        "before",
-        "after",
-        "during",
-        "we",
-        "you",
-        "us",
-        "our",
-        "ours",
-        "i",
-        "me",
-        "my",
-        "mine",
-        "it",
-        "its",
-        "he",
-        "him",
-        "his",
-        "she",
-        "her",
-        "hers",
-        "they",
-        "them",
-        "their",
-        "theirs",
-        "is",
-        "are",
-        "was",
-        "were",
-        "be",
-        "been",
-        "being",
-        "am",
-        "do",
-        "does",
-        "did",
-        "done",
-        "doing",
-        "have",
-        "has",
-        "had",
-        "having",
-        "will",
-        "would",
-        "shall",
-        "should",
-        "can",
-        "could",
-        "may",
-        "might",
-        "must",
-        "that",
-        "this",
-        "these",
-        "those",
-        "there",
-        "here",
-        "which",
-        "who",
-        "whom",
-        "whose",
-        "what",
-        "how",
-        "why",
-        "when",
-        "then",
-        "than",
-        "if",
-        "else",
-        "not",
-        "no",
-        "none",
-        "yes",
-        "also",
-        "too",
-        "very",
-        "so",
-        "such",
-        "about",
-        "around",
-        "over",
-        "under",
-        "up",
-        "down",
-        "out",
-        "again",
-        "still",
-        "yet",
-        "already",
-        "all",
-        "any",
-        "each",
-        "every",
-        "some",
-        "both",
-        "few",
-        "more",
-        "most",
-        "other",
-        "another",
-        "been",
-        "get",
-        "gets",
-        "got",
-        "use",
-        "uses",
-        "used",
-        "using",
-        "make",
-        "makes",
-        "made",
-    ]
-)
-
-
-# Minimum number of *significant* (non-stopword) shared tokens required before
-# an action can be considered a candidate match. A single weak shared token is
-# never enough. (Full-expression containment and actor/system agreement can
-# still qualify/rank a candidate — see below.)
-_MIN_NODE_OVERLAP = 2
-
-
-def _sig_tokens(text: Optional[str]) -> set[str]:
-    """Significant (non-stopword, len>1) tokens of ``text``."""
-    return {t for t in _tokens(text) if len(t) > 1 and t not in _STOPWORDS}
-
-
-def _has_cjk(text: str) -> bool:
-    """True if ``text`` contains CJK/kana characters (which ``_TOKEN_RE`` can't
-    tokenize, so JA matching relies on substring containment instead)."""
-    return any(ord(c) > 0x2E7F for c in text)
-
-
-def _node_overlap(text: Optional[str], spec: TruthNodeSpec) -> int:
-    """Best significant-token overlap between the agent action and any hidden
-    scenario-local expression for a Truth node."""
-    if not text:
-        return 0
-    at = _sig_tokens(text)
-    best = 0
-    for expr in spec.expressions:
-        ov = len(at & _sig_tokens(expr))
-        if ov > best:
-            best = ov
-    return best
-
-
-def _expression_contained(text: Optional[str], spec: TruthNodeSpec) -> bool:
-    """True if a whole hidden expression is a substring of the agent action (or
-    vice versa). This is the primary signal for JA / non-Latin text where token
-    overlap is 0, and a strong standalone signal for EN. Only meaningful phrases
-    (>=2 significant tokens, or CJK content) are considered, so a single common
-    token can never match by substring alone."""
-    t = (text or "").lower()
-    for expr in spec.expressions:
-        e = (expr or "").lower()
-        if not e:
-            continue
-        sig = _sig_tokens(e)
-        if not sig and not _has_cjk(e):
-            continue
-        if e in t or t in e:
-            return True
-    return False
-
-
-def _attribute_match(node, tnode) -> int:
-    """Actor/system agreement as a **reinforcement** bonus. It is used only to
-    rank candidates that already cleared the action gate — it never rescues a
-    weak/ambiguous action match on its own."""
-    bonus = 0
-    ra = norm_role(node.actor.value)
-    if ra and ra == norm_role(tnode.actor.value):
-        bonus += 2
-    rs = norm_system(node.system.value)
-    if rs and rs == norm_system(tnode.system.value):
-        bonus += 1
-    return bonus
-
-
-def _match_nodes(agent: BusinessDAG, truth: BusinessDAG, spec: EvaluationSpec):
-    """Map agent node id -> truth node id using the hidden EvaluationSpec.
-
-    Conservative, deterministic matching:
-    - An agent node is a candidate for a Truth node iff it shares >=2 significant
-      tokens with some hidden expression, OR contains a whole hidden expression.
-    - Actor/system agreement adds a ranking bonus (reinforcement, not rescue).
-    - Candidates are assigned greedily by (overlap, bonus) descending, so an
-      agent node with low confidence is left unmatched rather than forced onto a
-      Truth node it barely resembles. Agent node ids are ignored (arbitrary ids
-      allowed). No embeddings / LLM judge are used.
-    """
-    candidates: list[tuple[int, int, str, str]] = []
-    for nid, node in agent.nodes.items():
-        text = node.action.value
-        if not text:
-            continue
-        for tid, tspec in spec.truth_nodes.items():
-            overlap = _node_overlap(text, tspec)
-            if overlap < _MIN_NODE_OVERLAP and not _expression_contained(text, tspec):
-                continue
-            bonus = _attribute_match(node, truth.nodes[tid])
-            candidates.append((overlap, bonus, nid, tid))
-    # Highest overlap first; actor/system agreement breaks ties. Deterministic.
-    candidates.sort(key=lambda c: (c[0], c[1]), reverse=True)
-    used_truth: set[str] = set()
-    assigned: set[str] = set()
-    mapping: dict[str, str] = {}
-    for overlap, bonus, nid, tid in candidates:
-        if nid in assigned or tid in used_truth:
-            continue
-        mapping[nid] = tid
-        assigned.add(nid)
-        used_truth.add(tid)
-    return mapping
-
-
-# ---------------------------------------------------------------------------
-# Data concepts: private-fact binding (no label comparison, no synonyms)
-# ---------------------------------------------------------------------------
-
-
-def _ref_observation_ids(agent: BusinessDAG, ref: ConceptRef) -> set[str]:
-    """Observation ids cited by a ref itself plus its concept's terms.
-
-    The evaluator inspects ONLY these ids; it never reads Observation text.
-    """
-    ids = set(ref.observation_ids)
-    concept = agent.data_concepts.get(ref.concept_id)
-    if concept is not None:
-        for term in concept.terms:
-            ids.update(term.observation_ids)
-    return ids
-
-
-def _obs_turn(db: InterviewDB, obs_id: str) -> Optional[int]:
-    for obs in db.observations:
-        if obs.id == obs_id:
-            return obs.turn
-    return None
-
-
-def _validate_used_facts(
-    used_facts: dict[int, list[str]],
+def _validate_assertions(
+    assertions: dict[int, list[StakeholderAssertion]],
     facts: dict[str, StakeholderFact],
     claims: dict[str, TruthClaim],
     stakeholder: Optional[StakeholderFilter],
+    messages: list[dict],
 ) -> None:
-    """Deterministically reject invalid private fact metadata.
+    """Deterministically reject invalid private assertion metadata.
 
-    Every used fact id must exist in the scenario's fact catalog (existence
-    implies it belongs to this stakeholder); every supported TruthClaim must
-    exist; every claim must be stakeholder-visible. Raises ``ValueError``.
+    Every assertion's fact must exist (existence implies it belongs to this
+    stakeholder), every supported TruthClaim must exist and be
+    stakeholder-visible, and the quote/occurrence must exactly match the
+    stakeholder message at that turn. Raises ``ValueError``.
     """
-    for turn, fact_ids in (used_facts or {}).items():
-        for fid in fact_ids:
-            fact = (facts or {}).get(fid)
+    for turn, turn_assertions in (assertions or {}).items():
+        message = messages[turn].get("content") if 0 <= turn < len(messages) else None
+        for assertion in turn_assertions:
+            fact = (facts or {}).get(assertion.fact_id)
             if fact is None:
                 raise ValueError(
-                    f"used_fact_id {fid!r} (turn {turn}) is not in the "
-                    f"scenario's StakeholderFact catalog"
+                    f"assertion fact_id {assertion.fact_id!r} (turn {turn}) is not "
+                    f"in the scenario's StakeholderFact catalog"
                 )
             for cid in fact.supported_claim_ids:
                 claim = (claims or {}).get(cid)
                 if claim is None:
                     raise ValueError(
-                        f"fact {fid!r} (turn {turn}) supports unknown "
+                        f"fact {assertion.fact_id!r} (turn {turn}) supports unknown "
                         f"TruthClaim id {cid!r}"
                     )
-                if (
-                    stakeholder is not None
-                    and claim.axis
-                    not in stakeholder.visible_attributes_for(claim.node_id)
-                ):
+                if stakeholder is not None and not _claim_visible(claim, stakeholder):
                     raise ValueError(
-                        f"fact {fid!r} (turn {turn}) supports claim {cid!r} "
-                        f"which is outside stakeholder visibility"
+                        f"fact {assertion.fact_id!r} (turn {turn}) supports claim "
+                        f"{cid!r} which is outside stakeholder visibility"
                     )
+            if not message_contains_span(
+                message, assertion.quote, assertion.occurrence
+            ):
+                raise ValueError(
+                    f"assertion {assertion.fact_id!r} (turn {turn}): quote "
+                    f"{assertion.quote!r} occurrence {assertion.occurrence} does "
+                    f"not exactly match the stakeholder message"
+                )
 
 
-def _ref_supported_claims(
-    agent: BusinessDAG,
+def _claim_visible(claim: TruthClaim, stakeholder: StakeholderFilter) -> bool:
+    if claim.subject_kind == "node":
+        return claim.property in stakeholder.node_properties_for(claim.subject_id)
+    if claim.subject_id not in stakeholder.visible_edge_ids:
+        return False
+    if claim.property == "condition":
+        return "condition" in stakeholder.edge_properties_for(claim.subject_id)
+    return claim.property == "edge_exists"
+
+
+# ---------------------------------------------------------------------------
+# Evidence chain (provenance only)
+# ---------------------------------------------------------------------------
+
+
+def _obs_by_id(db: InterviewDB, obs_id: str):
+    for obs in db.observations:
+        if obs.id == obs_id:
+            return obs
+    return None
+
+
+def _ref_evidence(agent: BusinessProcessGraph, ref: ConceptRef) -> list[EvidenceRef]:
+    """The evidence cited by a ref: the ref's own plus its concept's terms and
+    validation evidence. Only these spans are inspected — never their meaning.
+    """
+    out = list(ref.evidence)
+    concept = agent.concepts.get(ref.concept_id)
+    if concept is not None:
+        for term in concept.terms:
+            out.extend(term.evidence)
+        out.extend(concept.validation_evidence)
+    return out
+
+
+def _supported_claims(
+    agent: BusinessProcessGraph,
     db: InterviewDB,
     facts: dict[str, StakeholderFact],
     claims: dict[str, TruthClaim],
-    used_facts: dict[int, list[str]],
-    tnid: str,
-    axis: str,
+    assertions: dict[int, list[StakeholderAssertion]],
     ref: ConceptRef,
+    subject_kind: str,
+    subject_id: str,
+    property: str,
 ) -> list[TruthClaim]:
-    """The TruthClaims at this node+axis supported by one agent ConceptRef.
+    """The TruthClaims at this subject+property supported by one ConceptRef.
 
-    The chain is provenance-only:
-
-        ConceptRef -> cited Observation ids -> Observation.turn
-            -> private used_fact_ids -> supported TruthClaims
-            -> keep those for this node+axis
-
-    ``preferred_label``, ``ConceptTerm.text`` and ``Observation.text`` are
-    never inspected to decide semantic correctness. Empty = unsupported ref.
+    Chain: EvidenceRef -> exact Observation span -> private assertion ->
+    StakeholderFact -> TruthClaims (kept to those expected at this slot).
+    Nothing about the quote's meaning is ever inspected.
     """
-    expected = [c for c in claims.values() if c.node_id == tnid and c.axis == axis]
+    expected = [
+        c
+        for c in claims.values()
+        if (subject_kind == "*" or c.subject_kind == subject_kind)
+        and (subject_id in (None, "*") or c.subject_id == subject_id)
+        and (property == "*" or c.property == property)
+    ]
     if not expected:
         return []
     supported: set[str] = set()
-    for obs_id in _ref_observation_ids(agent, ref):
-        turn = _obs_turn(db, obs_id)
-        if turn is None:
+    for ev in _ref_evidence(agent, ref):
+        obs = _obs_by_id(db, ev.observation_id)
+        if obs is None:
             continue
-        for fid in used_facts.get(turn, []):
-            fact = facts.get(fid)
-            if fact is None:
-                raise ValueError(
-                    f"used_fact_id {fid!r} (turn {turn}) is not in the "
-                    f"scenario's StakeholderFact catalog"
-                )
-            supported.update(fact.supported_claim_ids)
+        for assertion in assertions.get(obs.turn, []):
+            if assertion.quote == ev.quote and assertion.occurrence == ev.occurrence:
+                fact = facts.get(assertion.fact_id)
+                if fact is not None:
+                    supported.update(fact.supported_claim_ids)
     return [c for c in expected if c.id in supported]
 
 
-def _data_axis_score(
-    agent: BusinessDAG,
+# ---------------------------------------------------------------------------
+# Node / edge identity
+# ---------------------------------------------------------------------------
+
+
+def _match_nodes(
+    agent: BusinessProcessGraph,
     db: InterviewDB,
     facts: dict[str, StakeholderFact],
     claims: dict[str, TruthClaim],
-    used_facts: dict[int, list[str]],
+    assertions: dict[int, list[StakeholderAssertion]],
+) -> dict[str, str]:
+    """Map agent node id -> truth node id through the activity claim binding.
+
+    An agent node maps to a Truth node when its activity ref's provenance
+    supports exactly that node's activity claim. Ambiguous or unsupported
+    activity refs leave the node unmapped. Assignments are injective
+    (deterministic sorted order).
+    """
+    candidates: dict[str, set[str]] = {}
+    for nid, node in agent.nodes.items():
+        supported = _supported_claims(
+            agent, db, facts, claims, assertions, node.activity, "node", "*", "activity"
+        )
+        tnids = {c.subject_id for c in supported if c.subject_id != "*"}
+        if len(tnids) == 1:
+            candidates[nid] = tnids
+    mapping: dict[str, str] = {}
+    used: set[str] = set()
+    for nid in sorted(candidates):
+        tnid = next(iter(candidates[nid]))
+        if tnid in used:
+            continue
+        mapping[nid] = tnid
+        used.add(tnid)
+    return mapping
+
+
+def _truth_edge_between(truth: BusinessProcessGraph, tf: str, tt: str):
+    for e in truth.edges.values():
+        if e.from_node == tf and e.to_node == tt:
+            return e
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Property scoring
+# ---------------------------------------------------------------------------
+
+
+def _property_score(
+    agent: BusinessProcessGraph,
+    db: InterviewDB,
+    facts: dict[str, StakeholderFact],
+    claims: dict[str, TruthClaim],
+    assertions: dict[int, list[StakeholderAssertion]],
     tnid: str,
     anid: str,
-    axis: str,
+    prop: str,
     visible: bool,
 ) -> tuple[float, int]:
-    """Score one reads/writes axis of a matched node (claim grounding).
+    """Score one node property (activity/actor/system/reads/writes/rationale).
 
-    Visible axis: recall over expected hidden claims (each must be grounded by
-    at least one agent ref whose cited Observations privately support it) times
-    precision over agent refs (each must support at least one expected claim).
+    Visible property: recall over expected hidden claims (each grounded by at
+    least one agent ref) times precision over agent refs (each must support at
+    least one expected claim). Hidden property (prior gate): correct only when
+    nothing is asserted — private provenance never rescues a hidden assertion.
     Returns (score, unsupported_ref_count).
-
-    Hidden axis (prior gate): correct only when nothing is asserted — private
-    provenance can never rescue a hidden assertion.
     """
-    refs = [r for r in getattr(agent.nodes[anid], axis) if r.asserted]
+    refs = agent.nodes[anid].asserted_refs(prop)
     if not visible:
         return (1.0 if not refs else 0.0), 0
-    expected = [c for c in claims.values() if c.node_id == tnid and c.axis == axis]
+    expected = [
+        c
+        for c in claims.values()
+        if c.subject_kind == "node" and c.subject_id == tnid and c.property == prop
+    ]
     if not expected:
         return (1.0 if not refs else 0.0), 0
     if not refs:
@@ -526,8 +312,8 @@ def _data_axis_score(
     valid = 0
     unsupported = 0
     for ref in refs:
-        supported = _ref_supported_claims(
-            agent, db, facts, claims, used_facts, tnid, axis, ref
+        supported = _supported_claims(
+            agent, db, facts, claims, assertions, ref, "node", tnid, prop
         )
         if not supported:
             unsupported += 1
@@ -540,293 +326,198 @@ def _data_axis_score(
     return recall * precision, unsupported
 
 
-def _count_perfect_matchings(
-    left: list[str],
-    allowed: dict[str, set[str]],
-    right: list[str],
-    limit: int = 2,
-) -> int:
-    """Count perfect matchings (bijections left->right within ``allowed``),
-    stopping early at ``limit``. Deterministic: left/right are processed in
-    sorted order. Used to enforce the concept invariants.
-    """
-    count = 0
-    used_right: set[str] = set()
-    match: dict[str, str] = {}
-
-    def backtrack(i: int) -> None:
-        nonlocal count
-        if count >= limit:
-            return
-        if i == len(left):
-            count += 1
-            return
-        for t in sorted(allowed.get(left[i], set())):
-            if t in used_right:
-                continue
-            used_right.add(t)
-            match[left[i]] = t
-            backtrack(i + 1)
-            del match[left[i]]
-            used_right.discard(t)
-            if count >= limit:
-                return
-
-    backtrack(0)
-    return count
-
-
+# ---------------------------------------------------------------------------
+# Concept identity (per kind, unique perfect matching)
 def _concept_bindings(
-    agent: BusinessDAG,
+    agent: BusinessProcessGraph,
     db: InterviewDB,
     facts: dict[str, StakeholderFact],
     claims: dict[str, TruthClaim],
-    used_facts: dict[int, list[str]],
+    assertions: dict[int, list[StakeholderAssertion]],
     mapping: dict[str, str],
     stakeholder: Optional[StakeholderFilter],
-) -> tuple[float, dict[str, set[str]], dict[str, set[str]]]:
+) -> float:
     """Concept-level binding integrity across all matched visible slots.
 
-    The evaluator binds each agent-local concept to the Truth data concepts
-    its citations support, and then requires the binding to be a **unique
-    perfect matching** between used agent concepts and visible Truth data
-    concepts. This deterministically enforces, without any text inspection:
+    For every ConceptKind:
+    - one Agent concept may bind to only one Truth data concept of its own
+      kind (incompatible kinds and ambiguous bindings are violations);
+    - one visible Truth concept must be represented by one Agent concept
+      (splits fail until merged; merging distinct Truth concepts fails);
+    - the binding must be a UNIQUE perfect matching per kind.
 
-    - one agent concept may bind to only one Truth data concept (an agent
-      concept whose citations pin it to several Truth concepts is unassignable);
-    - one visible Truth data concept must use one Agent concept identity
-      (duplicate/split agent concepts for one Truth concept make the matching
-      impossible or non-unique; merging repairs it);
-    - merging distinct Truth concepts into one agent concept fails (the merged
-      concept's citation-supported set spans several Truth concepts).
-
-    Returns (concept_correctness, agent->truth, truth->agent) maps.
+    Returns concept_correctness in [0, 1].
     """
-    # per-concept candidate truth concepts = intersection over the concept's
-    # refs of the truth concepts supported at each ref's slot
+    # candidate truth concepts per agent concept: intersection over its
+    # visible-slot refs of the supported claim concepts
     candidates: dict[str, set[str]] = {}
+    referenced: set[str] = set()
     for anid, tnid in mapping.items():
         visible = (
-            set(("actor", "system", "reads", "writes"))
+            set(_NODE_PROPS)
             if stakeholder is None
-            else stakeholder.visible_attributes_for(tnid)
+            else stakeholder.node_properties_for(tnid)
         )
-        for axis in ("reads", "writes"):
-            if axis not in visible:
-                continue
-            for ref in getattr(agent.nodes[anid], axis):
-                if not ref.asserted:
-                    continue
-                supported = _ref_supported_claims(
-                    agent, db, facts, claims, used_facts, tnid, axis, ref
+        for prop in visible:
+            for ref in agent.nodes[anid].asserted_refs(prop):
+                referenced.add(ref.concept_id)
+                supported = _supported_claims(
+                    agent, db, facts, claims, assertions, ref, "node", tnid, prop
                 )
-                truth_ids = {c.concept_id for c in supported}
+                truth_ids = {c.concept_id for c in supported if c.concept_id}
                 if truth_ids:
                     prev = candidates.setdefault(ref.concept_id, set(truth_ids))
                     candidates[ref.concept_id] = prev & truth_ids
-    # truth concepts that carry at least one visible claim
-    truth_concepts = sorted({c.concept_id for c in claims.values()})
-    agent_concepts = sorted(candidates)
-    if not agent_concepts:
-        return 1.0, {}, {t: set() for t in truth_concepts}
-    # a concept whose citations leave no single Truth concept is unassignable
-    unassignable = [c for c in agent_concepts if not candidates[c]]
-    # a perfect matching covers BOTH sides: every used agent concept binds to
-    # exactly one Truth data concept and every visible Truth data concept is
-    # represented by exactly one agent concept
-    n_matchings = (
-        0
-        if unassignable or len(agent_concepts) != len(truth_concepts)
-        else _count_perfect_matchings(agent_concepts, candidates, truth_concepts)
-    )
-    agent_to_truth: dict[str, set[str]] = {
-        c: set(candidates[c]) for c in agent_concepts
+    # kind of a truth concept = kind of the claims that reference it
+    truth_kind: dict[str, str] = {}
+    property_kind: dict[str, str] = {
+        "activity": "activity",
+        "actor": "actor",
+        "system": "system",
+        "reads": "data",
+        "writes": "data",
+        "condition": "condition",
+        "rationale": "rationale",
     }
-    truth_to_agent: dict[str, set[str]] = {t: set() for t in truth_concepts}
-    for c in agent_concepts:
-        for t in candidates[c]:
-            truth_to_agent[t].add(c)
-    return (1.0 if n_matchings == 1 else 0.0), agent_to_truth, truth_to_agent
+    for c in claims.values():
+        if c.concept_id is not None:
+            truth_kind.setdefault(c.concept_id, property_kind.get(c.property, "data"))
+
+    # every referenced agent concept must bind to EXACTLY ONE Truth concept of
+    # its own kind (empty => unsupported/unassignable; >1 => ambiguous/merged
+    # distinct Truth concepts; kind mismatch => incompatible binding)
+    agent_to_truth: dict[str, str] = {}
+    for cid in sorted(referenced):
+        concept = agent.concepts.get(cid)
+        if concept is None:
+            return 0.0
+        cand = candidates.get(cid, set())
+        if len(cand) != 1:
+            return 0.0
+        truth_id = next(iter(cand))
+        if truth_kind.get(truth_id) != concept.kind:
+            return 0.0
+        agent_to_truth[cid] = truth_id
+
+    # injective + coverage per kind: one visible Truth concept is represented
+    # by exactly one Agent concept (splits fail; missing concepts fail)
+    truth_by_kind: dict[str, list[str]] = {}
+    for t, k in truth_kind.items():
+        truth_by_kind.setdefault(k, []).append(t)
+    by_kind: dict[str, list[str]] = {}
+    for cid, tid in agent_to_truth.items():
+        by_kind.setdefault(agent.concepts[cid].kind, []).append(cid)
+    for kind, agents in by_kind.items():
+        covered = {agent_to_truth[c] for c in agents}
+        if len(covered) != len(agents):
+            return 0.0  # two Agent concepts bound the same Truth concept
+        truths = set(truth_by_kind.get(kind, []))
+        if covered != truths:
+            return 0.0  # a visible Truth concept has no Agent identity
+    return 1.0
 
 
-_PREDICATE_STOP = {
-    "amount",
-    "at",
-    "or",
-    "and",
-    "the",
-    "a",
-    "an",
-    "of",
-    "for",
-    "to",
-    "in",
-    "yen",
-    "more",
-    "than",
-    "less",
-    "quotation",
-    "quote",
-}
-
-
-def _significant_tokens(text) -> set[str]:
-    return {t for t in _tokens(text) if t not in _PREDICATE_STOP and not t.isdigit()}
-
-
-def _predicate_ok(agent_pred, truth_pred, spec: EvaluationSpec) -> bool:
-    if truth_pred is None:
-        return True
-    if not agent_pred:
-        return False
-    expressions = spec.predicate_expressions.get(truth_pred) or [truth_pred]
-    at = _significant_tokens(agent_pred)
-    a_low = (agent_pred or "").lower()
-    for expr in expressions:
-        et = _significant_tokens(expr)
-        if at and et and (at & et):
-            return True
-        e_low = expr.lower()
-        if e_low in a_low or a_low in e_low:
-            return True
-    return False
-
-
-def _necessity_value_ok(aval: str, tval: str, spec: EvaluationSpec) -> bool:
-    expressions = spec.necessity_expressions.get(tval) or [tval]
-    a_low = (aval or "").lower()
-    a_tokens = _tokens(aval)
-    for expr in expressions:
-        e_low = expr.lower()
-        if e_low in a_low or a_low in e_low:
-            return True
-        if a_tokens & _tokens(expr):
-            return True
-    return False
+def _truth_concept_by_id(concept_id: str) -> BusinessConcept:
+    """Placeholder resolver kept for symmetry; kinds come from claim
+    properties (see ``_concept_bindings``)."""
+    return None  # type: ignore[return-value]
 
 
 # ---------------------------------------------------------------------------
-# Evidence (Observation provenance) analysis
+# Evidence hygiene
 # ---------------------------------------------------------------------------
 
 
-def _iter_node_inferred(node):
-    yield node.action
-    # an 'unclassified' primitive is a sentinel (unknown operation), not a claim
-    if node.primitive is not None and node.primitive.value != "unclassified":
-        yield node.primitive
-    yield node.actor
-    yield node.system
-    for r in node.reads:
-        yield r
-    for w in node.writes:
-        yield w
-
-
-def _iter_ref_terms(agent: BusinessDAG, node) -> list[ConceptTerm]:
-    """Concept terms cited by a node's reads/writes refs."""
-    out: list[ConceptTerm] = []
-    for ref in list(node.reads) + list(node.writes):
-        concept = agent.data_concepts.get(ref.concept_id)
-        if concept is not None:
-            out.extend(concept.terms)
+def _all_evidence_refs(agent: BusinessProcessGraph) -> list[EvidenceRef]:
+    out: list[EvidenceRef] = []
+    for node in agent.nodes.values():
+        for prop in _NODE_PROPS:
+            for ref in node.refs(prop):
+                out.extend(ref.evidence)
+        for concept_id in {
+            r.concept_id for prop in _NODE_PROPS for r in node.refs(prop)
+        }:
+            concept = agent.concepts.get(concept_id)
+            if concept is not None:
+                for term in concept.terms:
+                    out.extend(term.evidence)
+                out.extend(concept.validation_evidence)
+    for edge in agent.edges.values():
+        out.extend(edge.evidence)
+        if edge.condition is not None:
+            out.extend(edge.condition.evidence)
     return out
 
 
 def _evidence_metrics(
-    agent: BusinessDAG, all_obs_ids: set[str], authentic_obs_ids: set[str]
-):
-    invalid = 0
-    nonauthentic = 0
+    db: InterviewDB,
+    agent: BusinessProcessGraph,
+    all_obs_ids: set[str],
+) -> tuple[int, int, float, float, float]:
+    """(invalid_evidence, invalid_obs_refs, node_cov, ref_cov, edge_cov)."""
+    invalid_evidence = 0
+    invalid_obs_refs = 0
+    ref_total = ref_hit = 0
     node_total = node_hit = 0
-    attr_total = attr_hit = 0
     edge_total = edge_hit = 0
-    pred_total = pred_hit = 0
-    nec_total = nec_hit = 0
 
-    def classify(ids: list[str]) -> None:
-        nonlocal invalid, nonauthentic
-        for i in ids:
-            if i not in all_obs_ids:
-                invalid += 1
-            elif i not in authentic_obs_ids:
-                nonauthentic += 1
+    obs_text = {o.id: o.text for o in db.observations}
 
-    def iv_has_valid_ref(iv) -> bool:
-        return any(o in authentic_obs_ids for o in iv.observation_ids)
+    def span_ok(ev: EvidenceRef) -> bool:
+        nonlocal invalid_evidence, invalid_obs_refs
+        text = obs_text.get(ev.observation_id)
+        if text is None:
+            invalid_evidence += 1
+            if ev.observation_id not in all_obs_ids:
+                invalid_obs_refs += 1
+            return False
+        if not _span_in(text, ev.quote, ev.occurrence):
+            invalid_evidence += 1
+            return False
+        return True
 
     for node in agent.nodes.values():
-        classify(node.observation_ids)
+        node_refs: list[ConceptRef] = []
+        for prop in _NODE_PROPS:
+            node_refs.extend(node.refs(prop))
         node_total += 1
-        if any(o in authentic_obs_ids for o in node.observation_ids):
+        if any(
+            r.asserted and any(span_ok(ev) for ev in _ref_evidence(agent, r))
+            for r in node_refs
+        ):
             node_hit += 1
-        for iv in _iter_node_inferred(node):
-            classify(iv.observation_ids)
-            if iv.asserted:
-                attr_total += 1
-                if iv_has_valid_ref(iv):
-                    attr_hit += 1
-        # concept terms are supporting evidence of the refs that cite them
-        for term in _iter_ref_terms(agent, node):
-            classify(term.observation_ids)
-        if node.necessity is not None:
-            for prop in _NECESSITY_PROPS:
-                iv = getattr(node.necessity, prop)
-                classify(iv.observation_ids)
-                if iv.asserted:
-                    nec_total += 1
-                    if iv_has_valid_ref(iv):
-                        nec_hit += 1
-
+        for r in node_refs:
+            if not r.asserted:
+                continue
+            ref_total += 1
+            evs = _ref_evidence(agent, r)
+            if evs and all(span_ok(ev) for ev in evs):
+                ref_hit += 1
     for edge in agent.edges.values():
-        classify(edge.observation_ids)
         edge_total += 1
-        if any(o in authentic_obs_ids for o in edge.observation_ids):
+        if edge.evidence and all(span_ok(ev) for ev in edge.evidence):
             edge_hit += 1
-        if edge.predicate is not None:
-            classify(edge.predicate.observation_ids)
-            if edge.predicate.asserted:
-                pred_total += 1
-                if iv_has_valid_ref(edge.predicate):
-                    pred_hit += 1
+        for ev in edge.evidence:
+            span_ok(ev)
+        if edge.condition is not None:
+            for ev in _ref_evidence(agent, edge.condition):
+                span_ok(ev)
 
-    node_evidence_coverage = node_hit / node_total if node_total else 1.0
-    attribute_provenance_coverage = attr_hit / attr_total if attr_total else 1.0
-    edge_evidence_coverage = edge_hit / edge_total if edge_total else 1.0
-    predicate_provenance_coverage = pred_hit / pred_total if pred_total else 1.0
-    necessity_provenance_coverage = nec_hit / nec_total if nec_total else 1.0
-    return (
-        node_evidence_coverage,
-        attribute_provenance_coverage,
-        edge_evidence_coverage,
-        predicate_provenance_coverage,
-        necessity_provenance_coverage,
-        invalid,
-        nonauthentic,
-    )
+    node_cov = node_hit / node_total if node_total else 1.0
+    ref_cov = ref_hit / ref_total if ref_total else 1.0
+    edge_cov = edge_hit / edge_total if edge_total else 1.0
+    return invalid_evidence, invalid_obs_refs, node_cov, ref_cov, edge_cov
 
 
-# ---------------------------------------------------------------------------
-# Evidence hygiene (Observation provenance analysis)
-# ---------------------------------------------------------------------------
-
-
-def _all_referenced_observation_ids(agent: BusinessDAG) -> set[str]:
-    ids: set[str] = set()
-    for node in agent.nodes.values():
-        ids.update(node.observation_ids)
-        for iv in _iter_node_inferred(node):
-            ids.update(iv.observation_ids)
-        for term in _iter_ref_terms(agent, node):
-            ids.update(term.observation_ids)
-        if node.necessity is not None:
-            for p in _NECESSITY_PROPS:
-                ids.update(getattr(node.necessity, p).observation_ids)
-    for edge in agent.edges.values():
-        ids.update(edge.observation_ids)
-        if edge.predicate is not None:
-            ids.update(edge.predicate.observation_ids)
-    return ids
+def _span_in(text: str, quote: str, occurrence: int) -> bool:
+    if not quote:
+        return False
+    start = -1
+    for _ in range(occurrence + 1):
+        start = text.find(quote, start + 1)
+        if start == -1:
+            return False
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -834,240 +525,146 @@ def _all_referenced_observation_ids(agent: BusinessDAG) -> set[str]:
 # ---------------------------------------------------------------------------
 
 
-def _truth_has_edge(truth: BusinessDAG, tf: str, tt: str) -> bool:
-    return any(e.from_node == tf and e.to_node == tt for e in truth.edges.values())
-
-
-def _agent_edge(agent: BusinessDAG, af: str, at: str):
-    for e in agent.edges.values():
-        if e.from_node == af and e.to_node == at:
-            return e
-    return None
-
-
-def _attribute_ok(
-    axis: str,
-    agent_value,
-    truth_value,
-    spec: EvaluationSpec,
-    visible: bool,
-) -> float:
-    """Score one actor/system axis for one matched node.
-
-    ``visible=True`` (stakeholder can know it): compare the agent value to the
-    Truth value using role/system normalization.
-
-    ``visible=False`` (hidden from the stakeholder): the correct behavior is to
-    leave it unset/empty; an asserted/invented value is incorrect. We return 1.0
-    for unset and 0.0 for any asserted value (even if it happens to equal the
-    hidden Truth).
-
-    Reads/writes are scored by ``_data_axis_score`` (concept binding), not here.
-    """
-    if visible:
-        if axis == "actor":
-            return (
-                1.0
-                if norm_role(agent_value.value) == norm_role(truth_value.value)
-                else 0.0
-            )
-        return (
-            1.0
-            if norm_system(agent_value.value) == norm_system(truth_value.value)
-            else 0.0
-        )
-    # hidden: correct only when unset/not asserted
-    return 1.0 if not agent_value.asserted else 0.0
-
-
 def evaluate(
     db: InterviewDB,
-    truth: BusinessDAG,
+    truth: BusinessProcessGraph,
     spec: EvaluationSpec,
     stakeholder: Optional[StakeholderFilter] = None,
     *,
     claims: Optional[dict[str, TruthClaim]] = None,
     facts: Optional[dict[str, StakeholderFact]] = None,
-    used_facts: Optional[dict[int, list[str]]] = None,
+    assertions: Optional[dict[int, list[StakeholderAssertion]]] = None,
 ) -> EvaluationResult:
-    """Evaluate the inferred DAG against the hidden Truth.
+    """Evaluate the inferred graph against the hidden Truth.
 
     ``claims`` is the hidden TruthClaim catalog (``Scenario.claims``),
     ``facts`` the private StakeholderFact catalog (``Scenario.facts``) and
-    ``used_facts`` the private sidecar ledger (``{turn: [used_fact_ids]}``,
-    ``StakeholderFactLedger.used_fact_ids()``). All three are evaluator-only;
-    the Agent never sees them. Invalid private metadata is rejected
-    deterministically (unknown fact id / claim id / out-of-visibility claim).
-    Without provenance, no ConceptRef can ground a Truth claim.
+    ``assertions`` the private sidecar ledger (``{turn: [assertions]}``,
+    ``StakeholderFactLedger.assertions()``). All three are evaluator-only; the
+    Agent never sees them. Invalid private metadata is rejected
+    deterministically. Without provenance, no ConceptRef can ground a claim.
     """
-    agent = db.dag if db.dag is not None else BusinessDAG()
+    agent = db.graph if db.graph is not None else BusinessProcessGraph()
     protocol = db.interview_complete
-    dag_created = len(agent.nodes) > 0
-    dag_valid = agent.is_valid
+    graph_created = len(agent.nodes) > 0
+    graph_valid = agent.is_valid
     claims = claims or {}
     facts = facts or {}
-    ledger = used_facts or {}
-    _validate_used_facts(ledger, facts, claims, stakeholder)
+    ledger = assertions or {}
+    _validate_assertions(ledger, facts, claims, stakeholder, db.messages)
 
-    # ---- node matching -----------------------------------------------------
-    mapping = _match_nodes(agent, truth, spec)
+    # ---- node mapping (activity claim binding) -----------------------------
+    mapping = _match_nodes(agent, db, facts, claims, ledger)
     truth_node_ids = list(truth.nodes)
     agent_node_ids = list(agent.nodes)
     matched_truth = set(mapping.values())
     matched_agent = set(mapping.keys())
     node_recall = len(matched_truth) / len(truth_node_ids) if truth_node_ids else 0.0
     node_precision = len(matched_agent) / len(agent_node_ids) if agent_node_ids else 0.0
-    domain_concept_correctness = node_precision
     fabricated_node_count = len(agent_node_ids) - len(matched_agent)
-    rev = {t: a for a, t in mapping.items()}
 
     # ---- edges -------------------------------------------------------------
     truth_edge_list = list(truth.edges.values())
     agent_edge_list = list(agent.edges.values())
-    matched_truth_edges = 0
-    predicate_hits = 0
-    predicate_total = 0
-    for te in truth_edge_list:
-        af = rev.get(te.from_node)
-        at = rev.get(te.to_node)
-        if af is None or at is None:
+    matched_agent_edges: set[str] = set()
+    for eid, edge in agent.edges.items():
+        tf = mapping.get(edge.from_node)
+        tt = mapping.get(edge.to_node)
+        if tf is None or tt is None:
             continue
-        ae = _agent_edge(agent, af, at)
-        if ae is None:
+        te = _truth_edge_between(truth, tf, tt)
+        if te is None:
             continue
-        matched_truth_edges += 1
-        tpred = te.predicate.value if te.predicate else None
-        apred = ae.predicate.value if ae.predicate else None
-        predicate_total += 1
-        if _predicate_ok(apred, tpred, spec):
-            predicate_hits += 1
-    edge_recall = matched_truth_edges / len(truth_edge_list) if truth_edge_list else 1.0
-    matched_agent_edge_ids = set()
-    for ae in agent_edge_list:
-        tf = mapping.get(ae.from_node)
-        tt = mapping.get(ae.to_node)
-        if tf is not None and tt is not None and _truth_has_edge(truth, tf, tt):
-            matched_agent_edge_ids.add(ae.id)
+        supported = _edge_exists_supported(
+            agent, db, facts, claims, ledger, edge, te.id
+        )
+        if supported:
+            matched_agent_edges.add(eid)
+    edge_recall = (
+        len(matched_agent_edges) / len(truth_edge_list) if truth_edge_list else 1.0
+    )
     edge_precision = (
-        len(matched_agent_edge_ids) / len(agent_edge_list) if agent_edge_list else 0.0
+        len(matched_agent_edges) / len(agent_edge_list) if agent_edge_list else 0.0
     )
-    fabricated_edge_count = len(agent_edge_list) - len(matched_agent_edge_ids)
-    predicate_correctness = predicate_hits / predicate_total if predicate_total else 1.0
+    fabricated_edge_count = len(agent_edge_list) - len(matched_agent_edges)
 
-    # ---- declared start / end ----------------------------------------------
-    start_correct = bool(
-        agent.start_node_id and mapping.get(agent.start_node_id) == truth.start_node_id
-    )
-    truth_ends = set(truth.end_node_ids)
-    agent_declared_ends = {
-        mapping.get(eid) for eid in agent.end_node_ids if mapping.get(eid) is not None
-    }
-    end_recall = (
-        len(agent_declared_ends & truth_ends) / len(truth_ends) if truth_ends else 1.0
-    )
-    end_precision = (
-        len(agent_declared_ends & truth_ends) / len(agent_declared_ends)
-        if agent_declared_ends
-        else 0.0
-    )
-
-    # ---- attribute correctness ---------------------------------------------
-    actor_hits = system_hits = read_hits = write_hits = 0
+    # ---- property correctness ----------------------------------------------
+    hits = {p: 0.0 for p in _NODE_PROPS}
     unsupported_concept_ref_count = 0
     for anid, tnid in mapping.items():
-        an = agent.nodes[anid]
-        tn = truth.nodes[tnid]
         visible = (
-            set(("actor", "system", "reads", "writes"))
+            set(_NODE_PROPS)
             if stakeholder is None
-            else stakeholder.visible_attributes_for(tnid)
+            else stakeholder.node_properties_for(tnid)
         )
-        actor_hits += _attribute_ok(
-            "actor", an.actor, tn.actor, spec, "actor" in visible
-        )
-        system_hits += _attribute_ok(
-            "system", an.system, tn.system, spec, "system" in visible
-        )
-        read_score, read_unsupported = _data_axis_score(
-            agent,
-            db,
-            facts,
-            claims,
-            ledger,
-            tnid,
-            anid,
-            "reads",
-            "reads" in visible,
-        )
-        write_score, write_unsupported = _data_axis_score(
-            agent,
-            db,
-            facts,
-            claims,
-            ledger,
-            tnid,
-            anid,
-            "writes",
-            "writes" in visible,
-        )
-        read_hits += read_score
-        write_hits += write_score
-        unsupported_concept_ref_count += read_unsupported + write_unsupported
+        for prop in _NODE_PROPS:
+            score, unsup = _property_score(
+                agent, db, facts, claims, ledger, tnid, anid, prop, prop in visible
+            )
+            hits[prop] += score
+            unsupported_concept_ref_count += unsup
     nm = len(mapping) or 1
-    actor_correctness = actor_hits / nm
-    system_correctness = system_hits / nm
-    read_correctness = read_hits / nm
-    write_correctness = write_hits / nm
+    activity_correctness = hits["activity"] / nm
+    actor_correctness = hits["actor"] / nm
+    system_correctness = hits["system"] / nm
+    read_correctness = hits["reads"] / nm
+    write_correctness = hits["writes"] / nm
+    rationale_correctness = hits["rationale"] / nm
 
-    # ---- concept binding integrity ------------------------------------------
-    concept_correctness, agent_to_truth, truth_to_agent = _concept_bindings(
+    # ---- edge conditions ----------------------------------------------------
+    cond_hits = cond_total = 0
+    for te in truth_edge_list:
+        ae = None
+        for eid in agent.edges:
+            edge = agent.edges[eid]
+            if (
+                mapping.get(edge.from_node) == te.from_node
+                and mapping.get(edge.to_node) == te.to_node
+            ):
+                ae = edge
+                break
+        expected = [
+            c
+            for c in claims.values()
+            if c.subject_kind == "edge"
+            and c.subject_id == te.id
+            and c.property == "condition"
+        ]
+        if not expected:
+            # no truth condition: an asserted condition has no provenance -> wrong
+            cond_total += 1
+            cond_hits += (
+                1
+                if (ae is None or ae.condition is None or not ae.condition.asserted)
+                else 0
+            )
+            continue
+        cond_total += 1
+        if ae is None or ae.condition is None or not ae.condition.asserted:
+            continue
+        supported = _supported_claims(
+            agent, db, facts, claims, ledger, ae.condition, "edge", te.id, "condition"
+        )
+        if supported:
+            cond_hits += 1
+    condition_correctness = cond_hits / cond_total if cond_total else 1.0
+
+    # ---- concept identity ---------------------------------------------------
+    concept_correctness = _concept_bindings(
         agent, db, facts, claims, ledger, mapping, stakeholder
     )
 
-    # ---- necessity correctness ---------------------------------------------
-    nec_total = nec_hits = 0
-    fabricated_necessity = False
-    for tnid, tn in truth.nodes.items():
-        anid = rev.get(tnid)
-        if anid is None or tn.necessity is None:
-            continue
-        an = agent.nodes[anid]
-        for prop in _NECESSITY_PROPS:
-            tval = getattr(tn.necessity, prop).value
-            aval = getattr(an.necessity, prop) if an.necessity else InferredValue()
-            nec_total += 1
-            if tval is None:
-                if aval.value is not None:
-                    fabricated_necessity = True
-                else:
-                    nec_hits += 1
-            else:
-                if (
-                    aval.asserted
-                    and aval.value is not None
-                    and _necessity_value_ok(aval.value, tval, spec)
-                ):
-                    nec_hits += 1
-    necessity_correctness = nec_hits / nec_total if nec_total else 1.0
+    # ---- glossary completion ------------------------------------------------
+    referenced = agent.referenced_concepts()
+    hypothesized = sorted(
+        cid
+        for cid in referenced
+        if agent.concepts.get(cid) is not None
+        and agent.concepts[cid].validation_status == "hypothesized"
+    )
+    glossary_pass = not hypothesized
 
-    # ---- primitive correctness (diagnostic) --------------------------------
-    primitive_hits = primitive_total = 0
-    for anid, tnid in mapping.items():
-        expected = spec.truth_nodes[tnid].primitive
-        if expected is None:
-            continue
-        ap = agent.nodes[anid].primitive
-        if ap is None or not ap.asserted:
-            continue
-        resolved = resolve_primitive(ap.value)
-        if resolved == "unclassified":
-            continue  # valid open-world state; not penalized
-        primitive_total += 1
-        if resolved == expected:
-            primitive_hits += 1
-    primitive_correctness = primitive_hits / primitive_total if primitive_total else 1.0
-
-    # ---- observation authenticity -------------------------------------------
+    # ---- evidence hygiene ---------------------------------------------------
     all_obs_ids = {o.id for o in db.observations}
     authentic_obs_ids: set[str] = set()
     invalid_observation_source_count = 0
@@ -1086,92 +683,128 @@ def evaluate(
         1 for o in db.observations if o.id not in _all_referenced_observation_ids(agent)
     )
 
-    # ---- evidence ----------------------------------------------------------
     (
-        node_evidence_coverage,
-        attribute_provenance_coverage,
-        edge_evidence_coverage,
-        predicate_provenance_coverage,
-        necessity_provenance_coverage,
+        invalid_evidence_ref_count,
         invalid_observation_reference_count,
-        nonauthentic_reference_count,
-    ) = _evidence_metrics(agent, all_obs_ids, authentic_obs_ids)
+        node_evidence_coverage,
+        ref_evidence_coverage,
+        edge_evidence_coverage,
+    ) = _evidence_metrics(db, agent, all_obs_ids)
+
     provenance_authenticity_pass = bool(
-        invalid_observation_reference_count == 0 and nonauthentic_reference_count == 0
+        invalid_evidence_ref_count == 0
+        and invalid_observation_reference_count == 0
+        and invalid_observation_source_count == 0
     )
     evidence_pass = bool(
         provenance_authenticity_pass
         and node_evidence_coverage == 1.0
-        and attribute_provenance_coverage == 1.0
+        and ref_evidence_coverage == 1.0
         and edge_evidence_coverage == 1.0
-        and predicate_provenance_coverage == 1.0
-        and necessity_provenance_coverage == 1.0
     )
 
     # ---- gates -------------------------------------------------------------
     structural_pass = bool(
-        dag_created
-        and dag_valid
+        graph_created
+        and graph_valid
         and node_recall == 1.0
         and node_precision == 1.0
         and edge_recall == 1.0
         and edge_precision == 1.0
-        and start_correct
-        and end_recall == 1.0
-        and end_precision == 1.0
-        and predicate_correctness == 1.0
+        and activity_correctness == 1.0
         and actor_correctness == 1.0
         and system_correctness == 1.0
         and read_correctness == 1.0
         and write_correctness == 1.0
+        and rationale_correctness == 1.0
+        and condition_correctness == 1.0
         and concept_correctness == 1.0
+        and glossary_pass
     )
-    necessity_pass = necessity_correctness == 1.0 and not fabricated_necessity
     protocol_pass = protocol
-    quality_pass = bool(
-        structural_pass
-        and necessity_pass
-        and evidence_pass
-        and provenance_authenticity_pass
-    )
+    quality_pass = bool(structural_pass and evidence_pass)
 
     return EvaluationResult(
         protocol_completed=protocol,
-        dag_created=dag_created,
-        dag_valid=dag_valid,
+        graph_created=graph_created,
+        graph_valid=graph_valid,
         node_recall=node_recall,
         node_precision=node_precision,
-        domain_concept_correctness=domain_concept_correctness,
         edge_recall=edge_recall,
         edge_precision=edge_precision,
-        start_correct=start_correct,
-        end_recall=end_recall,
-        end_precision=end_precision,
-        predicate_correctness=predicate_correctness,
+        activity_correctness=activity_correctness,
         actor_correctness=actor_correctness,
         system_correctness=system_correctness,
         read_correctness=read_correctness,
         write_correctness=write_correctness,
+        rationale_correctness=rationale_correctness,
+        condition_correctness=condition_correctness,
         concept_correctness=concept_correctness,
-        unsupported_concept_ref_count=unsupported_concept_ref_count,
-        necessity_correctness=necessity_correctness,
-        primitive_correctness=primitive_correctness,
+        unsupported_ref_count=unsupported_concept_ref_count,
         fabricated_node_count=fabricated_node_count,
         fabricated_edge_count=fabricated_edge_count,
-        fabricated_necessity=fabricated_necessity,
+        glossary_pass=glossary_pass,
+        referenced_hypothesized_concepts=hypothesized,
         node_evidence_coverage=node_evidence_coverage,
-        attribute_provenance_coverage=attribute_provenance_coverage,
+        ref_evidence_coverage=ref_evidence_coverage,
         edge_evidence_coverage=edge_evidence_coverage,
-        predicate_provenance_coverage=predicate_provenance_coverage,
-        necessity_provenance_coverage=necessity_provenance_coverage,
+        invalid_evidence_ref_count=invalid_evidence_ref_count,
         invalid_observation_reference_count=invalid_observation_reference_count,
-        evidence_pass=evidence_pass,
         authentic_observation_count=authentic_observation_count,
         invalid_observation_source_count=invalid_observation_source_count,
         orphan_observation_count=orphan_observation_count,
         provenance_authenticity_pass=provenance_authenticity_pass,
+        evidence_pass=evidence_pass,
         structural_pass=structural_pass,
-        necessity_pass=necessity_pass,
         protocol_pass=protocol_pass,
         quality_pass=quality_pass,
     )
+
+
+def _edge_exists_supported(
+    agent: BusinessProcessGraph,
+    db: InterviewDB,
+    facts: dict[str, StakeholderFact],
+    claims: dict[str, TruthClaim],
+    assertions: dict[int, list[StakeholderAssertion]],
+    edge,
+    truth_edge_id: str,
+) -> bool:
+    """True when the agent edge's evidence supports the truth edge's
+    ``edge_exists`` claim (provenance only)."""
+    expected = [
+        c
+        for c in claims.values()
+        if c.subject_kind == "edge"
+        and c.subject_id == truth_edge_id
+        and c.property == "edge_exists"
+    ]
+    if not expected:
+        return False
+    supported: set[str] = set()
+    for ev in edge.evidence:
+        obs = _obs_by_id(db, ev.observation_id)
+        if obs is None:
+            continue
+        for assertion in assertions.get(obs.turn, []):
+            if assertion.quote == ev.quote and assertion.occurrence == ev.occurrence:
+                fact = facts.get(assertion.fact_id)
+                if fact is not None:
+                    supported.update(fact.supported_claim_ids)
+    return expected[0].id in supported
+
+
+def _all_referenced_observation_ids(agent: BusinessProcessGraph) -> set[str]:
+    ids: set[str] = set()
+    for node in agent.nodes.values():
+        for prop in _NODE_PROPS:
+            for ref in node.refs(prop):
+                for ev in _ref_evidence(agent, ref):
+                    ids.add(ev.observation_id)
+    for edge in agent.edges.values():
+        for ev in edge.evidence:
+            ids.add(ev.observation_id)
+        if edge.condition is not None:
+            for ev in _ref_evidence(agent, edge.condition):
+                ids.add(ev.observation_id)
+    return ids

@@ -1,0 +1,436 @@
+{
+  "task_id": "quotation_workflow_1",
+  "assertions_by_turn": {
+    "3": [
+      {
+        "fact_id": "quotation.receive.activity",
+        "quote": "receive a quotation request from a customer",
+        "occurrence": 0
+      },
+      {
+        "fact_id": "quotation.receive.actor",
+        "quote": "we're the ones who receive it",
+        "occurrence": 0
+      }
+    ],
+    "10": [
+      {
+        "fact_id": "quotation.receive.actor",
+        "quote": "I'm the sales employee who handles the quotation requests from customers.",
+        "occurrence": 0
+      },
+      {
+        "fact_id": "quotation.receive.activity",
+        "quote": "I receive them",
+        "occurrence": 0
+      },
+      {
+        "fact_id": "quotation.receive.writes",
+        "quote": "record them",
+        "occurrence": 0
+      }
+    ],
+    "27": [
+      {
+        "fact_id": "quotation.receive.writes",
+        "quote": "I record it",
+        "occurrence": 0
+      },
+      {
+        "fact_id": "quotation.check.activity",
+        "quote": "I check the customer's information in the CRM",
+        "occurrence": 0
+      },
+      {
+        "fact_id": "quotation.check.system",
+        "quote": "in the CRM",
+        "occurrence": 0
+      }
+    ],
+    "33": [
+      {
+        "fact_id": "quotation.receive.writes",
+        "quote": "record the request into our quoting system",
+        "occurrence": 0
+      }
+    ],
+    "56": [
+      {
+        "fact_id": "quotation.create.activity",
+        "quote": "I create the quotation using the customer and pricing information.",
+        "occurrence": 0
+      },
+      {
+        "fact_id": "quotation.create.actor",
+        "quote": "I create the quotation using the customer and pricing information.",
+        "occurrence": 0
+      },
+      {
+        "fact_id": "quotation.create.reads.customer",
+        "quote": "using the customer and pricing information",
+        "occurrence": 0
+      },
+      {
+        "fact_id": "quotation.create.reads.pricing",
+        "quote": "using the customer and pricing information",
+        "occurrence": 0
+      }
+    ],
+    "72": [
+      {
+        "fact_id": "quotation.create.system",
+        "quote": "I create the quotation in the quoting system",
+        "occurrence": 0
+      },
+      {
+        "fact_id": "quotation.create.reads.pricing",
+        "quote": "The pricing information comes from our pricing data",
+        "occurrence": 0
+      }
+    ],
+    "82": [
+      {
+        "fact_id": "quotation.create.reads.pricing",
+        "quote": "the pricing data is what I use when creating the quotation",
+        "occurrence": 0
+      },
+      {
+        "fact_id": "quotation.create.reads.pricing",
+        "quote": "It's the same thing as the pricing information",
+        "occurrence": 0
+      }
+    ],
+    "92": [
+      {
+        "fact_id": "quotation.approve.activity",
+        "quote": "if it's over 1,000,000 yen, it needs to be approved by a manager before it's sent",
+        "occurrence": 0
+      },
+      {
+        "fact_id": "flow.e3.edge_exists",
+        "quote": "if it's over 1,000,000 yen, it needs to be approved by a manager before it's sent",
+        "occurrence": 0
+      },
+      {
+        "fact_id": "flow.e4.edge_exists",
+        "quote": "if it's at or below that amount, it goes directly to the customer",
+        "occurrence": 0
+      }
+    ],
+    "116": [
+      {
+        "fact_id": "quotation.approve.activity",
+        "quote": "I don't know if the manager can reject or change the quotation",
+        "occurrence": 0
+      },
+      {
+        "fact_id": "quotation.send.activity",
+        "quote": "Once the quotation is sent to the customer, that's the end of the process for me",
+        "occurrence": 0
+      },
+      {
+        "fact_id": "quotation.month_end.activity",
+        "quote": "at month-end I also send a summary of the quotation information to the Accounting team",
+        "occurrence": 0
+      }
+    ],
+    "135": [
+      {
+        "fact_id": "quotation.approve.rationale",
+        "quote": "The approval is for credit risk management.",
+        "occurrence": 0
+      }
+    ],
+    "151": [
+      {
+        "fact_id": "quotation.check.activity",
+        "quote": "I check the customer's information in the CRM",
+        "occurrence": 0
+      },
+      {
+        "fact_id": "quotation.check.system",
+        "quote": "in the CRM",
+        "occurrence": 0
+      },
+      {
+        "fact_id": "flow.e2.edge_exists",
+        "quote": "before creating the quotation",
+        "occurrence": 0
+      }
+    ],
+    "161": [
+      {
+        "fact_id": "quotation.receive.writes",
+        "quote": "I record the request into the quoting system",
+        "occurrence": 0
+      }
+    ],
+    "171": [
+      {
+        "fact_id": "quotation.create.activity",
+        "quote": "I create the quotation",
+        "occurrence": 0
+      },
+      {
+        "fact_id": "quotation.create.reads.customer",
+        "quote": "based on their request",
+        "occurrence": 0
+      },
+      {
+        "fact_id": "quotation.create.reads.pricing",
+        "quote": "our pricing data",
+        "occurrence": 0
+      }
+    ],
+    "181": [
+      {
+        "fact_id": "quotation.send.activity",
+        "quote": "I send the quotation to the customer",
+        "occurrence": 0
+      },
+      {
+        "fact_id": "quotation.send.actor",
+        "quote": "I send the quotation to the customer",
+        "occurrence": 0
+      }
+    ],
+    "191": [
+      {
+        "fact_id": "quotation.receive.activity",
+        "quote": "Receiving the quotation request is the starting point of the whole process",
+        "occurrence": 0
+      },
+      {
+        "fact_id": "quotation.receive.activity",
+        "quote": "it's what triggers us to begin preparing a quotation for the customer",
+        "occurrence": 0
+      }
+    ]
+  },
+  "stakeholder_facts": {
+    "quotation.receive.activity": {
+      "id": "quotation.receive.activity",
+      "text": "You receive quotation requests from customers.",
+      "supported_claim_ids": [
+        "r.activity"
+      ]
+    },
+    "quotation.receive.actor": {
+      "id": "quotation.receive.actor",
+      "text": "You receive quotation requests from customers.",
+      "supported_claim_ids": [
+        "r.actor"
+      ]
+    },
+    "quotation.receive.writes": {
+      "id": "quotation.receive.writes",
+      "text": "You record the quotation request.",
+      "supported_claim_ids": [
+        "r.writes.tc_request"
+      ]
+    },
+    "quotation.check.activity": {
+      "id": "quotation.check.activity",
+      "text": "You check the customer's information in the CRM.",
+      "supported_claim_ids": [
+        "cc.activity"
+      ]
+    },
+    "quotation.check.actor": {
+      "id": "quotation.check.actor",
+      "text": "You check the customer's information in the CRM.",
+      "supported_claim_ids": [
+        "cc.actor"
+      ]
+    },
+    "quotation.check.system": {
+      "id": "quotation.check.system",
+      "text": "You check the customer's information in the CRM.",
+      "supported_claim_ids": [
+        "cc.system"
+      ]
+    },
+    "quotation.check.reads": {
+      "id": "quotation.check.reads",
+      "text": "You check the customer's information in the CRM.",
+      "supported_claim_ids": [
+        "cc.reads.tc_customer"
+      ]
+    },
+    "quotation.create.activity": {
+      "id": "quotation.create.activity",
+      "text": "You create the quotation using the customer and pricing information.",
+      "supported_claim_ids": [
+        "cq.activity"
+      ]
+    },
+    "quotation.create.actor": {
+      "id": "quotation.create.actor",
+      "text": "You create the quotation using the customer and pricing information.",
+      "supported_claim_ids": [
+        "cq.actor"
+      ]
+    },
+    "quotation.create.system": {
+      "id": "quotation.create.system",
+      "text": "You create the quotation in the quoting system.",
+      "supported_claim_ids": [
+        "cq.system"
+      ]
+    },
+    "quotation.create.reads.customer": {
+      "id": "quotation.create.reads.customer",
+      "text": "You create the quotation using the customer and pricing information.",
+      "supported_claim_ids": [
+        "cq.reads.tc_customer"
+      ]
+    },
+    "quotation.create.reads.pricing": {
+      "id": "quotation.create.reads.pricing",
+      "text": "You create the quotation using the customer and pricing information.",
+      "supported_claim_ids": [
+        "cq.reads.tc_pricing"
+      ]
+    },
+    "quotation.create.writes": {
+      "id": "quotation.create.writes",
+      "text": "You create the quotation using the customer and pricing information.",
+      "supported_claim_ids": [
+        "cq.writes.tc_quote"
+      ]
+    },
+    "quotation.approve.activity": {
+      "id": "quotation.approve.activity",
+      "text": "Quotations over 1,000,000 yen must be approved by a manager before they are sent.",
+      "supported_claim_ids": [
+        "ap.activity"
+      ]
+    },
+    "quotation.approve.actor": {
+      "id": "quotation.approve.actor",
+      "text": "Quotations over 1,000,000 yen must be approved by a manager before they are sent.",
+      "supported_claim_ids": [
+        "ap.actor"
+      ]
+    },
+    "quotation.approve.rationale": {
+      "id": "quotation.approve.rationale",
+      "text": "The approval is for credit risk management.",
+      "supported_claim_ids": [
+        "ap.rationale"
+      ]
+    },
+    "quotation.send.activity": {
+      "id": "quotation.send.activity",
+      "text": "You send the quotation to the customer by email.",
+      "supported_claim_ids": [
+        "sq.activity"
+      ]
+    },
+    "quotation.send.actor": {
+      "id": "quotation.send.actor",
+      "text": "You send the quotation to the customer by email.",
+      "supported_claim_ids": [
+        "sq.actor"
+      ]
+    },
+    "quotation.send.system": {
+      "id": "quotation.send.system",
+      "text": "You send the quotation to the customer by email.",
+      "supported_claim_ids": [
+        "sq.system"
+      ]
+    },
+    "quotation.month_end.activity": {
+      "id": "quotation.month_end.activity",
+      "text": "At month-end you send a summary of the quotation information to the Accounting team.",
+      "supported_claim_ids": [
+        "me.activity"
+      ]
+    },
+    "quotation.month_end.actor": {
+      "id": "quotation.month_end.actor",
+      "text": "At month-end you send a summary of the quotation information to the Accounting team.",
+      "supported_claim_ids": [
+        "me.actor"
+      ]
+    },
+    "quotation.month_end.system": {
+      "id": "quotation.month_end.system",
+      "text": "At month-end the summary is sent as an Excel file.",
+      "supported_claim_ids": [
+        "me.system"
+      ]
+    },
+    "quotation.month_end.writes": {
+      "id": "quotation.month_end.writes",
+      "text": "At month-end you send a summary of the quotation information to the Accounting team.",
+      "supported_claim_ids": [
+        "me.writes.tc_excel_summary"
+      ]
+    },
+    "flow.e1.edge_exists": {
+      "id": "flow.e1.edge_exists",
+      "text": "After receiving the request, you check the customer information.",
+      "supported_claim_ids": [
+        "e1.edge_exists"
+      ]
+    },
+    "flow.e2.edge_exists": {
+      "id": "flow.e2.edge_exists",
+      "text": "After checking the customer information, you create the quotation.",
+      "supported_claim_ids": [
+        "e2.edge_exists"
+      ]
+    },
+    "flow.e3.edge_exists": {
+      "id": "flow.e3.edge_exists",
+      "text": "Quotations over 1,000,000 yen go to the manager for approval.",
+      "supported_claim_ids": [
+        "e3.edge_exists"
+      ]
+    },
+    "flow.e4.edge_exists": {
+      "id": "flow.e4.edge_exists",
+      "text": "Quotations at or below 1,000,000 yen are sent directly to the customer.",
+      "supported_claim_ids": [
+        "e4.edge_exists"
+      ]
+    },
+    "flow.e5.edge_exists": {
+      "id": "flow.e5.edge_exists",
+      "text": "Once approved, the quotation is sent to the customer.",
+      "supported_claim_ids": [
+        "e5.edge_exists"
+      ]
+    },
+    "flow.e6.edge_exists": {
+      "id": "flow.e6.edge_exists",
+      "text": "At month-end you also send the summary to Accounting.",
+      "supported_claim_ids": [
+        "e6.edge_exists"
+      ]
+    },
+    "condition.e3.over_1m": {
+      "id": "condition.e3.over_1m",
+      "text": "over 1,000,000 yen",
+      "supported_claim_ids": [
+        "e3.condition"
+      ]
+    },
+    "condition.e4.at_or_below_1m": {
+      "id": "condition.e4.at_or_below_1m",
+      "text": "at or below 1,000,000 yen",
+      "supported_claim_ids": [
+        "e4.condition"
+      ]
+    },
+    "condition.e6.month_end": {
+      "id": "condition.e6.month_end",
+      "text": "month-end",
+      "supported_claim_ids": [
+        "e6.condition"
+      ]
+    }
+  }
+}

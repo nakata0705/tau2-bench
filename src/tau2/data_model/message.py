@@ -286,9 +286,9 @@ class ParticipantMessageBase(BaseModel):
     # 🧠 Helpers
     # ------------------------
 
-    def validate(
+    def validate(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
-    ):  # NOTE: It would be better to do this in the Pydantic model  # pyright: ignore[reportIncompatibleMethodOverride]
+    ):  # NOTE: It would be better to do this in the Pydantic model
         """Ensure that the message has either text/audio content or tool calls."""
         if not (self.has_content() or self.is_tool_call()):
             raise ValueError(
@@ -487,17 +487,18 @@ class UserMessage(ParticipantMessageBase):
     role: UserRole = Field(description="The role of the message sender.")  # pyright: ignore[reportIncompatibleVariableOverride]
 
     # PRIVATE benchmark metadata (business_interview only): the hidden
-    # used_fact_ids a fact-grounded stakeholder simulator returns alongside its
-    # natural-language response. Only the content enters the conversation; this
-    # field is consumed solely by the domain environment (sidecar binding) and
-    # is excluded from every serialization, so private fact/claim ids can never
-    # appear in Agent-visible messages, artifacts, or state.
-    stakeholder_used_fact_ids: Optional[list[str]] = Field(
+    # assertion sidecar a fact-grounded stakeholder simulator returns alongside
+    # its natural-language response: [{fact_id, quote, occurrence}]. Only the
+    # content enters the conversation; this field is consumed solely by the
+    # domain environment (sidecar binding) and is excluded from every
+    # serialization, so private fact/claim ids can never appear in
+    # Agent-visible messages, artifacts, or state.
+    stakeholder_assertions: Optional[list[dict]] = Field(
         default=None,
         exclude=True,
         repr=False,
         description=(
-            "Private benchmark sidecar (used_fact_ids) of a stakeholder "
+            "Private benchmark sidecar (assertions) of a stakeholder "
             "response; never serialized or Agent-visible."
         ),
     )

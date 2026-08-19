@@ -1,43 +1,61 @@
-"""Agent tools for the evidence-backed DAG business_interview benchmark (v3).
+"""Agent tools for the unified-glossary business_interview benchmark (v5).
 
-The agent records **Observations** (immutable evidence) and builds / updates an
-inferred **BusinessDAG**: create node, update node, attach observation, add /
-update edge, set necessity (node property with per-property confidence and
-provenance), and set DAG endpoints. Asking a question is recorded as an
-Observation; there is no Step / Transition / Branch and no asked/challenged
-state in the final DAG.
+The agent records **Observations** (immutable evidence), builds a private
+**glossary** of typed ``BusinessConcept``\\ s (activity / actor / system / data /
+condition / rationale), and constructs an inferred **BusinessProcessGraph**
+whose node/edge properties reference glossary concepts. Every claim cites
+**EvidenceRef**\\ s — exact spans (quote + occurrence) of authentic
+Observations.
+
+Glossary lifecycle: concepts start ``hypothesized``; the agent confirms them
+with authentic stakeholder evidence (``confirm_concept``), marks them unknown
+or disputed, merges mistakenly split concepts, and must resolve every
+*referenced* concept before ``finish_interview``.
 """
 
 from typing import Optional
 
+from pydantic import ValidationError
+
 from tau2.data_model.tasks import Task
-from tau2.domains.business_interview.dag import (
-    BusinessDAG,
+from tau2.domains.business_interview.evaluation import EvaluationResult, evaluate
+from tau2.domains.business_interview.facts import StakeholderFactLedger
+from tau2.domains.business_interview.graph import (
+    BusinessConcept,
+    BusinessProcessGraph,
     ConceptRef,
     ConceptTerm,
-    DataConcept,
     Edge,
-    InferredValue,
+    EvidenceRef,
     InterviewDB,
-    Necessity,
     Node,
     Observation,
-)
-from tau2.domains.business_interview.evaluation import EvaluationResult, evaluate
-from tau2.domains.business_interview.facts import (
-    StakeholderFactLedger,
 )
 from tau2.domains.business_interview.scenario import get_scenario
 from tau2.environment.toolkit import ToolKitBase, ToolType, is_tool
 
+_SINGLE_PROPS = ("actor", "system", "necessity_rationale")
+_SINGLE_PROP_NAMES = {
+    "actor": "actor",
+    "system": "system",
+    "necessity_rationale": "rationale",
+}
+
+
+def _ev(value: dict) -> EvidenceRef:
+    """Coerce one EvidenceRef dict, raising a clear error on bad shape."""
+    try:
+        return EvidenceRef(**value)
+    except ValidationError as exc:
+        raise ValueError(f"invalid evidence ref {value!r}: {exc}") from exc
+
 
 class InterviewTools(ToolKitBase):
-    """Tools to infer the business DAG from stakeholder observations.
+    """Tools to infer the business process graph from stakeholder observations.
 
-    ``fact_ledger`` is the private sidecar ledger (used_fact_ids per turn),
-    shared with the environment and the stakeholder simulator adapter. It is
-    evaluator-only: no tool exposes it, and it is never serialized into the
-    Agent-visible DB.
+    ``fact_ledger`` is the private assertion sidecar ledger, shared with the
+    environment and the stakeholder simulator adapter. It is evaluator-only:
+    no tool exposes it, and it is never serialized into the Agent-visible DB.
     """
 
     db: InterviewDB
@@ -52,182 +70,185 @@ class InterviewTools(ToolKitBase):
 
     # ------------------------------------------------------------- helpers
 
-    def _dag(self) -> BusinessDAG:
-        if self.db.dag is None:
-            self.db.dag = BusinessDAG(id="dag", name="")
-        return self.db.dag
+    def _graph(self) -> BusinessProcessGraph:
+        if self.db.graph is None:
+            self.db.graph = BusinessProcessGraph(id="graph", name="")
+        return self.db.graph
 
     def _node(self, node_id: str) -> Node:
-        dag = self._dag()
-        if node_id not in dag.nodes:
+        graph = self._graph()
+        if node_id not in graph.nodes:
             raise ValueError(f"node not found: {node_id}")
-        return dag.nodes[node_id]
+        return graph.nodes[node_id]
 
     def _edge(self, edge_id: str) -> Edge:
-        dag = self._dag()
-        if edge_id not in dag.edges:
+        graph = self._graph()
+        if edge_id not in graph.edges:
             raise ValueError(f"edge not found: {edge_id}")
-        return dag.edges[edge_id]
+        return graph.edges[edge_id]
 
-    def _require_node_ref(self, node_id: str) -> None:
-        if node_id not in self._dag().nodes:
-            raise ValueError(f"node not found: {node_id}")
+    def _concept(self, concept_id: str) -> BusinessConcept:
+        graph = self._graph()
+        if concept_id not in graph.concepts:
+            raise ValueError(f"concept not found: {concept_id}")
+        return graph.concepts[concept_id]
 
     def _require_observation(self, observation_id: Optional[str]) -> None:
-        """Reject a reference to an observation that does not exist.
-
-        ``None`` is allowed (provenance may be added later); a non-None id must
-        refer to a recorded observation.
-        """
+        """Reject a reference to an observation that does not exist."""
         if observation_id is None:
             return
         if not any(o.id == observation_id for o in self.db.observations):
             raise ValueError(f"observation not found: {observation_id}")
 
-    @staticmethod
-    def _iv(
-        value: Optional[str],
-        confidence: float = 1.0,
-        observation_id: Optional[str] = None,
-    ) -> InferredValue:
-        return InferredValue(
-            value=value,
-            confidence=confidence,
-            observation_ids=[observation_id] if observation_id else [],
-        )
-
-    @classmethod
-    def _set_value(
-        cls,
-        current: InferredValue,
-        value: str,
-        confidence: float,
-        observation_id: Optional[str],
-    ) -> InferredValue:
-        """Set a value while accumulating observation provenance.
-
-        If ``current`` already carried a value, its observation_ids are kept and
-        the new observation is merged in (multiple observations can support one
-        attribute).
-        """
-        ids = list(current.observation_ids) if current.value is not None else []
-        if observation_id:
-            ids.append(observation_id)
-        return InferredValue(
-            value=value,
-            confidence=confidence,
-            observation_ids=list(dict.fromkeys(ids)),
-        )
-
-    # ------------------------------------------------------------- data concepts
-
-    def _concept(self, concept_id: str) -> DataConcept:
-        dag = self._dag()
-        if concept_id not in dag.data_concepts:
-            raise ValueError(f"concept not found: {concept_id}")
-        return dag.data_concepts[concept_id]
-
-    @staticmethod
-    def _refs(
-        concept_ids: Optional[list[str]],
-        confidence: float,
-        observation_id: Optional[str],
-    ) -> list[ConceptRef]:
-        return [
-            ConceptRef(
-                concept_id=cid,
-                confidence=confidence,
-                observation_ids=[observation_id] if observation_id else [],
-            )
-            for cid in (concept_ids or [])
-        ]
+    def _require_evidence(self, evidence: Optional[list]) -> list[EvidenceRef]:
+        """Validate a list of EvidenceRef dicts: shape, observation existence,
+        and exact quote/occurrence spans in the immutable Observation."""
+        refs: list[EvidenceRef] = []
+        for raw in evidence or []:
+            ref = _ev(raw)
+            self._require_observation(ref.observation_id)
+            obs = next(o for o in self.db.observations if o.id == ref.observation_id)
+            if not obs.has_span(ref.quote, ref.occurrence):
+                raise ValueError(
+                    f"evidence quote {ref.quote!r} occurrence {ref.occurrence} "
+                    f"is not an exact span of observation {ref.observation_id}"
+                )
+            refs.append(ref)
+        return refs
 
     def _require_concepts(self, concept_ids: Optional[list[str]]) -> None:
         for cid in concept_ids or []:
             self._concept(cid)
 
+    @staticmethod
+    def _ref(
+        concept_id: str, confidence: float = 1.0, evidence: Optional[list] = None
+    ) -> ConceptRef:
+        return ConceptRef(
+            concept_id=concept_id,
+            confidence=confidence,
+            evidence=list(evidence or []),
+        )
+
+    # ------------------------------------------------------------- glossary
+
     @is_tool(ToolType.WRITE)
     def create_concept(
         self,
         concept_id: str,
+        kind: str,
         label: str,
-        observation_id: Optional[str] = None,
+        description: Optional[str] = None,
+        evidence: Optional[list] = None,
     ) -> str:
-        """Create an agent-local data concept (a business object/artifact).
+        """Create an Agent-local glossary concept (a business object / role /
+        activity / system / condition / rationale).
 
-        Create one concept when you first discover a business object the
-        stakeholder names (a document, artifact, input, output). Use the
-        stakeholder's own wording as the label. You — the interviewer — decide
-        whether different expressions refer to one object; the evaluator never
-        decides that for you.
+        Create one concept when you first discover something the stakeholder
+        names, choosing the kind that matches what it is:
+        - activity: what is done (a step)
+        - actor: who does it
+        - system: which system/tool is used
+        - data: a business object / artifact that flows in or out
+        - condition: a branch condition / threshold
+        - rationale: why a step is needed
+
+        Concepts start as ``hypothesized``. Use the stakeholder's own wording
+        as the label and cite the Observation span that introduced it.
 
         Args:
             concept_id: Your own identifier for this concept (reuse it
-                consistently in node reads/writes).
+                consistently in node/edge references).
+            kind: activity | actor | system | data | condition | rationale.
             label: The preferred label (stakeholder wording).
-            observation_id: Observation where the object was named (optional;
-                add terms with ``add_concept_term`` for the exact wording).
+            description: Optional free-text description (never evaluated).
+            evidence: Optional list of evidence refs
+                [{"observation_id", "quote", "occurrence"}] supporting this
+                concept (quote must be an exact span of that Observation).
 
         Returns:
             A confirmation message.
         """
-        dag = self._dag()
-        if concept_id in dag.data_concepts:
+        graph = self._graph()
+        if concept_id in graph.concepts:
             raise ValueError(f"concept already exists: {concept_id}")
-        self._require_observation(observation_id)
-        dag.data_concepts[concept_id] = DataConcept(
+        if kind not in (
+            "activity",
+            "actor",
+            "system",
+            "data",
+            "condition",
+            "rationale",
+        ):
+            raise ValueError(
+                f"kind must be one of activity/actor/system/data/condition/rationale, "
+                f"got {kind!r}"
+            )
+        evs = self._require_evidence(evidence)
+        graph.concepts[concept_id] = BusinessConcept(
             id=concept_id,
+            kind=kind,  # type: ignore[arg-type]
             preferred_label=label,
-            terms=[ConceptTerm(text=label, observation_ids=[observation_id])]
-            if observation_id
-            else [],
+            description=description or "",
+            terms=[ConceptTerm(text=label, evidence=list(evs))] if evs else [],
+            validation_status="hypothesized",
+            validation_evidence=list(evs),
         )
-        return f"Created concept {concept_id} (label: {label!r})."
+        return f"Created {kind} concept {concept_id} (label: {label!r})."
 
     @is_tool(ToolType.WRITE)
     def add_concept_term(
         self,
         concept_id: str,
         term: str,
-        observation_id: Optional[str] = None,
+        evidence: Optional[list] = None,
     ) -> str:
         """Add an observed term to an existing concept.
 
         When the stakeholder later uses a different wording that you decide
-        refers to the same object, record that wording as another term of the
-        same concept (with the Observation where it was said). The evaluator
-        will then treat this concept as the same local object wherever it is
-        reused — it does not judge your wording.
+        refers to the same concept, record that wording as another term of the
+        same concept (with the Observation span where it was said).
 
         Args:
             concept_id: The concept to extend.
             term: The observed wording (as the stakeholder said it).
-            observation_id: The Observation containing this wording (optional
-                but recommended).
+            evidence: Optional evidence refs for this term.
 
         Returns:
             A confirmation message.
         """
         concept = self._concept(concept_id)
-        self._require_observation(observation_id)
+        evs = self._require_evidence(evidence)
         if any(t.text == term for t in concept.terms):
-            if (
-                observation_id
-                and observation_id
-                not in concept.terms[
-                    next(i for i, t in enumerate(concept.terms) if t.text == term)
-                ].observation_ids
-            ):
-                concept.terms[
-                    next(i for i, t in enumerate(concept.terms) if t.text == term)
-                ].observation_ids.append(observation_id)
+            existing = next(t for t in concept.terms if t.text == term)
+            for ev in evs:
+                if ev not in existing.evidence:
+                    existing.evidence.append(ev)
             return f"Term {term!r} already recorded on {concept_id}."
-        concept.terms.append(
-            ConceptTerm(text=term, observation_ids=[observation_id])
-            if observation_id
-            else ConceptTerm(text=term)
-        )
+        concept.terms.append(ConceptTerm(text=term, evidence=evs))
         return f"Added term {term!r} to concept {concept_id}."
+
+    @is_tool(ToolType.WRITE)
+    def update_concept_description(
+        self,
+        concept_id: str,
+        description: str,
+    ) -> str:
+        """Update the free-text description of a concept.
+
+        Descriptions are working notes for yourself — the evaluator never
+        compares them to anything.
+
+        Args:
+            concept_id: The concept to update.
+            description: The new description.
+
+        Returns:
+            A confirmation message.
+        """
+        concept = self._concept(concept_id)
+        concept.description = description
+        return f"Updated description of {concept_id}."
 
     @is_tool(ToolType.WRITE)
     def merge_concepts(
@@ -237,11 +258,11 @@ class InterviewTools(ToolKitBase):
     ) -> str:
         """Merge concepts you previously split by mistake.
 
-        If you created two local concepts that turn out to be the same object
-        (the stakeholder confirms they are the same), merge them: every node
-        reads/writes reference is re-pointed to ``target_concept_id`` and the
-        source concepts' terms are folded into the target. The source concepts
-        are removed.
+        Only concepts of the SAME kind can be merged (merging different kinds
+        would conflate distinct business concepts and is rejected). Every node
+        / edge reference is re-pointed to ``target_concept_id`` and the source
+        concepts' terms and validation evidence are folded into the target.
+        The source concepts are removed.
 
         Args:
             target_concept_id: The concept to keep.
@@ -250,28 +271,104 @@ class InterviewTools(ToolKitBase):
         Returns:
             A confirmation message.
         """
-        dag = self._dag()
-        self._concept(target_concept_id)
+        graph = self._graph()
+        target = self._concept(target_concept_id)
         sources = [self._concept(cid) for cid in source_concept_ids]
-        target = dag.data_concepts[target_concept_id]
         for src in sources:
+            if src.kind != target.kind:
+                raise ValueError(
+                    f"cannot merge {src.id} (kind {src.kind}) into "
+                    f"{target.id} (kind {target.kind}): kinds differ"
+                )
             target.terms.extend(src.terms)
-        for node in dag.nodes.values():
-            for axis in ("reads", "writes"):
-                refs = getattr(node, axis)
-                for ref in refs:
+            for ev in src.validation_evidence:
+                if ev not in target.validation_evidence:
+                    target.validation_evidence.append(ev)
+        for node in graph.nodes.values():
+            for prop in (
+                "activity",
+                "actor",
+                "system",
+                "reads",
+                "writes",
+                "necessity_rationale",
+            ):
+                for ref in (
+                    node.refs(prop)
+                    if prop in ("reads", "writes")
+                    else (
+                        [node.activity]
+                        if prop == "activity"
+                        else ([getattr(node, prop)] if getattr(node, prop) else [])
+                    )
+                ):
                     if ref.concept_id in source_concept_ids:
                         ref.concept_id = target_concept_id
+        for edge in graph.edges.values():
+            if (
+                edge.condition is not None
+                and edge.condition.concept_id in source_concept_ids
+            ):
+                edge.condition.concept_id = target_concept_id
         for cid in source_concept_ids:
-            del dag.data_concepts[cid]
+            del graph.concepts[cid]
         return (
             f"Merged {', '.join(source_concept_ids)} into {target_concept_id}; "
             "all references re-pointed."
         )
 
+    @is_tool(ToolType.WRITE)
+    def confirm_concept(
+        self,
+        concept_id: str,
+        evidence: Optional[list] = None,
+        partial: bool = False,
+    ) -> str:
+        """Confirm a concept with authentic stakeholder evidence.
+
+        Confirmation must cite at least one authentic stakeholder Observation
+        span (an EvidenceRef whose quote is an exact span of a recorded
+        Observation). ``partial=True`` records ``partially_confirmed`` (some
+        aspects still open); the default records ``confirmed``.
+
+        Args:
+            concept_id: The concept to confirm.
+            evidence: Evidence refs confirming this concept (required).
+            partial: If True, mark as partially_confirmed instead.
+
+        Returns:
+            A confirmation message.
+        """
+        concept = self._concept(concept_id)
+        evs = self._require_evidence(evidence)
+        if not evs:
+            raise ValueError(
+                f"confirm_concept requires at least one authentic evidence ref "
+                f"for {concept_id}"
+            )
+        for ev in evs:
+            if ev not in concept.validation_evidence:
+                concept.validation_evidence.append(ev)
+        concept.validation_status = "partially_confirmed" if partial else "confirmed"  # type: ignore[assignment]
+        return f"Marked {concept_id} as {'partially_confirmed' if partial else 'confirmed'}."
+
+    @is_tool(ToolType.WRITE)
+    def mark_concept_unknown(self, concept_id: str) -> str:
+        """Mark a concept as unknown (the stakeholder cannot clarify it)."""
+        concept = self._concept(concept_id)
+        concept.validation_status = "unknown"  # type: ignore[assignment]
+        return f"Marked {concept_id} as unknown."
+
+    @is_tool(ToolType.WRITE)
+    def mark_concept_disputed(self, concept_id: str) -> str:
+        """Mark a concept as disputed (conflicting stakeholder statements)."""
+        concept = self._concept(concept_id)
+        concept.validation_status = "disputed"  # type: ignore[assignment]
+        return f"Marked {concept_id} as disputed."
+
     @is_tool(ToolType.READ)
     def list_concepts(self) -> str:
-        """List your own data concepts (ids, labels, recorded terms).
+        """List your glossary concepts (ids, kinds, labels, terms, status).
 
         This is your working vocabulary — nothing here comes from any hidden
         ground truth.
@@ -279,38 +376,43 @@ class InterviewTools(ToolKitBase):
         Returns:
             One line per concept.
         """
-        dag = self._dag()
-        if not dag.data_concepts:
-            return "(no data concepts yet — create one with create_concept)"
+        graph = self._graph()
+        if not graph.concepts:
+            return "(no concepts yet — create one with create_concept)"
         lines = []
-        for cid, concept in dag.data_concepts.items():
+        for cid, concept in graph.concepts.items():
             terms = ", ".join(t.text for t in concept.terms) or "(no terms)"
-            lines.append(f"{cid}: {concept.preferred_label!r} [terms: {terms}]")
+            lines.append(
+                f"{cid}: [{concept.kind}] {concept.preferred_label!r} "
+                f"[{concept.validation_status}] [terms: {terms}]"
+            )
         return "\n".join(lines)
 
-    # ------------------------------------------------------------- tools
+    # ------------------------------------------------------------- graph
 
     @is_tool(ToolType.WRITE)
     def start_inference(self, name: str = "") -> str:
-        """Start building the inferred business DAG.
+        """Start building the inferred business process graph.
 
-        This is destructive: it discards the previous inferred DAG and any
-        captured Observations, and resets the interview. The conversation ledger
-        (the stakeholder's actual messages) is kept — observations are re-captured
-        from it with ``observe_message`` / ``observe_latest_stakeholder_message``.
-        Call it once at the beginning.
+        This is destructive: it discards the previous inferred graph, glossary
+        and any captured Observations, and resets the interview. The
+        conversation ledger (the stakeholder's actual messages) is kept —
+        observations are re-captured from it with ``observe_message`` /
+        ``observe_latest_stakeholder_message``. Call it once at the beginning.
 
         Args:
-            name: Optional name for the DAG.
+            name: Optional name for the graph.
 
         Returns:
             A confirmation message.
         """
-        self.db.dag = BusinessDAG(id="dag", name=name)
+        self.db.graph = BusinessProcessGraph(id="graph", name=name)
         self.db.observations = []
         self.db.interview_complete = False
         self.db.summary = None
-        return "Inference started (previous DAG and observations discarded)."
+        return (
+            "Inference started (previous graph, glossary and observations discarded)."
+        )
 
     def _stakeholder_entries(self) -> list[tuple[str, int, str]]:
         """Deterministic list of stakeholder messages as (stable id, ledger turn,
@@ -366,8 +468,8 @@ class InterviewTools(ToolKitBase):
             message_id: The stable stakeholder message id (e.g. ``"sm_3"``).
 
         Returns:
-            The observation id (use it as provenance on nodes / edges /
-            necessity).
+            The observation id (use it in evidence refs on concepts, nodes and
+            edges).
         """
         for sm_id, turn, content in self._stakeholder_entries():
             if sm_id == message_id:
@@ -411,245 +513,166 @@ class InterviewTools(ToolKitBase):
     def add_node(
         self,
         node_id: str,
-        action: str,
-        primitive: Optional[str] = None,
+        activity: str,
         actor: Optional[str] = None,
         system: Optional[str] = None,
         reads: Optional[list[str]] = None,
         writes: Optional[list[str]] = None,
-        confidence: float = 1.0,
-        observation_id: Optional[str] = None,
+        necessity_rationale: Optional[str] = None,
+        evidence: Optional[list] = None,
     ) -> str:
-        """Add a node to the inferred DAG.
+        """Add a node to the inferred process graph.
 
         Only create a node when no existing node corresponds to the
-        observation; otherwise update the existing node.
+        observation; otherwise update the existing node. Every property is a
+        concept id from your glossary.
 
         Args:
             node_id: Your own identifier for this node.
-            action: What is done in this node (open-world natural language).
-            primitive: Optional generic operation (create/check/approve/... or
-                'unclassified').
-            actor: Who performs it (optional).
-            system: Which system / tool (optional).
-            reads: Data concepts this node reads (optional) — concept ids
-                created with ``create_concept``.
-            writes: Data concepts this node writes (optional) — concept ids
-                created with ``create_concept``.
-            confidence: Confidence in the recorded attributes [0, 1].
-            observation_id: Observation supporting this node (optional).
+            activity: Concept id (kind=activity) for what is done (required).
+            actor: Concept id (kind=actor) for who does it (optional).
+            system: Concept id (kind=system) for the system/tool (optional).
+            reads: Concept ids (kind=data) this node reads (optional).
+            writes: Concept ids (kind=data) this node writes (optional).
+            necessity_rationale: Concept id (kind=rationale) for why the node
+                is needed (optional; leave unset when unknown).
+            evidence: Evidence refs supporting this node's activity (optional;
+                add more on individual refs with update_node).
 
         Returns:
             A confirmation message.
         """
-        dag = self._dag()
-        if node_id in dag.nodes:
+        graph = self._graph()
+        if node_id in graph.nodes:
             raise ValueError(f"node already exists: {node_id}")
-        self._require_observation(observation_id)
+        self._require_concepts([activity])
         self._require_concepts(reads)
         self._require_concepts(writes)
-        dag.nodes[node_id] = Node(
+        if actor is not None:
+            self._concept(actor)
+        if system is not None:
+            self._concept(system)
+        if necessity_rationale is not None:
+            self._concept(necessity_rationale)
+        evs = self._require_evidence(evidence)
+        graph.nodes[node_id] = Node(
             id=node_id,
-            action=self._iv(action, confidence, observation_id),
-            primitive=self._iv(primitive, confidence, observation_id)
-            if primitive is not None
-            else None,
-            actor=self._iv(actor, confidence, observation_id)
-            if actor is not None
-            else InferredValue(),
-            system=self._iv(system, confidence, observation_id)
-            if system is not None
-            else InferredValue(),
-            reads=self._refs(reads, confidence, observation_id),
-            writes=self._refs(writes, confidence, observation_id),
-            observation_ids=[observation_id] if observation_id else [],
+            activity=self._ref(activity, evidence=evs),
+            actor=self._ref(actor) if actor is not None else None,
+            system=self._ref(system) if system is not None else None,
+            reads=self._refs(reads),
+            writes=self._refs(writes),
+            necessity_rationale=(
+                self._ref(necessity_rationale)
+                if necessity_rationale is not None
+                else None
+            ),
         )
         return f"Added node {node_id}."
+
+    @staticmethod
+    def _refs(concept_ids: Optional[list[str]]) -> list[ConceptRef]:
+        return [
+            ConceptRef(concept_id=cid, confidence=1.0) for cid in (concept_ids or [])
+        ]
 
     @is_tool(ToolType.WRITE)
     def update_node(
         self,
         node_id: str,
-        action: Optional[str] = None,
-        primitive: Optional[str] = None,
+        activity: Optional[str] = None,
         actor: Optional[str] = None,
         system: Optional[str] = None,
         reads: Optional[list[str]] = None,
         writes: Optional[list[str]] = None,
-        confidence: Optional[float] = None,
-        observation_id: Optional[str] = None,
+        necessity_rationale: Optional[str] = None,
+        evidence: Optional[list] = None,
+        unset: Optional[list[str]] = None,
     ) -> str:
-        """Update an existing node with new attribute values / evidence.
+        """Update an existing node's property references.
 
         Args:
             node_id: The node to update.
-            action: New action text (optional).
-            primitive: New generic primitive (optional).
-            actor: New actor (optional).
-            system: New system (optional).
-            reads: New read concept-id list (optional).
-            writes: New write concept-id list (optional).
-            confidence: Confidence for the updated attributes [0, 1] (default 1.0).
-            observation_id: Observation supporting this update (optional).
+            activity: New activity concept id (optional).
+            actor: New actor concept id (optional).
+            system: New system concept id (optional).
+            reads: New read concept-id list (optional; replaces the list).
+            writes: New write concept-id list (optional; replaces the list).
+            necessity_rationale: New rationale concept id (optional).
+            evidence: Evidence refs to append to the activity reference (optional).
+            unset: List of property names to clear (actor/system/
+                necessity_rationale/reads/writes) (optional).
 
         Returns:
             A confirmation message.
         """
         node = self._node(node_id)
-        self._require_observation(observation_id)
-        self._require_concepts(reads)
-        self._require_concepts(writes)
-        conf = confidence if confidence is not None else 1.0
-        if action is not None:
-            node.action = self._set_value(node.action, action, conf, observation_id)
-        if primitive is not None:
-            node.primitive = self._set_value(
-                node.primitive if node.primitive is not None else InferredValue(),
-                primitive,
-                conf,
-                observation_id,
-            )
+        if unset:
+            for prop in unset:
+                if prop == "reads":
+                    node.reads = []
+                elif prop == "writes":
+                    node.writes = []
+                elif prop in ("actor", "system", "necessity_rationale"):
+                    setattr(node, prop, None)
+                else:
+                    raise ValueError(f"cannot unset property {prop!r}")
+        if activity is not None:
+            self._concept(activity)
+            node.activity = self._ref(activity)
         if actor is not None:
-            node.actor = self._set_value(node.actor, actor, conf, observation_id)
+            self._concept(actor)
+            node.actor = self._ref(actor)
         if system is not None:
-            node.system = self._set_value(node.system, system, conf, observation_id)
+            self._concept(system)
+            node.system = self._ref(system)
+        if necessity_rationale is not None:
+            self._concept(necessity_rationale)
+            node.necessity_rationale = self._ref(necessity_rationale)
         if reads is not None:
-            node.reads = self._refs(reads, conf, observation_id)
+            self._require_concepts(reads)
+            node.reads = self._refs(reads)
         if writes is not None:
-            node.writes = self._refs(writes, conf, observation_id)
-        if observation_id:
-            node.observation_ids = list(
-                dict.fromkeys(node.observation_ids + [observation_id])
-            )
+            self._require_concepts(writes)
+            node.writes = self._refs(writes)
+        if evidence:
+            evs = self._require_evidence(evidence)
+            node.activity.evidence.extend(evs)
         return f"Updated node {node_id}."
 
     @is_tool(ToolType.WRITE)
     def remove_node(self, node_id: str) -> str:
-        """Remove a node and its incident edges from the inferred DAG.
+        """Remove a node and its incident edges from the inferred graph.
 
-        The DAG is a working hypothesis, not an append-only record: you may
+        The graph is a working hypothesis, not an append-only record: you may
         remove a coarse placeholder node once you have decomposed it into more
-        specific activities (e.g. a single ``coarse_step`` replaced by
-        ``step_a`` -> ``step_b`` -> ``step_c``).
+        specific activities.
 
         This also removes every edge that connects to the node (incoming or
-        outgoing), so no dangling edge is left behind. If the removed node was
-        the declared start or an end node, that endpoint reference is cleared
-        (re-set it afterwards with ``set_dag_endpoints``). The stakeholder
-        Observations themselves are kept — the node's evidence provenance on
-        other nodes is unaffected.
+        outgoing), so no dangling edge is left behind. The stakeholder
+        Observations themselves are kept.
 
         Args:
             node_id: The node to remove.
 
         Returns:
             A confirmation message listing what was removed.
-
-        Raises:
-            ValueError: If the node does not exist.
         """
-        dag = self._dag()
-        if node_id not in dag.nodes:
+        graph = self._graph()
+        if node_id not in graph.nodes:
             raise ValueError(f"node not found: {node_id}")
         removed_edges = sorted(
             eid
-            for eid, e in dag.edges.items()
+            for eid, e in graph.edges.items()
             if e.from_node == node_id or e.to_node == node_id
         )
         for eid in removed_edges:
-            del dag.edges[eid]
-        touched_endpoint = False
-        if dag.start_node_id == node_id:
-            dag.start_node_id = None
-            touched_endpoint = True
-        if node_id in dag.end_node_ids:
-            dag.end_node_ids = [e for e in dag.end_node_ids if e != node_id]
-            touched_endpoint = True
-        del dag.nodes[node_id]
+            del graph.edges[eid]
+        del graph.nodes[node_id]
         parts = [f"Removed node {node_id}."]
         if removed_edges:
             parts.append(f"Removed incident edges: {', '.join(removed_edges)}.")
-        if touched_endpoint:
-            parts.append("The removed node was a declared endpoint; re-set it.")
         return " ".join(parts)
-
-    @is_tool(ToolType.WRITE)
-    def set_node_necessity(
-        self,
-        node_id: str,
-        rationale: Optional[str] = None,
-        owner: Optional[str] = None,
-        evidence: Optional[str] = None,
-        removal_impact: Optional[str] = None,
-        rationale_confidence: Optional[float] = None,
-        owner_confidence: Optional[float] = None,
-        evidence_confidence: Optional[float] = None,
-        removal_confidence: Optional[float] = None,
-        observation_id: Optional[str] = None,
-        unset: Optional[list[str]] = None,
-    ) -> str:
-        """Record why a node is needed (a node property).
-
-        Each necessity property is an integrated estimate with its own
-        confidence and observation provenance. Leave a property unset (None) to
-        record that the necessity is unknown / not asserted. Pass ``unset`` to
-        reset a previously recorded property back to unset.
-
-        Args:
-            node_id: The node this necessity concerns.
-            rationale: Why the node is needed (optional).
-            owner: Who requires it (optional).
-            evidence: Evidence supporting it (optional).
-            removal_impact: What happens if removed (optional).
-            *_confidence: Per-property confidence in [0, 1] (default 1.0).
-            observation_id: Observation supporting this necessity (optional).
-            unset: List of property names (rationale/owner/evidence/removal_impact)
-                to reset to unset (optional).
-
-        Returns:
-            A confirmation message.
-        """
-        node = self._node(node_id)
-        self._require_observation(observation_id)
-        nec = node.necessity if node.necessity is not None else Necessity()
-        if unset:
-            for p in unset:
-                if p in ("rationale", "owner", "evidence", "removal_impact"):
-                    setattr(nec, p, InferredValue())
-        if rationale is not None:
-            nec.rationale = self._set_value(
-                nec.rationale,
-                rationale,
-                rationale_confidence if rationale_confidence is not None else 1.0,
-                observation_id,
-            )
-        if owner is not None:
-            nec.owner = self._set_value(
-                nec.owner,
-                owner,
-                owner_confidence if owner_confidence is not None else 1.0,
-                observation_id,
-            )
-        if evidence is not None:
-            nec.evidence = self._set_value(
-                nec.evidence,
-                evidence,
-                evidence_confidence if evidence_confidence is not None else 1.0,
-                observation_id,
-            )
-        if removal_impact is not None:
-            nec.removal_impact = self._set_value(
-                nec.removal_impact,
-                removal_impact,
-                removal_confidence if removal_confidence is not None else 1.0,
-                observation_id,
-            )
-        node.necessity = nec
-        if observation_id:
-            node.observation_ids = list(
-                dict.fromkeys(node.observation_ids + [observation_id])
-            )
-        return f"Set necessity for node {node_id}."
 
     @is_tool(ToolType.WRITE)
     def add_edge(
@@ -657,41 +680,43 @@ class InterviewTools(ToolKitBase):
         edge_id: str,
         from_node: str,
         to_node: str,
-        predicate: Optional[str] = None,
-        confidence: float = 1.0,
-        observation_id: Optional[str] = None,
+        condition: Optional[str] = None,
+        evidence: Optional[list] = None,
     ) -> str:
         """Add a directed edge between two nodes.
 
-        Use ``predicate`` for a control-flow condition (e.g. 'amount over
-        1,000,000'). Leave it None for unconditional flow. A conditional branch
-        is expressed as multiple outgoing edges with different predicates.
+        The edge's existence must be supported by stakeholder evidence
+        (``evidence`` refs citing the Observation where the relation was
+        stated). ``condition`` optionally references a condition concept
+        (kind=condition) for a branch threshold.
 
         Args:
             edge_id: Your own identifier for this edge.
             from_node: Source node id.
             to_node: Destination node id.
-            predicate: Optional control-flow condition.
-            confidence: Confidence in the edge [0, 1].
-            observation_id: Observation supporting this edge (optional).
+            condition: Concept id (kind=condition) for the branch condition
+                (optional).
+            evidence: Evidence refs supporting this relation (required).
 
         Returns:
             A confirmation message.
         """
-        dag = self._dag()
-        if edge_id in dag.edges:
+        graph = self._graph()
+        if edge_id in graph.edges:
             raise ValueError(f"edge already exists: {edge_id}")
-        self._require_observation(observation_id)
-        self._require_node_ref(from_node)
-        self._require_node_ref(to_node)
-        dag.edges[edge_id] = Edge(
+        if from_node not in graph.nodes:
+            raise ValueError(f"node not found: {from_node}")
+        if to_node not in graph.nodes:
+            raise ValueError(f"node not found: {to_node}")
+        if condition is not None:
+            self._concept(condition)
+        evs = self._require_evidence(evidence)
+        graph.edges[edge_id] = Edge(
             id=edge_id,
             from_node=from_node,
             to_node=to_node,
-            predicate=self._iv(predicate, confidence, observation_id)
-            if predicate is not None
-            else None,
-            observation_ids=[observation_id] if observation_id else [],
+            condition=self._ref(condition) if condition is not None else None,
+            evidence=evs,
         )
         return f"Added edge {edge_id}."
 
@@ -701,118 +726,105 @@ class InterviewTools(ToolKitBase):
         edge_id: str,
         from_node: Optional[str] = None,
         to_node: Optional[str] = None,
-        predicate: Optional[str] = None,
-        clear_predicate: bool = False,
-        confidence: Optional[float] = None,
-        observation_id: Optional[str] = None,
+        condition: Optional[str] = None,
+        unset_condition: bool = False,
+        evidence: Optional[list] = None,
     ) -> str:
-        """Update an edge's endpoints or predicate.
+        """Update an edge's endpoints, condition or evidence.
 
         Args:
             edge_id: The edge to update.
             from_node: New source (optional).
             to_node: New destination (optional).
-            predicate: New predicate (optional).
-            clear_predicate: If True, remove the predicate (unconditional).
-            confidence: Confidence for updated values [0, 1].
-            observation_id: Observation supporting this edge (optional).
+            condition: New condition concept id (optional).
+            unset_condition: If True, remove the condition (optional).
+            evidence: Evidence refs to append (optional).
 
         Returns:
             A confirmation message.
         """
         edge = self._edge(edge_id)
-        self._require_observation(observation_id)
-        conf = confidence if confidence is not None else 1.0
+        graph = self._graph()
         if from_node is not None:
-            self._require_node_ref(from_node)
+            if from_node not in graph.nodes:
+                raise ValueError(f"node not found: {from_node}")
             edge.from_node = from_node
         if to_node is not None:
-            self._require_node_ref(to_node)
+            if to_node not in graph.nodes:
+                raise ValueError(f"node not found: {to_node}")
             edge.to_node = to_node
-        if clear_predicate:
-            edge.predicate = None
-        elif predicate is not None:
-            cur = edge.predicate if edge.predicate is not None else InferredValue()
-            edge.predicate = self._set_value(cur, predicate, conf, observation_id)
-        if observation_id:
-            edge.observation_ids = list(
-                dict.fromkeys(edge.observation_ids + [observation_id])
-            )
+        if unset_condition:
+            edge.condition = None
+        elif condition is not None:
+            self._concept(condition)
+            edge.condition = self._ref(condition)
+        if evidence:
+            evs = self._require_evidence(evidence)
+            edge.evidence.extend(evs)
         return f"Updated edge {edge_id}."
 
-    @is_tool(ToolType.WRITE)
-    def attach_observation(self, node_id: str, observation_id: str) -> str:
-        """Attach an observation to a node (multiple observations per node ok)."""
-        node = self._node(node_id)
-        self._require_observation(observation_id)
-        node.observation_ids = list(
-            dict.fromkeys(node.observation_ids + [observation_id])
-        )
-        return f"Attached {observation_id} to node {node_id}."
-
-    @is_tool(ToolType.WRITE)
-    def set_dag_endpoints(
-        self,
-        start_node_id: Optional[str] = None,
-        end_node_ids: Optional[list[str]] = None,
-    ) -> str:
-        """Set the DAG's start and end node ids."""
-        dag = self._dag()
-        if start_node_id is not None:
-            self._require_node_ref(start_node_id)
-            dag.start_node_id = start_node_id
-        if end_node_ids is not None:
-            for eid in end_node_ids:
-                self._require_node_ref(eid)
-            dag.end_node_ids = list(end_node_ids)
-        return "Set DAG endpoints."
-
     @is_tool(ToolType.READ)
-    def validate_dag(self) -> str:
-        """Validate the inferred DAG's **internal** structural consistency.
+    def validate_graph(self) -> str:
+        """Validate the inferred graph's **internal** structural consistency.
 
-        Reports only self-consistency problems (unreachable nodes, dangling
-        edges, invalid start/end, cycles, ...), never the hidden Ground Truth.
-        Call this to review the final structure before ``finish_interview``.
+        Reports only self-consistency problems (dangling edges, unknown
+        concept references, missing activity refs, ...). Cycles are VALID and
+        are never reported as errors. This never references the hidden Ground
+        Truth. Call this to review the final structure before
+        ``finish_interview``.
 
         Returns:
             The validation result (or the list of structural errors).
         """
-        dag = self._dag()
-        if not dag.nodes:
-            return "No DAG nodes yet. Call start_inference to begin."
-        errors = dag.structure_errors()
+        graph = self._graph()
+        if not graph.nodes:
+            return "No graph nodes yet. Call start_inference to begin."
+        errors = graph.structure_errors()
         if not errors:
-            return "DAG is structurally valid."
-        return "DAG validation errors:\n- " + "\n- ".join(errors)
+            return "Graph is structurally valid (cycles are allowed)."
+        return "Graph validation errors:\n- " + "\n- ".join(errors)
 
     @is_tool(ToolType.WRITE)
     def finish_interview(self, summary: Optional[str] = None) -> str:
         """Mark the interview complete.
 
-        Refuses to finish a structurally invalid DAG (unreachable nodes, dangling
-        edges, invalid start/end, cycles, ...). The reported errors are only about
-        the DAG's own internal consistency — never about the hidden Ground Truth.
-        Fix the issues and call this again to finish.
+        Refuses to finish a structurally invalid graph (dangling edges,
+        unknown concept references, ...) and refuses while any **referenced**
+        concept is still ``hypothesized``: every concept used by a node/edge
+        must be resolved (confirmed / partially_confirmed / disputed /
+        unknown) with ``confirm_concept``, ``mark_concept_unknown`` or
+        ``mark_concept_disputed``. The reported errors are only about the
+        graph's own internal consistency and glossary state — never about the
+        hidden Ground Truth.
 
         Args:
             summary: Optional summary of what was captured.
 
         Returns:
             A confirmation message.
-
-        Raises:
-            ValueError: If no DAG was built, or the DAG is structurally invalid.
         """
-        dag = self._dag()
-        if not dag.nodes:
+        graph = self._graph()
+        if not graph.nodes:
             raise ValueError(
-                "Cannot finish: no DAG has been built yet. Call start_inference first."
+                "Cannot finish: no graph has been built yet. Call start_inference first."
             )
-        errors = dag.structure_errors()
+        errors = graph.structure_errors()
         if errors:
             raise ValueError(
-                "Cannot finish: DAG is structurally invalid.\n- " + "\n- ".join(errors)
+                "Cannot finish: graph is structurally invalid.\n- "
+                + "\n- ".join(errors)
+            )
+        hypothesized = sorted(
+            cid
+            for cid in graph.referenced_concepts()
+            if cid in graph.concepts
+            and graph.concepts[cid].validation_status == "hypothesized"
+        )
+        if hypothesized:
+            raise ValueError(
+                "Cannot finish: referenced concepts are still hypothesized "
+                "(confirm, mark unknown, or mark disputed first): "
+                + ", ".join(hypothesized)
             )
         self.db.interview_complete = True
         if summary:
@@ -824,7 +836,7 @@ class InterviewTools(ToolKitBase):
     def _evaluate(self, sc) -> EvaluationResult:
         """Evaluate against the scenario truth+spec under the scenario's
         stakeholder visibility, using the hidden TruthClaim catalog, the
-        private StakeholderFact catalog, and the private used-fact sidecar
+        private StakeholderFact catalog, and the private assertion sidecar
         ledger (all evaluator-only; never exposed to the Agent)."""
 
         return evaluate(
@@ -834,13 +846,13 @@ class InterviewTools(ToolKitBase):
             sc.stakeholder,
             claims=sc.claims,
             facts=sc.facts,
-            used_facts=self.fact_ledger.used_fact_ids(),
+            assertions=self.fact_ledger.assertions(),
         )
 
     def assert_finish_interview(self) -> bool:
         return self.db.interview_complete
 
-    def assert_dag_reconstructed(self, scenario_id: str) -> bool:
+    def assert_graph_reconstructed(self, scenario_id: str) -> bool:
         sc = get_scenario(scenario_id)
         if sc is None:
             return False
@@ -850,7 +862,8 @@ class InterviewTools(ToolKitBase):
         sc = get_scenario(scenario_id)
         if sc is None:
             return False
-        return self._evaluate(sc).necessity_pass
+        res = self._evaluate(sc)
+        return res.rationale_correctness == 1.0
 
     def assert_evidence_backed(self, scenario_id: str) -> bool:
         """True if every asserted claim is traceable to a recorded Observation."""

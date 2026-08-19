@@ -1,46 +1,51 @@
-"""Stakeholder as a filter over the single Truth DAG.
+"""Stakeholder as a filter over the single Truth process graph.
 
-The stakeholder does not get a separate Workflow/DAG model — there is exactly one
-Truth DAG. A stakeholder is represented by a ``StakeholderFilter`` describing the
-part of the Truth DAG (nodes / edges / attributes / necessity) they can observe
-and talk about. Multiple filters can be applied to the same Truth DAG.
+The stakeholder does not get a separate model — there is exactly one Truth
+``BusinessProcessGraph``. A stakeholder is represented by a ``StakeholderFilter``
+describing which parts of the Truth graph (nodes / edges / node properties /
+edge properties) they can observe and talk about. Multiple filters can be
+applied to the same Truth graph.
 
-``apply`` returns a filtered ``BusinessDAG`` with non-visible nodes / edges /
-attributes dropped, so hidden information can never leak to the simulator. The
-Truth DAG itself is never serialized wholesale into a simulator prompt.
+Visibility is per **property**:
+
+- node properties: activity / actor / system / reads / writes / rationale
+- edge properties: condition (edge existence is visible for every visible edge)
+
+``apply`` returns a filtered graph with non-visible nodes / edges / properties
+dropped, so hidden information can never leak to the simulator. The Truth graph
+itself is never serialized wholesale into a simulator prompt.
 """
 
 from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from tau2.domains.business_interview.dag import (
-    BusinessDAG,
+from tau2.domains.business_interview.graph import (
+    BusinessProcessGraph,
     ConceptRef,
     Edge,
-    InferredValue,
-    Necessity,
     Node,
 )
 
-_ATTRIBUTES = ("actor", "system", "reads", "writes")
-_NECESSITY_PROPS = ("rationale", "owner", "evidence", "removal_impact")
+_NODE_PROPS = ("activity", "actor", "system", "reads", "writes", "rationale")
+_EDGE_PROPS = ("condition",)
 
 
 class StakeholderFilter(BaseModel):
-    """What a stakeholder can observe of the Truth DAG.
+    """What a stakeholder can observe of the Truth graph.
 
     - ``visible_node_ids`` / ``visible_edge_ids``: which nodes / edges are visible.
-    - ``visible_attributes``: which of actor / system / reads / writes are visible.
-    - ``visible_node_attributes``: **per-node** visibility of actor / system /
-      reads / writes. A node listed here is limited to exactly these attributes;
-      a node not listed uses the global ``visible_attributes``.
-    - ``visible_necessity``: per node id, which necessity props are visible
-      (an absent node id => no necessity is visible for it).
+    - ``visible_attributes``: global default node properties (activity / actor /
+      system / reads / writes / rationale).
+    - ``visible_node_attributes``: **per-node** property visibility; a node
+      listed here is limited to exactly these properties; a node not listed
+      uses the global ``visible_attributes``.
+    - ``visible_edge_attributes``: per-edge property visibility (``condition``);
+      an edge not listed has no visible condition.
 
     The full Truth may contain information not available to this stakeholder;
     ``visible_*`` define what the stakeholder can actually assert. Hidden
-    (non-visible) attributes are expected to remain unknown, not invented.
+    (non-visible) properties are expected to remain unknown, not invented.
     """
 
     name: str
@@ -48,10 +53,10 @@ class StakeholderFilter(BaseModel):
     visible_edge_ids: list[str] = Field(default_factory=list)
     visible_attributes: list[str] = Field(default_factory=list)
     visible_node_attributes: dict[str, list[str]] = Field(default_factory=dict)
-    visible_necessity: dict[str, list[str]] = Field(default_factory=dict)
+    visible_edge_attributes: dict[str, list[str]] = Field(default_factory=dict)
 
-    def visible_attributes_for(self, node_id: str) -> set[str]:
-        """The set of visible actor/system/reads/writes for ``node_id``.
+    def node_properties_for(self, node_id: str) -> set[str]:
+        """The set of visible node properties for ``node_id``.
 
         Per-node visibility wins when present; otherwise the global
         ``visible_attributes`` applies.
@@ -60,8 +65,12 @@ class StakeholderFilter(BaseModel):
             return set(self.visible_node_attributes[node_id])
         return set(self.visible_attributes)
 
-    def apply(self, truth: BusinessDAG) -> BusinessDAG:
-        """Return a filtered DAG containing only visible information."""
+    def edge_properties_for(self, edge_id: str) -> set[str]:
+        """The set of visible edge properties (condition) for ``edge_id``."""
+        return set(self.visible_edge_attributes.get(edge_id, []))
+
+    def apply(self, truth: BusinessProcessGraph) -> BusinessProcessGraph:
+        """Return a filtered graph containing only visible information."""
         visible_nodes = set(self.visible_node_ids)
         visible_edges = set(self.visible_edge_ids)
 
@@ -69,11 +78,8 @@ class StakeholderFilter(BaseModel):
         for nid, node in truth.nodes.items():
             if nid not in visible_nodes:
                 continue
-            new_nodes[nid] = _filtered_node(
-                node,
-                self.visible_attributes_for(nid),
-                self.visible_necessity.get(nid, []),
-            )
+            props = self.node_properties_for(nid)
+            new_nodes[nid] = _filtered_node(node, props)
 
         new_edges: dict[str, Edge] = {}
         for eid, edge in truth.edges.items():
@@ -81,84 +87,66 @@ class StakeholderFilter(BaseModel):
                 continue
             if edge.from_node not in new_nodes or edge.to_node not in new_nodes:
                 continue
+            eprops = self.edge_properties_for(eid)
             new_edges[eid] = Edge(
                 id=edge.id,
                 from_node=edge.from_node,
                 to_node=edge.to_node,
-                predicate=_filter_value(edge.predicate),
-                observation_ids=list(edge.observation_ids),
+                condition=_clone_ref(edge.condition)
+                if edge.condition is not None and "condition" in eprops
+                else None,
+                evidence=list(edge.evidence),
             )
 
-        start = truth.start_node_id if truth.start_node_id in new_nodes else None
-        ends = [e for e in truth.end_node_ids if e in new_nodes]
-        return BusinessDAG(
+        return BusinessProcessGraph(
             id=truth.id,
             name=truth.name,
             nodes=new_nodes,
             edges=new_edges,
-            start_node_id=start,
-            end_node_ids=ends,
+            concepts={},
         )
 
-    def describe(self, truth: BusinessDAG) -> str:
+    def describe(self, truth: BusinessProcessGraph) -> str:
         """A short human-readable description of the visible portion (for tests /
-        verification). The full Truth DAG is never serialized here."""
+        verification). The full Truth graph is never serialized here."""
         filtered = self.apply(truth)
         parts = [f"Stakeholder '{self.name}' sees:"]
         for nid in filtered.nodes:
             n = filtered.nodes[nid]
-            parts.append(f"node {nid}: {n.action.value or '?'}")
-        for e in filtered.edges.values():
-            pred = e.predicate.value if e.predicate else None
             parts.append(
-                f"edge {e.from_node}->{e.to_node}" + (f" [{pred}]" if pred else "")
+                f"node {nid}: {n.activity.concept_id}"
+                + (f" (actor {n.actor.concept_id})" if n.actor is not None else "")
+            )
+        for e in filtered.edges.values():
+            cond = e.condition.concept_id if e.condition is not None else None
+            parts.append(
+                f"edge {e.from_node}->{e.to_node}" + (f" [{cond}]" if cond else "")
             )
         return "\n".join(parts)
 
 
-def _filter_value(v: Optional[InferredValue]) -> Optional[InferredValue]:
-    if v is None:
+def _clone_ref(ref: Optional[ConceptRef]) -> Optional[ConceptRef]:
+    if ref is None:
         return None
-    return InferredValue(
-        value=v.value, confidence=v.confidence, observation_ids=list(v.observation_ids)
-    )
-
-
-def _clone_value(v: InferredValue) -> InferredValue:
-    """Clone a non-optional InferredValue (used for Node attributes)."""
-    return InferredValue(
-        value=v.value, confidence=v.confidence, observation_ids=list(v.observation_ids)
-    )
-
-
-def _clone_ref(r: ConceptRef) -> ConceptRef:
-    """Clone a non-optional ConceptRef (used for Node reads/writes)."""
     return ConceptRef(
-        concept_id=r.concept_id,
-        confidence=r.confidence,
-        observation_ids=list(r.observation_ids),
+        concept_id=ref.concept_id,
+        confidence=ref.confidence,
+        evidence=list(ref.evidence),
     )
 
 
-def _filtered_node(node: Node, attr_set: set[str], visible_nec: list[str]) -> Node:
-    def keep(attr: str) -> bool:
-        return attr in attr_set
-
-    necessity = None
-    if node.necessity is not None:
-        nec_props: dict[str, InferredValue] = {}
-        for prop in _NECESSITY_PROPS:
-            if prop in visible_nec:
-                nec_props[prop] = _clone_value(getattr(node.necessity, prop))
-        necessity = Necessity(**nec_props) if nec_props else None
+def _filtered_node(node: Node, props: set[str]) -> Node:
+    def keep(prop: str) -> bool:
+        return prop in props
 
     return Node(
         id=node.id,
-        action=_clone_value(node.action),
-        actor=_clone_value(node.actor) if keep("actor") else InferredValue(),
-        system=_clone_value(node.system) if keep("system") else InferredValue(),
-        reads=[_clone_ref(r) for r in node.reads] if keep("reads") else [],
-        writes=[_clone_ref(w) for w in node.writes] if keep("writes") else [],
-        necessity=necessity,
-        observation_ids=list(node.observation_ids),
+        activity=_clone_ref(node.activity) if keep("activity") else None,  # type: ignore[arg-type]
+        actor=_clone_ref(node.actor) if keep("actor") else None,
+        system=_clone_ref(node.system) if keep("system") else None,
+        reads=[_clone_ref(r) for r in node.reads] if keep("reads") else [],  # type: ignore[arg-type]
+        writes=[_clone_ref(w) for w in node.writes] if keep("writes") else [],  # type: ignore[arg-type]
+        necessity_rationale=(
+            _clone_ref(node.necessity_rationale) if keep("rationale") else None
+        ),
     )

@@ -3,8 +3,11 @@ from typing import Optional
 
 from tau2.data_model.message import Message, UserMessage
 from tau2.data_model.tasks import Task
-from tau2.domains.business_interview.dag import InterviewDB
-from tau2.domains.business_interview.facts import StakeholderFactLedger
+from tau2.domains.business_interview.facts import (
+    StakeholderAssertion,
+    StakeholderFactLedger,
+)
+from tau2.domains.business_interview.graph import InterviewDB
 from tau2.domains.business_interview.tools import InterviewTools
 from tau2.domains.business_interview.utils import (
     BUSINESS_INTERVIEW_POLICY_PATH,
@@ -22,11 +25,11 @@ class BusinessInterviewEnvironment(Environment):
     (user) messages as Observations via ``observe_message``; it never writes
     Observation text itself.
 
-    ``fact_ledger`` is the private sidecar ledger: when a stakeholder (user)
-    message carries private ``used_fact_ids`` (from the fact-grounded
-    stakeholder simulator), they are validated deterministically and stored
-    against that exact message's turn. Only the public message content ever
-    enters the conversation; the ledger is never Agent-visible.
+    ``fact_ledger`` is the private assertion sidecar ledger: when a
+    stakeholder (user) message carries private ``assertions`` (from the
+    fact-grounded stakeholder simulator), they are validated deterministically
+    and stored against that exact message's turn. Only the public message
+    content ever enters the conversation; the ledger is never Agent-visible.
     """
 
     def __init__(
@@ -45,17 +48,22 @@ class BusinessInterviewEnvironment(Environment):
         if db is None:
             return
         turn = len(db.messages)
+        content = getattr(message, "content", None)
         if isinstance(message, UserMessage):
-            used_fact_ids = getattr(message, "stakeholder_used_fact_ids", None)
-            if used_fact_ids:
+            raw_assertions = getattr(message, "stakeholder_assertions", None)
+            if raw_assertions:
                 # Private sidecar: validate deterministically (catalog present
                 # in live runs) and store against this exact message's turn.
                 # Invalid metadata is rejected loudly.
-                self.fact_ledger.bind(turn, list(used_fact_ids))
+                assertions = [
+                    StakeholderAssertion(**a) if isinstance(a, dict) else a
+                    for a in raw_assertions
+                ]
+                self.fact_ledger.bind(turn, assertions, content)
         db.messages.append(
             {
                 "role": str(getattr(message, "role", "")),
-                "content": getattr(message, "content", None),
+                "content": content,
             }
         )
 

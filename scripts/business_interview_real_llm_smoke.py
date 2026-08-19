@@ -5,13 +5,14 @@ Runs the REAL tau2 pipeline (Interview Agent <-> Stakeholder LLM) on the
 ``quotation_workflow_1`` scenario a small number of times using DeepSeek for
 BOTH the Interview Agent and the Stakeholder LLM. The stakeholder runs through
 the fact-grounded ``business_interview_user`` simulator: it answers only from
-hidden StakeholderFacts and returns a private ``used_fact_ids`` sidecar, which
-the environment stores privately per turn (never in Agent-visible state).
+hidden atomic StakeholderFacts and returns a private assertion sidecar
+(``[{fact_id, quote, occurrence}]``), which the environment stores privately
+per turn (never in Agent-visible state).
 
 The script captures the natural language conversation, the tool calls, the
-final inferred DAG, the private sidecar ledger (in a separate
+final inferred graph + glossary, the private assertion ledger (in a separate
 ``*.private.json`` artifact), the domain evaluator metrics
-(structural/necessity/evidence/quality_pass), the standard tau2 reward, a
+(structural/glossary/evidence/quality_pass), the standard tau2 reward, a
 private-ID leakage scan, and any errors.
 
 This is an EXPLORATORY, MANUAL experiment only:
@@ -53,89 +54,76 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ARTIFACT_DIR = REPO_ROOT / "artifacts" / "business_interview_real_llm"
 
 
-def _iter_inferred(attr):
-    """Yield a human-readable rendering of an InferredValue, ConceptRef,
-    ConceptTerm, or list thereof."""
-    if attr is None:
+def _render_evidence(evs) -> list:
+    return [
+        {
+            "observation_id": ev.observation_id,
+            "quote": ev.quote,
+            "occurrence": ev.occurrence,
+        }
+        for ev in (evs or [])
+    ]
+
+
+def _render_ref(ref) -> dict | None:
+    if ref is None:
         return None
-    if isinstance(attr, list):
-        return [_iter_inferred(a) for a in attr]
-    if hasattr(attr, "concept_id"):  # ConceptRef
-        out = {"concept_id": attr.concept_id}
-        conf = getattr(attr, "confidence", None)
-        if conf:
-            out["confidence"] = round(float(conf), 3)
-        obs = getattr(attr, "observation_ids", None)
-        if obs:
-            out["observation_ids"] = list(obs)
-        return out
-    if hasattr(attr, "text") and hasattr(attr, "observation_ids"):  # ConceptTerm
-        return {"text": attr.text, "observation_ids": list(attr.observation_ids)}
-    value = getattr(attr, "value", None)
-    if value is None:
-        return None
-    out = {"value": value}
-    conf = getattr(attr, "confidence", None)
-    if conf:
-        out["confidence"] = round(float(conf), 3)
-    obs = getattr(attr, "observation_ids", None)
-    if obs:
-        out["observation_ids"] = list(obs)
+    out = {"concept_id": ref.concept_id}
+    if ref.confidence:
+        out["confidence"] = round(ref.confidence, 3)
+    if ref.evidence:
+        out["evidence"] = _render_evidence(ref.evidence)
     return out
 
 
-def dag_to_dict(dag) -> dict:
-    if dag is None:
+def graph_to_dict(graph) -> dict:
+    if graph is None:
         return {}
     return {
-        "id": dag.id,
-        "name": dag.name,
-        "start_node_id": dag.start_node_id,
-        "end_node_ids": list(dag.end_node_ids),
+        "id": graph.id,
+        "name": graph.name,
+        "concepts": {
+            cid: {
+                "id": concept.id,
+                "kind": concept.kind,
+                "preferred_label": concept.preferred_label,
+                "description": concept.description,
+                "validation_status": concept.validation_status,
+                "terms": [
+                    {
+                        "text": t.text,
+                        "evidence": _render_evidence(t.evidence),
+                    }
+                    for t in concept.terms
+                ],
+                "validation_evidence": _render_evidence(concept.validation_evidence),
+            }
+            for cid, concept in graph.concepts.items()
+        },
         "nodes": {
             nid: {
                 "id": node.id,
-                "action": _iter_inferred(node.action),
-                "primitive": _iter_inferred(node.primitive),
-                "actor": _iter_inferred(node.actor),
-                "system": _iter_inferred(node.system),
-                "reads": _iter_inferred(node.reads),
-                "writes": _iter_inferred(node.writes),
-                "necessity": (
-                    {
-                        p: _iter_inferred(getattr(node.necessity, p))
-                        for p in ("rationale", "owner", "evidence", "removal_impact")
-                    }
-                    if node.necessity is not None
-                    else None
-                ),
-                "observation_ids": list(node.observation_ids),
+                "activity": _render_ref(node.activity),
+                "actor": _render_ref(node.actor),
+                "system": _render_ref(node.system),
+                "reads": [_render_ref(r) for r in node.reads],
+                "writes": [_render_ref(w) for w in node.writes],
+                "necessity_rationale": _render_ref(node.necessity_rationale),
             }
-            for nid, node in dag.nodes.items()
-        },
-        "data_concepts": {
-            cid: {
-                "id": concept.id,
-                "preferred_label": concept.preferred_label,
-                "terms": [
-                    {"text": t.text, "observation_ids": list(t.observation_ids)}
-                    for t in concept.terms
-                ],
-            }
-            for cid, concept in dag.data_concepts.items()
+            for nid, node in graph.nodes.items()
         },
         "edges": {
             eid: {
                 "id": edge.id,
                 "from_node": edge.from_node,
                 "to_node": edge.to_node,
-                "predicate": _iter_inferred(edge.predicate),
-                "observation_ids": list(edge.observation_ids),
+                "condition": _render_ref(edge.condition),
+                "evidence": _render_evidence(edge.evidence),
             }
-            for eid, edge in dag.edges.items()
+            for eid, edge in graph.edges.items()
         },
-        "validation_errors": dag.structure_errors(),
-        "is_valid": dag.is_valid,
+        "validation_errors": graph.structure_errors(),
+        "is_valid": graph.is_valid,
     }
 
 
@@ -143,8 +131,8 @@ def _leakage_scan(dump: dict, private_ids: set[str]) -> list[str]:
     """Scan every Agent-visible surface for private fact/claim ids.
 
     Agent-visible surfaces: conversation contents, tool calls, observations,
-    summaries, the final DAG (labels/terms/ids), the DB ledger, evaluator
-    metrics. Private ids must never appear on any of them.
+    summaries, the final graph (labels/terms/descriptions), the DB ledger,
+    evaluator metrics. Private ids must never appear on any of them.
     """
     leaks: list[str] = []
 
@@ -159,12 +147,12 @@ def _leakage_scan(dump: dict, private_ids: set[str]) -> list[str]:
             check(f"conversation[{i}].tool_calls", json.dumps(tc))
     for o in dump.get("observations") or []:
         check(f"observation {o.get('id')}", json.dumps(o))
-    for nid, node in (dump.get("final_dag") or {}).get("nodes", {}).items():
-        check(f"final_dag.nodes[{nid}]", json.dumps(node))
-    for cid, concept in (dump.get("final_dag") or {}).get("data_concepts", {}).items():
-        check(f"final_dag.data_concepts[{cid}]", json.dumps(concept))
-    for eid, edge in (dump.get("final_dag") or {}).get("edges", {}).items():
-        check(f"final_dag.edges[{eid}]", json.dumps(edge))
+    for nid, node in (dump.get("final_graph") or {}).get("nodes", {}).items():
+        check(f"final_graph.nodes[{nid}]", json.dumps(node))
+    for cid, concept in (dump.get("final_graph") or {}).get("concepts", {}).items():
+        check(f"final_graph.concepts[{cid}]", json.dumps(concept))
+    for eid, edge in (dump.get("final_graph") or {}).get("edges", {}).items():
+        check(f"final_graph.edges[{eid}]", json.dumps(edge))
     for i, m in enumerate(dump.get("db_messages_ledger") or []):
         check(f"db_messages_ledger[{i}]", json.dumps(m))
     check("summary", str(dump.get("summary") or ""))
@@ -177,7 +165,7 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
     """Run quotation_workflow_1 once with DeepSeek.
 
     Returns ``(public_dump, private_payload)``: the Agent-visible dump and the
-    evaluator-only private sidecar ledger (kept in a separate artifact).
+    evaluator-only private assertion ledger (kept in a separate artifact).
     """
     # Importing inside the function keeps the script import-light and explicit.
     from tau2.data_model.simulation import TextRunConfig
@@ -222,7 +210,7 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
         logger.exception("simulation raised")
     elapsed = time.time() - started
 
-    # Capture the interview DB and the PRIVATE used-fact ledger from the live
+    # Capture the interview DB and the PRIVATE assertion ledger from the live
     # environment. The ledger is never part of the DB and never Agent-visible.
     db = None
     env_tools = getattr(orchestrator.environment, "tools", None)
@@ -231,19 +219,17 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
     except Exception as exc:  # noqa: BLE001
         errors.append(f"could not read db: {exc}")
     fact_ledger = getattr(orchestrator.environment, "fact_ledger", None)
-    used_facts = fact_ledger.used_fact_ids() if fact_ledger is not None else {}
+    assertions = fact_ledger.assertions() if fact_ledger is not None else {}
 
     # --- domain evaluator ---------------------------------------------------
     eval_result = None
-    truth_dag = None
-    spec_dump = None
+    truth_graph = None
     scenario = None
     try:
         scenario = get_scenario(TASK_ID)
         if scenario is None:
             raise ValueError(f"unknown scenario: {TASK_ID}")
-        truth_dag = scenario.truth
-        spec_dump = scenario.spec.model_dump(mode="json")
+        truth_graph = scenario.truth
         eval_result = (
             evaluate(
                 db,
@@ -252,7 +238,7 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
                 scenario.stakeholder,
                 claims=scenario.claims,
                 facts=scenario.facts,
-                used_facts=used_facts,
+                assertions=assertions,
             ).model_dump(mode="json")
             if db is not None
             else None
@@ -334,11 +320,9 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
             if db is not None
             else []
         ),
-        "final_dag": dag_to_dict(db.dag) if db is not None else {},
+        "final_graph": graph_to_dict(db.graph) if db is not None else {},
         "evaluator_metrics": eval_result,
-        "truth_dag": dag_to_dict(truth_dag) if truth_dag is not None else {},
-        "truth_dag_clean": dag_to_dict(truth_dag) if truth_dag is not None else {},
-        "evaluation_spec_hidden": spec_dump,
+        "truth_graph": graph_to_dict(truth_graph) if truth_graph is not None else {},
         "db_messages_ledger": (db.messages if db is not None else []),
         "interview_complete": bool(db.interview_complete) if db is not None else None,
     }
@@ -352,18 +336,20 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
     leakage = _leakage_scan(dump, private_ids)
     dump["private_id_leakage"] = leakage
 
-    # The PRIVATE sidecar ledger + fact catalog: kept out of the Agent-visible
+    # The PRIVATE assertion ledger + fact catalog: kept out of the Agent-visible
     # dump and written to a separate artifact by main().
     private_payload = {
         "task_id": TASK_ID,
-        "used_fact_ids_by_turn": used_facts,
+        "assertions_by_turn": {
+            str(turn): [a.model_dump() for a in ass] for turn, ass in assertions.items()
+        },
         "stakeholder_facts": (
             {fid: fact.model_dump() for fid, fact in scenario.facts.items()}
             if scenario is not None
             else {}
         ),
     }
-    dump["private_used_facts_artifact"] = f"run_{run_index:02d}_seed{seed}.private.json"
+    dump["private_assertions_artifact"] = f"run_{run_index:02d}_seed{seed}.private.json"
     return dump, private_payload
 
 
@@ -398,8 +384,8 @@ def main() -> int:
                 json.dump(dump, fp, indent=2, ensure_ascii=False)
         except OSError as exc:
             raise SystemExit(f"cannot write {out_path}: {exc}")
-        # Private sidecar ledger (used_fact_ids per turn) — evaluator-only,
-        # kept separate from the Agent-visible dump.
+        # Private assertion ledger (per turn) — evaluator-only, kept separate
+        # from the Agent-visible dump.
         try:
             with open(private_path, "w", encoding="utf-8") as fp:
                 json.dump(private_payload, fp, indent=2, ensure_ascii=False)
@@ -407,6 +393,7 @@ def main() -> int:
             raise SystemExit(f"cannot write {private_path}: {exc}")
         logger.info("Wrote {} (+ private ledger {})", out_path, private_path)
 
+        metrics = dump.get("evaluator_metrics") or {}
         summaries.append(
             {
                 "run_index": i,
@@ -414,28 +401,17 @@ def main() -> int:
                 "seed": seed,
                 "termination_reason": dump["termination_reason"],
                 "reward": (dump["reward_info"] or {}).get("reward"),
-                "quality_pass": (dump["evaluator_metrics"] or {}).get("quality_pass"),
-                "structural_pass": (dump["evaluator_metrics"] or {}).get(
-                    "structural_pass"
-                ),
-                "necessity_pass": (dump["evaluator_metrics"] or {}).get(
-                    "necessity_pass"
-                ),
-                "evidence_pass": (dump["evaluator_metrics"] or {}).get("evidence_pass"),
-                "node_recall": (dump["evaluator_metrics"] or {}).get("node_recall"),
-                "node_precision": (dump["evaluator_metrics"] or {}).get(
-                    "node_precision"
-                ),
-                "edge_recall": (dump["evaluator_metrics"] or {}).get("edge_recall"),
-                "edge_precision": (dump["evaluator_metrics"] or {}).get(
-                    "edge_precision"
-                ),
-                "fabricated_node_count": (dump["evaluator_metrics"] or {}).get(
-                    "fabricated_node_count"
-                ),
-                "fabricated_edge_count": (dump["evaluator_metrics"] or {}).get(
-                    "fabricated_edge_count"
-                ),
+                "quality_pass": metrics.get("quality_pass"),
+                "structural_pass": metrics.get("structural_pass"),
+                "glossary_pass": metrics.get("glossary_pass"),
+                "evidence_pass": metrics.get("evidence_pass"),
+                "node_recall": metrics.get("node_recall"),
+                "node_precision": metrics.get("node_precision"),
+                "edge_recall": metrics.get("edge_recall"),
+                "edge_precision": metrics.get("edge_precision"),
+                "concept_correctness": metrics.get("concept_correctness"),
+                "fabricated_node_count": metrics.get("fabricated_node_count"),
+                "fabricated_edge_count": metrics.get("fabricated_edge_count"),
                 "private_id_leakage": dump["private_id_leakage"],
                 "errors": dump["errors"],
                 "elapsed_seconds": dump["elapsed_seconds"],
