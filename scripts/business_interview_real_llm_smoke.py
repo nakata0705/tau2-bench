@@ -66,14 +66,36 @@ def _render_evidence(evs) -> list:
 
 
 def _render_ref(ref) -> dict | None:
+    """Render a ConceptRef or a DONT_KNOW marker for the dump."""
+    from tau2.domains.business_interview.graph import is_dont_know
+
     if ref is None:
         return None
+    if is_dont_know(ref):
+        return {
+            "dont_know": True,
+            "evidence": _render_evidence(ref.evidence or []),
+        }
     out = {"concept_id": ref.concept_id}
     if ref.confidence:
         out["confidence"] = round(ref.confidence, 3)
     if ref.evidence:
         out["evidence"] = _render_evidence(ref.evidence)
     return out
+
+
+def _render_list_slot(slot) -> list | dict | None:
+    """Render a reads/writes slot: list of refs, DONT_KNOW, or None."""
+    from tau2.domains.business_interview.graph import is_dont_know
+
+    if slot is None:
+        return None
+    if is_dont_know(slot):
+        return {
+            "dont_know": True,
+            "evidence": _render_evidence(slot.evidence or []),
+        }
+    return [_render_ref(r) for r in slot]
 
 
 def graph_to_dict(graph) -> dict:
@@ -94,9 +116,7 @@ def graph_to_dict(graph) -> dict:
                 "description": concept.description,
                 "canonical_terms": getattr(concept, "canonical_terms", None),
                 "validation_status": getattr(concept, "validation_status", None),
-                "mentions": _render_evidence(
-                    getattr(concept, "mentions", []) or []
-                ),
+                "mentions": _render_evidence(getattr(concept, "mentions", []) or []),
                 "validation_evidence": _render_evidence(
                     getattr(concept, "validation_evidence", []) or []
                 ),
@@ -118,8 +138,8 @@ def graph_to_dict(graph) -> dict:
                 "activity": _render_ref(node.activity),
                 "actor": _render_ref(node.actor),
                 "system": _render_ref(node.system),
-                "reads": [_render_ref(r) for r in node.reads],
-                "writes": [_render_ref(w) for w in node.writes],
+                "reads": _render_list_slot(node.reads),
+                "writes": _render_list_slot(node.writes),
                 "necessity_rationale": _render_ref(node.necessity_rationale),
             }
             for nid, node in graph.nodes.items()
@@ -208,7 +228,7 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
         num_trials=1,
         seed=seed,
         max_steps=200,
-        max_errors=10,
+        max_errors=30,  # v11 strict tools reject bad evidence; recovery needs budget
         save_to=None,
     )
 
@@ -236,9 +256,7 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
     except Exception as exc:  # noqa: BLE001
         errors.append(f"could not read db: {exc}")
     assertion_ledger = getattr(orchestrator.environment, "assertion_ledger", None)
-    annotations = (
-        assertion_ledger.annotations() if assertion_ledger is not None else {}
-    )
+    annotations = assertion_ledger.annotations() if assertion_ledger is not None else {}
     alignments = assertion_ledger.alignments() if assertion_ledger is not None else {}
     terminology = assertion_ledger.terminology() if assertion_ledger is not None else {}
 
@@ -437,6 +455,10 @@ def main() -> int:
                 "edge_recall": metrics.get("edge_recall"),
                 "edge_precision": metrics.get("edge_precision"),
                 "concept_correctness": metrics.get("concept_correctness"),
+                "read_correctness": metrics.get("read_correctness"),
+                "write_correctness": metrics.get("write_correctness"),
+                "condition_correctness": metrics.get("condition_correctness"),
+                "dont_know_evidence_errors": metrics.get("dont_know_evidence_errors"),
                 "start_correct": metrics.get("start_correct"),
                 "end_recall": metrics.get("end_recall"),
                 "fabricated_node_count": metrics.get("fabricated_node_count"),

@@ -1,4 +1,4 @@
-# business_interview (v10 — graph is the semantic source of truth)
+# business_interview (v11 — graph is the semantic source of truth)
 
 The agent interviews a stakeholder to discover an unknown team's business
 process. The **graph is the semantic model**:
@@ -21,7 +21,7 @@ semantic NLP, no aliases, no embeddings, no label matching:
 Every addressable graph element has a **stable semantic ID** (never a list
 index; IDs survive reordering):
 
-    node:<node_id>                     the node itself
+    node:<node_id>                     the node itself (existence, NOT activity)
     node:<node_id>:activity            scalar property slot
     node:<node_id>:actor | :system | :rationale
     node:<node_id>:reads               whole-property slot
@@ -29,9 +29,25 @@ index; IDs survive reordering):
     node:<node_id>:writes:<concept_id> one writes element
     edge:<edge_id>                     the edge itself
     edge:<edge_id>:condition           the edge-condition slot
+    <concept_id>                       the knowledge concept itself
+
+**Stakeholder semantic IDs are opaque and stakeholder-local** (`skn_001` /
+`ske_001` / `skc_001` style): assigned deterministically from sorted Truth
+ids and invariant to collection reordering; never derived from Truth ids,
+labels, terms, node ids or edge ids. The private Truth mappings
+(`node_truth_ids` / `edge_truth_ids` / per-concept `truth_concept_id`) live
+only in the evaluator-side `StakeholderKnowledge`. **One canonical
+resolver** — `StakeholderKnowledgeGraph.resolve` — interprets every semantic
+ID (node existence, exact property slot, exact reads/writes element, edge
+existence, exact condition slot, knowledge concept); annotation validation,
+provenance, concept binding, DONT_KNOW handling, knowledge coverage and
+diagnostics all go through it.
 
 Property slots are three-valued: `ConceptRef` (value known), `None` (value
-known absent), `DONT_KNOW` (element known, value unknown).
+known absent), `DONT_KNOW` (element known, value unknown). The AgentGraph
+uses the same three-valued slots; `DONT_KNOW` markers carry the Observation
+evidence that the stakeholder really said "I don't know" for that exact
+slot.
 
 ## StakeholderKnowledge (the stakeholder's world model)
 
@@ -56,7 +72,7 @@ never enter the knowledge or the stakeholder prompt.
 Private Observation annotations point **directly** at stakeholder semantic
 IDs:
 
-    {"semantic_id": "node:cc:reads:skc_customer",
+    {"semantic_id": "node:skn_002:reads:skc_013",
      "quote": "customer information", "occurrence": 0}
 
 There is no `StakeholderSemanticAssertion`: no subject/property/value
@@ -97,7 +113,12 @@ Ordinary workflow mentions never create these events.
     hypothesized  ->  grounded  ->  confirmed
 
 `grounded` = authentic provenance binds the Agent concept to the stakeholder
-knowledge (`ground_concept`; no confirmation dialogue needed);
+knowledge (`ground_concept` is BINDING-AWARE: its evidence must resolve —
+global span rule + the canonical resolver — to exactly one kind-compatible
+knowledge concept; ambiguous, unrelated or kind-incompatible evidence is
+rejected, private stakeholder ids never appear in tool output, and the
+Agent-visible `grounded` status always agrees with the evaluator binding);
+no confirmation dialogue needed;
 `confirmed` = explicit identity confirmation (`confirm_concept` with a
 private alignment event). `finish_interview` normally requires referenced
 concepts >= grounded. `unknown`/`disputed`/`partially_confirmed` are backed
@@ -110,15 +131,20 @@ Primary achievable target: **AgentGraph vs StakeholderKnowledgeGraph**
 
 - node/edge correspondence falls out of the semantic IDs (deterministic
   assignment maximizing property-level matches);
-- property scoring per slot: DONT_KNOW/None slots reject any assertion
-  (epistemic restraint); known slots need refs resolving to the slot/element
-  whose concepts bind to the slot's knowledge concept;
-- concept identity per kind (mentions may participate; bijection over the
-  knowledge concepts the graph references);
+- property scoring per slot is ASYMMETRIC: stakeholder `ConceptRef` needs a
+  correct grounded ref; stakeholder `None` (known absent) is satisfied by an
+  unasserted slot (`DONT_KNOW` is NOT equivalent); stakeholder `DONT_KNOW`
+  is satisfied ONLY by an explicit evidenced `DONT_KNOW` marker (unasserted
+  is NOT `DONT_KNOW`, and a hidden-Truth guess is wrong);
+- concept identity per kind (mentions + graph provenance incl. grounding
+  evidence may participate; bijection over the knowledge concepts the graph
+  references; conflicting grounding evidence leaves the concept unresolved);
 - glossary validation: grounded/confirmed/unknown/disputed/terminology backed
   by the appropriate private evidence;
 - `knowledge_coverage` (Truth vs StakeholderKnowledge) is reported
-  separately and never mixed into Agent performance.
+  separately and never mixed into Agent performance: known values AND known
+  absence count as known; DONT_KNOW slots and removed nodes/edges count as
+  unknown; node existence is never confused with the activity slot.
 
 `start_inference` resets the AgentGraph/glossary/completion state but
 preserves Observations and the conversation ledger.
@@ -131,9 +157,10 @@ preserves Observations and the conversation ledger.
 | `knowledge.py` | StakeholderKnowledge / StakeholderKnowledgeGraph / StakeholderKnowledgeConcept + `project_knowledge` |
 | `stakeholder.py` | StakeholderFilter (element/property/concept knowledge knobs) |
 | `facts.py` | SemanticAnnotation + private dialogue events + SemanticLedger + catalog |
+| `grounding.py` | shared global-span provenance (evidence refs -> semantic ids) |
 | `scenario.py` | Truth graphs + filters + knowledge (quotation / lab / JA) |
 | `evaluation.py` | provenance-only evaluator (AgentGraph vs StakeholderKnowledgeGraph) |
-| `tools.py` | glossary + graph tools (per-property evidence, ground/confirm/unknown/disputed/terminology) |
+| `tools.py` | glossary + graph tools (per-property evidence, binding-aware ground/confirm/unknown/disputed/terminology, `record_dont_know` / `record_edge_condition_dont_know`) |
 | `user_simulator.py` | semantic stakeholder realization (graph-native sidecar) |
 | `environment.py` | conversation ledger + private sidecar binding + `episode_complete` |
 

@@ -12,7 +12,7 @@ Private response:
     {
       "message": "...",
       "annotations": [
-        {"semantic_id": "node:cc:system", "quote": "CRM", "occurrence": 0}
+        {"semantic_id": "node:skn_002:system", "quote": "CRM", "occurrence": 0}
       ],
       "alignments": [],
       "terminology": []
@@ -26,6 +26,11 @@ ingestion (semantic id exists in the stakeholder knowledge / quote+occurrence
 exactly match the message). Nothing is ever derived or reconstructed from
 message text, and semantic ids never appear in Agent-visible messages, tools,
 Observations, summaries, or serialized state.
+
+The semantic ids are **opaque stakeholder-local ids** (``skn_001`` /
+``ske_001`` / ``skc_001`` style): they carry no Truth meaning (no labels,
+terms, node names or positions), so even speech about a concept whose
+description/terms are DONT_KNOW cannot leak Truth facts through the ids.
 """
 
 from __future__ import annotations
@@ -49,7 +54,7 @@ from tau2.domains.business_interview.facts import (
     StakeholderKnowledgeCatalog,
     TerminologyConfirmation,
 )
-from tau2.domains.business_interview.graph import DONT_KNOW, is_dont_know
+from tau2.domains.business_interview.graph import is_dont_know
 from tau2.domains.business_interview.scenario import get_scenario
 from tau2.user.user_simulator import UserSimulator
 
@@ -91,8 +96,8 @@ _OUTPUT_CONTRACT = (
     '- "annotations": the knowledge elements you actually used to produce this '
     "reply, each anchored to the exact spans of your message that express it:\n"
     '  - "semantic_id": one of the EXACT ids listed in <private_known_facts> '
-    "(copy them verbatim, e.g. \"node:cc:activity\", \"edge:e3\", "
-    "\"node:cc:reads:skc_customer\" — never shorten them); use every element "
+    '(copy them verbatim, e.g. "node:skn_002:system", "edge:ske_003", '
+    '"node:skn_002:reads:skc_004" — never shorten them); use every element '
     "you used;\n"
     '  - "quote": an exact substring of your "message" that expresses that '
     "element — include EVERY distinct phrase that does, one annotation per "
@@ -107,22 +112,23 @@ _OUTPUT_CONTRACT = (
     "conveys. The interviewer can only see your annotations — an element you "
     "do not annotate is treated as if you never said it. An empty "
     "annotations list is allowed ONLY when your message carries no knowledge "
-    "at all (greetings, acknowledgements, \"I don't know\" answers whose "
+    'at all (greetings, acknowledgements, "I don\'t know" answers whose '
     "element is not in your knowledge).\n"
-    '- Relations are knowledge too: when your message says that one step '
+    "- Relations are knowledge too: when your message says that one step "
     'follows another ("then", "after", "goes to", "followed by", "if ... '
     'then"), annotate the relation\'s element (e.g. "edge:e3") anchored to '
     "the phrase that expresses the relation itself — do not omit it just "
     "because the phrase also names the activity or the condition.\n"
     '- When you do NOT know something (its slot is marked unknown="true" or '
     "its concept has no description/terms), say so and annotate the "
-    'unknown slot\'s semantic id (e.g. "I don\'t know" anchored to '
-    '"node:sq:reads" or "skc_excel_summary").\n'
+    "unknown slot's semantic id (e.g. \"I don't know\" anchored to "
+    '"node:skn_005:reads" or "skc_011" — the exact ids listed in this '
+    "block).\n"
     '- "alignments": OPTIONAL list of private concept-identity dialogue acts. '
     "Emit an alignment ONLY when the interviewer asks you to confirm the "
     "identity of something and your reply genuinely performs that act (e.g. "
     "the interviewer asks 'do you mean X?' and you answer Yes / partly / "
-    "I do not know / no, they are different). Each: {\"semantic_id\": \"...\", \"quote\": \"...\", \"occurrence\": 0, \"act\": \"confirm\"|\"partial\"|\"unknown\"|\"dispute\"} where semantic_id is the EXACT concept id from <concepts> your reply is about, and quote is the exact substring of your message that performs the act. NEVER emit alignments for ordinary statements of the workflow.\n"
+    'I do not know / no, they are different). Each: {"semantic_id": "...", "quote": "...", "occurrence": 0, "act": "confirm"|"partial"|"unknown"|"dispute"} where semantic_id is the EXACT concept id from <concepts> your reply is about, and quote is the exact substring of your message that performs the act. NEVER emit alignments for ordinary statements of the workflow.\n'
     '- "terminology": OPTIONAL list of explicit terminology agreements. Emit '
     "an entry ONLY when the interviewer explicitly proposes a name for "
     "something and asks you to agree, and you do agree. Each: "
@@ -130,15 +136,16 @@ _OUTPUT_CONTRACT = (
     'interviewer proposed>", "quote": "<exact substring of your message '
     '"agreeing>", "occurrence": 0}. NEVER emit it merely for using a word '
     "in ordinary speech.\n"
-    '- Worked example: for the message "After I check the customer in the '
-    'CRM, I create the quotation.", a correct sidecar is:\n'
+    "- Worked example (ids are PLACEHOLDERS — copy the real ids verbatim "
+    'from <private_known_facts>): for the message "After I check the '
+    'customer in the CRM, I create the quotation.", a correct sidecar is:\n'
     '{"message": "After I check the customer in the CRM, I create the '
-    'quotation.", "annotations": [{"semantic_id": "node:cc:system", '
-    '"quote": "CRM", "occurrence": 0}, {"semantic_id": "edge:e2", '
+    'quotation.", "annotations": [{"semantic_id": "node:skn_002:system", '
+    '"quote": "CRM", "occurrence": 0}, {"semantic_id": "edge:ske_002", '
     '"quote": "After I check the customer", "occurrence": 0}, '
-    '{"semantic_id": "node:cq:activity", "quote": "create the quotation", '
+    '{"semantic_id": "node:skn_003:activity", "quote": "create the quotation", '
     '"occurrence": 0}], "alignments": [], "terminology": []}\n'
-    "- Never mention semantic ids inside \"message\"; never mention this "
+    '- Never mention semantic ids inside "message"; never mention this '
     "contract."
 )
 
@@ -148,12 +155,12 @@ _SIDECAR_ERROR_HINT = (
     "sidecar. You MUST now reply with ONLY a JSON object, with no prose and no "
     "markdown fences, exactly like:\n"
     '{"message": "your natural-language reply", "annotations": [{"semantic_id": '
-    '"node:cc:activity", "quote": "exact substring of your message", "occurrence": 0}], "alignments": [], "terminology": []}\n'
+    '"node:skn_001:activity", "quote": "exact substring of your message", "occurrence": 0}], "alignments": [], "terminology": []}\n'
     '"semantic_id" must be one of the EXACT ids listed in '
     "<private_known_facts> (copy them verbatim, never shortened). Annotate "
     "EVERY element your message conveys — do not leave annotations empty when "
     "your message carries knowledge. Every annotation quote must be an exact "
-    "substring of your message. Emit \"alignments\"/\"terminology\" ONLY for "
+    'substring of your message. Emit "alignments"/"terminology" ONLY for '
     "genuine concept-identity or terminology dialogue acts (see the contract). "
     "Do not include anything else in your reply."
 )
@@ -327,9 +334,7 @@ class StakeholderUserSimulator(UserSimulator):
                     None,
                 )
                 rendered = _render_value(value)
-                lines.append(
-                    f'<property slot="node:{nid}:{prop}" value="{rendered}"/>'
-                )
+                lines.append(f'<property slot="node:{nid}:{prop}" value="{rendered}"/>')
             for prop in ("reads", "writes"):
                 value = getattr(node, prop)
                 if isinstance(value, list):
@@ -348,9 +353,7 @@ class StakeholderUserSimulator(UserSimulator):
         for eid in sorted(graph.edges):
             edge = graph.edges[eid]
             cond = _render_value(edge.condition)
-            cond_line = (
-                f'<property slot="edge:{eid}:condition" value="{cond}"/>'
-            )
+            cond_line = f'<property slot="edge:{eid}:condition" value="{cond}"/>'
             relations.append(
                 f'<relation id="edge:{eid}" from="node:{edge.from_node}" '
                 f'to="node:{edge.to_node}">\n{cond_line}\n</relation>'
@@ -400,7 +403,9 @@ class StakeholderUserSimulator(UserSimulator):
         assistant_message = self._call_llm(contract_messages)
         sidecar = parse_sidecar(assistant_message.content)
         if self._catalog is not None:
-            self._catalog.validate_annotations(sidecar["annotations"], sidecar["message"])
+            self._catalog.validate_annotations(
+                sidecar["annotations"], sidecar["message"]
+            )
             self._catalog.validate_events(
                 sidecar["alignments"], sidecar["terminology"], sidecar["message"]
             )

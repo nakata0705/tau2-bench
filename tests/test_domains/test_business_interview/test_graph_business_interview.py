@@ -1,4 +1,4 @@
-"""Tests for the graph-native business_interview domain (v10).
+"""Tests for the graph-native business_interview domain (v11).
 
 The graph is the semantic model: Truth = BusinessProcessGraph + TruthConcept[];
 the stakeholder's world model is a StakeholderKnowledge (masked graph with
@@ -10,12 +10,18 @@ private provenance:
         (stakeholder semantic ID) -> StakeholderKnowledgeGraph element /
         StakeholderKnowledgeConcept
 
-Semantic IDs are stable (``node:<id>``, ``node:<id>:<prop>``,
-``node:<id>:reads:<concept_id>``, ``edge:<id>``, ``edge:<id>:condition``) —
-never list indexes. Property scoring uses property evidence ONLY; concept
-identity may use mentions; validation uses explicit validation/dialogue
-evidence ONLY. Concepts resolve at >= grounded for finish (explicit
-confirmation is not required for every concept).
+Stakeholder semantic IDs are opaque and stakeholder-local (``skn_001`` /
+``ske_001`` / ``skc_001`` style, assigned deterministically from sorted Truth
+ids; never derived from Truth ids/labels/terms/positions) — the hand-authored
+tables below are keyed by Truth ids and translated via the private mappings
+(``_local_sid``) because the tests are evaluator-side.
+
+Property scoring uses property evidence ONLY and scores the three-valued
+epistemic states asymmetrically (ConceptRef -> correct grounded ref; None ->
+unasserted; DONT_KNOW -> explicit evidenced DONT_KNOW marker). Concept
+identity may use mentions + graph provenance (incl. grounding evidence);
+validation uses explicit validation/dialogue evidence ONLY. The single
+canonical semantic-id resolver is ``StakeholderKnowledgeGraph.resolve``.
 """
 
 from typing import Optional
@@ -33,35 +39,37 @@ from tau2.domains.business_interview.environment import (
     get_tasks,
     get_tasks_split,
 )
-from tau2.domains.business_interview.evaluation import EvaluationSpec, evaluate
+from tau2.domains.business_interview.evaluation import (
+    EvaluationSpec,
+    evaluate,
+    grounded_semantic_ids,
+    resolve_grounding_refs,
+)
 from tau2.domains.business_interview.facts import (
     ConceptAlignmentAssertion,
     SemanticAnnotation,
+    StakeholderKnowledgeCatalog,
     TerminologyConfirmation,
 )
 from tau2.domains.business_interview.graph import (
-    AgentConcept,
-    AgentGraph,
-    ConceptRef,
     DONT_KNOW,
+    BusinessProcessGraph,
+    ConceptRef,
+    DontKnowType,
     Edge,
     EvidenceRef,
     InterviewDB,
     Node,
     TruthConcept,
-    element_id,
     graph_semantic_ids,
     is_dont_know,
-    slot_id,
 )
 from tau2.domains.business_interview.knowledge import (
-    StakeholderKnowledgeConcept,
-    StakeholderKnowledgeGraph,
-    StakeholderNode,
-    StakeholderEdge,
     project_knowledge,
+    slot_concepts,
 )
 from tau2.domains.business_interview.scenario import (
+    Scenario,
     get_scenario,
     quotation_truth,
 )
@@ -77,6 +85,69 @@ JA_SCENARIO = SCENARIO + "_ja"
 LAB_SCENARIO = "lab_sample_flow"
 ALL_TASK_IDS = [SCENARIO, JA_SCENARIO, LAB_SCENARIO]
 
+
+# ---------------------------------------------------------------------------
+# Opaque-ID translation (tests are evaluator-side and may use the private
+# Truth mappings of the StakeholderKnowledgeGraph)
+# ---------------------------------------------------------------------------
+
+
+def _sc(scenario_id: str = SCENARIO):
+    sc = get_scenario(scenario_id)
+    assert sc is not None
+    return sc
+
+
+def _kg(scenario_id: str = SCENARIO):
+    return _sc(scenario_id).knowledge.graph
+
+
+def _local_maps(scenario_id: str = SCENARIO):
+    """(truth node id -> local, truth edge id -> local, truth concept id ->
+    local) via the private evaluator-only mappings."""
+    kg = _kg(scenario_id)
+    node = {t: k for k, t in kg.node_truth_ids.items()}
+    edge = {t: k for k, t in kg.edge_truth_ids.items()}
+    concept = {c.truth_concept_id: k for k, c in kg.concepts.items()}
+    return node, edge, concept
+
+
+def _local_sid(sid: str, scenario_id: str = SCENARIO) -> str:
+    """Translate a Truth-id semantic id to the scenario's opaque knowledge
+    semantic id (e.g. ``node:r:reads:tc_request`` ->
+    ``node:skn_005:reads:skc_002``). Already-local ids pass through."""
+    node_t2l, edge_t2l, concept_t2l = _local_maps(scenario_id)
+    parts = sid.split(":")
+    if parts[0] == "node":
+        if parts[1].startswith("skn_"):
+            if len(parts) == 4 and not parts[3].startswith("skc_"):
+                raise KeyError(sid)
+            return sid
+        local = node_t2l.get(parts[1])
+        if local is None:
+            raise KeyError(sid)
+        out = ["node", local] + parts[2:]
+        if len(parts) == 4:
+            concept = concept_t2l.get(parts[3])
+            if concept is None:
+                raise KeyError(sid)
+            out[3] = concept
+        return ":".join(out)
+    if parts[0] == "edge":
+        if parts[1].startswith("ske_"):
+            return sid
+        local = edge_t2l.get(parts[1])
+        if local is None:
+            raise KeyError(sid)
+        return ":".join(["edge", local] + parts[2:])
+    if sid.startswith("skc_"):
+        return sid
+    concept = concept_t2l.get(sid)
+    if concept is None:
+        raise KeyError(sid)
+    return concept
+
+
 # (agent node id, stakeholder node id)
 _NODE_MAP = {"a": "r", "b": "cc", "c": "cq", "d": "ap", "e": "sq", "f": "me"}
 
@@ -87,7 +158,7 @@ _NODE_OBS = {
         [
             ("node:r:activity", "receive the quotation request"),
             ("node:r:actor", "I"),
-            ("node:r:writes:skc_request", "record it"),
+            ("node:r:writes:tc_request", "record it"),
         ],
     ),
     "cc": (
@@ -96,7 +167,7 @@ _NODE_OBS = {
             ("node:cc:activity", "check the customer information"),
             ("node:cc:actor", "I"),
             ("node:cc:system", "CRM"),
-            ("node:cc:reads:skc_customer", "customer information"),
+            ("node:cc:reads:tc_customer", "customer information"),
         ],
     ),
     "cq": (
@@ -106,9 +177,9 @@ _NODE_OBS = {
             ("node:cq:activity", "create the quotation"),
             ("node:cq:actor", "I"),
             ("node:cq:system", "quoting system"),
-            ("node:cq:reads:skc_customer", "customer"),
-            ("node:cq:reads:skc_pricing", "pricing information"),
-            ("node:cq:writes:skc_quote", "quotation"),
+            ("node:cq:reads:tc_customer", "customer"),
+            ("node:cq:reads:tc_pricing", "pricing information"),
+            ("node:cq:writes:tc_quote", "quotation"),
         ],
     ),
     "ap": (
@@ -135,7 +206,7 @@ _NODE_OBS = {
             ("node:me:activity", "send the quotation information summary"),
             ("node:me:actor", "I"),
             ("node:me:system", "Excel"),
-            ("node:me:writes:skc_excel_summary", "summary"),
+            ("node:me:writes:tc_excel_summary", "summary"),
         ],
     ),
 }
@@ -176,73 +247,192 @@ _EDGE_OBS = {
     ),
 }
 
-# Agent-local glossary ids (kind, label) per knowledge concept id.
+# Agent-local glossary ids (kind, label) per TRUTH concept id (the agent
+# ids are agent-local; the knowledge concept ids are opaque scenario ids).
 _AGENT_CONCEPTS = {
-    "skc_activity_receive_request": ("act_receive", "activity", "receive the quotation request"),
-    "skc_activity_check_customer": ("act_check", "activity", "check the customer information"),
-    "skc_activity_create_quotation": ("act_create", "activity", "create the quotation"),
-    "skc_activity_approve_quotation": ("act_approve", "activity", "approve the high-value quotation"),
-    "skc_activity_send_quotation": ("act_send", "activity", "send the quotation"),
-    "skc_activity_send_month_end_summary": ("act_me", "activity", "send the month-end summary"),
-    "skc_actor_sales": ("sales", "actor", "sales"),
-    "skc_actor_manager": ("manager", "actor", "manager"),
-    "skc_system_crm": ("crm", "system", "CRM"),
-    "skc_system_quoting": ("quoting", "system", "quoting system"),
-    "skc_system_email": ("email", "system", "email"),
-    "skc_system_excel": ("excel", "system", "Excel"),
-    "skc_request": ("request", "data", "quotation request"),
-    "skc_customer": ("customer", "data", "customer information"),
-    "skc_pricing": ("pricing", "data", "pricing information"),
-    "skc_quote": ("quote", "data", "quotation"),
-    "skc_excel_summary": ("excel_summary", "data", "quotation information summary"),
-    "skc_cond_over_1m": ("over_1m", "condition", "over 1,000,000 yen"),
-    "skc_cond_at_or_below_1m": ("at_or_below_1m", "condition", "at or below 1,000,000 yen"),
-    "skc_cond_month_end": ("month_end", "condition", "month-end"),
-    "skc_rationale_credit_risk": ("credit_risk", "rationale", "credit risk management"),
+    "tc_activity_receive_request": (
+        "act_receive",
+        "activity",
+        "receive the quotation request",
+    ),
+    "tc_activity_check_customer": (
+        "act_check",
+        "activity",
+        "check the customer information",
+    ),
+    "tc_activity_create_quotation": ("act_create", "activity", "create the quotation"),
+    "tc_activity_approve_quotation": (
+        "act_approve",
+        "activity",
+        "approve the high-value quotation",
+    ),
+    "tc_activity_send_quotation": ("act_send", "activity", "send the quotation"),
+    "tc_activity_send_month_end_summary": (
+        "act_me",
+        "activity",
+        "send the month-end summary",
+    ),
+    "tc_actor_sales": ("sales", "actor", "sales"),
+    "tc_actor_manager": ("manager", "actor", "manager"),
+    "tc_system_crm": ("crm", "system", "CRM"),
+    "tc_system_quoting": ("quoting", "system", "quoting system"),
+    "tc_system_email": ("email", "system", "email"),
+    "tc_system_excel": ("excel", "system", "Excel"),
+    "tc_request": ("request", "data", "quotation request"),
+    "tc_customer": ("customer", "data", "customer information"),
+    "tc_pricing": ("pricing", "data", "pricing information"),
+    "tc_quote": ("quote", "data", "quotation"),
+    "tc_excel_summary": ("excel_summary", "data", "quotation information summary"),
+    "tc_cond_over_1m": ("over_1m", "condition", "over 1,000,000 yen"),
+    "tc_cond_at_or_below_1m": (
+        "at_or_below_1m",
+        "condition",
+        "at or below 1,000,000 yen",
+    ),
+    "tc_cond_month_end": ("month_end", "condition", "month-end"),
+    "tc_rationale_credit_risk": ("credit_risk", "rationale", "credit risk management"),
     # lab sample flow
-    "skc_activity_accession": ("act_accession", "activity", "specimen accession"),
-    "skc_activity_seasoning": ("act_seasoning", "activity", "chamber seasoning"),
-    "skc_activity_conditioning": ("act_conditioning", "activity", "conditioning cycle"),
-    "skc_activity_batch_approval": ("act_approval", "activity", "approve conditioned batch"),
-    "skc_actor_lab_tech": ("lab_tech", "actor", "lab tech"),
-    "skc_actor_lab_supervisor": ("lab_supervisor", "actor", "lab supervisor"),
-    "skc_system_chamber": ("chamber", "system", "environment chamber"),
-    "skc_sample": ("sample", "data", "sample"),
+    "tc_activity_accession": ("act_accession", "activity", "specimen accession"),
+    "tc_activity_seasoning": ("act_seasoning", "activity", "chamber seasoning"),
+    "tc_activity_conditioning": ("act_conditioning", "activity", "conditioning cycle"),
+    "tc_activity_batch_approval": (
+        "act_approval",
+        "activity",
+        "approve conditioned batch",
+    ),
+    "tc_actor_lab_tech": ("lab_tech", "actor", "lab tech"),
+    "tc_actor_lab_supervisor": ("lab_supervisor", "actor", "lab supervisor"),
+    "tc_system_chamber": ("chamber", "system", "environment chamber"),
+    "tc_sample": ("sample", "data", "sample"),
 }
 
-# knowledge concept id per semantic id
+# TRUTH concept id per semantic id (semantic ids keyed by Truth ids; the
+# knowledge side uses opaque local ids — see ``_local_sid``).
 _SEMANTIC_TO_CONCEPT = {
-    "node:r:activity": "skc_activity_receive_request",
-    "node:r:actor": "skc_actor_sales",
-    "node:r:writes:skc_request": "skc_request",
-    "node:cc:activity": "skc_activity_check_customer",
-    "node:cc:actor": "skc_actor_sales",
-    "node:cc:system": "skc_system_crm",
-    "node:cc:reads:skc_customer": "skc_customer",
-    "node:cq:activity": "skc_activity_create_quotation",
-    "node:cq:actor": "skc_actor_sales",
-    "node:cq:system": "skc_system_quoting",
-    "node:cq:reads:skc_customer": "skc_customer",
-    "node:cq:reads:skc_pricing": "skc_pricing",
-    "node:cq:writes:skc_quote": "skc_quote",
-    "node:ap:activity": "skc_activity_approve_quotation",
-    "node:ap:actor": "skc_actor_manager",
-    "node:ap:rationale": "skc_rationale_credit_risk",
-    "node:sq:activity": "skc_activity_send_quotation",
-    "node:sq:actor": "skc_actor_sales",
-    "node:sq:system": "skc_system_email",
-    "node:me:activity": "skc_activity_send_month_end_summary",
-    "node:me:actor": "skc_actor_sales",
-    "node:me:system": "skc_system_excel",
-    "node:me:writes:skc_excel_summary": "skc_excel_summary",
-    "edge:e3:condition": "skc_cond_over_1m",
-    "edge:e4:condition": "skc_cond_at_or_below_1m",
-    "edge:e6:condition": "skc_cond_month_end",
+    "node:r:activity": "tc_activity_receive_request",
+    "node:r:actor": "tc_actor_sales",
+    "node:r:writes:tc_request": "tc_request",
+    "node:cc:activity": "tc_activity_check_customer",
+    "node:cc:actor": "tc_actor_sales",
+    "node:cc:system": "tc_system_crm",
+    "node:cc:reads:tc_customer": "tc_customer",
+    "node:cq:activity": "tc_activity_create_quotation",
+    "node:cq:actor": "tc_actor_sales",
+    "node:cq:system": "tc_system_quoting",
+    "node:cq:reads:tc_customer": "tc_customer",
+    "node:cq:reads:tc_pricing": "tc_pricing",
+    "node:cq:writes:tc_quote": "tc_quote",
+    "node:ap:activity": "tc_activity_approve_quotation",
+    "node:ap:actor": "tc_actor_manager",
+    "node:ap:rationale": "tc_rationale_credit_risk",
+    "node:sq:activity": "tc_activity_send_quotation",
+    "node:sq:actor": "tc_actor_sales",
+    "node:sq:system": "tc_system_email",
+    "node:me:activity": "tc_activity_send_month_end_summary",
+    "node:me:actor": "tc_actor_sales",
+    "node:me:system": "tc_system_excel",
+    "node:me:writes:tc_excel_summary": "tc_excel_summary",
+    "edge:e3:condition": "tc_cond_over_1m",
+    "edge:e4:condition": "tc_cond_at_or_below_1m",
+    "edge:e6:condition": "tc_cond_month_end",
 }
 
 
-def _tools() -> InterviewTools:
-    return InterviewTools(InterviewDB())
+# Stakeholder DONT_KNOW speech: (text, [(truth semantic id, quote)]) — the
+# sales stakeholder does not know these properties of existing elements.
+_NODE_DONT_KNOW_OBS = {
+    "r": (
+        "I don't know which system this step uses, what data it reads, or "
+        "why it is necessary.",
+        [
+            ("node:r:system", "which system this step uses"),
+            ("node:r:reads", "what data it reads"),
+            ("node:r:rationale", "why it is necessary"),
+        ],
+    ),
+    "cc": (
+        "I don't know what data it writes or why the check is necessary.",
+        [
+            ("node:cc:writes", "what data it writes"),
+            ("node:cc:rationale", "why the check is necessary"),
+        ],
+    ),
+    "cq": (
+        "I don't know why the creation is necessary.",
+        [("node:cq:rationale", "why the creation is necessary")],
+    ),
+    "ap": (
+        "I don't know which system the approval uses, what it reads, or "
+        "what it writes.",
+        [
+            ("node:ap:system", "which system the approval uses"),
+            ("node:ap:reads", "what it reads"),
+            ("node:ap:writes", "what it writes"),
+        ],
+    ),
+    "sq": (
+        "I don't know what data the send step reads or writes, or why it is necessary.",
+        [
+            ("node:sq:reads", "what data the send step reads"),
+            ("node:sq:writes", "or writes"),
+            ("node:sq:rationale", "why it is necessary"),
+        ],
+    ),
+    "me": (
+        "I don't know what data the summary step reads or why it is necessary.",
+        [
+            ("node:me:reads", "what data the summary step reads"),
+            ("node:me:rationale", "why it is necessary"),
+        ],
+    ),
+}
+
+_EDGE_DONT_KNOW_OBS = {
+    "e1": (
+        "I don't know of any condition before the check.",
+        [("edge:e1:condition", "any condition before the check")],
+    ),
+    "e2": (
+        "I don't know of any condition before the creation.",
+        [("edge:e2:condition", "any condition before the creation")],
+    ),
+    "e5": (
+        "I don't know of any condition after the approval.",
+        [("edge:e5:condition", "any condition after the approval")],
+    ),
+}
+
+
+def _record_node_dont_know(tools: InterviewTools, sid: str) -> None:
+    """Say and record the DONT_KNOW properties of node ``sid`` (truth id)."""
+    text, anns = _NODE_DONT_KNOW_OBS[sid]
+    oid = _say(tools, text, [_annotation(s, q) for s, q in anns])
+    agent_node = {v: k for k, v in _NODE_MAP.items()}[sid]
+    tools.record_dont_know(
+        agent_node,
+        properties=[
+            "rationale" if s == "node:%s:rationale" % sid else s.split(":")[2]
+            for s, _ in anns
+        ],
+        evidence=[_ev(oid, q) for _, q in anns],
+    )
+
+
+def _record_edge_dont_know(tools: InterviewTools, eid: str) -> None:
+    """Say and record the DONT_KNOW condition of edge ``eid`` (truth id)."""
+    text, anns = _EDGE_DONT_KNOW_OBS[eid]
+    oid = _say(tools, text, [_annotation(s, q) for s, q in anns])
+    tools.record_edge_condition_dont_know(eid, evidence=[_ev(oid, q) for _, q in anns])
+
+
+def _tools(scenario_id: str = SCENARIO) -> InterviewTools:
+    """Tools with the scenario's StakeholderKnowledgeCatalog installed (the
+    binding-aware tools need it to resolve evidence)."""
+    tools = InterviewTools(InterviewDB())
+    tools.assertion_ledger.install_catalog(
+        StakeholderKnowledgeCatalog.from_scenario(_sc(scenario_id))
+    )
+    return tools
 
 
 def _ingest(tools: InterviewTools, role: str = "user", content: str = "") -> int:
@@ -260,22 +450,53 @@ def _say(
     annotations: Optional[list[dict]] = None,
     alignments: Optional[list[dict]] = None,
     terminology: Optional[list[dict]] = None,
+    scenario_id: str = SCENARIO,
 ) -> str:
     """Ingest a stakeholder message, bind its private sidecar (semantic
     annotations + optional dialogue events) at that exact turn, and capture
-    it as an Observation."""
+    it as an Observation. Semantic ids in the sidecar are translated from
+    Truth-id form to the scenario's opaque stakeholder-local ids."""
     turn = _ingest(tools, "user", text)
     if annotations:
         tools.assertion_ledger.bind(
-            turn, [SemanticAnnotation(**a) for a in annotations], text
+            turn,
+            [
+                SemanticAnnotation(
+                    semantic_id=_local_sid(a["semantic_id"], scenario_id),
+                    quote=a["quote"],
+                    occurrence=a.get("occurrence", 0),
+                )
+                for a in annotations
+            ],
+            text,
         )
     if alignments:
         tools.assertion_ledger.bind_alignment(
-            turn, [ConceptAlignmentAssertion(**a) for a in alignments], text
+            turn,
+            [
+                ConceptAlignmentAssertion(
+                    semantic_id=_local_sid(a["semantic_id"], scenario_id),
+                    quote=a["quote"],
+                    occurrence=a.get("occurrence", 0),
+                    act=a["act"],
+                )
+                for a in alignments
+            ],
+            text,
         )
     if terminology:
         tools.assertion_ledger.bind_terminology(
-            turn, [TerminologyConfirmation(**a) for a in terminology], text
+            turn,
+            [
+                TerminologyConfirmation(
+                    semantic_id=_local_sid(t["semantic_id"], scenario_id),
+                    proposed_term=t["proposed_term"],
+                    quote=t["quote"],
+                    occurrence=t.get("occurrence", 0),
+                )
+                for t in terminology
+            ],
+            text,
         )
     sm_id = tools.observe_latest_stakeholder_message()
     return tools.observe_message(sm_id)
@@ -337,8 +558,14 @@ def _prop(kcid: str, oid: str, quote: str) -> dict:
 def _build(tools: InterviewTools, ja: bool = False) -> None:
     """Build the correct quotation AgentGraph with full provenance: every
     property reference carries its own evidence, every concept is grounded
-    with authentic annotation-corresponding spans, endpoints are declared —
-    so completion succeeds and the evaluator returns a full pass."""
+    with authentic annotation-corresponding spans, every stakeholder
+    DONT_KNOW slot is recorded explicitly — so completion succeeds and the
+    evaluator returns a full pass."""
+    from tau2.domains.business_interview.facts import StakeholderKnowledgeCatalog
+
+    tools.assertion_ledger.install_catalog(
+        StakeholderKnowledgeCatalog.from_scenario(_sc(SCENARIO))
+    )
     tools.start_inference("quotation")
     _ingest(tools, "assistant", "Hello.")
     node_obs = _NODE_OBS
@@ -355,21 +582,23 @@ def _build(tools: InterviewTools, ja: bool = False) -> None:
     for sid in ("r", "cc", "cq", "ap", "sq", "me"):
         kcid = _SEMANTIC_TO_CONCEPT[f"node:{sid}:activity"]
         oid = node_oids[sid]
-        quote = next(q for sid_, q in node_obs[sid][1] if sid_ == f"node:{sid}:activity")
+        quote = next(
+            q for sid_, q in node_obs[sid][1] if sid_ == f"node:{sid}:activity"
+        )
         created[kcid] = _make_concept(tools, kcid, oid, quote)
     for kcid in (
-        "skc_actor_sales",
-        "skc_actor_manager",
-        "skc_system_crm",
-        "skc_system_quoting",
-        "skc_system_email",
-        "skc_system_excel",
-        "skc_request",
-        "skc_customer",
-        "skc_pricing",
-        "skc_quote",
-        "skc_excel_summary",
-        "skc_rationale_credit_risk",
+        "tc_actor_sales",
+        "tc_actor_manager",
+        "tc_system_crm",
+        "tc_system_quoting",
+        "tc_system_email",
+        "tc_system_excel",
+        "tc_request",
+        "tc_customer",
+        "tc_pricing",
+        "tc_quote",
+        "tc_excel_summary",
+        "tc_rationale_credit_risk",
     ):
         sid, quote = _quote_for_concept(node_obs, kcid)
         created[kcid] = _make_concept(tools, kcid, node_oids[sid], quote)
@@ -379,17 +608,20 @@ def _build(tools: InterviewTools, ja: bool = False) -> None:
         anns = node_obs[sid][1]
         args: dict = {
             "node_id": anid,
-            "activity": _prop(_SEMANTIC_TO_CONCEPT[f"node:{sid}:activity"], oid,
-                              next(q for s, q in anns if s == f"node:{sid}:activity")),
+            "activity": _prop(
+                _SEMANTIC_TO_CONCEPT[f"node:{sid}:activity"],
+                oid,
+                next(q for s, q in anns if s == f"node:{sid}:activity"),
+            ),
         }
         for prop, kcid in (
-            ("actor", "skc_actor_sales"),
-            ("actor", "skc_actor_manager"),
-            ("system", "skc_system_crm"),
-            ("system", "skc_system_quoting"),
-            ("system", "skc_system_email"),
-            ("system", "skc_system_excel"),
-            ("necessity_rationale", "skc_rationale_credit_risk"),
+            ("actor", "tc_actor_sales"),
+            ("actor", "tc_actor_manager"),
+            ("system", "tc_system_crm"),
+            ("system", "tc_system_quoting"),
+            ("system", "tc_system_email"),
+            ("system", "tc_system_excel"),
+            ("necessity_rationale", "tc_rationale_credit_risk"),
         ):
             for semantic_id, q in anns:
                 if _SEMANTIC_TO_CONCEPT.get(semantic_id) == kcid:
@@ -409,6 +641,12 @@ def _build(tools: InterviewTools, ja: bool = False) -> None:
         if writes:
             args["writes"] = writes
         tools.add_node(**args)
+
+    # the stakeholder does NOT know several properties of known elements —
+    # record explicit, evidenced DONT_KNOW on every such slot (an unasserted
+    # slot does NOT count as DONT_KNOW)
+    for sid in ("r", "cc", "cq", "ap", "sq", "me"):
+        _record_node_dont_know(tools, sid)
 
     # edges
     for eid in ("e1", "e2", "e3", "e4", "e5", "e6"):
@@ -433,17 +671,23 @@ def _build(tools: InterviewTools, ja: bool = False) -> None:
             frm,
             to,
             condition=cond,
-            evidence=[
-                _ev(oid, q) for sid_, q in anns if sid_ == f"edge:{eid}"
-            ],
+            evidence=[_ev(oid, q) for sid_, q in anns if sid_ == f"edge:{eid}"],
         )
+    for eid in ("e1", "e2", "e5"):
+        _record_edge_dont_know(tools, eid)
     tools.set_graph_endpoints(start_node_id="a", end_node_ids=["e", "f"])
     tools.finish_interview()
 
 
 def _build_lab(tools: InterviewTools) -> None:
-    """Build a correct lab AgentGraph asserting ONLY known properties with
-    full provenance and grounded concepts."""
+    """Build a correct lab AgentGraph asserting ONLY known properties (and
+    recording every stakeholder DONT_KNOW slot explicitly) with full
+    provenance and grounded concepts."""
+    from tau2.domains.business_interview.facts import StakeholderKnowledgeCatalog
+
+    tools.assertion_ledger.install_catalog(
+        StakeholderKnowledgeCatalog.from_scenario(_sc(LAB_SCENARIO))
+    )
     tools.start_inference("lab")
     _ingest(tools, "assistant", "Hello.")
     nodes = [
@@ -453,7 +697,7 @@ def _build_lab(tools: InterviewTools) -> None:
             [
                 ("node:n1:activity", "accession"),
                 ("node:n1:actor", "I"),
-                ("node:n1:reads:skc_sample", "specimen"),
+                ("node:n1:reads:tc_sample", "specimen"),
             ],
         ),
         (
@@ -486,13 +730,15 @@ def _build_lab(tools: InterviewTools) -> None:
     created: dict[str, str] = {}
     oids: dict[str, str] = {}
     for sid, text, anns in nodes:
-        oid = _say(tools, text, [_annotation(s, q) for s, q in anns])
+        oid = _say(
+            tools, text, [_annotation(s, q) for s, q in anns], scenario_id=LAB_SCENARIO
+        )
         oids[sid] = oid
         act_kcid = {
-            "n1": "skc_activity_accession",
-            "n2": "skc_activity_seasoning",
-            "n3": "skc_activity_conditioning",
-            "n4": "skc_activity_batch_approval",
+            "n1": "tc_activity_accession",
+            "n2": "tc_activity_seasoning",
+            "n3": "tc_activity_conditioning",
+            "n4": "tc_activity_batch_approval",
         }[sid]
         quote = next(q for s, q in anns if s == f"node:{sid}:activity")
         created[f"act_{sid}"] = _make_concept(tools, act_kcid, oid, quote)
@@ -502,10 +748,10 @@ def _build_lab(tools: InterviewTools) -> None:
             "node_id": sid,
             "activity": _prop(
                 {
-                    "n1": "skc_activity_accession",
-                    "n2": "skc_activity_seasoning",
-                    "n3": "skc_activity_conditioning",
-                    "n4": "skc_activity_batch_approval",
+                    "n1": "tc_activity_accession",
+                    "n2": "tc_activity_seasoning",
+                    "n3": "tc_activity_conditioning",
+                    "n4": "tc_activity_batch_approval",
                 }[sid],
                 oid,
                 next(q for s, q in anns if s == f"node:{sid}:activity"),
@@ -513,14 +759,12 @@ def _build_lab(tools: InterviewTools) -> None:
         }
         for semantic_id, q in anns:
             if semantic_id == f"node:{sid}:actor":
-                kcid = "skc_actor_lab_tech" if sid != "n4" else "skc_actor_lab_supervisor"
+                kcid = "tc_actor_lab_tech" if sid != "n4" else "tc_actor_lab_supervisor"
                 if kcid not in created:
-                    created[kcid] = _make_concept(
-                        tools, kcid, oid, q
-                    )
+                    created[kcid] = _make_concept(tools, kcid, oid, q)
                 args["actor"] = _prop(kcid, oid, q)
             elif semantic_id == f"node:{sid}:system":
-                kcid = "skc_system_chamber"
+                kcid = "tc_system_chamber"
                 if kcid not in created:
                     created[kcid] = _make_concept(tools, kcid, oid, q)
                 args["system"] = _prop(kcid, oid, q)
@@ -554,8 +798,80 @@ def _build_lab(tools: InterviewTools) -> None:
         ),
     ]
     for eid, frm, to, text, anns in edges:
-        oid = _say(tools, text, [_annotation(s, q) for s, q in anns])
+        oid = _say(
+            tools, text, [_annotation(s, q) for s, q in anns], scenario_id=LAB_SCENARIO
+        )
         tools.add_edge(eid, frm, to, evidence=[_ev(oid, q) for s, q in anns])
+    # the lab tech does NOT know most read/write artifacts or rationales —
+    # record every DONT_KNOW slot explicitly (restraint is not an omission)
+    lab_dont_know = [
+        (
+            "n1",
+            "I don't know which system the step uses, what it writes, or why "
+            "it is necessary.",
+            [
+                ("node:n1:system", "which system the step uses"),
+                ("node:n1:writes", "what it writes"),
+                ("node:n1:rationale", "why it is necessary"),
+            ],
+        ),
+        (
+            "n2",
+            "I don't know what the seasoning reads or writes, or why it is necessary.",
+            [
+                ("node:n2:reads", "what the seasoning reads"),
+                ("node:n2:writes", "or writes"),
+                ("node:n2:rationale", "why it is necessary"),
+            ],
+        ),
+        (
+            "n3",
+            "I don't know what the cycle reads or writes, or why it is necessary.",
+            [
+                ("node:n3:reads", "what the cycle reads"),
+                ("node:n3:writes", "or writes"),
+                ("node:n3:rationale", "why it is necessary"),
+            ],
+        ),
+        (
+            "n4",
+            "I don't know which system the approval uses, what it reads or "
+            "writes, or why it is necessary.",
+            [
+                ("node:n4:system", "which system the approval uses"),
+                ("node:n4:reads", "what it reads"),
+                ("node:n4:writes", "or writes"),
+                ("node:n4:rationale", "why it is necessary"),
+            ],
+        ),
+    ]
+    for nid, text, anns in lab_dont_know:
+        oid = _say(
+            tools, text, [_annotation(s, q) for s, q in anns], scenario_id=LAB_SCENARIO
+        )
+        tools.record_dont_know(
+            nid,
+            properties=[
+                "rationale" if s == f"node:{nid}:rationale" else s.split(":")[2]
+                for s, _ in anns
+            ],
+            evidence=[_ev(oid, q) for _, q in anns],
+        )
+    for eid in ("l1", "l2", "l3"):
+        text = f"I don't know of any condition on the way from {eid}."
+        oid = _say(
+            tools,
+            text,
+            [
+                _annotation(
+                    f"edge:{eid}:condition", f"any condition on the way from {eid}"
+                )
+            ],
+            scenario_id=LAB_SCENARIO,
+        )
+        tools.record_edge_condition_dont_know(
+            eid, evidence=[_ev(oid, f"any condition on the way from {eid}")]
+        )
     tools.set_graph_endpoints(start_node_id="n1", end_node_ids=["n4"])
     tools.finish_interview()
 
@@ -601,7 +917,14 @@ def test_truth_contains_only_graph_and_concepts():
     assert isinstance(truth, type(quotation_truth()))
     for concept in truth.concepts.values():
         assert isinstance(concept, TruthConcept)
-        assert concept.kind in ("activity", "actor", "system", "data", "condition", "rationale")
+        assert concept.kind in (
+            "activity",
+            "actor",
+            "system",
+            "data",
+            "condition",
+            "rationale",
+        )
     # concept descriptions describe the concept, never a workflow position
     assert "node:" not in " ".join(c.description for c in truth.concepts.values())
     assert "edge:" not in " ".join(c.description for c in truth.concepts.values())
@@ -629,6 +952,7 @@ def test_stable_semantic_ids_include_reads_writes_elements():
         assert expected in ids, expected
     # ids survive reordering: swap the reads list -> same id set
     cq = truth.nodes["cq"]
+    assert isinstance(cq.reads, list)
     cq.reads.reverse()
     ids2 = graph_semantic_ids(truth.nodes, truth.edges)
     assert ids == ids2
@@ -674,15 +998,18 @@ def test_removal_creates_no_shortcut_edge():
         visible_edge_attributes={"ab": [], "bc": []},
     )
     knowledge = project_knowledge(truth, filter_)
-    assert set(knowledge.graph.nodes) == {"A", "C"}
-    assert set(knowledge.graph.edges) == set()
+    g = knowledge.graph
+    node_t2l = {t: k for k, t in g.node_truth_ids.items()}
+    assert set(g.nodes) == {node_t2l["A"], node_t2l["C"]}
+    assert set(g.edges) == set()
     # never a shortcut A -> C
     assert not any(
-        e.from_node == "A" and e.to_node == "C" for e in knowledge.graph.edges.values()
+        e.from_node == node_t2l["A"] and e.to_node == node_t2l["C"]
+        for e in g.edges.values()
     )
     # start survives when the start node is known; unknown end is dropped
-    assert knowledge.graph.start_node_id == "A"
-    assert knowledge.graph.end_node_ids == ["C"]
+    assert g.start_node_id == node_t2l["A"]
+    assert g.end_node_ids == [node_t2l["C"]]
 
 
 def test_knowledge_masking_three_valued():
@@ -701,24 +1028,33 @@ def test_knowledge_masking_three_valued():
             "me": ["activity", "actor", "system", "writes"],
         },
         visible_edge_attributes={
-            "e1": ["condition"], "e2": [], "e3": ["condition"],
-            "e4": ["condition"], "e5": [], "e6": ["condition"],
+            "e1": ["condition"],
+            "e2": [],
+            "e3": ["condition"],
+            "e4": ["condition"],
+            "e5": [],
+            "e6": ["condition"],
         },
     )
     knowledge = project_knowledge(truth, filter_)
     g = knowledge.graph
-    assert isinstance(g.nodes["cq"].system, ConceptRef)  # known value
-    assert g.nodes["cq"].system.concept_id == "skc_system_quoting"
-    assert isinstance(g.nodes["cq"].reads, list)  # known list
-    assert g.nodes["cq"].reads[0].concept_id == "skc_customer"
-    assert is_dont_know(g.nodes["sq"].reads)  # unknown property -> DONT_KNOW
-    assert is_dont_know(g.nodes["sq"].writes)
+    concept_t2l = {c.truth_concept_id: k for k, c in g.concepts.items()}
+    node_t2l = {t: k for k, t in g.node_truth_ids.items()}
+    edge_t2l = {t: k for k, t in g.edge_truth_ids.items()}
+    cq = g.nodes[node_t2l["cq"]]
+    assert isinstance(cq.system, ConceptRef)  # known value
+    assert cq.system.concept_id == concept_t2l["tc_system_quoting"]
+    assert isinstance(cq.reads, list)  # known list
+    assert cq.reads[0].concept_id == concept_t2l["tc_customer"]
+    sq = g.nodes[node_t2l["sq"]]
+    assert is_dont_know(sq.reads)  # unknown property -> DONT_KNOW
+    assert is_dont_know(sq.writes)
     # e1's condition is KNOWN and the Truth has none -> None (known absent)
-    assert g.edges["e1"].condition is None
+    assert g.edges[edge_t2l["e1"]].condition is None
     # e2's condition is not known -> DONT_KNOW
-    assert is_dont_know(g.edges["e2"].condition)
-    assert is_dont_know(g.nodes["me"].necessity_rationale)  # unknown rationale
-    assert is_dont_know(g.nodes["r"].reads)
+    assert is_dont_know(g.edges[edge_t2l["e2"]].condition)
+    assert is_dont_know(g.nodes[node_t2l["me"]].necessity_rationale)
+    assert is_dont_know(g.nodes[node_t2l["r"]].reads)
 
 
 def test_description_and_terminology_vary_independently():
@@ -732,7 +1068,11 @@ def test_description_and_terminology_vary_independently():
     )
     # both known (defaults)
     k1 = project_knowledge(truth, base)
-    c1 = k1.graph.concepts["skc_activity_receive_request"]
+    c1 = k1.graph.concepts[
+        {c.truth_concept_id: k for k, c in k1.graph.concepts.items()}[  # noqa: SIM118
+            "tc_activity_receive_request"
+        ]
+    ]
     assert c1.has_description() and c1.has_terms()
     assert c1.truth_concept_id == "tc_activity_receive_request"
     # term known, details unknown
@@ -748,7 +1088,11 @@ def test_description_and_terminology_vary_independently():
             }
         ),
     )
-    c2 = k2.graph.concepts["skc_activity_receive_request"]
+    c2 = k2.graph.concepts[
+        {c.truth_concept_id: k for k, c in k2.graph.concepts.items()}[  # noqa: SIM118
+            "tc_activity_receive_request"
+        ]
+    ]
     assert not c2.has_description() and c2.has_terms()
     # details known, local/wrong term
     k3 = project_knowledge(
@@ -763,7 +1107,11 @@ def test_description_and_terminology_vary_independently():
             }
         ),
     )
-    c3 = k3.graph.concepts["skc_activity_receive_request"]
+    c3 = k3.graph.concepts[
+        {c.truth_concept_id: k for k, c in k3.graph.concepts.items()}[  # noqa: SIM118
+            "tc_activity_receive_request"
+        ]
+    ]
     assert c3.has_description() and c3.terms == ["take the order"]
     # details known, term unknown
     k4 = project_knowledge(
@@ -778,7 +1126,11 @@ def test_description_and_terminology_vary_independently():
             }
         ),
     )
-    c4 = k4.graph.concepts["skc_activity_receive_request"]
+    c4 = k4.graph.concepts[
+        {c.truth_concept_id: k for k, c in k4.graph.concepts.items()}[  # noqa: SIM118
+            "tc_activity_receive_request"
+        ]
+    ]
     assert c4.has_description() and not c4.has_terms()
     # neither known
     k5 = project_knowledge(
@@ -793,7 +1145,11 @@ def test_description_and_terminology_vary_independently():
             }
         ),
     )
-    c5 = k5.graph.concepts["skc_activity_receive_request"]
+    c5 = k5.graph.concepts[
+        {c.truth_concept_id: k for k, c in k5.graph.concepts.items()}[  # noqa: SIM118
+            "tc_activity_receive_request"
+        ]
+    ]
     assert not c5.has_description() and not c5.has_terms()
 
 
@@ -804,19 +1160,22 @@ def test_hidden_concepts_never_enter_knowledge_or_prompt():
 
     sc = get_scenario(LAB_SCENARIO)
     assert sc is not None
-    concepts = sc.knowledge.graph.concepts
-    for hidden in ("skc_accessioned_sample", "skc_seasoned_chamber",
-                   "skc_conditioned_sample", "skc_batch_approval"):
-        assert hidden not in concepts, hidden
-        assert not any(
-            c.truth_concept_id == "tc_accessioned_sample"
-            or c.truth_concept_id == "tc_seasoned_chamber"
-            or c.truth_concept_id == "tc_conditioned_sample"
-            or c.truth_concept_id == "tc_batch_approval"
-            for c in concepts.values()
-        )
+    kg = sc.knowledge.graph
+    concepts = kg.concepts
+    hidden_tids = (
+        "tc_accessioned_sample",
+        "tc_seasoned_chamber",
+        "tc_conditioned_sample",
+        "tc_batch_approval",
+    )
+    assert not any(c.truth_concept_id in hidden_tids for c in concepts.values())
+    # no knowledge concept id encodes a Truth name
+    for c in concepts.values():
+        assert "accessioned" not in c.id and "seasoned" not in c.id
+        assert "conditioned" not in c.id and "approval" not in c.id
     # hidden slots are DONT_KNOW in the knowledge graph
-    assert is_dont_know(sc.knowledge.graph.nodes["n2"].writes)
+    node_t2l = {t: k for k, t in kg.node_truth_ids.items()}
+    assert is_dont_know(kg.nodes[node_t2l["n2"]].writes)
     # the prompt never exposes hidden Truth ids or canonical terms
     env = get_environment()
     task = next(t for t in get_tasks() if t.id == LAB_SCENARIO)
@@ -835,9 +1194,11 @@ def test_hidden_concepts_never_enter_knowledge_or_prompt():
         "batch approval",
     ):
         assert forbidden not in block, forbidden
-    # the knowledge concept ids and graph semantic ids ARE in the prompt
-    assert "skc_sample" in block
-    assert "node:n1:reads:skc_sample" in block
+    # the opaque knowledge concept ids and graph semantic ids ARE in the
+    # prompt (no Truth ids, labels or terms)
+    concept_t2l = {c.truth_concept_id: k for k, c in concepts.items()}
+    assert concept_t2l["tc_sample"] in block
+    assert f"node:{node_t2l['n1']}:reads:{concept_t2l['tc_sample']}" in block
 
 
 # ---------------------------------------------------------------------------
@@ -851,35 +1212,26 @@ def test_observation_spans_resolve_directly_to_semantic_ids():
     tools = _tools()
     tools.start_inference("q")
     _ingest(tools, "assistant", "Hello.")
-    oid = _say(
+    _say(
         tools,
         "I check customer information in CRM.",
         [
             _annotation("node:cc:activity", "check customer information"),
-            _annotation("node:cc:reads:skc_customer", "customer information"),
+            _annotation("node:cc:reads:tc_customer", "customer information"),
             _annotation("node:cc:system", "CRM"),
         ],
     )
     assert tools.assertion_ledger.annotations() != {}
-    # deterministic validation: unknown semantic id rejected at eval time
+    # deterministic validation: unknown semantic id rejected at ingestion
+    # (an opaque-looking local id that does not exist in the knowledge graph)
     tools2 = _tools()
     tools2.start_inference("q")
     _ingest(tools2, "assistant", "Hello.")
-    _say(
-        tools2,
-        "I check customer information in CRM.",
-        [_annotation("node:zz:activity", "check customer information")],
-    )
-    sc = get_scenario(SCENARIO)
-    assert sc is not None
     with pytest.raises(ValueError):
-        evaluate(
-            tools2.db,
-            sc.knowledge,
-            EvaluationSpec(),
-            sc.stakeholder,
-            truth=sc.truth,
-            annotations=tools2.assertion_ledger.annotations(),
+        _say(
+            tools2,
+            "I check customer information in CRM.",
+            [_annotation("node:skn_099:activity", "check customer information")],
         )
     # a property ref whose evidence resolves to the activity semantic id
     # grounds it (full-build below proves the end-to-end path)
@@ -901,21 +1253,23 @@ def test_edge_and_condition_separately_addressable():
     )
     sc = get_scenario(SCENARIO)
     assert sc is not None
-    from tau2.domains.business_interview.evaluation import _grounded_ids
 
-    grounded, invalid, amb = _grounded_ids(
-        tools.db, tools.assertion_ledger.annotations(),
+    grounded, invalid, amb = grounded_semantic_ids(
+        tools.db,
+        tools.assertion_ledger.annotations(),
         [_evr(oid, "go to the manager for approval")],
     )
-    assert grounded == {"edge:e3"} and invalid == 0 and amb == 0
-    grounded2, _, _ = _grounded_ids(
-        tools.db, tools.assertion_ledger.annotations(),
+    assert grounded == {_local_sid("edge:e3")} and invalid == 0 and amb == 0
+    grounded2, _, _ = grounded_semantic_ids(
+        tools.db,
+        tools.assertion_ledger.annotations(),
         [_evr(oid, "over 1,000,000 yen")],
     )
-    assert grounded2 == {"edge:e3:condition"}
+    assert grounded2 == {_local_sid("edge:e3:condition")}
     # a span covering BOTH is globally ambiguous
-    grounded3, _, amb3 = _grounded_ids(
-        tools.db, tools.assertion_ledger.annotations(),
+    grounded3, _, amb3 = grounded_semantic_ids(
+        tools.db,
+        tools.assertion_ledger.annotations(),
         [_evr(oid, "over 1,000,000 yen go to the manager for approval")],
     )
     assert grounded3 == set() and amb3 == 1
@@ -931,10 +1285,10 @@ def test_property_scoring_uses_property_evidence_only():
     oid = _say(
         tools,
         "I check the customer information in the CRM.",
-        [_annotation("node:cc:activity", "check the customer information")],
+        [_annotation("node:cc:system", "CRM")],
     )
-    tools.create_concept("bogus_sys", "system", "CRM", evidence=[_ev(oid, "check the customer information")])
-    tools.ground_concept("bogus_sys", evidence=[_ev(oid, "check the customer information")])
+    tools.create_concept("bogus_sys", "system", "CRM", evidence=[_ev(oid, "CRM")])
+    tools.ground_concept("bogus_sys", evidence=[_ev(oid, "CRM")])
     # system ref with NO property evidence of its own
     tools.db.graph.nodes["b"].system = ConceptRef(
         concept_id="bogus_sys", confidence=1.0
@@ -957,7 +1311,7 @@ def test_broad_clause_cannot_cross_credit_semantic_ids():
         [
             _annotation("node:cc:activity", "check the customer information"),
             _annotation("node:cc:system", "CRM"),
-            _annotation("node:cc:reads:skc_customer", "customer information"),
+            _annotation("node:cc:reads:tc_customer", "customer information"),
         ],
     )
     tools.db.graph.nodes["b"].system = ConceptRef(
@@ -994,7 +1348,9 @@ def test_invalid_annotation_quote_rejected_at_ingestion():
             UserMessage(
                 role="user",
                 content="I check the customer in the CRM.",
-                stakeholder_annotations=[_annotation("node:cc:system", "CRM", occurrence=3)],
+                stakeholder_annotations=[
+                    _annotation("node:cc:system", "CRM", occurrence=3)
+                ],
             )
         )
     with pytest.raises(ValueError):
@@ -1052,7 +1408,9 @@ def test_fabricated_node_stays_unmapped():
     _build(tools)
     assert tools.db.graph is not None
     pizza = _say(tools, "I like pizza on Fridays.")
-    tools.create_concept("pizza_act", "activity", "eat pizza", evidence=[_ev(pizza, "pizza")])
+    tools.create_concept(
+        "pizza_act", "activity", "eat pizza", evidence=[_ev(pizza, "pizza")]
+    )
     tools.add_node("fab", activity="pizza_act", evidence=[_ev(pizza, "pizza")])
     res = _eval(tools)
     assert res.node_precision < 1.0
@@ -1116,9 +1474,11 @@ def test_hidden_truth_guesses_remain_wrong():
     oid = _say(
         tools,
         "I check the customer information in the CRM.",
-        [_annotation("node:cc:reads:skc_customer", "customer information")],
+        [_annotation("node:cc:reads:tc_customer", "customer information")],
     )
-    tools.create_concept("guess_data", "data", "something", evidence=[_ev(oid, "customer information")])
+    tools.create_concept(
+        "guess_data", "data", "something", evidence=[_ev(oid, "customer information")]
+    )
     tools.ground_concept("guess_data", evidence=[_ev(oid, "customer information")])
     tools.db.graph.nodes["e"].reads = [
         ConceptRef(
@@ -1138,17 +1498,29 @@ def test_known_absent_property_asserted_fails():
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
+    # ground a condition concept with authentic condition-slot evidence
+    cond_oid = _say(
+        tools,
+        "Quotations over 1,000,000 yen go to the manager for approval.",
+        [_annotation("edge:e3:condition", "over 1,000,000 yen")],
+    )
+    tools.create_concept(
+        "fake_cond",
+        "condition",
+        "sometimes",
+        evidence=[_ev(cond_oid, "over 1,000,000 yen")],
+    )
+    tools.ground_concept("fake_cond", evidence=[_ev(cond_oid, "over 1,000,000 yen")])
+    # assert it on e1 whose condition the stakeholder knows to be ABSENT
     oid = _say(
         tools,
         "After receiving the request, I check the customer information.",
         [_annotation("edge:e1", "After receiving the request, I check")],
     )
-    tools.create_concept("fake_cond", "condition", "sometimes", evidence=[_ev(oid, "After receiving the request")])
-    tools.ground_concept("fake_cond", evidence=[_ev(oid, "After receiving the request")])
     tools.db.graph.edges["e1"].condition = ConceptRef(
         concept_id="fake_cond",
         confidence=1.0,
-        evidence=[_evr(oid, "After receiving the request")],
+        evidence=[_evr(oid, "After receiving the request, I check")],
     )
     res = _eval(tools)
     assert res.condition_correctness < 1.0
@@ -1222,16 +1594,14 @@ def test_ordinary_mention_cannot_confirm_concept():
     oid = _say(
         tools,
         "I create the quotation using the customer information in the quoting system.",
-        [_annotation("node:cq:writes:skc_quote", "quotation")],
+        [_annotation("node:cq:writes:tc_quote", "quotation")],
     )
     with pytest.raises(ValueError):
         tools.confirm_concept("quote_c", evidence=[_ev(oid, "quotation")])
     oid2 = _say(
         tools,
         "Yes.",
-        alignments=[
-            {"semantic_id": "skc_quote", "quote": "Yes.", "act": "confirm"}
-        ],
+        alignments=[{"semantic_id": "tc_quote", "quote": "Yes.", "act": "confirm"}],
     )
     tools.confirm_concept("quote_c", evidence=[_ev(oid2, "Yes.")])
     assert tools.db.graph is not None
@@ -1248,7 +1618,7 @@ def test_unknown_and_disputed_backed_by_events():
         tools,
         "I do not know the reason for that.",
         alignments=[
-            {"semantic_id": "skc_pricing", "quote": "do not know", "act": "unknown"}
+            {"semantic_id": "tc_pricing", "quote": "do not know", "act": "unknown"}
         ],
     )
     tools.mark_concept_unknown("pricing", evidence=[_ev(dont_know, "do not know")])
@@ -1264,14 +1634,18 @@ def test_unknown_and_disputed_backed_by_events():
         tools2,
         "Actually, they are not the same thing.",
         alignments=[
-            {"semantic_id": "skc_customer", "quote": "not the same thing", "act": "dispute"}
+            {
+                "semantic_id": "tc_customer",
+                "quote": "not the same thing",
+                "act": "dispute",
+            }
         ],
     )
     o2 = _say(
         tools2,
         "I keep telling you, those are different.",
         alignments=[
-            {"semantic_id": "skc_customer", "quote": "different", "act": "dispute"}
+            {"semantic_id": "tc_customer", "quote": "different", "act": "dispute"}
         ],
     )
     tools2.mark_concept_disputed(
@@ -1293,7 +1667,7 @@ def test_mention_is_not_terminology():
     oid = _say(
         tools,
         "I create the quotation using the customer information in the quoting system.",
-        [_annotation("node:cq:writes:skc_quote", "quotation")],
+        [_annotation("node:cq:writes:tc_quote", "quotation")],
     )
     tools.add_concept_mention("quote", [_ev(oid, "quotation")])
     res_before = _eval(tools)
@@ -1309,7 +1683,7 @@ def test_mention_is_not_terminology():
         "Yes, the offer document is fine.",
         terminology=[
             {
-                "semantic_id": "skc_quote",
+                "semantic_id": "tc_quote",
                 "proposed_term": "the offer document",
                 "quote": "the offer document is fine",
             }
@@ -1337,7 +1711,7 @@ def test_terminology_agreement_requires_matching_event():
         "Yes.",
         terminology=[
             {
-                "semantic_id": "skc_quote",
+                "semantic_id": "tc_quote",
                 "proposed_term": "the offer document",
                 "quote": "Yes.",
             }
@@ -1459,6 +1833,8 @@ def test_merge_concepts_repoints_refs_and_folds_mentions():
     tools.merge_concepts("a", ["b"])
     assert tools.db.graph is not None
     assert "b" not in tools.db.graph.concepts
+    assert isinstance(tools.db.graph.nodes["n1"].reads, list)
+    assert isinstance(tools.db.graph.nodes["n1"].writes, list)
     assert tools.db.graph.nodes["n1"].reads[0].concept_id == "a"
     assert tools.db.graph.nodes["n1"].writes[0].concept_id == "a"
 
@@ -1591,10 +1967,10 @@ def test_user_message_serialization_excludes_annotations():
         content="hello",
         stakeholder_annotations=[_annotation("node:cc:system", "CRM")],
         stakeholder_alignments=[
-            {"semantic_id": "skc_quote", "quote": "yes", "act": "confirm"}
+            {"semantic_id": "tc_quote", "quote": "yes", "act": "confirm"}
         ],
         stakeholder_terminology=[
-            {"semantic_id": "skc_quote", "proposed_term": "offer", "quote": "yes"}
+            {"semantic_id": "tc_quote", "proposed_term": "offer", "quote": "yes"}
         ],
     )
     dumped = msg.model_dump(mode="json")
@@ -1629,12 +2005,12 @@ def test_sidecar_parse_accepts_semantic_annotations():
 
     sidecar = parse_sidecar(
         '{"message": "Yes.", "annotations": [], "alignments": '
-        '[{"semantic_id": "skc_quote", "quote": "Yes.", "act": "confirm"}], '
-        '"terminology": [{"semantic_id": "skc_customer", '
+        '[{"semantic_id": "skc_012", "quote": "Yes.", "act": "confirm"}], '
+        '"terminology": [{"semantic_id": "skc_013", '
         '"proposed_term": "customer master", "quote": "Yes."}]}'
     )
     assert sidecar["message"] == "Yes."
-    assert sidecar["alignments"][0].semantic_id == "skc_quote"
+    assert sidecar["alignments"][0].semantic_id == "skc_012"
     assert sidecar["terminology"][0].proposed_term == "customer master"
     plain = parse_sidecar(
         '{"message": "I check the customer.", '
@@ -1646,7 +2022,7 @@ def test_sidecar_parse_accepts_semantic_annotations():
     with pytest.raises(ValueError):
         parse_sidecar(
             '{"message": "x", "annotations": [], "alignments": '
-            '[{"semantic_id": "skc_quote", "quote": "x", '
+            '[{"semantic_id": "skc_012", "quote": "x", '
             '"act": "nonsense"}]}'
         )
 
@@ -1908,7 +2284,14 @@ def test_lab_hidden_truth_guess_fails():
     cant_say = _say(
         tools,
         "I cannot say.",
-        alignments=[{"semantic_id": "skc_sample", "quote": "cannot say", "act": "unknown"}],
+        alignments=[
+            {
+                "semantic_id": "tc_sample",
+                "quote": "cannot say",
+                "act": "unknown",
+            }
+        ],
+        scenario_id=LAB_SCENARIO,
     )
     tools.create_concept("seasoned", "data", "seasoned chamber")
     tools.mark_concept_unknown("seasoned", evidence=[_ev(cant_say, "cannot say")])
@@ -1927,12 +2310,16 @@ def test_lab_hidden_truth_guess_fails():
 
 def _reference_trajectory() -> list:
     """A full faithful trajectory (messages + tool calls) mirroring ``_build``
-    with the private semantic sidecars carried on the UserMessages."""
+    (incl. explicit DONT_KNOW recordings) with the private semantic sidecars
+    carried on the UserMessages (ids in opaque local form)."""
     from tau2.data_model.message import AssistantMessage as AM
     from tau2.data_model.message import UserMessage as UM
 
     traj = []
     tools = InterviewTools(InterviewDB())
+    tools.assertion_ledger.install_catalog(
+        StakeholderKnowledgeCatalog.from_scenario(_sc(SCENARIO))
+    )
     cid = 0
     traj.append(AM(role="assistant", content="Hello, I'd like to interview you."))
     tools.db.messages.append(
@@ -1957,7 +2344,9 @@ def _reference_trajectory() -> list:
             UM(
                 role="user",
                 content=text,
-                stakeholder_annotations=[_annotation(s, q) for s, q in anns],
+                stakeholder_annotations=[
+                    _annotation(_local_sid(s), q) for s, q in anns
+                ],
                 stakeholder_alignments=list(alignments or []),
                 stakeholder_terminology=list(terminology or []),
             )
@@ -1966,16 +2355,39 @@ def _reference_trajectory() -> list:
         turn = len(tools.db.messages) - 1
         tools.assertion_ledger.bind(
             turn,
-            [SemanticAnnotation(**_annotation(s, q)) for s, q in anns],
+            [
+                SemanticAnnotation(semantic_id=_local_sid(s), quote=q, occurrence=0)
+                for s, q in anns
+            ],
             text,
         )
         if alignments:
             tools.assertion_ledger.bind_alignment(
-                turn, [ConceptAlignmentAssertion(**a) for a in alignments], text
+                turn,
+                [
+                    ConceptAlignmentAssertion(
+                        semantic_id=_local_sid(a["semantic_id"]),
+                        quote=a["quote"],
+                        occurrence=a.get("occurrence", 0),
+                        act=a["act"],
+                    )
+                    for a in alignments
+                ],
+                text,
             )
         if terminology:
             tools.assertion_ledger.bind_terminology(
-                turn, [TerminologyConfirmation(**a) for a in terminology], text
+                turn,
+                [
+                    TerminologyConfirmation(
+                        semantic_id=_local_sid(t["semantic_id"]),
+                        proposed_term=t["proposed_term"],
+                        quote=t["quote"],
+                        occurrence=t.get("occurrence", 0),
+                    )
+                    for t in terminology
+                ],
+                text,
             )
 
     mk("start_inference", {"name": "Quotation creation"})
@@ -1995,18 +2407,36 @@ def _reference_trajectory() -> list:
             agent_cid, kind, label = _AGENT_CONCEPTS[kcid]
             if agent_cid not in created:
                 created.add(agent_cid)
-                mk("create_concept", {"concept_id": agent_cid, "kind": kind, "label": label, "evidence": [_ev(oid, q)]})
-                mk("ground_concept", {"concept_id": agent_cid, "evidence": [_ev(oid, q)]})
+                mk(
+                    "create_concept",
+                    {
+                        "concept_id": agent_cid,
+                        "kind": kind,
+                        "label": label,
+                        "evidence": [_ev(oid, q)],
+                    },
+                )
+                mk(
+                    "ground_concept",
+                    {"concept_id": agent_cid, "evidence": [_ev(oid, q)]},
+                )
             else:
-                mk("add_concept_mention", {"concept_id": agent_cid, "evidence": [_ev(oid, q)]})
+                mk(
+                    "add_concept_mention",
+                    {"concept_id": agent_cid, "evidence": [_ev(oid, q)]},
+                )
     for anid, sid in _NODE_MAP.items():
         oid = node_oid[sid]
         anns = _NODE_OBS[sid][1]
         args: dict = {
             "node_id": anid,
             "activity": {
-                "concept_id": _AGENT_CONCEPTS[_SEMANTIC_TO_CONCEPT[f"node:{sid}:activity"]][0],
-                "evidence": [_ev(oid, next(q for s, q in anns if s == f"node:{sid}:activity"))],
+                "concept_id": _AGENT_CONCEPTS[
+                    _SEMANTIC_TO_CONCEPT[f"node:{sid}:activity"]
+                ][0],
+                "evidence": [
+                    _ev(oid, next(q for s, q in anns if s == f"node:{sid}:activity"))
+                ],
             },
         }
         for semantic_id, q in anns:
@@ -2015,16 +2445,41 @@ def _reference_trajectory() -> list:
                 continue
             agent_cid = _AGENT_CONCEPTS[kcid][0]
             if semantic_id.startswith(f"node:{sid}:reads:"):
-                args.setdefault("reads", []).append({"concept_id": agent_cid, "evidence": [_ev(oid, q)]})
+                args.setdefault("reads", []).append(
+                    {"concept_id": agent_cid, "evidence": [_ev(oid, q)]}
+                )
             elif semantic_id.startswith(f"node:{sid}:writes:"):
-                args.setdefault("writes", []).append({"concept_id": agent_cid, "evidence": [_ev(oid, q)]})
+                args.setdefault("writes", []).append(
+                    {"concept_id": agent_cid, "evidence": [_ev(oid, q)]}
+                )
             elif semantic_id == f"node:{sid}:actor":
                 args["actor"] = {"concept_id": agent_cid, "evidence": [_ev(oid, q)]}
             elif semantic_id == f"node:{sid}:system":
                 args["system"] = {"concept_id": agent_cid, "evidence": [_ev(oid, q)]}
             elif semantic_id == f"node:{sid}:rationale":
-                args["necessity_rationale"] = {"concept_id": agent_cid, "evidence": [_ev(oid, q)]}
+                args["necessity_rationale"] = {
+                    "concept_id": agent_cid,
+                    "evidence": [_ev(oid, q)],
+                }
         mk("add_node", args)
+    # explicit DONT_KNOW recordings (an unasserted slot is NOT DONT_KNOW)
+    for sid in ("r", "cc", "cq", "ap", "sq", "me"):
+        text, anns = _NODE_DONT_KNOW_OBS[sid]
+        sm += 1
+        say(text, anns)
+        oid = mk("observe_message", {"message_id": f"sm_{sm}"})
+        agent_node = {v: k for k, v in _NODE_MAP.items()}[sid]
+        mk(
+            "record_dont_know",
+            {
+                "node_id": agent_node,
+                "properties": [
+                    "rationale" if s == f"node:{sid}:rationale" else s.split(":")[2]
+                    for s, _ in anns
+                ],
+                "evidence": [_ev(oid, q) for _, q in anns],
+            },
+        )
     for eid in ("e1", "e2", "e3", "e4", "e5", "e6"):
         text, anns = _EDGE_OBS[eid]
         sm += 1
@@ -2037,8 +2492,19 @@ def _reference_trajectory() -> list:
                 agent_cid, kind, label = _AGENT_CONCEPTS[kcid]
                 if agent_cid not in created:
                     created.add(agent_cid)
-                    mk("create_concept", {"concept_id": agent_cid, "kind": kind, "label": label, "evidence": [_ev(oid, q)]})
-                    mk("ground_concept", {"concept_id": agent_cid, "evidence": [_ev(oid, q)]})
+                    mk(
+                        "create_concept",
+                        {
+                            "concept_id": agent_cid,
+                            "kind": kind,
+                            "label": label,
+                            "evidence": [_ev(oid, q)],
+                        },
+                    )
+                    mk(
+                        "ground_concept",
+                        {"concept_id": agent_cid, "evidence": [_ev(oid, q)]},
+                    )
                 cond = {"concept_id": agent_cid, "evidence": [_ev(oid, q)]}
         frm, to = {
             "e1": ("a", "b"),
@@ -2057,6 +2523,15 @@ def _reference_trajectory() -> list:
         if cond:
             eargs["condition"] = cond
         mk("add_edge", eargs)
+    for eid in ("e1", "e2", "e5"):
+        text, anns = _EDGE_DONT_KNOW_OBS[eid]
+        sm += 1
+        say(text, anns)
+        oid = mk("observe_message", {"message_id": f"sm_{sm}"})
+        mk(
+            "record_edge_condition_dont_know",
+            {"edge_id": eid, "evidence": [_ev(oid, q) for _, q in anns]},
+        )
     mk("set_graph_endpoints", {"start_node_id": "a", "end_node_ids": ["e", "f"]})
     mk("finish_interview", {"summary": "Inferred the quotation graph."})
     return traj
@@ -2075,7 +2550,7 @@ def test_evaluator_rewards_full_reconstruction():
         task=task,
         full_trajectory=traj,
         solo_mode=False,
-        env_kwargs={},
+        env_kwargs={"scenario_id": SCENARIO},
     )
     assert reward_info is not None
     checks = {
@@ -2091,6 +2566,596 @@ def test_evaluator_rewards_full_reconstruction():
     assert diag["structural_pass"] is True
     assert diag["quality_pass"] is True
     assert diag["glossary_pass"] is True
+
+
+# ---------------------------------------------------------------------------
+# v11: opaque stakeholder-local IDs, canonical resolver, binding-aware
+# grounding, explicit Agent DONT_KNOW, knowledge coverage
+# ---------------------------------------------------------------------------
+
+
+def test_opaque_ids_are_stable_and_leak_no_truth_names():
+    import re
+
+    sc = _sc(SCENARIO)
+    kg = sc.knowledge.graph
+    truth = sc.truth
+    for nid in kg.nodes:
+        assert re.fullmatch(r"skn_\d{3}", nid), nid
+    for eid in kg.edges:
+        assert re.fullmatch(r"ske_\d{3}", eid), eid
+    for cid in kg.concepts:
+        assert re.fullmatch(r"skc_\d{3}", cid), cid
+    # no Truth id, label, term, node id or edge id leaks into any knowledge
+    # id or semantic id (even when descriptions/terms are DONT_KNOW)
+    truth_tokens = set(truth.nodes) | set(truth.edges) | set(truth.concepts)
+    truth_tokens.update(t for c in truth.concepts.values() for t in c.canonical_terms)
+    for sid in kg.semantic_ids():
+        assert "tc_" not in sid, sid
+        for token in truth_tokens:
+            if len(token) < 2:
+                continue  # single-char Truth ids are not a leak vector
+            assert token not in sid, (token, sid)
+        # no Truth node/edge/concept id appears as a full semantic segment
+        assert not (set(sid.split(":")) & truth_tokens), sid
+    # deterministic for the scenario and invariant to collection reordering
+    kg2 = project_knowledge(truth, sc.stakeholder).graph
+    assert kg2.node_truth_ids == kg.node_truth_ids
+    assert kg2.edge_truth_ids == kg.edge_truth_ids
+    assert set(kg2.concepts) == set(kg.concepts)
+    sc_again = get_scenario(SCENARIO)
+    assert sc_again is not None
+    assert sc_again.knowledge.graph.semantic_ids() == kg.semantic_ids()
+    reordered = sc.stakeholder.model_copy(
+        update={
+            "visible_node_ids": list(reversed(sc.stakeholder.visible_node_ids)),
+            "visible_edge_ids": list(reversed(sc.stakeholder.visible_edge_ids)),
+        }
+    )
+    kg3 = project_knowledge(truth, reordered).graph
+    assert kg3.node_truth_ids == kg.node_truth_ids
+    assert kg3.edge_truth_ids == kg.edge_truth_ids
+    # private mappings point back at Truth elements
+    for local, tid in kg.node_truth_ids.items():
+        assert tid in truth.nodes
+        assert kg.nodes[local].id == local
+    for local, tid in kg.edge_truth_ids.items():
+        assert tid in truth.edges
+    for c in kg.concepts.values():
+        assert c.truth_concept_id in truth.concepts
+        assert c.id != c.truth_concept_id
+
+
+def test_concept_descriptions_contain_no_graph_facts():
+    """Truth and knowledge concept descriptions describe only the concept
+    itself: no predecessor/successor, reads/writes position, systems,
+    branch/timing, input/output relations or hidden graph properties."""
+    forbidden = (
+        "before",
+        "after",
+        "then",
+        "followed",
+        "record it",
+        "recorded",
+        "from customer and pricing",
+        "to accounting",
+        "in the crm",
+        "in the quoting system",
+        "by email",
+        "excel file",
+        "preparing",
+    )
+    sc = _sc(SCENARIO)
+    for concept in sc.truth.concepts.values():
+        desc = concept.description.lower()
+        for token in forbidden:
+            assert token not in desc, (concept.id, token, desc)
+    lab = _sc(LAB_SCENARIO)
+    for concept in lab.truth.concepts.values():
+        desc = concept.description.lower()
+        for token in forbidden:
+            assert token not in desc, (concept.id, token, desc)
+    for knowledge in (sc.knowledge, lab.knowledge):
+        for c in knowledge.graph.concepts.values():
+            if not isinstance(c.description, str):
+                continue
+            desc = c.description.lower()
+            for token in forbidden:
+                assert token not in desc, (c.id, token, desc)
+
+
+def test_dont_know_descriptions_cannot_leak_through_prompt():
+    """A concept whose description/terms are DONT_KNOW renders as "unknown"
+    in the stakeholder prompt — the Truth description can never leak through
+    the prompt, and ids stay opaque even when the stakeholder knows nothing."""
+    from tau2.domains.business_interview.user_simulator import (
+        StakeholderUserSimulator,
+    )
+
+    truth = quotation_truth()
+    filt = StakeholderFilter(
+        name="s",
+        visible_node_ids=["r"],
+        visible_edge_ids=[],
+        visible_node_attributes={"r": ["activity"]},
+        visible_edge_attributes={},
+        concept_overrides={
+            "tc_activity_receive_request": ConceptKnowledgeOverride(
+                description_known=False, terms_known=False
+            )
+        },
+    )
+    knowledge = project_knowledge(truth, filt)
+    scenario = Scenario(
+        scenario_id="custom", truth=truth, stakeholder=filt, knowledge=knowledge
+    )
+    sim = object.__new__(StakeholderUserSimulator)
+    sim._scenario = scenario  # noqa: SLF001 - test-only
+    sim._catalog = StakeholderKnowledgeCatalog(  # noqa: SLF001 - test-only
+        "s", knowledge
+    )
+    block = sim._knowledge_block()  # noqa: SLF001 - test-only
+    concept = next(
+        c
+        for c in knowledge.graph.concepts.values()
+        if c.truth_concept_id == "tc_activity_receive_request"
+    )
+    assert not concept.has_description() and not concept.has_terms()
+    # the DONT_KNOW description renders as unknown; the Truth description
+    # and terms never appear anywhere in the prompt
+    assert f'id="{concept.id}"' in block
+    assert "unknown" in block
+    assert "Receive the customer's quotation request" not in block
+    assert "receive the quotation request" not in block
+    # the opaque id itself leaks no Truth meaning
+    assert "activity_receive" not in concept.id and "receive" not in concept.id
+
+
+def test_every_semantic_id_resolves_uniquely():
+    kg = _kg(SCENARIO)
+    for sid in kg.semantic_ids():
+        resolved = kg.resolve(sid)
+        if resolved is None:
+            raise AssertionError(sid)
+        if resolved.kind == "node":
+            assert resolved.node is not None and resolved.node_id is not None
+            assert resolved.prop is None and resolved.ref is None
+        elif resolved.kind == "node_slot":
+            assert resolved.prop is not None and resolved.node is not None
+        elif resolved.kind == "node_element":
+            assert resolved.ref is not None and resolved.prop in ("reads", "writes")
+        elif resolved.kind == "edge":
+            assert resolved.edge is not None and resolved.edge_id is not None
+        elif resolved.kind == "edge_slot":
+            assert resolved.prop == "condition" and resolved.edge is not None
+        elif resolved.kind == "concept":
+            assert resolved.concept is not None and resolved.value is resolved.concept
+    # unresolvable ids -> None (never a partial/lenient parse)
+    for bad in (
+        "node:skn_999",
+        "node:skn_001:bogus",
+        "node:skn_001:reads:skc_999",
+        "edge:ske_999",
+        "edge:ske_001:condition:x",
+        "skc_999",
+        "node:",
+        "edge:",
+        "reads:skc_001",
+        "",
+    ):
+        assert kg.resolve(bad) is None, bad
+    # semantic_ids() and resolve() agree exactly
+    assert kg.semantic_ids() == {
+        sid for sid in kg.semantic_ids() if kg.resolve(sid) is not None
+    }
+
+
+def test_node_existence_is_not_activity_slot():
+    """node:<id> resolves to node EXISTENCE — never the activity slot — and
+    evidence anchored only to the node id never scores the activity."""
+    kg = _kg(SCENARIO)
+    node_sid = "node:skn_005"  # truth node r
+    resolved = kg.resolve(node_sid)
+    if resolved is None:
+        raise AssertionError(node_sid)
+    assert resolved.kind == "node"
+    assert resolved.value is resolved.node
+    # the activity slot is a separate address with its own value
+    act_sid = f"{node_sid}:activity"
+    act = kg.resolve(act_sid)
+    if act is None:
+        raise AssertionError(act_sid)
+    assert act.kind == "node_slot" and act.prop == "activity"
+    assert isinstance(act.value, ConceptRef)
+    # node existence represents NO concept; the slot does
+    assert slot_concepts(resolved.value) == set()
+    assert slot_concepts(act.value) == {act.value.concept_id}
+    # end-to-end: node-existence evidence does not score the activity slot
+    tools = _tools()
+    tools.start_inference("q")
+    _ingest(tools, "assistant", "Hello.")
+    oid = _say(
+        tools,
+        "The process starts with the first step.",
+        [_annotation(node_sid, "first step")],
+    )
+    oid_act = _say(
+        tools,
+        "I receive the quotation request.",
+        [_annotation(act_sid, "receive the quotation request")],
+    )
+    tools.create_concept(
+        "act1",
+        "activity",
+        "first step",
+        evidence=[_ev(oid_act, "receive the quotation request")],
+    )
+    tools.ground_concept(
+        "act1", evidence=[_ev(oid_act, "receive the quotation request")]
+    )
+    tools.add_node(
+        "n1",
+        activity={"concept_id": "act1", "evidence": [_ev(oid, "first step")]},
+    )
+    res = _eval(tools)
+    assert res.activity_correctness == 0.0
+
+
+def test_reads_writes_item_resolves_exactly():
+    """node:<id>:reads:<k> resolves to the exact ConceptRef — never the
+    whole reads list — and element evidence grounds only that element."""
+    kg = _kg(SCENARIO)
+    elem = _local_sid("node:cq:reads:tc_pricing")
+    resolved = kg.resolve(elem)
+    if resolved is None:
+        raise AssertionError(elem)
+    assert resolved.kind == "node_element"
+    assert resolved.prop == "reads"
+    assert resolved.ref is not None
+    assert resolved.ref.concept_id == _local_sid("tc_pricing")
+    # the whole-list slot is a DIFFERENT address
+    whole = kg.resolve(_local_sid("node:cq:reads"))
+    if whole is None:
+        raise AssertionError(elem)
+    assert whole.kind == "node_slot" and whole.prop == "reads"
+    assert isinstance(whole.value, list) and len(whole.value) == 2
+    # element evidence grounds exactly the element
+    tools = _tools()
+    tools.start_inference("q")
+    _ingest(tools, "assistant", "Hello.")
+    oid = _say(
+        tools,
+        "I use the pricing information.",
+        [_annotation("node:cq:reads:tc_pricing", "pricing information")],
+    )
+    grounded, invalid, amb = grounded_semantic_ids(
+        tools.db,
+        tools.assertion_ledger.annotations(),
+        [_evr(oid, "pricing information")],
+    )
+    assert grounded == {elem} and invalid == 0 and amb == 0
+    # a broad span covering two elements of the same list is ambiguous
+    oid2 = _say(
+        tools,
+        "I use the customer and pricing information.",
+        [
+            _annotation("node:cq:reads:tc_customer", "customer"),
+            _annotation("node:cq:reads:tc_pricing", "pricing"),
+        ],
+    )
+    grounded2, _, amb2 = grounded_semantic_ids(
+        tools.db,
+        tools.assertion_ledger.annotations(),
+        [_evr(oid2, "the customer and pricing information")],
+    )
+    assert grounded2 == set() and amb2 == 1
+
+
+def test_ground_concept_rejects_unrelated_ambiguous_kind_wrong():
+    """Binding-aware grounding: evidence must resolve to exactly one
+    kind-compatible knowledge concept; unrelated, ambiguous and
+    kind-incompatible evidence is rejected and leaves the concept
+    unresolved. Private stakeholder ids never appear in error messages."""
+    tools = _tools()
+    tools.start_inference("q")
+    _ingest(tools, "assistant", "Hello.")
+    tools.create_concept("act1", "activity", "first step")
+    # unrelated: node-existence evidence represents NO concept
+    oid = _say(
+        tools,
+        "The first step happens first.",
+        [_annotation("node:skn_005", "first step happens")],
+    )
+    with pytest.raises(ValueError) as exc:
+        tools.ground_concept("act1", evidence=[_ev(oid, "first step happens")])
+    assert "skn_" not in str(exc.value) and "skc_" not in str(exc.value)
+    # kind-wrong: evidence resolves to a data concept
+    oid2 = _say(
+        tools,
+        "I use the pricing information.",
+        [_annotation("node:cq:reads:tc_pricing", "pricing information")],
+    )
+    with pytest.raises(ValueError):
+        tools.ground_concept("act1", evidence=[_ev(oid2, "pricing information")])
+    # ambiguous: one broad span covering two distinct ids
+    oid3 = _say(
+        tools,
+        "I check the customer information in the CRM.",
+        [
+            _annotation("node:cc:activity", "check the customer information"),
+            _annotation("node:cc:system", "CRM"),
+        ],
+    )
+    with pytest.raises(ValueError):
+        tools.ground_concept(
+            "act1", evidence=[_ev(oid3, "check the customer information in the CRM")]
+        )
+    # ambiguous: two elements of one reads list
+    oid4 = _say(
+        tools,
+        "I use the customer and pricing information.",
+        [
+            _annotation("node:cq:reads:tc_customer", "customer"),
+            _annotation("node:cq:reads:tc_pricing", "pricing"),
+        ],
+    )
+    with pytest.raises(ValueError):
+        tools.ground_concept(
+            "act1", evidence=[_ev(oid4, "the customer and pricing information")]
+        )
+    # the concept stays unresolved after every rejection
+    assert tools.db.graph is not None
+    assert tools.db.graph.concepts["act1"].validation_status == "hypothesized"
+    # valid grounding succeeds
+    oid5 = _say(
+        tools,
+        "I receive the quotation request.",
+        [_annotation("node:skn_005:activity", "receive the quotation request")],
+    )
+    tools.ground_concept("act1", evidence=[_ev(oid5, "receive the quotation request")])
+    assert tools.db.graph.concepts["act1"].validation_status == "grounded"
+
+
+def test_grounded_status_agrees_with_evaluator_binding():
+    """The tool and the evaluator resolve grounding evidence through the
+    same canonical resolver, so the Agent-visible grounded status and the
+    evaluator binding never disagree."""
+    from tau2.domains.business_interview.evaluation import (  # noqa: PLC2701
+        _concept_bindings,
+        _knowledge_value_concepts,
+        _match_nodes_and_edges,
+    )
+
+    tools = _tools()
+    _build(tools)
+    graph = tools.db.graph
+    assert graph is not None
+    knowledge = _sc(SCENARIO).knowledge
+    annotations = tools.assertion_ledger.annotations()
+    mapping, edge_map = _match_nodes_and_edges(graph, knowledge, tools.db, annotations)
+    score, agent_to_knowledge = _concept_bindings(
+        graph, knowledge, tools.db, annotations, mapping, edge_map
+    )
+    assert score == 1.0
+    for cid, concept in graph.concepts.items():
+        if concept.validation_status != "grounded":
+            continue
+        represented: set[str] = set()
+        results, _inv, _amb = resolve_grounding_refs(
+            tools.db, annotations, concept.validation_evidence
+        )
+        for _ref, sid in results:
+            represented.update(_knowledge_value_concepts(knowledge, sid))
+        # the tool guaranteed exactly one kind-compatible concept; the
+        # evaluator binds the SAME concept
+        assert len(represented) == 1, cid
+        assert agent_to_knowledge[cid] == next(iter(represented)), cid
+
+
+def test_agent_none_is_not_dont_know():
+    """The three-valued agent slots score asymmetrically: stakeholder None
+    (known absent) is satisfied by an unasserted slot (DONT_KNOW is NOT
+    equivalent); stakeholder DONT_KNOW is satisfied ONLY by an explicit
+    evidenced DONT_KNOW marker (unasserted is NOT DONT_KNOW)."""
+    truth = quotation_truth()
+    # knowledge 1: r.reads is KNOWN-ABSENT (None)
+    filt_absent = StakeholderFilter(
+        name="s1",
+        visible_node_ids=["r"],
+        visible_edge_ids=[],
+        visible_node_attributes={"r": ["activity", "actor", "writes", "reads"]},
+        visible_edge_attributes={},
+    )
+    # knowledge 2: r.reads is DONT_KNOW
+    filt_unknown = StakeholderFilter(
+        name="s2",
+        visible_node_ids=["r"],
+        visible_edge_ids=[],
+        visible_node_attributes={"r": ["activity", "actor", "writes"]},
+        visible_edge_attributes={},
+    )
+    k_absent = project_knowledge(truth, filt_absent)
+    k_unknown = project_knowledge(truth, filt_unknown)
+    tools = _tools()
+    tools.assertion_ledger.install_catalog(StakeholderKnowledgeCatalog("s1", k_absent))
+    tools.start_inference("q")
+    _ingest(tools, "assistant", "Hello.")
+    oid_act = _say(
+        tools,
+        "I receive the quotation request.",
+        [_annotation("node:r:activity", "receive the quotation request")],
+    )
+    tools.create_concept(
+        "act1",
+        "activity",
+        "receive",
+        evidence=[_ev(oid_act, "receive the quotation request")],
+    )
+    tools.ground_concept(
+        "act1", evidence=[_ev(oid_act, "receive the quotation request")]
+    )
+    tools.add_node(
+        "a",
+        activity={
+            "concept_id": "act1",
+            "evidence": [_ev(oid_act, "receive the quotation request")],
+        },
+    )
+
+    def eval_with(knowledge, filt):
+        return evaluate(
+            tools.db,
+            knowledge,
+            EvaluationSpec(),
+            filt,
+            truth=truth,
+            annotations=tools.assertion_ledger.annotations(),
+            alignments=tools.assertion_ledger.alignments(),
+            terminology=tools.assertion_ledger.terminology(),
+        )
+
+    # stakeholder None: unasserted agent slot is CORRECT
+    res = eval_with(k_absent, filt_absent)
+    assert res.read_correctness == 1.0
+    # ... but a DONT_KNOW marker is NOT equivalent to None
+    assert tools.db.graph is not None
+    tools.db.graph.nodes["a"].reads = DontKnowType(evidence=[])
+    res_dk = eval_with(k_absent, filt_absent)
+    assert res_dk.read_correctness == 0.0
+    # stakeholder DONT_KNOW: unasserted is NOT DONT_KNOW (missing/unasserted
+    # must not score as both None and DONT_KNOW)
+    tools.db.graph.nodes["a"].reads = None
+    res_un = eval_with(k_unknown, filt_unknown)
+    assert res_un.read_correctness == 0.0
+    # ... while an explicit evidenced DONT_KNOW is CORRECT
+    tools.assertion_ledger.install_catalog(StakeholderKnowledgeCatalog("s2", k_unknown))
+    oid = _say(
+        tools,
+        "I do not know what the step reads.",
+        [_annotation("node:r:reads", "what the step reads")],
+    )
+    tools.record_dont_know(
+        "a", properties=["reads"], evidence=[_ev(oid, "what the step reads")]
+    )
+    res_dk2 = eval_with(k_unknown, filt_unknown)
+    assert res_dk2.read_correctness == 1.0
+    assert res_dk2.dont_know_evidence_errors == 0
+
+
+def test_correct_dont_know_is_rewarded_and_guess_wrong():
+    """The full build's explicit DONT_KNOW recordings are rewarded; removing
+    them (unasserted) is NOT correct; a hidden-Truth guess on a DONT_KNOW
+    slot is wrong."""
+    tools = _tools()
+    _build(tools)
+    res = _eval(tools)
+    assert res.read_correctness == 1.0
+    assert res.write_correctness == 1.0
+    assert res.condition_correctness == 1.0
+    assert res.dont_know_evidence_errors == 0
+    graph = tools.db.graph
+    assert graph is not None
+    assert is_dont_know(graph.nodes["e"].reads)
+    assert is_dont_know(graph.nodes["e"].writes)
+    assert is_dont_know(graph.edges["e1"].condition)
+    # unasserting a DONT_KNOW slot is NOT correct (missing != DONT_KNOW)
+    graph.nodes["e"].reads = None
+    graph.nodes["e"].writes = None
+    res_missing = _eval(tools)
+    assert res_missing.read_correctness < 1.0
+    assert res_missing.write_correctness < 1.0
+    # a hidden-Truth guess on a DONT_KNOW slot is wrong
+    graph.nodes["e"].reads = None
+    oid = _say(
+        tools,
+        "I use the pricing information.",
+        [_annotation("node:cq:reads:tc_pricing", "pricing information")],
+    )
+    graph.nodes["e"].reads = [
+        ConceptRef(
+            concept_id="pricing",
+            confidence=1.0,
+            evidence=[_evr(oid, "pricing information")],
+        )
+    ]
+    res_guess = _eval(tools)
+    assert res_guess.read_correctness < 1.0
+
+
+def test_knowledge_coverage_known_absent_unknown_removed():
+    """knowledge_coverage: known values AND known absence count as known;
+    DONT_KNOW slots and removed nodes/edges count as unknown; node existence
+    is never confused with the activity slot."""
+    truth = BusinessProcessGraph(
+        id="cov",
+        name="coverage",
+        concepts={
+            "a1": TruthConcept(id="a1", kind="activity"),
+            "a2": TruthConcept(id="a2", kind="activity"),
+            "d1": TruthConcept(id="d1", kind="data"),
+        },
+        nodes={
+            "A": Node(
+                id="A",
+                activity=ConceptRef(concept_id="a1"),
+                reads=[ConceptRef(concept_id="d1")],
+            ),
+            "B": Node(id="B", activity=ConceptRef(concept_id="a2")),
+        },
+        edges={"ab": Edge(id="ab", from_node="A", to_node="B")},
+        start_node_id="A",
+        end_node_ids=["B"],
+    )
+    ALL_PROPS = ["activity", "actor", "system", "reads", "writes", "rationale"]
+    full = StakeholderFilter(
+        name="full",
+        visible_node_ids=["A", "B"],
+        visible_edge_ids=["ab"],
+        visible_node_attributes={"A": ALL_PROPS, "B": ALL_PROPS},
+        visible_edge_attributes={"ab": ["condition"]},
+    )
+
+    def coverage(filt):
+        knowledge = project_knowledge(truth, filt)
+        db = InterviewDB()
+        return evaluate(
+            db, knowledge, EvaluationSpec(), filt, truth=truth
+        ).knowledge_coverage
+
+    # fully known (incl. known-absent slots: B.reads None, ab condition
+    # None) -> 1.0. Total addresses: A(1) + A slots(6) + A element(1) +
+    # B(1) + B slots(6) + ab(1) + ab condition(1) = 17.
+    assert coverage(full) == 1.0
+    # DONT_KNOW: A.reads unknown -> slot + element unknown -> 15/17
+    dk = full.model_copy(
+        update={
+            "visible_node_attributes": {
+                "A": [p for p in ALL_PROPS if p != "reads"],
+                "B": ALL_PROPS,
+            }
+        }
+    )
+    assert coverage(dk) == 15.0 / 17.0
+    # removed node + removed edge -> unavailable/unknown -> 7/17
+    rm = StakeholderFilter(
+        name="rm",
+        visible_node_ids=["B"],
+        visible_edge_ids=[],
+        visible_node_attributes={"B": ALL_PROPS},
+        visible_edge_attributes={},
+    )
+    assert coverage(rm) == 7.0 / 17.0
+    # node existence vs activity: removing A costs its existence + slots +
+    # elements — the activity slot is not "the node"
+    rm2 = StakeholderFilter(
+        name="rm2",
+        visible_node_ids=["A"],
+        visible_edge_ids=[],
+        visible_node_attributes={"A": ALL_PROPS},
+        visible_edge_attributes={},
+    )
+    # known: A(1) + A slots(6) + A element(1) = 8 of 17
+    assert coverage(rm2) == 8.0 / 17.0
 
 
 # ---------------------------------------------------------------------------
@@ -2146,7 +3211,9 @@ def test_task_prose_contains_no_scenario_business_facts():
             assert "dag" not in desc, f"{task.id}: description still says DAG"
     ti_ja = (
         getattr(
-            next(t for t in get_tasks() if t.id == JA_SCENARIO).user_scenario.instructions,
+            next(
+                t for t in get_tasks() if t.id == JA_SCENARIO
+            ).user_scenario.instructions,
             "task_instructions",
             None,
         )

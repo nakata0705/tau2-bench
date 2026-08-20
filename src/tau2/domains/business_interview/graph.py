@@ -1,4 +1,4 @@
-"""Graph-native semantic model for business_interview (v10 — graph as truth).
+"""Graph-native semantic model for business_interview (v11 — opaque stakeholder IDs).
 
 The semantic model is the **graph itself**. Truth is a
 ``BusinessProcessGraph`` plus ``TruthConcept``\\ s; the agent builds its own
@@ -8,7 +8,7 @@ The semantic model is the **graph itself**. Truth is a
 Every addressable graph element carries a **stable semantic ID** (never a
 list index — IDs survive reordering):
 
-    node:<node_id>                     the node itself
+    node:<node_id>                     the node itself (existence, NOT activity)
     node:<node_id>:activity            scalar property slot (value/absent/unknown)
     node:<node_id>:actor
     node:<node_id>:system
@@ -20,9 +20,17 @@ list index — IDs survive reordering):
     edge:<edge_id>                     the edge itself
     edge:<edge_id>:condition           the edge-condition slot
 
+The stakeholder's element ids are **opaque and stakeholder-local**
+(``skn_001`` / ``ske_001`` / ``skc_001`` style, assigned deterministically
+from sorted Truth ids and never derived from Truth ids, labels, terms, or
+positions); the private Truth mapping lives only in the evaluator-side
+``StakeholderKnowledge`` structure.
+
 A property slot is **three-valued**: ``ConceptRef`` (value known), ``None``
 (value known absent), or ``DONT_KNOW`` (element known, value unknown). This
-is the stakeholder's epistemic state and the agent is scored against it.
+is the stakeholder's epistemic state AND the AgentGraph's epistemic state:
+``DONT_KNOW`` markers carry the Observation evidence that the stakeholder
+really said "I don't know" for that exact slot.
 
 **Mention != evidence != validation.** ``AgentConcept.mentions`` are spans
 the Agent interprets as referring to the concept; property references carry
@@ -46,7 +54,11 @@ C = TypeVar("C")
 ConceptKind = Literal["activity", "actor", "system", "data", "condition", "rationale"]
 
 ValidationStatus = Literal[
-    "hypothesized", "grounded", "confirmed", "partially_confirmed", "disputed",
+    "hypothesized",
+    "grounded",
+    "confirmed",
+    "partially_confirmed",
+    "disputed",
     "unknown",
 ]
 
@@ -54,17 +66,73 @@ ValidationStatus = Literal[
 NodeProperty = Literal["activity", "actor", "system", "reads", "writes", "rationale"]
 EdgeProperty = Literal["condition"]
 
-_NODE_PROPS: tuple[str, ...] = ("activity", "actor", "system", "reads", "writes", "rationale")
+_NODE_PROPS: tuple[str, ...] = (
+    "activity",
+    "actor",
+    "system",
+    "reads",
+    "writes",
+    "rationale",
+)
+
+
+# ---------------------------------------------------------------------------
+# Evidence
+# ---------------------------------------------------------------------------
+
+
+class EvidenceRef(BaseModel):
+    """One span of an immutable Observation cited as evidence.
+
+    ``quote`` must be an exact substring occurrence of the immutable
+    Observation's text; ``occurrence`` selects which occurrence (0-based) when
+    the quote appears multiple times. Validity is checked deterministically
+    (the evaluator never infers what the quote *means*). The span resolves to
+    concrete character offsets in the Observation text.
+    """
+
+    observation_id: str
+    quote: str = Field(description="Exact substring of the Observation text.")
+    occurrence: int = Field(
+        default=0, description="0-based occurrence index of ``quote``."
+    )
+
+    def resolve_span(self, text: str) -> Optional[tuple[int, int]]:
+        """Resolve to (start, end) character offsets in ``text``, or None when
+        the quote/occurrence does not exactly match ``text``."""
+        if not self.quote:
+            return None
+        start = -1
+        for _ in range(self.occurrence + 1):
+            start = text.find(self.quote, start + 1)
+            if start == -1:
+                return None
+        return (start, start + len(self.quote))
+
+
+def spans_correspond(a: tuple[int, int], b: tuple[int, int]) -> bool:
+    """True when two spans correspond: one contains the other (or they are
+    equal). Deterministic character-span relation — no semantic matching."""
+    return (a[0] <= b[0] and b[1] <= a[1]) or (b[0] <= a[0] and a[1] <= b[1])
 
 
 class DontKnowType(BaseModel):
     """The DONT_KNOW marker: the element exists but its value is unknown.
 
     ``DONT_KNOW`` (module singleton) is distinct from ``None`` (known
-    absent) and from ``ConceptRef`` (known value).
+    absent) and from ``ConceptRef`` (known value). On the AgentGraph side a
+    marker carries the Observation evidence that the stakeholder really said
+    "I don't know" for that exact slot (validated against the private
+    stakeholder DONT_KNOW slots by the tools/evaluator).
     """
 
-    pass
+    evidence: list[EvidenceRef] = Field(default_factory=list)
+
+    @property
+    def asserted(self) -> bool:
+        """A DONT_KNOW marker IS an active epistemic claim ("I cannot
+        determine this") — distinct from an unasserted slot."""
+        return True
 
 
 DONT_KNOW = DontKnowType()
@@ -112,7 +180,9 @@ def graph_semantic_ids(nodes, edges) -> set[str]:
             ids.add(slot_id(nid, prop))
         node = nodes[nid]
         for axis in ("reads", "writes"):
-            refs = getattr(node, axis, None) or []
+            refs = getattr(node, axis, None)
+            if not isinstance(refs, list):
+                continue  # None (known absent) / DONT_KNOW (unknown)
             for ref in refs:
                 if ref.concept_id:
                     ids.add(element_id(nid, axis, ref.concept_id))
@@ -120,46 +190,6 @@ def graph_semantic_ids(nodes, edges) -> set[str]:
         ids.add(edge_id(eid))
         ids.add(condition_id(eid))
     return ids
-
-
-# ---------------------------------------------------------------------------
-# Evidence
-# ---------------------------------------------------------------------------
-
-
-class EvidenceRef(BaseModel):
-    """One span of an immutable Observation cited as evidence.
-
-    ``quote`` must be an exact substring occurrence of the immutable
-    Observation's text; ``occurrence`` selects which occurrence (0-based) when
-    the quote appears multiple times. Validity is checked deterministically
-    (the evaluator never infers what the quote *means*). The span resolves to
-    concrete character offsets in the Observation text.
-    """
-
-    observation_id: str
-    quote: str = Field(description="Exact substring of the Observation text.")
-    occurrence: int = Field(
-        default=0, description="0-based occurrence index of ``quote``."
-    )
-
-    def resolve_span(self, text: str) -> Optional[tuple[int, int]]:
-        """Resolve to (start, end) character offsets in ``text``, or None when
-        the quote/occurrence does not exactly match ``text``."""
-        if not self.quote:
-            return None
-        start = -1
-        for _ in range(self.occurrence + 1):
-            start = text.find(self.quote, start + 1)
-            if start == -1:
-                return None
-        return (start, start + len(self.quote))
-
-
-def spans_correspond(a: tuple[int, int], b: tuple[int, int]) -> bool:
-    """True when two spans correspond: one contains the other (or they are
-    equal). Deterministic character-span relation — no semantic matching."""
-    return (a[0] <= b[0] and b[1] <= a[1]) or (b[0] <= a[0] and a[1] <= b[1])
 
 
 class ConceptRef(BaseModel):
@@ -190,68 +220,78 @@ class ConceptRef(BaseModel):
 class Node(BaseModel):
     """A vertex in a business process graph.
 
-    ``activity`` is required and references an activity concept; ``actor`` /
-    ``system`` / ``necessity_rationale`` are optional single references;
-    ``reads`` / ``writes`` are lists of data-concept references. Every ref
-    carries its own evidence. ``from``/``to`` structural identity is expressed
-    only through edges; node ids are local to the graph.
+    ``activity`` is required and is either an activity reference or
+    ``DONT_KNOW``; ``actor`` / ``system`` / ``necessity_rationale`` are
+    optional single references (``None`` = known absent, ``DONT_KNOW`` =
+    unknown); ``reads`` / ``writes`` are ``None`` (known absent),
+    ``DONT_KNOW`` (unknown), or lists of data-concept references. Every ref
+    and every DONT_KNOW marker carries its own evidence. ``from``/``to``
+    structural identity is expressed only through edges; node ids are local
+    to the graph.
     """
 
     id: str
-    activity: ConceptRef
-    actor: Optional[ConceptRef] = None
-    system: Optional[ConceptRef] = None
-    reads: list[ConceptRef] = Field(default_factory=list)
-    writes: list[ConceptRef] = Field(default_factory=list)
-    necessity_rationale: Optional[ConceptRef] = None
+    activity: Union[ConceptRef, DontKnowType]
+    actor: Optional[Union[ConceptRef, DontKnowType]] = None
+    system: Optional[Union[ConceptRef, DontKnowType]] = None
+    reads: Optional[Union[list[ConceptRef], DontKnowType]] = None
+    writes: Optional[Union[list[ConceptRef], DontKnowType]] = None
+    necessity_rationale: Optional[Union[ConceptRef, DontKnowType]] = None
 
     def refs(self, property_name: str) -> list[ConceptRef]:
-        """The refs for a node property (single or list).
+        """The concept refs of a node property (single or list).
 
         ``property_name`` accepts the claim-style names (activity/actor/system/
         reads/writes/rationale) as well as the attribute name
-        ``necessity_rationale``.
+        ``necessity_rationale``. DONT_KNOW slots contribute no refs.
         """
         if property_name == "reads":
-            return list(self.reads)
+            return list(self.reads) if isinstance(self.reads, list) else []
         if property_name == "writes":
-            return list(self.writes)
+            return list(self.writes) if isinstance(self.writes, list) else []
         attr = "necessity_rationale" if property_name == "rationale" else property_name
         ref = getattr(self, attr)
-        return [ref] if ref is not None else []
+        return [ref] if isinstance(ref, ConceptRef) else []
 
     def asserted_refs(self, property_name: str) -> list[ConceptRef]:
         return [r for r in self.refs(property_name) if r.asserted]
+
+    def slot_value(self, property_name: str):
+        """The three-valued property slot: ConceptRef / DONT_KNOW / None for
+        scalars; list[ConceptRef] / DONT_KNOW / None for reads/writes."""
+        if property_name in ("reads", "writes"):
+            return getattr(self, property_name)
+        attr = "necessity_rationale" if property_name == "rationale" else property_name
+        return getattr(self, attr)
 
 
 class Edge(BaseModel):
     """A directed edge between two nodes.
 
     ``from_node`` / ``to_node`` are structural identities (node ids), not
-    concepts. ``condition`` optionally references a condition concept
-    (kind=condition). ``evidence`` cites the Observation spans supporting the
-    relation.
+    concepts. ``condition`` is ``None`` (known absent), ``DONT_KNOW``
+    (unknown) or a reference to a condition concept (kind=condition).
+    ``evidence`` cites the Observation spans supporting the relation.
     """
 
     id: str
     from_node: str
     to_node: str
-    condition: Optional[ConceptRef] = None
+    condition: Optional[Union[ConceptRef, DontKnowType]] = None
     evidence: list[EvidenceRef] = Field(default_factory=list)
 
 
 def _node_property_refs(node: Node) -> dict[str, list[ConceptRef]]:
     """All refs of a node keyed by property name (single refs as one-element
-    lists; reads/writes as their lists)."""
+    lists; reads/writes as their lists). DONT_KNOW slots contribute no
+    refs."""
     return {
-        "activity": [node.activity],
-        "actor": [node.actor] if node.actor is not None else [],
-        "system": [node.system] if node.system is not None else [],
-        "reads": list(node.reads),
-        "writes": list(node.writes),
-        "necessity_rationale": (
-            [node.necessity_rationale] if node.necessity_rationale is not None else []
-        ),
+        "activity": node.refs("activity"),
+        "actor": node.refs("actor"),
+        "system": node.refs("system"),
+        "reads": node.refs("reads"),
+        "writes": node.refs("writes"),
+        "necessity_rationale": node.refs("rationale"),
     }
 
 
@@ -282,7 +322,9 @@ class _GraphMixin(BaseModel, Generic[C]):
         """
         errors: list[str] = []
         for nid, node in self.nodes.items():
-            if not node.activity.concept_id:
+            if not isinstance(node.activity, ConceptRef):
+                pass  # DONT_KNOW — the agent cannot determine it; valid
+            elif not node.activity.concept_id:
                 errors.append(f"node {nid}: activity reference is required")
             for prop, refs in _node_property_refs(node).items():
                 for ref in refs:
@@ -297,7 +339,7 @@ class _GraphMixin(BaseModel, Generic[C]):
             if edge.to_node not in self.nodes:
                 errors.append(f"edge {eid}: to_node not found: {edge.to_node}")
             if (
-                edge.condition is not None
+                isinstance(edge.condition, ConceptRef)
                 and edge.condition.concept_id not in self.concepts
             ):
                 errors.append(
@@ -324,7 +366,7 @@ class _GraphMixin(BaseModel, Generic[C]):
                     if ref.asserted:
                         ids.add(ref.concept_id)
         for edge in self.edges.values():
-            if edge.condition is not None and edge.condition.asserted:
+            if isinstance(edge.condition, ConceptRef) and edge.condition.asserted:
                 ids.add(edge.condition.concept_id)
         return ids
 
@@ -408,9 +450,7 @@ class AgentGraph(_GraphMixin[AgentConcept]):
     semantics.
     """
 
-    terminology_agreements: list[TerminologyAgreement] = Field(
-        default_factory=list
-    )
+    terminology_agreements: list[TerminologyAgreement] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

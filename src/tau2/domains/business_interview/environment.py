@@ -7,9 +7,11 @@ from tau2.domains.business_interview.facts import (
     ConceptAlignmentAssertion,
     SemanticAnnotation,
     SemanticLedger,
+    StakeholderKnowledgeCatalog,
     TerminologyConfirmation,
 )
 from tau2.domains.business_interview.graph import InterviewDB
+from tau2.domains.business_interview.scenario import get_scenario
 from tau2.domains.business_interview.tools import InterviewTools
 from tau2.domains.business_interview.utils import (
     BUSINESS_INTERVIEW_POLICY_PATH,
@@ -96,17 +98,26 @@ class BusinessInterviewEnvironment(Environment):
         )
 
 
-def get_environment(solo_mode: bool = False) -> Environment:
+def get_environment(
+    solo_mode: bool = False, scenario_id: Optional[str] = None
+) -> Environment:
     """Build the business_interview environment.
 
     There is no pre-existing data: the database only accumulates the
     conversation, the authentic Observations captured from stakeholder messages,
     and the inferred graph. The private semantic ledger is created here and
     shared with the tools (and, via the environment, with the fact-grounded
-    stakeholder simulator adapter).
+    stakeholder simulator adapter). When ``scenario_id`` is given and
+    resolvable, the scenario's StakeholderKnowledgeCatalog is installed on the
+    ledger at construction (needed by the binding-aware tools; the live
+    pipeline also installs it via the stakeholder simulator).
     """
     db = InterviewDB()
     ledger = SemanticLedger()
+    if scenario_id is not None:
+        scenario = get_scenario(scenario_id)
+        if scenario is not None:
+            ledger.install_catalog(StakeholderKnowledgeCatalog.from_scenario(scenario))
     tools = InterviewTools(db, assertion_ledger=ledger)
     try:
         with open(BUSINESS_INTERVIEW_POLICY_PATH, "r") as fp:

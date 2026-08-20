@@ -61,9 +61,7 @@ class StakeholderFilter(BaseModel):
     visible_edge_ids: list[str] = Field(default_factory=list)
     visible_node_attributes: dict[str, list[str]] = Field(default_factory=dict)
     visible_edge_attributes: dict[str, list[str]] = Field(default_factory=dict)
-    concept_overrides: dict[str, ConceptKnowledgeOverride] = Field(
-        default_factory=dict
-    )
+    concept_overrides: dict[str, ConceptKnowledgeOverride] = Field(default_factory=dict)
 
     def node_properties_for(self, node_id: str) -> set[str]:
         """The set of node properties the stakeholder knows for ``node_id``."""

@@ -1,4 +1,4 @@
-"""Scenarios for the graph-native business_interview benchmark (v10).
+"""Scenarios for the graph-native business_interview benchmark (v11).
 
 A scenario is a **Truth graph** (a ``BusinessProcessGraph`` whose nodes/edges
 reference ``TruthConcept``\\ s, with explicit start/end), the stakeholder
@@ -16,6 +16,7 @@ from typing import Optional
 
 from tau2.domains.business_interview.graph import (
     BusinessProcessGraph,
+    ConceptKind,
     ConceptRef,
     Edge,
     Node,
@@ -34,8 +35,12 @@ def _ref(concept_id: str) -> ConceptRef:
     return ConceptRef(concept_id=concept_id, confidence=1.0)
 
 
-def _tconcept(cid: str, kind: str, description: str, terms: list[str]) -> TruthConcept:
-    return TruthConcept(id=cid, kind=kind, description=description, canonical_terms=terms)  # type: ignore[arg-type]
+def _tconcept(
+    cid: str, kind: ConceptKind, description: str, terms: list[str]
+) -> TruthConcept:
+    return TruthConcept(
+        id=cid, kind=kind, description=description, canonical_terms=terms
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -52,33 +57,39 @@ def quotation_truth() -> BusinessProcessGraph:
         concepts={
             # activities
             "tc_activity_receive_request": _tconcept(
-                "tc_activity_receive_request", "activity",
-                "Receive the customer's quotation request and record it.",
+                "tc_activity_receive_request",
+                "activity",
+                "Receive the customer's quotation request.",
                 ["receive the quotation request"],
             ),
             "tc_activity_check_customer": _tconcept(
-                "tc_activity_check_customer", "activity",
-                "Check the customer information before preparing a quotation.",
+                "tc_activity_check_customer",
+                "activity",
+                "Check the customer information.",
                 ["check the customer information"],
             ),
             "tc_activity_create_quotation": _tconcept(
-                "tc_activity_create_quotation", "activity",
-                "Create the quotation document from customer and pricing data.",
+                "tc_activity_create_quotation",
+                "activity",
+                "Create the quotation document.",
                 ["create the quotation"],
             ),
             "tc_activity_approve_quotation": _tconcept(
-                "tc_activity_approve_quotation", "activity",
-                "Approve high-value quotations before they are sent.",
+                "tc_activity_approve_quotation",
+                "activity",
+                "Approve the quotation.",
                 ["approve the high-value quotation"],
             ),
             "tc_activity_send_quotation": _tconcept(
-                "tc_activity_send_quotation", "activity",
+                "tc_activity_send_quotation",
+                "activity",
                 "Send the quotation to the customer.",
                 ["send the quotation to the customer"],
             ),
             "tc_activity_send_month_end_summary": _tconcept(
-                "tc_activity_send_month_end_summary", "activity",
-                "Send the month-end summary of quotation information to Accounting.",
+                "tc_activity_send_month_end_summary",
+                "activity",
+                "Send the month-end summary of quotation information.",
                 ["send the month-end summary to Accounting"],
             ),
             # actors
@@ -90,30 +101,44 @@ def quotation_truth() -> BusinessProcessGraph:
             ),
             # systems
             "tc_system_crm": _tconcept(
-                "tc_system_crm", "system", "The customer relationship management system.",
+                "tc_system_crm",
+                "system",
+                "The customer relationship management system.",
                 ["CRM"],
             ),
             "tc_system_quoting": _tconcept(
-                "tc_system_quoting", "system", "The system used to create quotations.",
+                "tc_system_quoting",
+                "system",
+                "The quoting system.",
                 ["quoting system"],
             ),
             "tc_system_email": _tconcept(
                 "tc_system_email", "system", "The email system.", ["email"]
             ),
             "tc_system_excel": _tconcept(
-                "tc_system_excel", "system", "The spreadsheet application.",
+                "tc_system_excel",
+                "system",
+                "The spreadsheet application.",
                 ["Excel"],
             ),
             # data
             "tc_request": _tconcept(
-                "tc_request", "data", "The customer's quotation request.",
+                "tc_request",
+                "data",
+                "The customer's quotation request.",
                 ["quotation request"],
             ),
             "tc_customer": _tconcept(
-                "tc_customer", "data", "The customer's information.", ["customer information"]
+                "tc_customer",
+                "data",
+                "The customer's information.",
+                ["customer information"],
             ),
             "tc_pricing": _tconcept(
-                "tc_pricing", "data", "The pricing information.", ["pricing information"]
+                "tc_pricing",
+                "data",
+                "The pricing information.",
+                ["pricing information"],
             ),
             "tc_quote": _tconcept(
                 "tc_quote", "data", "The quotation document.", ["quotation"]
@@ -125,27 +150,36 @@ def quotation_truth() -> BusinessProcessGraph:
                 "tc_sent_quote", "data", "The sent quotation.", ["sent quotation"]
             ),
             "tc_excel_summary": _tconcept(
-                "tc_excel_summary", "data", "The quotation information summary.",
+                "tc_excel_summary",
+                "data",
+                "The quotation information summary.",
                 ["summary of the quotation information"],
             ),
             # conditions
             "tc_cond_over_1m": _tconcept(
-                "tc_cond_over_1m", "condition",
-                "The quotation amount is over 1,000,000 yen.", ["over 1,000,000 yen"],
+                "tc_cond_over_1m",
+                "condition",
+                "The quotation amount is over 1,000,000 yen.",
+                ["over 1,000,000 yen"],
             ),
             "tc_cond_at_or_below_1m": _tconcept(
-                "tc_cond_at_or_below_1m", "condition",
+                "tc_cond_at_or_below_1m",
+                "condition",
                 "The quotation amount is at or below 1,000,000 yen.",
                 ["at or below 1,000,000 yen"],
             ),
             "tc_cond_month_end": _tconcept(
-                "tc_cond_month_end", "condition", "It is the end of the month.",
+                "tc_cond_month_end",
+                "condition",
+                "It is the end of the month.",
                 ["month-end"],
             ),
             # rationale
             "tc_rationale_credit_risk": _tconcept(
-                "tc_rationale_credit_risk", "rationale",
-                "Credit risk management.", ["credit risk management"],
+                "tc_rationale_credit_risk",
+                "rationale",
+                "Credit risk management.",
+                ["credit risk management"],
             ),
         },
         nodes={
@@ -291,53 +325,67 @@ def lab_sample_truth() -> BusinessProcessGraph:
         name="Lab sample conditioning",
         concepts={
             "tc_activity_accession": _tconcept(
-                "tc_activity_accession", "activity",
-                "Accession the specimen and record it as received.",
+                "tc_activity_accession",
+                "activity",
+                "Accession the specimen.",
                 ["specimen accession"],
             ),
             "tc_activity_seasoning": _tconcept(
-                "tc_activity_seasoning", "activity",
+                "tc_activity_seasoning",
+                "activity",
                 "Season the environment chamber to prepare it.",
                 ["chamber seasoning"],
             ),
             "tc_activity_conditioning": _tconcept(
-                "tc_activity_conditioning", "activity",
+                "tc_activity_conditioning",
+                "activity",
                 "Run the conditioning cycle on the samples.",
                 ["conditioning cycle"],
             ),
             "tc_activity_batch_approval": _tconcept(
-                "tc_activity_batch_approval", "activity",
-                "Approve the conditioned batch before release.",
+                "tc_activity_batch_approval",
+                "activity",
+                "Approve the conditioned batch.",
                 ["approve the conditioned batch"],
             ),
             "tc_actor_lab_tech": _tconcept(
                 "tc_actor_lab_tech", "actor", "The lab technician.", ["lab technician"]
             ),
             "tc_actor_lab_supervisor": _tconcept(
-                "tc_actor_lab_supervisor", "actor", "The lab supervisor.",
+                "tc_actor_lab_supervisor",
+                "actor",
+                "The lab supervisor.",
                 ["lab supervisor"],
             ),
             "tc_system_chamber": _tconcept(
-                "tc_system_chamber", "system", "The environment chamber.",
+                "tc_system_chamber",
+                "system",
+                "The environment chamber.",
                 ["environment chamber"],
             ),
-            "tc_sample": _tconcept(
-                "tc_sample", "data", "The raw sample.", ["sample"]
-            ),
+            "tc_sample": _tconcept("tc_sample", "data", "The raw sample.", ["sample"]),
             "tc_accessioned_sample": _tconcept(
-                "tc_accessioned_sample", "data", "The accessioned sample.",
+                "tc_accessioned_sample",
+                "data",
+                "The accessioned sample.",
                 ["accessioned sample"],
             ),
             "tc_seasoned_chamber": _tconcept(
-                "tc_seasoned_chamber", "data", "The seasoned chamber.",
+                "tc_seasoned_chamber",
+                "data",
+                "The seasoned chamber.",
                 ["seasoned chamber"],
             ),
             "tc_conditioned_sample": _tconcept(
-                "tc_conditioned_sample", "data", "The conditioned sample.",
+                "tc_conditioned_sample",
+                "data",
+                "The conditioned sample.",
                 ["conditioned sample"],
             ),
             "tc_batch_approval": _tconcept(
-                "tc_batch_approval", "data", "The batch approval.",
+                "tc_batch_approval",
+                "data",
+                "The batch approval.",
                 ["batch approval"],
             ),
         },

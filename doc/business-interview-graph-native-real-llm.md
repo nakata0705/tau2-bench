@@ -1,4 +1,4 @@
-# business_interview — graph-native semantic model (v10, real-LLM validation)
+# business_interview — graph-native semantic model (v10/v11, real-LLM validation)
 
 Goal report for "replace TruthClaim semantics with graph-native semantic IDs
 and redesign StakeholderKnowledge as an explicit stakeholder-world graph".
@@ -143,7 +143,7 @@ the graph-native model:
   annotated relation phrase "then" -> `edge:e2`), which the global span
   rule (correctly) refuses as covering edge + activity. The stakeholder's
   sidecar annotations are exact and graph-native ("then" -> `edge:e2`,
-  "check the customer information" -> `node:cc:activity`).
+  "check the customer information" -> the activity slot of the step).
 - **Concept identity**: `concept_correctness` 0.0 when a single referenced
   concept lacks an exact annotation-corresponding ref (the per-kind
   bijection is all-or-nothing by design); glossary errors are all
@@ -163,3 +163,54 @@ the graph-native model:
   invents semantic ids; strict ingestion rejects these and aborts the
   episode after one retry (by design — invalid metadata must not enter the
   conversation).
+
+
+## v11 addendum — opaque stakeholder IDs, canonical resolver, binding-aware grounding, explicit Agent DONT_KNOW
+
+Follow-up goal report ("tighten graph-native semantics"):
+
+- **Opaque stakeholder-local IDs**: knowledge element ids are now
+  `skn_001` / `ske_001` / `skc_001` style — assigned deterministically from
+  sorted Truth ids (invariant to collection reordering) and never derived
+  from Truth ids, labels, terms, node ids or edge ids. The private Truth
+  mappings (`node_truth_ids` / `edge_truth_ids` / per-concept
+  `truth_concept_id`) live only in the evaluator-side `StakeholderKnowledge`.
+  Observation annotations use stakeholder-local semantic IDs only.
+- **Concept descriptions contain no graph facts**: descriptions such as
+  "Create the quotation document from customer and pricing data." or "Check
+  the customer information before preparing a quotation." were removed from
+  Truth/stakeholder concepts; tests prove DONT_KNOW descriptions render as
+  "unknown" in the stakeholder prompt and cannot leak Truth text.
+- **One canonical semantic-ID resolver** (`StakeholderKnowledgeGraph.
+  resolve`): `node:<id>` -> node EXISTENCE (never the activity slot);
+  `node:<id>:<prop>` -> the exact property slot; `node:<id>:reads:<k>` ->
+  the exact element; `edge:<id>` / `edge:<id>:condition` / `<skc>` -> the
+  exact objects. Annotation validation, provenance, concept binding,
+  DONT_KNOW handling, knowledge coverage and diagnostics all use it; the
+  duplicate parsers (`element_value`, `_parse_node_slot`, ad-hoc splits)
+  are gone.
+- **Binding-aware `ground_concept`**: evidence must resolve (global span
+  rule + canonical resolver) to exactly one kind-compatible knowledge
+  concept; ambiguous, unrelated or kind-incompatible evidence is rejected,
+  private stakeholder ids never appear in tool output, and the Agent-visible
+  `grounded` status always agrees with the evaluator binding (both run the
+  same deterministic check; conflicting evidence leaves the concept
+  unresolved).
+- **Explicit Agent DONT_KNOW**: AgentGraph slots are three-valued
+  (`ConceptRef` / `None` / `DONT_KNOW`); `record_dont_know` /
+  `record_edge_condition_dont_know` (or `{"dont_know": true, "evidence":
+  [...]}` property args) record a marker ONLY when the cited spans resolve
+  to the corresponding stakeholder DONT_KNOW slot. Scoring: stakeholder
+  `ConceptRef` -> correct grounded ref; `None` -> unasserted (DONT_KNOW not
+  equivalent); `DONT_KNOW` -> explicit evidenced DONT_KNOW (unasserted not
+  equivalent, hidden-Truth guess wrong).
+- **knowledge_coverage** now counts known values AND known absence as known,
+  DONT_KNOW slots and removed nodes/edges as unknown, and never confuses
+  node existence with the activity slot; it stays informational and
+  separate from Agent performance.
+- Evidence separation preserved: property scoring uses property evidence
+  only; concept identity may use mentions + graph provenance (incl.
+  grounding evidence); confirmation/terminology use dialogue events only.
+- Deterministic suite: 75 tests (incl. new opaque-ID, resolver, grounding,
+  DONT_KNOW and coverage tests). Real-LLM quotation runs: 4 seeds under
+  `artifacts/business_interview_real_llm/` (see the run summaries).

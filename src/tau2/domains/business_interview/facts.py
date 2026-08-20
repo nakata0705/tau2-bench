@@ -6,19 +6,19 @@ message:
     {
       "message": "I check customer information in CRM.",
       "annotations": [
-        {"semantic_id": "node:cc:activity",
+        {"semantic_id": "node:skn_002:activity",
          "quote": "check customer information", "occurrence": 0},
-        {"semantic_id": "node:cc:reads:skc_customer",
+        {"semantic_id": "node:skn_002:reads:skc_013",
          "quote": "customer information", "occurrence": 0},
-        {"semantic_id": "node:cc:system",
+        {"semantic_id": "node:skn_002:system",
          "quote": "CRM", "occurrence": 0}
       ],
       "alignments": [
-        {"semantic_id": "skc_quote", "quote": "Yes.",
+        {"semantic_id": "skc_012", "quote": "Yes.",
          "occurrence": 0, "act": "confirm"}
       ],
       "terminology": [
-        {"semantic_id": "skc_customer",
+        {"semantic_id": "skc_013",
          "proposed_term": "customer master", "quote": "Yes.",
          "occurrence": 0}
       ]
@@ -44,7 +44,11 @@ character-span correspondence (containment), never by meaning.
 
 Semantic ids, knowledge concept ids and event metadata never appear in
 Agent-visible messages, tools, Observations, summaries, or serialized Agent
-state.
+state. All semantic ids are **opaque stakeholder-local ids** (``skn_001`` /
+``ske_001`` / ``skc_001`` style) — they never derive from Truth ids, labels,
+terms, node ids or edge ids, and are deterministic per scenario (invariant
+to collection reordering); the private Truth mappings live only in the
+StakeholderKnowledge structure.
 """
 
 from typing import Literal, Optional
@@ -119,7 +123,9 @@ class TerminologyConfirmation(BaseModel):
         description="The StakeholderKnowledgeConcept id the term is about."
     )
     proposed_term: str = Field(description="The exact term the interviewer proposed.")
-    quote: str = Field(description="Exact span of the message that performs the agreement.")
+    quote: str = Field(
+        description="Exact span of the message that performs the agreement."
+    )
     occurrence: int = Field(
         default=0, description="0-based occurrence index of ``quote``."
     )
@@ -170,7 +176,9 @@ class StakeholderKnowledgeCatalog:
 
     @classmethod
     def from_scenario(cls, scenario) -> "StakeholderKnowledgeCatalog":
-        return cls(stakeholder_name=scenario.stakeholder.name, knowledge=scenario.knowledge)
+        return cls(
+            stakeholder_name=scenario.stakeholder.name, knowledge=scenario.knowledge
+        )
 
     def validate_annotations(
         self,

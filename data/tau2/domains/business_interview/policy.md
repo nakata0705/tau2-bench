@@ -106,6 +106,26 @@ information refines your understanding — update the graph to match it.
   the obsolete coarse node** with `remove_node`.
 - Do not finish with obsolete, duplicate, or superseded nodes.
 
+## Record what the stakeholder does NOT know (DONT_KNOW)
+
+"I don't know" is an **explicit, evidenced fact** — not an omission. When the
+stakeholder tells you they cannot determine a property (which data is read /
+written there, which system, the actor, the rationale, an edge's condition, or
+occasionally the activity itself), record it:
+
+- `record_dont_know(node_id, properties=[...], evidence=[...])` — for node
+  properties; `record_edge_condition_dont_know(edge_id, evidence=[...])` — for
+  an edge's condition. Alternatively pass `{"dont_know": true, "evidence":
+  [...]}` as the property value of `add_node` / `update_node` / `update_edge`.
+- The cited Observation spans must be the stakeholder's own "I don't know"
+  statements for those exact properties — the tools verify the evidence
+  resolves to the corresponding unknown slots and reject everything else.
+- DONT_KNOW is NOT the same as a missing value: leaving a property unasserted
+  means you believe it is known-absent (e.g. an unconditional edge); a
+  recorded DONT_KNOW means the stakeholder could not tell you. Record
+  DONT_KNOW for every property the stakeholder says they do not know — an
+  unasserted slot does not count as DONT_KNOW.
+
 Before `finish_interview`, call `validate_graph` and make the graph structurally
 consistent: no dangling edges, no unknown concept references, declared
 start/end, and conditions matching your current understanding. `finish_interview`
@@ -162,10 +182,24 @@ Concepts start as **hypothesized**. Before you finish the interview, resolve
 every concept you actually reference — explicit confirmation is NOT required
 for every concept; authentic provenance is enough:
 
-- `ground_concept(concept_id, evidence)` — normally sufficient: the evidence
-  must correspond to the stakeholder's own private semantic annotations (the
-  stakeholder actually said the thing). This is how you resolve the concepts
-  you use without asking identity questions.
+- `ground_concept(concept_id, evidence)` — normally sufficient: the cited
+  spans must resolve to the stakeholder's own private semantic annotations
+  AND to exactly ONE knowledge concept of a compatible kind. This is how
+  you resolve the concepts you use without asking identity questions.
+  **Grounding is binding-aware and strict — get the spans right:**
+  - cite the EXACT phrase the stakeholder used for THAT concept, matching
+    the minimal phrase that expresses it alone ("pricing information",
+    "the manager") — never a whole clause that also expresses the activity
+    or the relation ("I create the document using the customer and pricing
+    information in the quoting system" covers several elements and is
+    rejected as ambiguous);
+  - the phrase must resolve to the concept's own kind: an activity phrase
+    cannot ground a data concept and vice versa — when the kind check
+    fails, you cited the wrong element's phrase;
+  - if a citation is rejected, DO NOT re-submit the same evidence — ask a
+    short targeted question ("What do you call the data this step
+    writes?") and cite the fresh answer's phrase; looping on the same
+    spans never succeeds.
 - `confirm_concept(concept_id, evidence, partial=False)` — only when the
   stakeholder genuinely confirmed the concept's identity: you must have asked
   an explicit identity question ("By X, do you mean Y?") and the stakeholder
