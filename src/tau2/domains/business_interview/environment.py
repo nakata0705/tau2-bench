@@ -5,8 +5,8 @@ from tau2.data_model.message import Message, UserMessage
 from tau2.data_model.tasks import Task
 from tau2.domains.business_interview.facts import (
     ConceptAlignmentAssertion,
-    StakeholderAssertion,
-    StakeholderAssertionLedger,
+    SemanticAnnotation,
+    SemanticLedger,
     TerminologyConfirmation,
 )
 from tau2.domains.business_interview.graph import InterviewDB
@@ -27,11 +27,11 @@ class BusinessInterviewEnvironment(Environment):
     (user) messages as Observations via ``observe_message``; it never writes
     Observation text itself.
 
-    ``assertion_ledger`` is the private assertion sidecar ledger: when a
-    stakeholder (user) message carries private ``assertions`` (from the
-    fact-grounded stakeholder simulator), they are validated deterministically
-    and stored against that exact message's turn. Only the public message
-    content ever enters the conversation; the ledger is never Agent-visible.
+    ``assertion_ledger`` is the private semantic sidecar ledger (annotations
+    + dialogue events): when a stakeholder (user) message carries private
+    sidecar metadata, it is validated deterministically and stored against
+    that exact message's turn. Only the public message content ever enters
+    the conversation; the ledger is never Agent-visible.
 
     ``episode_complete`` reports whether the interview was finished — the
     orchestrator uses it to terminate the episode immediately on a successful
@@ -41,14 +41,12 @@ class BusinessInterviewEnvironment(Environment):
     def __init__(
         self,
         *args,
-        assertion_ledger: Optional[StakeholderAssertionLedger] = None,
+        assertion_ledger: Optional[SemanticLedger] = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        self.assertion_ledger: StakeholderAssertionLedger = (
-            assertion_ledger
-            if assertion_ledger is not None
-            else StakeholderAssertionLedger()
+        self.assertion_ledger: SemanticLedger = (
+            assertion_ledger if assertion_ledger is not None else SemanticLedger()
         )
 
     def episode_complete(self) -> bool:
@@ -69,16 +67,13 @@ class BusinessInterviewEnvironment(Environment):
         turn = len(db.messages)
         content = getattr(message, "content", None)
         if isinstance(message, UserMessage):
-            raw_assertions = getattr(message, "stakeholder_assertions", None)
-            if raw_assertions:
-                # Private sidecar: validate deterministically (catalog present
-                # in live runs) and store against this exact message's turn.
-                # Invalid metadata is rejected loudly.
-                assertions = [
-                    StakeholderAssertion(**a) if isinstance(a, dict) else a
-                    for a in raw_assertions
+            raw_annotations = getattr(message, "stakeholder_annotations", None)
+            if raw_annotations:
+                annotations = [
+                    SemanticAnnotation(**a) if isinstance(a, dict) else a
+                    for a in raw_annotations
                 ]
-                self.assertion_ledger.bind(turn, assertions, content)
+                self.assertion_ledger.bind(turn, annotations, content)
             raw_alignments = getattr(message, "stakeholder_alignments", None)
             if raw_alignments:
                 events = [
@@ -106,12 +101,12 @@ def get_environment(solo_mode: bool = False) -> Environment:
 
     There is no pre-existing data: the database only accumulates the
     conversation, the authentic Observations captured from stakeholder messages,
-    and the inferred graph. The private assertion ledger is created here and
+    and the inferred graph. The private semantic ledger is created here and
     shared with the tools (and, via the environment, with the fact-grounded
     stakeholder simulator adapter).
     """
     db = InterviewDB()
-    ledger = StakeholderAssertionLedger()
+    ledger = SemanticLedger()
     tools = InterviewTools(db, assertion_ledger=ledger)
     try:
         with open(BUSINESS_INTERVIEW_POLICY_PATH, "r") as fp:

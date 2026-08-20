@@ -1,0 +1,677 @@
+{
+  "task_id": "quotation_workflow_1",
+  "annotations_by_turn": {
+    "3": [
+      {
+        "semantic_id": "node:r:activity",
+        "quote": "receive the customer's quotation request",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:r:writes:skc_request",
+        "quote": "record it",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:sq:activity",
+        "quote": "send the quotation to the customer",
+        "occurrence": 0
+      }
+    ],
+    "11": [
+      {
+        "semantic_id": "node:r:actor",
+        "quote": "sales employee",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:r:activity",
+        "quote": "receives the customer's quotation request",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:r:writes",
+        "quote": "records it",
+        "occurrence": 0
+      }
+    ],
+    "29": [
+      {
+        "semantic_id": "edge:e1",
+        "quote": "After recording the request",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:cc:activity",
+        "quote": "check the customer information",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:cc:system",
+        "quote": "CRM",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "edge:e2",
+        "quote": "before preparing the quotation",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:cq:activity",
+        "quote": "preparing the quotation",
+        "occurrence": 0
+      }
+    ],
+    "47": [
+      {
+        "semantic_id": "node:cq:activity",
+        "quote": "create the quotation",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:cq:system",
+        "quote": "quoting system",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:cq:reads:skc_customer",
+        "quote": "customer information",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:cq:reads:skc_pricing",
+        "quote": "pricing information",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:cq:writes:skc_quote",
+        "quote": "quotation document",
+        "occurrence": 0
+      }
+    ],
+    "59": [
+      {
+        "semantic_id": "skc_quote",
+        "quote": "quotation document",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "skc_quote",
+        "quote": "same document",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "skc_activity_send_quotation",
+        "quote": "send to the customer",
+        "occurrence": 0
+      }
+    ],
+    "71": [
+      {
+        "semantic_id": "edge:e3",
+        "quote": "if the amount is over 1,000,000 yen",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:ap:activity",
+        "quote": "approve it",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:ap:actor",
+        "quote": "manager",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "edge:e5",
+        "quote": "before we send it to the customer",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "edge:e4",
+        "quote": "If it's at or below 1,000,000 yen",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:sq:activity",
+        "quote": "send it to the customer",
+        "occurrence": 0
+      }
+    ],
+    "88": [
+      {
+        "semantic_id": "node:sq:activity",
+        "quote": "send the quotation to the customer",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "edge:e5",
+        "quote": "After we send the quotation to the customer",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:sq:reads",
+        "quote": "no follow-up step that I know of",
+        "occurrence": 0
+      }
+    ],
+    "94": [
+      {
+        "semantic_id": "skc_rationale_credit_risk",
+        "quote": "credit risk management",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "skc_cond_over_1m",
+        "quote": "high-value quotations",
+        "occurrence": 0
+      }
+    ],
+    "104": [
+      {
+        "semantic_id": "node:cc:rationale",
+        "quote": "I don't know the specific reason",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:cc:system",
+        "quote": "CRM",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:cc:activity",
+        "quote": "checking the customer information",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:cq:activity",
+        "quote": "preparing the quotation",
+        "occurrence": 0
+      }
+    ],
+    "114": [
+      {
+        "semantic_id": "node:r:rationale",
+        "quote": "I don't know the specific reason",
+        "occurrence": 0
+      }
+    ],
+    "120": [
+      {
+        "semantic_id": "node:cq:rationale",
+        "quote": "I don't know the specific reason",
+        "occurrence": 0
+      }
+    ],
+    "126": [
+      {
+        "semantic_id": "node:sq:rationale",
+        "quote": "I don't know the specific reason for sending the quotation to the customer.",
+        "occurrence": 0
+      }
+    ],
+    "132": [
+      {
+        "semantic_id": "node:sq:actor",
+        "quote": "sales employee",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:sq:activity",
+        "quote": "sends the quotation to the customer",
+        "occurrence": 0
+      }
+    ],
+    "140": [
+      {
+        "semantic_id": "node:cc:actor",
+        "quote": "sales employee",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:cc:activity",
+        "quote": "checks the customer information",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:cc:system",
+        "quote": "CRM",
+        "occurrence": 0
+      }
+    ],
+    "146": [
+      {
+        "semantic_id": "node:cq:actor",
+        "quote": "sales employee",
+        "occurrence": 0
+      },
+      {
+        "semantic_id": "node:cq:activity",
+        "quote": "prepares the quotation document",
+        "occurrence": 0
+      }
+    ]
+  },
+  "alignments_by_turn": {
+    "59": [
+      {
+        "semantic_id": "skc_quote",
+        "quote": "Yes",
+        "occurrence": 0,
+        "act": "confirm"
+      }
+    ]
+  },
+  "terminology_by_turn": {},
+  "knowledge": {
+    "graph": {
+      "id": "quotation",
+      "name": "Quotation creation",
+      "nodes": {
+        "r": {
+          "id": "r",
+          "activity": {
+            "concept_id": "skc_activity_receive_request",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "actor": {
+            "concept_id": "skc_actor_sales",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "system": {},
+          "reads": {},
+          "writes": [
+            {
+              "concept_id": "skc_request",
+              "confidence": 1.0,
+              "evidence": []
+            }
+          ],
+          "necessity_rationale": {}
+        },
+        "cc": {
+          "id": "cc",
+          "activity": {
+            "concept_id": "skc_activity_check_customer",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "actor": {
+            "concept_id": "skc_actor_sales",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "system": {
+            "concept_id": "skc_system_crm",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "reads": [
+            {
+              "concept_id": "skc_customer",
+              "confidence": 1.0,
+              "evidence": []
+            }
+          ],
+          "writes": {},
+          "necessity_rationale": {}
+        },
+        "cq": {
+          "id": "cq",
+          "activity": {
+            "concept_id": "skc_activity_create_quotation",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "actor": {
+            "concept_id": "skc_actor_sales",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "system": {
+            "concept_id": "skc_system_quoting",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "reads": [
+            {
+              "concept_id": "skc_customer",
+              "confidence": 1.0,
+              "evidence": []
+            },
+            {
+              "concept_id": "skc_pricing",
+              "confidence": 1.0,
+              "evidence": []
+            }
+          ],
+          "writes": [
+            {
+              "concept_id": "skc_quote",
+              "confidence": 1.0,
+              "evidence": []
+            }
+          ],
+          "necessity_rationale": {}
+        },
+        "ap": {
+          "id": "ap",
+          "activity": {
+            "concept_id": "skc_activity_approve_quotation",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "actor": {
+            "concept_id": "skc_actor_manager",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "system": {},
+          "reads": {},
+          "writes": {},
+          "necessity_rationale": {
+            "concept_id": "skc_rationale_credit_risk",
+            "confidence": 1.0,
+            "evidence": []
+          }
+        },
+        "sq": {
+          "id": "sq",
+          "activity": {
+            "concept_id": "skc_activity_send_quotation",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "actor": {
+            "concept_id": "skc_actor_sales",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "system": {
+            "concept_id": "skc_system_email",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "reads": {},
+          "writes": {},
+          "necessity_rationale": {}
+        },
+        "me": {
+          "id": "me",
+          "activity": {
+            "concept_id": "skc_activity_send_month_end_summary",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "actor": {
+            "concept_id": "skc_actor_sales",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "system": {
+            "concept_id": "skc_system_excel",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "reads": {},
+          "writes": [
+            {
+              "concept_id": "skc_excel_summary",
+              "confidence": 1.0,
+              "evidence": []
+            }
+          ],
+          "necessity_rationale": {}
+        }
+      },
+      "edges": {
+        "e1": {
+          "id": "e1",
+          "from_node": "r",
+          "to_node": "cc",
+          "condition": {}
+        },
+        "e2": {
+          "id": "e2",
+          "from_node": "cc",
+          "to_node": "cq",
+          "condition": {}
+        },
+        "e3": {
+          "id": "e3",
+          "from_node": "cq",
+          "to_node": "ap",
+          "condition": {
+            "concept_id": "skc_cond_over_1m",
+            "confidence": 1.0,
+            "evidence": []
+          }
+        },
+        "e4": {
+          "id": "e4",
+          "from_node": "cq",
+          "to_node": "sq",
+          "condition": {
+            "concept_id": "skc_cond_at_or_below_1m",
+            "confidence": 1.0,
+            "evidence": []
+          }
+        },
+        "e5": {
+          "id": "e5",
+          "from_node": "ap",
+          "to_node": "sq",
+          "condition": {}
+        },
+        "e6": {
+          "id": "e6",
+          "from_node": "cq",
+          "to_node": "me",
+          "condition": {
+            "concept_id": "skc_cond_month_end",
+            "confidence": 1.0,
+            "evidence": []
+          }
+        }
+      },
+      "concepts": {
+        "skc_activity_approve_quotation": {
+          "id": "skc_activity_approve_quotation",
+          "truth_concept_id": "tc_activity_approve_quotation",
+          "kind": "activity",
+          "description": "Approve high-value quotations before they are sent.",
+          "terms": [
+            "approve the high-value quotation"
+          ]
+        },
+        "skc_activity_check_customer": {
+          "id": "skc_activity_check_customer",
+          "truth_concept_id": "tc_activity_check_customer",
+          "kind": "activity",
+          "description": "Check the customer information before preparing a quotation.",
+          "terms": [
+            "check the customer information"
+          ]
+        },
+        "skc_activity_create_quotation": {
+          "id": "skc_activity_create_quotation",
+          "truth_concept_id": "tc_activity_create_quotation",
+          "kind": "activity",
+          "description": "Create the quotation document from customer and pricing data.",
+          "terms": [
+            "create the quotation"
+          ]
+        },
+        "skc_activity_receive_request": {
+          "id": "skc_activity_receive_request",
+          "truth_concept_id": "tc_activity_receive_request",
+          "kind": "activity",
+          "description": "Receive the customer's quotation request and record it.",
+          "terms": [
+            "receive the quotation request"
+          ]
+        },
+        "skc_activity_send_month_end_summary": {
+          "id": "skc_activity_send_month_end_summary",
+          "truth_concept_id": "tc_activity_send_month_end_summary",
+          "kind": "activity",
+          "description": "Send the month-end summary of quotation information to Accounting.",
+          "terms": [
+            "send the month-end summary to Accounting"
+          ]
+        },
+        "skc_activity_send_quotation": {
+          "id": "skc_activity_send_quotation",
+          "truth_concept_id": "tc_activity_send_quotation",
+          "kind": "activity",
+          "description": "Send the quotation to the customer.",
+          "terms": [
+            "send the quotation to the customer"
+          ]
+        },
+        "skc_actor_manager": {
+          "id": "skc_actor_manager",
+          "truth_concept_id": "tc_actor_manager",
+          "kind": "actor",
+          "description": "The manager who approves.",
+          "terms": [
+            "manager"
+          ]
+        },
+        "skc_actor_sales": {
+          "id": "skc_actor_sales",
+          "truth_concept_id": "tc_actor_sales",
+          "kind": "actor",
+          "description": "The sales employee.",
+          "terms": [
+            "sales employee"
+          ]
+        },
+        "skc_cond_at_or_below_1m": {
+          "id": "skc_cond_at_or_below_1m",
+          "truth_concept_id": "tc_cond_at_or_below_1m",
+          "kind": "condition",
+          "description": "The quotation amount is at or below 1,000,000 yen.",
+          "terms": [
+            "at or below 1,000,000 yen"
+          ]
+        },
+        "skc_cond_month_end": {
+          "id": "skc_cond_month_end",
+          "truth_concept_id": "tc_cond_month_end",
+          "kind": "condition",
+          "description": "It is the end of the month.",
+          "terms": [
+            "month-end"
+          ]
+        },
+        "skc_cond_over_1m": {
+          "id": "skc_cond_over_1m",
+          "truth_concept_id": "tc_cond_over_1m",
+          "kind": "condition",
+          "description": "The quotation amount is over 1,000,000 yen.",
+          "terms": [
+            "over 1,000,000 yen"
+          ]
+        },
+        "skc_customer": {
+          "id": "skc_customer",
+          "truth_concept_id": "tc_customer",
+          "kind": "data",
+          "description": "The customer's information.",
+          "terms": [
+            "customer information"
+          ]
+        },
+        "skc_excel_summary": {
+          "id": "skc_excel_summary",
+          "truth_concept_id": "tc_excel_summary",
+          "kind": "data",
+          "description": "The quotation information summary.",
+          "terms": [
+            "summary of the quotation information"
+          ]
+        },
+        "skc_pricing": {
+          "id": "skc_pricing",
+          "truth_concept_id": "tc_pricing",
+          "kind": "data",
+          "description": "The pricing information.",
+          "terms": [
+            "pricing information"
+          ]
+        },
+        "skc_quote": {
+          "id": "skc_quote",
+          "truth_concept_id": "tc_quote",
+          "kind": "data",
+          "description": "The quotation document.",
+          "terms": [
+            "quotation"
+          ]
+        },
+        "skc_rationale_credit_risk": {
+          "id": "skc_rationale_credit_risk",
+          "truth_concept_id": "tc_rationale_credit_risk",
+          "kind": "rationale",
+          "description": "Credit risk management.",
+          "terms": [
+            "credit risk management"
+          ]
+        },
+        "skc_request": {
+          "id": "skc_request",
+          "truth_concept_id": "tc_request",
+          "kind": "data",
+          "description": "The customer's quotation request.",
+          "terms": [
+            "quotation request"
+          ]
+        },
+        "skc_system_crm": {
+          "id": "skc_system_crm",
+          "truth_concept_id": "tc_system_crm",
+          "kind": "system",
+          "description": "The customer relationship management system.",
+          "terms": [
+            "CRM"
+          ]
+        },
+        "skc_system_email": {
+          "id": "skc_system_email",
+          "truth_concept_id": "tc_system_email",
+          "kind": "system",
+          "description": "The email system.",
+          "terms": [
+            "email"
+          ]
+        },
+        "skc_system_excel": {
+          "id": "skc_system_excel",
+          "truth_concept_id": "tc_system_excel",
+          "kind": "system",
+          "description": "The spreadsheet application.",
+          "terms": [
+            "Excel"
+          ]
+        },
+        "skc_system_quoting": {
+          "id": "skc_system_quoting",
+          "truth_concept_id": "tc_system_quoting",
+          "kind": "system",
+          "description": "The system used to create quotations.",
+          "terms": [
+            "quoting system"
+          ]
+        }
+      },
+      "start_node_id": "r",
+      "end_node_ids": [
+        "sq",
+        "me"
+      ]
+    }
+  }
+}

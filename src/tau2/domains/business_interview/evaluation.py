@@ -1,64 +1,69 @@
-"""Evaluator for the open-world business_interview benchmark (v9 — graph
-context, provenance-only).
+"""Evaluator for the graph-native business_interview benchmark (v10).
 
-The agent's inferred ``BusinessProcessGraph`` is compared to the scenario Truth
-graph — both use the same class. **Correctness is grounded ONLY through private
-provenance**:
+The agent's inferred ``AgentGraph`` is compared to the stakeholder's world
+model (``StakeholderKnowledgeGraph``) — the primary achievable target.
+Correctness is grounded **only** through private provenance:
 
-    ConceptRef
-      -> EvidenceRef (observation_id, quote, occurrence)
-      -> concrete character span in the immutable Observation
-      -> private stakeholder assertion (claim_id + span)
-      -> TruthClaim (context_id = graph position, property, concept_id)
-      -> Truth BusinessConcept
+    Agent EvidenceRef
+      -> Observation span
+      -> private annotation (stakeholder semantic ID)
+      -> StakeholderKnowledgeGraph element / StakeholderKnowledgeConcept
 
-Spans **correspond** when one contains the other (deterministic character
-relation). An evidence span that corresponds to assertions of several
-different claims is **ambiguous and fails** (no cross-credit). The evaluator
-performs no semantic NLP: no action expressions, no predicate/necessity
-matchers, no actor/system aliases, no label/description/mention comparison.
+A span covering several distinct semantic IDs is **globally ambiguous and
+grounds nothing** (no cross-credit); a span matching exactly one annotation
+grounds that element. The evaluator performs no semantic NLP: no label
+matching, no aliases, no embeddings.
 
-**Node identity uses topology**: an agent node maps to a Truth node through a
-deterministic consistent assignment of activity provenance (the node's
-activity claim grounding) plus the reconstructed incoming topology — every
-agent edge with edge-existence provenance must land on a Truth edge that
-exists and matches, and edge conditions must be consistent. The same activity
-may occur at several graph positions; topology disambiguates.
+Scoring rules:
 
-Concept identity is per-kind (activity/actor/system/data/condition/rationale):
-every referenced agent concept must bind to exactly one Truth concept of its
-own kind, one visible Truth concept must be represented by one Agent concept,
-reuse across slots is required, and **edge conditions participate** in the
-same identity validation. Visibility stays prior: hidden unset -> correct,
-hidden asserted -> incorrect. Glossary completion: referenced concepts must be
-resolved, and `confirmed`/`unknown`/`disputed` statuses must be backed by
-appropriate stakeholder evidence (no bulk self-confirmation).
+- **Node/edge correspondence** falls out of the semantic IDs: an agent
+  property ref whose evidence grounds ``node:m:activity`` etc. binds its node
+  to stakeholder node ``m`` (deterministic assignment maximizing matches);
+  an agent edge whose evidence grounds ``edge:e`` maps to stakeholder edge
+  ``e`` when the mapped endpoints match.
+- **Property scoring uses property evidence ONLY** (never mentions, never
+  validation evidence). For a known slot (``ConceptRef`` value) the agent's
+  refs must resolve to the slot/element and their concepts must bind to the
+  slot's knowledge concept; for ``None`` (known absent) or ``DONT_KNOW``
+  slots, ANY assertion is wrong (epistemic restraint). Asserting an element
+  the stakeholder does not know exists is a precision error.
+- **Concept identity may use mentions** (plus the mapped property refs):
+  all authentic bindings of one Agent concept must agree on one knowledge
+  concept of the same kind; per kind the mapping is a bijection over the
+  knowledge concepts referenced by the knowledge graph.
+- **Validation uses explicit validation/dialogue evidence ONLY**:
+  confirmed/partially_confirmed/unknown/disputed statuses and terminology
+  agreements must be backed by the corresponding private dialogue events
+  addressing the concept's bound knowledge concept.
+
+Truth vs StakeholderKnowledge coverage is reported separately
+(``knowledge_coverage``) and never mixed into Agent performance.
 """
 
-from typing import Optional, Protocol
+from typing import Optional
 
 from pydantic import BaseModel
 
-from tau2.domains.business_interview.claims import TruthClaim
 from tau2.domains.business_interview.facts import (
     ConceptAlignmentAssertion,
-    StakeholderAssertion,
+    SemanticAnnotation,
     TerminologyConfirmation,
     message_contains_span,
 )
 from tau2.domains.business_interview.graph import (
-    BusinessProcessGraph,
+    AgentGraph,
     ConceptRef,
     Edge,
     EvidenceRef,
     InterviewDB,
+    is_dont_know,
     spans_correspond,
 )
-from tau2.domains.business_interview.stakeholder import StakeholderFilter
+from tau2.domains.business_interview.knowledge import StakeholderKnowledge
 
 _NODE_PROPS = ("activity", "actor", "system", "reads", "writes", "rationale")
 
-# kind of a Truth concept = kind of the claims that reference it
+# kind of a knowledge/truth concept = kind of the slots that reference it
 _PROPERTY_KIND: dict[str, str] = {
     "activity": "activity",
     "actor": "actor",
@@ -73,9 +78,9 @@ _PROPERTY_KIND: dict[str, str] = {
 class EvaluationSpec(BaseModel):
     """Evaluator-only, scenario-local annotations (hidden from the agent).
 
-    v9: the spec carries NO semantic matchers. Everything semantic is
-    expressed as graph-contextual TruthClaims + private assertions. Kept as a
-    model for API stability; scenarios may leave it empty.
+    v10: the spec carries NO semantic matchers. Everything semantic lives in
+    the Truth graph / StakeholderKnowledge. Kept as a model for API
+    stability; scenarios may leave it empty.
     """
 
 
@@ -125,103 +130,91 @@ class EvaluationResult(BaseModel):
     protocol_pass: bool
     quality_pass: bool
 
+    # scenario knowledge coverage (Truth vs StakeholderKnowledge; NOT part
+    # of Agent performance)
+    knowledge_coverage: float
+
 
 # ---------------------------------------------------------------------------
 # Private metadata validation (deterministic)
 # ---------------------------------------------------------------------------
 
 
-def _validate_assertions(
-    assertions: dict[int, list[StakeholderAssertion]],
-    claims: dict[str, TruthClaim],
-    stakeholder: Optional[StakeholderFilter],
+def _validate_annotations(
+    annotations: dict[int, list[SemanticAnnotation]],
+    knowledge: StakeholderKnowledge,
     messages: list[dict],
 ) -> None:
-    """Deterministically reject invalid private assertion metadata.
+    """Deterministically reject invalid private annotation metadata.
 
-    Every assertion's claim must exist and be stakeholder-visible, and the
-    quote/occurrence must exactly match the stakeholder message at that turn.
-    Raises ``ValueError``.
+    Every annotation's semantic id must be an element of the stakeholder
+    knowledge graph (including DONT_KNOW slots), and the quote/occurrence
+    must exactly match the stakeholder message at that turn. Raises
+    ``ValueError``.
     """
-    for turn, turn_assertions in (assertions or {}).items():
+    graph_ids = knowledge.graph.semantic_ids()
+    for turn, turn_annotations in (annotations or {}).items():
         message = messages[turn].get("content") if 0 <= turn < len(messages) else None
-        for assertion in turn_assertions:
-            claim = (claims or {}).get(assertion.claim_id)
-            if claim is None:
+        for annotation in turn_annotations:
+            if annotation.semantic_id not in graph_ids:
                 raise ValueError(
-                    f"assertion claim_id {assertion.claim_id!r} (turn {turn}) is "
-                    f"not in the scenario's visible claim catalog"
-                )
-            if stakeholder is not None and not _claim_visible(claim, stakeholder):
-                raise ValueError(
-                    f"assertion claim_id {assertion.claim_id!r} (turn {turn}) is "
-                    f"outside stakeholder visibility"
+                    f"annotation semantic_id {annotation.semantic_id!r} "
+                    f"(turn {turn}) is not an element of the stakeholder "
+                    f"knowledge graph"
                 )
             if not message_contains_span(
-                message, assertion.quote, assertion.occurrence
+                message, annotation.quote, annotation.occurrence
             ):
                 raise ValueError(
-                    f"assertion {assertion.claim_id!r} (turn {turn}): quote "
-                    f"{assertion.quote!r} occurrence {assertion.occurrence} does "
-                    f"not exactly match the stakeholder message"
+                    f"annotation {annotation.semantic_id!r} (turn {turn}): "
+                    f"quote {annotation.quote!r} occurrence "
+                    f"{annotation.occurrence} does not exactly match the "
+                    f"stakeholder message"
                 )
 
 
 def _validate_events(
     alignments: Optional[dict[int, list[ConceptAlignmentAssertion]]],
     terminology: Optional[dict[int, list[TerminologyConfirmation]]],
-    claims: dict[str, TruthClaim],
+    knowledge: StakeholderKnowledge,
     messages: list[dict],
 ) -> None:
     """Deterministically reject invalid private dialogue-event metadata.
 
-    Every event must reference a concept that the visible claims reference
-    (i.e. the stakeholder can talk about it) and quote/occurrence must
-    exactly match the stakeholder message at that turn. Raises ``ValueError``.
+    Every event must address a StakeholderKnowledgeConcept id, and
+    quote/occurrence must exactly match the message at that turn. Raises
+    ``ValueError``.
     """
-    visible_concepts = {
-        c.concept_id for c in claims.values() if c.concept_id is not None
-    }
+    concept_ids = set(knowledge.graph.concepts)
     for turn, turn_events in (alignments or {}).items():
         message = messages[turn].get("content") if 0 <= turn < len(messages) else None
         for event in turn_events:
-            if event.truth_concept_id not in visible_concepts:
+            if event.semantic_id not in concept_ids:
                 raise ValueError(
                     f"alignment event (turn {turn}) for concept "
-                    f"{event.truth_concept_id!r} is not a visible concept"
+                    f"{event.semantic_id!r} is not a knowledge concept"
                 )
             if not message_contains_span(message, event.quote, event.occurrence):
                 raise ValueError(
-                    f"alignment event {event.act!r} for "
-                    f"{event.truth_concept_id!r} (turn {turn}): quote "
-                    f"{event.quote!r} occurrence {event.occurrence} does not "
-                    f"exactly match the stakeholder message"
-                )
-    for turn, turn_events in (terminology or {}).items():
-        message = messages[turn].get("content") if 0 <= turn < len(messages) else None
-        for event in turn_events:
-            if event.truth_concept_id not in visible_concepts:
-                raise ValueError(
-                    f"terminology event (turn {turn}) for concept "
-                    f"{event.truth_concept_id!r} is not a visible concept"
-                )
-            if not message_contains_span(message, event.quote, event.occurrence):
-                raise ValueError(
-                    f"terminology event for {event.truth_concept_id!r} "
+                    f"alignment event {event.act!r} for {event.semantic_id!r} "
                     f"(turn {turn}): quote {event.quote!r} occurrence "
                     f"{event.occurrence} does not exactly match the "
                     f"stakeholder message"
                 )
-
-
-def _claim_visible(claim: TruthClaim, stakeholder: StakeholderFilter) -> bool:
-    if claim.context_id in stakeholder.visible_node_ids:
-        return claim.property in stakeholder.node_properties_for(claim.context_id)
-    if claim.context_id in stakeholder.visible_edge_ids:
-        if claim.property == "condition":
-            return "condition" in stakeholder.edge_properties_for(claim.context_id)
-        return claim.property == "edge_exists"
-    return False
+    for turn, turn_events in (terminology or {}).items():
+        message = messages[turn].get("content") if 0 <= turn < len(messages) else None
+        for event in turn_events:
+            if event.semantic_id not in concept_ids:
+                raise ValueError(
+                    f"terminology event (turn {turn}) for concept "
+                    f"{event.semantic_id!r} is not a knowledge concept"
+                )
+            if not message_contains_span(message, event.quote, event.occurrence):
+                raise ValueError(
+                    f"terminology event for {event.semantic_id!r} (turn {turn}): "
+                    f"quote {event.quote!r} occurrence {event.occurrence} does "
+                    f"not exactly match the stakeholder message"
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -236,41 +229,41 @@ def _obs_by_id(db: InterviewDB, obs_id: str):
     return None
 
 
-def _ref_evidence(agent: BusinessProcessGraph, ref: ConceptRef) -> list[EvidenceRef]:
-    """The evidence cited by a ref: the ref's own plus its concept's mentions
-    and validation evidence. Only spans are inspected — never their meaning."""
-    out = list(ref.evidence)
-    concept = agent.concepts.get(ref.concept_id)
-    if concept is not None:
-        out.extend(concept.mentions)
-        out.extend(concept.validation_evidence)
-    return out
+def _resolve_span_text(text: str, quote: str, occurrence: int):
+    if not quote:
+        return None
+    start = -1
+    for _ in range(occurrence + 1):
+        start = text.find(quote, start + 1)
+        if start == -1:
+            return None
+    return (start, start + len(quote))
 
 
-def _covered_claims_for_span(
-    assertions: list[StakeholderAssertion],
+def _covered_ids_for_span(
+    annotations: list[SemanticAnnotation],
     text: str,
     ev_span: tuple[int, int],
 ) -> set[str]:
-    """The claims an evidence span covers, globally (across ALL slots).
+    """The semantic IDs an evidence span covers, globally (across ALL
+    elements).
 
     Deterministic containment rule:
-    - equal-span assertions win: when the evidence span is exactly an
-      assertion span, it covers exactly the claims of those assertions;
-    - otherwise it covers the claims of the maximal assertion spans it
-      contains plus the claims of assertion spans strictly containing it.
+    - equal-span annotations win: when the evidence span is exactly an
+      annotation span, it covers exactly the semantic ids of those
+      annotations;
+    - otherwise it covers the ids of the maximal annotation spans it
+      contains plus the ids of annotation spans strictly containing it.
 
-    A span covering several INDEPENDENT claims is globally ambiguous and must
-    not be reused across slots — unless the private sidecar represents it as
-    ONE assertion (the single-claim case above), which legitimately supports
-    exactly the relation that assertion stands for.
+    A span covering several DISTINCT semantic ids is globally ambiguous and
+    must not be reused across slots.
     """
-    resolved: list[tuple[StakeholderAssertion, tuple[int, int]]] = []
-    for assertion in assertions:
-        span = _resolve_assertion_span(text, assertion)
+    resolved: list[tuple[SemanticAnnotation, tuple[int, int]]] = []
+    for annotation in annotations:
+        span = _resolve_span_text(text, annotation.quote, annotation.occurrence)
         if span is not None:
-            resolved.append((assertion, span))
-    equal = {a.claim_id for a, s in resolved if s == ev_span}
+            resolved.append((annotation, span))
+    equal = {a.semantic_id for a, s in resolved if s == ev_span}
     if equal:
         return equal
     contained = [
@@ -286,35 +279,18 @@ def _covered_claims_for_span(
         for a, s in contained
         if not any(s2 != s and s2[0] <= s[0] and s[1] <= s2[1] for _, s2 in contained)
     ]
-    return {a.claim_id for a, _ in maximal} | {a.claim_id for a, _ in containing}
-
-
-def _grounded_claim_ids(
-    db: InterviewDB,
-    claims: dict[str, TruthClaim],
-    assertions: dict[int, list[StakeholderAssertion]],
-    evidence: list[EvidenceRef],
-    context_id: str = "*",
-    property: str = "*",
-) -> tuple[set[str], int, int]:
-    """Claims grounded by a list of EvidenceRefs via the GLOBAL span rule,
-    scoped to the expected claims at one slot (``context_id``/``property``).
-
-    For each evidence span, the claims it covers are determined globally (see
-    ``_covered_claims_for_span``). A span covering several claims is
-    **globally ambiguous and grounds nothing** — it can never be reused
-    across slots (no cross-credit). Exactly one covered claim grounds it; the
-    caller filters by the expected slot. A span that is not an exact span of
-    the Observation is invalid.
-
-    Returns (grounded claim ids, invalid count, ambiguous count).
-    """
-    expected = {
-        c.id
-        for c in claims.values()
-        if (context_id == "*" or c.context_id == context_id)
-        and (property == "*" or c.property == property)
+    return {a.semantic_id for a, _ in maximal} | {
+        a.semantic_id for a, _ in containing
     }
+
+
+def _grounded_ids(
+    db: InterviewDB,
+    annotations: dict[int, list[SemanticAnnotation]],
+    evidence: list[EvidenceRef],
+) -> tuple[set[str], int, int]:
+    """Semantic IDs grounded by a list of EvidenceRefs via the GLOBAL span
+    rule. Returns (grounded ids, invalid count, ambiguous count)."""
     grounded: set[str] = set()
     invalid = 0
     ambiguous = 0
@@ -327,175 +303,91 @@ def _grounded_claim_ids(
         if ev_span is None:
             invalid += 1
             continue
-        covered = _covered_claims_for_span(
-            assertions.get(obs.turn, []), obs.text, ev_span
-        )
+        covered = _covered_ids_for_span(annotations.get(obs.turn, []), obs.text, ev_span)
         if len(covered) > 1:
             ambiguous += 1
             continue
         if len(covered) == 1:
-            claim_id = next(iter(covered))
-            if claim_id in expected:
-                grounded.add(claim_id)
+            grounded.update(covered)
     return grounded, invalid, ambiguous
 
 
-class _SpanRef(Protocol):
-    """Anything with an exact-span (quote, occurrence) — assertions and
-    private dialogue events share this shape."""
-
-    quote: str
-    occurrence: int
-
-
-def _resolve_assertion_span(
-    text: str, assertion: _SpanRef
-) -> Optional[tuple[int, int]]:
-    """Resolve an assertion/event's quote/occurrence to (start, end) in
-    ``text``."""
-    if not assertion.quote:
-        return None
-    start = -1
-    for _ in range(assertion.occurrence + 1):
-        start = text.find(assertion.quote, start + 1)
-        if start == -1:
-            return None
-    return (start, start + len(assertion.quote))
-
-
-def _corresponding_claim_ids(
-    db: InterviewDB,
-    assertions: dict[int, list[StakeholderAssertion]],
-    evidence: list[EvidenceRef],
-) -> set[str]:
-    """ALL claim ids whose assertion spans correspond (containment) to the
-    given evidence spans — no ambiguity filtering. Used for genuine
-    confirmation checks; claim grounding uses ``_grounded_claim_ids``."""
-    corresponding: set[str] = set()
-    for ev in evidence:
-        obs = _obs_by_id(db, ev.observation_id)
-        if obs is None:
-            continue
-        ev_span = ev.resolve_span(obs.text)
-        if ev_span is None:
-            continue
-        for assertion in assertions.get(obs.turn, []):
-            ass_span = _resolve_assertion_span(obs.text, assertion)
-            if ass_span is not None and spans_correspond(ev_span, ass_span):
-                corresponding.add(assertion.claim_id)
-    return corresponding
-
-
-def _claims_at(
-    claims: dict[str, TruthClaim],
-    context_id: str,
-    property: str,
-) -> list[TruthClaim]:
-    return [
-        c
-        for c in claims.values()
-        if c.context_id == context_id and (property == "*" or c.property == property)
-    ]
+def _ref_evidence(ref: ConceptRef) -> list[EvidenceRef]:
+    """The property evidence of a ref — property evidence ONLY (mentions and
+    validation evidence never enter property scoring)."""
+    return list(ref.evidence)
 
 
 # ---------------------------------------------------------------------------
-# Node / edge identity (provenance + topology)
+# Node / edge correspondence (provenance + semantic IDs)
 # ---------------------------------------------------------------------------
 
 
-def _condition_compatible(
-    agent: BusinessProcessGraph,
-    db: InterviewDB,
-    claims: dict[str, TruthClaim],
-    assertions: dict[int, list[StakeholderAssertion]],
-    edge: Edge,
-    truth_edge: Edge,
-) -> bool:
-    """True when the agent edge's condition (if asserted) does not contradict
-    the truth edge (provenance only).
+def _candidate_node_ids(grounded: set[str]) -> set[str]:
+    """Stakeholder node ids appearing in grounded ``node:*`` semantic ids."""
+    out: set[str] = set()
+    for sid in grounded:
+        if sid.startswith("node:"):
+            parts = sid.split(":")
+            if len(parts) >= 2:
+                out.add(parts[1])
+    return out
 
-    The condition is INCOMPATIBLE only when its evidence positively grounds a
-    condition claim of a DIFFERENT truth edge (it points at another branch).
-    Condition evidence that grounds nothing is weak (penalized by condition
-    scoring) but does not break the correspondence.
-    """
-    if edge.condition is None or not edge.condition.asserted:
-        return True
-    # ref-level evidence only: concept mentions participate in identity
-    # validation, not in the topology correspondence
-    grounded, _invalid, _amb = _grounded_claim_ids(
-        db,
-        claims,
-        assertions,
-        edge.condition.evidence,
-        property="condition",
-    )
-    grounded_edges = {
-        c.context_id
-        for c in claims.values()
-        if c.id in grounded and c.property == "condition"
-    }
-    return not (grounded_edges - {truth_edge.id})
+
+def _candidate_edge_ids(grounded: set[str]) -> set[str]:
+    """Stakeholder edge ids appearing in grounded ``edge:*`` semantic ids."""
+    out: set[str] = set()
+    for sid in grounded:
+        if sid.startswith("edge:"):
+            parts = sid.split(":")
+            if len(parts) >= 2:
+                out.add(parts[1])
+    return out
 
 
 def _match_nodes_and_edges(
-    agent: BusinessProcessGraph,
-    truth: BusinessProcessGraph,
+    agent: AgentGraph,
+    knowledge: StakeholderKnowledge,
     db: InterviewDB,
-    claims: dict[str, TruthClaim],
-    assertions: dict[int, list[StakeholderAssertion]],
+    annotations: dict[int, list[SemanticAnnotation]],
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Deterministic node/edge correspondence.
 
-    Node candidates come from activity-claim grounding; edge candidates from
-    edge_exists-claim grounding. The assignment maximizes the number of
-    satisfied topology constraints: an agent edge with edge-existence
-    provenance is satisfied when the mapped endpoints land on a Truth edge
-    whose edge_exists claim it supports, with conditions consistent. Ties are
-    broken deterministically (lexicographic order). An agent edge whose
-    topology contradicts its own provenance is scored as an unsupported edge
-    (precision miss) instead of voiding the whole correspondence. The same
-    activity at several Truth positions is disambiguated by topology.
+    Node candidates come from the property-level provenance (any agent ref
+    whose evidence grounds a ``node:<m>:*`` id); the assignment maximizes
+    the number of refs whose grounded ids belong to the assigned node's
+    element-id set, ties broken lexicographically. Edges map when their
+    evidence grounds exactly one ``edge:<e>`` id whose endpoints match the
+    mapped nodes.
 
-    Returns (node mapping, agent edge id -> truth edge id).
+    Returns (node mapping, agent edge id -> stakeholder edge id).
     """
+    kn_ids = knowledge.graph.semantic_ids()
     tn: dict[str, set[str]] = {}
     for nid, node in agent.nodes.items():
-        grounded, _i, _a = _grounded_claim_ids(
-            db,
-            claims,
-            assertions,
-            _ref_evidence(agent, node.activity),
-            property="activity",
-        )
-        tnids = {c.context_id for c in claims.values() if c.id in grounded}
-        if tnids:
-            tn[nid] = tnids
-    te: dict[str, set[str]] = {}
-    for eid, edge in agent.edges.items():
-        grounded, _i, _a = _grounded_claim_ids(
-            db, claims, assertions, edge.evidence, property="edge_exists"
-        )
-        teids = {c.context_id for c in claims.values() if c.id in grounded}
-        if teids:
-            te[eid] = teids
-
+        cand: set[str] = set()
+        for prop in _NODE_PROPS:
+            for ref in node.asserted_refs(prop):
+                grounded, _i, _a = _grounded_ids(
+                    db, annotations, _ref_evidence(ref)
+                )
+                cand.update(_candidate_node_ids(grounded))
+        if cand:
+            tn[nid] = cand
     order = sorted(tn)
 
-    def edge_satisfied(mapping: dict[str, str], eid: str, edge: Edge) -> bool:
-        a = mapping.get(edge.from_node)
-        b = mapping.get(edge.to_node)
-        if a is None or b is None:
-            return False
-        return any(
-            truth.edges[t].from_node == a
-            and truth.edges[t].to_node == b
-            and _condition_compatible(
-                agent, db, claims, assertions, edge, truth.edges[t]
-            )
-            for t in te.get(eid, set())
-            if t in truth.edges
-        )
+    def node_match_count(nid: str, mnid: str) -> int:
+        """How many refs of agent node ``nid`` ground an element of
+        stakeholder node ``mnid``."""
+        count = 0
+        node = agent.nodes[nid]
+        prefix = f"node:{mnid}:"
+        for prop in _NODE_PROPS:
+            for ref in node.asserted_refs(prop):
+                grounded, _i, _a = _grounded_ids(db, annotations, _ref_evidence(ref))
+                if any(s.startswith(prefix) for s in grounded):
+                    count += 1
+        return count
 
     best_mapping: dict[str, str] = {}
     best_score = -1
@@ -503,20 +395,16 @@ def _match_nodes_and_edges(
     def enumerate_assignments(i: int, mapping: dict[str, str]) -> None:
         nonlocal best_mapping, best_score
         if i == len(order):
-            score = sum(
-                1
-                for eid, edge in agent.edges.items()
-                if edge_satisfied(mapping, eid, edge)
-            )
+            score = sum(node_match_count(nid, mnid) for nid, mnid in mapping.items())
             if score > best_score:
                 best_score = score
                 best_mapping = dict(mapping)
             return
         nid = order[i]
-        for tnid in sorted(tn[nid]):
-            if tnid in mapping.values():
+        for mnid in sorted(tn[nid]):
+            if mnid in mapping.values():
                 continue
-            mapping[nid] = tnid
+            mapping[nid] = mnid
             enumerate_assignments(i + 1, mapping)
             del mapping[nid]
 
@@ -524,157 +412,218 @@ def _match_nodes_and_edges(
         enumerate_assignments(0, {})
 
     mapping = best_mapping
-    # agent edge -> truth edge assignment (matching the chosen mapping)
+    # edges: grounded edge ids whose endpoints match the mapped nodes
     edge_map: dict[str, str] = {}
     for eid, edge in agent.edges.items():
+        grounded, _i, _a = _grounded_ids(db, annotations, edge.evidence)
+        candidates = sorted(_candidate_edge_ids(grounded))
         a = mapping.get(edge.from_node)
         b = mapping.get(edge.to_node)
         if a is None or b is None:
             continue
-        for t in sorted(te.get(eid, set())):
-            te_obj = truth.edges.get(t)
-            if (
-                te_obj is not None
-                and te_obj.from_node == a
-                and te_obj.to_node == b
-                and _condition_compatible(agent, db, claims, assertions, edge, te_obj)
-            ):
-                edge_map[eid] = t
+        for teid in candidates:
+            te = knowledge.graph.edges.get(teid)
+            if te is not None and te.from_node == a and te.to_node == b:
+                edge_map[eid] = teid
                 break
     return mapping, edge_map
 
 
 # ---------------------------------------------------------------------------
-# Property scoring
+# Property scoring (property evidence ONLY)
 # ---------------------------------------------------------------------------
 
 
+def _slot_value(knowledge: StakeholderKnowledge, mnid: str, prop: str):
+    """The three-valued knowledge slot value for (mnid, prop)."""
+    node = knowledge.graph.nodes.get(mnid)
+    if node is None:
+        return None
+    if prop in ("reads", "writes"):
+        return getattr(node, prop)
+    attr = "necessity_rationale" if prop == "rationale" else prop
+    return getattr(node, attr)
+
+
+def _expected_ids(knowledge: StakeholderKnowledge, mnid: str, prop: str) -> set[str]:
+    """The element ids an agent ref must ground to fill (mnid, prop).
+
+    Scalars resolve to the property slot id; reads/writes resolve to their
+    element ids (``node:m:reads:<k>``)."""
+    value = _slot_value(knowledge, mnid, prop)
+    if prop in ("reads", "writes") and isinstance(value, list):
+        return {f"node:{mnid}:{prop}:{ref.concept_id}" for ref in value}
+    if prop in ("reads", "writes"):
+        return set()
+    return {f"node:{mnid}:{prop}"}
+
+
+def _slot_value_concepts(knowledge: StakeholderKnowledge, mnid: str, prop: str) -> set[str]:
+    """The knowledge concept ids a correct ref must bind to for this slot."""
+    value = _slot_value(knowledge, mnid, prop)
+    if isinstance(value, list):
+        return {r.concept_id for r in value}
+    if isinstance(value, ConceptRef):
+        return {value.concept_id}
+    return set()
+
+
 def _property_score(
-    agent: BusinessProcessGraph,
+    agent: AgentGraph,
+    knowledge: StakeholderKnowledge,
     db: InterviewDB,
-    claims: dict[str, TruthClaim],
-    assertions: dict[int, list[StakeholderAssertion]],
-    tnid: str,
+    annotations: dict[int, list[SemanticAnnotation]],
+    mnid: str,
     anid: str,
     prop: str,
-    visible: bool,
-    context_ok: bool = True,
+    agent_to_knowledge: dict[str, str],
 ) -> tuple[float, int]:
     """Score one node property (activity/actor/system/reads/writes/rationale).
 
-    Graph context is a prerequisite: when the node's reconstructed incoming
-    context does not cover the complete visible Truth incoming context
-    (``context_ok`` False), no visible property claim at this node gets
-    credit. Visible property: recall over expected hidden claims (each
-    grounded by at least one agent ref) times precision over agent refs (each
-    must ground at least one expected claim). Hidden property (prior gate):
-    correct only when nothing is asserted. Returns (score,
-    unsupported_ref_count).
+    Uses property evidence ONLY. DONT_KNOW / known-absent slots: any
+    assertion is wrong (epistemic restraint). Known slots: recall over the
+    slot's knowledge concepts (each covered by a ref resolving to the
+    element and binding that concept) times precision over the agent refs
+    (each must resolve to the slot and bind one of its concepts). Returns
+    (score, unsupported_ref_count).
     """
     refs = agent.nodes[anid].asserted_refs(prop)
-    if not visible:
+    value = _slot_value(knowledge, mnid, prop)
+    if is_dont_know(value) or value is None:
         return (1.0 if not refs else 0.0), 0
-    expected = _claims_at(claims, tnid, prop)
-    if not expected:
-        return (1.0 if not refs else 0.0), 0
+    expected = _expected_ids(knowledge, mnid, prop)
+    concepts = _slot_value_concepts(knowledge, mnid, prop)
     if not refs:
         return 0.0, 0
-    if not context_ok:
-        return 0.0, len(refs)
-    grounded = {c.id: False for c in expected}
-    valid = 0
+    covered: set[str] = set()
+    supported = 0
     unsupported = 0
     for ref in refs:
-        g, _i, _a = _grounded_claim_ids(
-            db,
-            claims,
-            assertions,
-            _ref_evidence(agent, ref),
-            context_id=tnid,
-            property=prop,
-        )
-        supported = [c for c in expected if c.id in g]
-        if not supported:
+        grounded, _i, _a = _grounded_ids(db, annotations, _ref_evidence(ref))
+        hits = grounded & expected
+        bound = agent_to_knowledge.get(ref.concept_id)
+        if not hits or bound is None or bound not in concepts:
             unsupported += 1
             continue
-        valid += 1
-        for c in supported:
-            grounded[c.id] = True
-    recall = sum(grounded.values()) / len(expected)
-    precision = valid / len(refs)
+        supported += 1
+        # element ids pin the exact concept; slot ids cover all concepts
+        for sid in hits:
+            if sid.startswith("node:") and len(sid.split(":")) == 4:
+                covered.add(sid.split(":")[3])
+            else:
+                covered.update(concepts)
+    recall = len(covered & concepts) / len(concepts) if concepts else 1.0
+    precision = supported / len(refs)
     return recall * precision, unsupported
 
 
 # ---------------------------------------------------------------------------
-# Concept identity (per kind, incl. edge conditions)
+# Concept identity (per kind; mentions may participate)
 # ---------------------------------------------------------------------------
 
 
+def _knowledge_value_concepts(
+    knowledge: StakeholderKnowledge, sid: str
+) -> set[str]:
+    """The knowledge concept(s) a grounded element id stands for.
+
+    Element ids (``node:<nid>:<axis>:<kcid>``) pin exactly one concept;
+    slot ids resolve to the whole property's concepts; the condition slot
+    resolves to the condition concept."""
+    if sid.startswith("node:"):
+        parts = sid.split(":")
+        if len(parts) == 4 and parts[2] in ("reads", "writes"):
+            return {parts[3]}
+        node = knowledge.graph._parse_node_slot(sid)
+        if node is not None:
+            mnid, prop = node
+            return _slot_value_concepts(knowledge, mnid, prop)
+    if sid.startswith("edge:"):
+        parts = sid.split(":")
+        if len(parts) == 3 and parts[2] == "condition":
+            edge = knowledge.graph.edges.get(parts[1])
+            if edge is not None and isinstance(edge.condition, ConceptRef):
+                return {edge.condition.concept_id}
+    return set()
+
+
 def _concept_bindings(
-    agent: BusinessProcessGraph,
-    truth: BusinessProcessGraph,
+    agent: AgentGraph,
+    knowledge: StakeholderKnowledge,
     db: InterviewDB,
-    claims: dict[str, TruthClaim],
-    assertions: dict[int, list[StakeholderAssertion]],
+    annotations: dict[int, list[SemanticAnnotation]],
     mapping: dict[str, str],
     edge_map: dict[str, str],
-    stakeholder: Optional[StakeholderFilter],
 ) -> tuple[float, dict[str, str]]:
     """Concept-level binding integrity across all matched visible slots.
 
-    For every ConceptKind (conditions included):
-    - one Agent concept may bind to exactly ONE Truth concept of its own kind
-      (unsupported => unassignable; >1 => ambiguous/merged distinct concepts;
-      kind mismatch => incompatible);
-    - one visible Truth concept must be represented by exactly one Agent
-      concept (splits fail; missing concepts fail).
+    For every ConceptKind:
+    - one Agent concept may bind to exactly ONE knowledge concept of its own
+      kind (bindings from mapped property refs AND mentions must agree);
+    - one knowledge concept referenced by the knowledge graph must be
+      represented by exactly one Agent concept (splits fail; missing
+      concepts fail).
 
-    Returns (concept_correctness, agent concept id -> Truth concept id).
+    Returns (concept_correctness, agent concept id -> knowledge concept id).
     """
     candidates: dict[str, set[str]] = {}
     referenced: set[str] = set()
 
-    def add_ref(ref: ConceptRef, context_id: str, prop: str) -> None:
-        if not ref.asserted:
+    def add_binding(agent_cid: str, knowledge_ids: set[str]) -> None:
+        if not knowledge_ids:
             return
-        referenced.add(ref.concept_id)
-        g, _i, _a = _grounded_claim_ids(
-            db,
-            claims,
-            assertions,
-            _ref_evidence(agent, ref),
-            context_id=context_id,
-            property=prop,
-        )
-        truth_ids = {
-            c.concept_id
-            for c in _claims_at(claims, context_id, prop)
-            if c.concept_id is not None and c.id in g
-        }
-        if truth_ids:
-            prev = candidates.setdefault(ref.concept_id, set(truth_ids))
-            candidates[ref.concept_id] = prev & truth_ids
+        prev = candidates.setdefault(agent_cid, set(knowledge_ids))
+        candidates[agent_cid] = prev & knowledge_ids
 
-    for anid, tnid in mapping.items():
-        visible = (
-            set(_NODE_PROPS)
-            if stakeholder is None
-            else stakeholder.node_properties_for(tnid)
-        )
-        for prop in visible:
+    for anid, mnid in mapping.items():
+        for prop in _NODE_PROPS:
             for ref in agent.nodes[anid].asserted_refs(prop):
-                add_ref(ref, tnid, prop)
-    for eid, teid in edge_map.items():
+                referenced.add(ref.concept_id)
+                grounded, _i, _a = _grounded_ids(
+                    db, annotations, _ref_evidence(ref)
+                )
+                expected = _expected_ids(knowledge, mnid, prop)
+                for sid in grounded & expected:
+                    add_binding(ref.concept_id, _knowledge_value_concepts(knowledge, sid))
+    for eid, meid in edge_map.items():
         edge = agent.edges[eid]
         if edge.condition is not None and edge.condition.asserted:
-            add_ref(edge.condition, teid, "condition")
+            referenced.add(edge.condition.concept_id)
+            grounded, _i, _a = _grounded_ids(
+                db, annotations, _ref_evidence(edge.condition)
+            )
+            sid = f"edge:{meid}:condition"
+            if sid in grounded:
+                add_binding(
+                    edge.condition.concept_id,
+                    _knowledge_value_concepts(knowledge, sid),
+                )
+    # mentions may participate in concept identity (never in property scoring)
+    for cid, concept in agent.concepts.items():
+        for mention in concept.mentions:
+            grounded, _i, _a = _grounded_ids(db, annotations, [mention])
+            for sid in grounded:
+                add_binding(cid, _knowledge_value_concepts(knowledge, sid))
 
-    truth_kind: dict[str, str] = {}
-    for c in claims.values():
-        if c.concept_id is not None:
-            truth_kind.setdefault(c.concept_id, _PROPERTY_KIND.get(c.property, "data"))
+    # knowledge concepts the graph actually references (with values)
+    knowledge_kinds: dict[str, str] = {}
+    for mnid, node in knowledge.graph.nodes.items():
+        for prop in _NODE_PROPS:
+            value = _slot_value(knowledge, mnid, prop)
+            if isinstance(value, list):
+                for ref in value:
+                    knowledge_kinds.setdefault(
+                        ref.concept_id, _PROPERTY_KIND.get(prop, "data")
+                    )
+            elif isinstance(value, ConceptRef):
+                knowledge_kinds.setdefault(
+                    value.concept_id, _PROPERTY_KIND.get(prop, "data")
+                )
+    for meid, edge in knowledge.graph.edges.items():
+        if isinstance(edge.condition, ConceptRef):
+            knowledge_kinds.setdefault(edge.condition.concept_id, "condition")
 
-    agent_to_truth: dict[str, str] = {}
+    agent_to_knowledge: dict[str, str] = {}
     for cid in sorted(referenced):
         concept = agent.concepts.get(cid)
         if concept is None:
@@ -682,28 +631,26 @@ def _concept_bindings(
         cand = candidates.get(cid, set())
         if len(cand) != 1:
             return 0.0, {}
-        truth_id = next(iter(cand))
-        if truth_kind.get(truth_id) != concept.kind:
+        kid = next(iter(cand))
+        if knowledge_kinds.get(kid) != concept.kind:
             return 0.0, {}
-        agent_to_truth[cid] = truth_id
+        agent_to_knowledge[cid] = kid
 
-    truth_by_kind: dict[str, list[str]] = {}
-    for t, k in truth_kind.items():
-        truth_by_kind.setdefault(k, []).append(t)
     by_kind: dict[str, list[str]] = {}
-    for cid, tid in agent_to_truth.items():
+    for cid, kid in agent_to_knowledge.items():
         by_kind.setdefault(agent.concepts[cid].kind, []).append(cid)
     for kind, agents in by_kind.items():
-        covered = {agent_to_truth[c] for c in agents}
+        covered = {agent_to_knowledge[c] for c in agents}
         if len(covered) != len(agents):
             return 0.0, {}
-        if covered != set(truth_by_kind.get(kind, [])):
+        expected_kind = {k for k, kk in knowledge_kinds.items() if kk == kind}
+        if covered != expected_kind:
             return 0.0, {}
-    return 1.0, agent_to_truth
+    return 1.0, agent_to_knowledge
 
 
 # ---------------------------------------------------------------------------
-# Glossary validation (genuine confirmation)
+# Glossary validation (grounded / confirmed via explicit evidence)
 # ---------------------------------------------------------------------------
 
 
@@ -712,45 +659,42 @@ def _events_corresponding_at_span(
     text: str,
     ev_span: tuple[int, int],
     acts: set[str],
-    truth_concept_id: Optional[str],
+    semantic_id: Optional[str],
 ) -> bool:
     """True when an event with one of ``acts`` (and, when given, that exact
-    bound Truth concept) corresponds to the evidence span."""
+    knowledge concept id) corresponds to the evidence span."""
     for event in events:
         if event.act not in acts:
             continue
-        if truth_concept_id is not None and event.truth_concept_id != truth_concept_id:
+        if semantic_id is not None and event.semantic_id != semantic_id:
             continue
-        event_span = _resolve_assertion_span(text, event)
+        event_span = _resolve_span_text(text, event.quote, event.occurrence)
         if event_span is not None and spans_correspond(ev_span, event_span):
             return True
     return False
 
 
 def _glossary_validation(
-    agent: BusinessProcessGraph,
+    agent: AgentGraph,
     db: InterviewDB,
-    claims: dict[str, TruthClaim],
-    assertions: dict[int, list[StakeholderAssertion]],
     alignments: dict[int, list[ConceptAlignmentAssertion]],
     terminology: dict[int, list[TerminologyConfirmation]],
-    agent_to_truth: dict[str, str],
+    agent_to_knowledge: dict[str, str],
 ) -> tuple[bool, list[str], list[str]]:
     """Completion + genuine-validation rules.
 
-    Every validation status must be backed by the appropriate **private
-    dialogue event** for the concept's bound Truth concept (never inferred
-    from arbitrary spans or ordinary mentions):
-    - ``confirmed`` needs a concept-alignment event act=confirm;
-    - ``partially_confirmed`` needs act=partial;
-    - ``unknown`` needs act=unknown;
-    - ``disputed`` needs act=dispute evidence from >= 2 distinct
-      Observations;
-    - ``record_terminology_agreement`` needs a terminology-confirmation event
-      with the same bound Truth concept, the same proposed term, and a
-      corresponding cited span.
-    - **no bulk self-confirmation**: one (observation, quote, occurrence)
-      span may back at most one concept's validation_evidence.
+    - every referenced concept must be resolved (not hypothesized);
+    - ``grounded``: the concept must have an authentic binding (it appears
+      in ``agent_to_knowledge``);
+    - ``confirmed`` / ``partially_confirmed`` / ``unknown`` / ``disputed``:
+      validation evidence must correspond to the matching private dialogue
+      event (act confirm/partial/unknown/dispute) addressing the concept's
+      bound knowledge concept (disputed: >= 2 distinct Observations);
+    - terminology agreements need a terminology-confirmation event with the
+      same bound knowledge concept, the same proposed term, and a
+      corresponding cited span;
+    - **no bulk self-validation**: one span may back at most one concept's
+      validation evidence.
 
     Returns (pass, referenced_hypothesized, validation_errors).
     """
@@ -768,71 +712,67 @@ def _glossary_validation(
     span_usage: dict[tuple[str, str, int], str] = {}
     for cid in sorted(referenced):
         concept = agent.concepts[cid]
-        bound = agent_to_truth.get(cid)
-        for ev in concept.validation_evidence:
-            key = (ev.observation_id, ev.quote, ev.occurrence)
-            prev = span_usage.get(key)
-            if prev is not None and prev != cid:
+        bound = agent_to_knowledge.get(cid)
+        if concept.validation_status == "grounded":
+            if bound is None:
                 errors.append(
-                    f"evidence span {key} backs both {prev} and {cid} "
-                    f"(bulk self-confirmation)"
+                    f"concept {cid}: grounded requires an authentic provenance "
+                    f"binding (concept is not bound to any knowledge concept)"
                 )
-            span_usage[key] = cid
-            obs = _obs_by_id(db, ev.observation_id)
-            if obs is None:
-                errors.append(
-                    f"concept {cid}: validation evidence references unknown observation"
-                )
-                continue
-            ev_span = ev.resolve_span(obs.text)
-            if ev_span is None:
-                errors.append(f"concept {cid}: validation evidence span is not exact")
-                continue
-            events_at_turn = alignments.get(obs.turn, [])
-            if concept.validation_status in ("confirmed", "partially_confirmed"):
-                acts = (
-                    {"partial"}
-                    if concept.validation_status == "partially_confirmed"
-                    else {"confirm"}
-                )
-                if bound is None:
+            continue
+        if concept.validation_status in ("confirmed", "partially_confirmed", "unknown", "disputed"):
+            for ev in concept.validation_evidence:
+                key = (ev.observation_id, ev.quote, ev.occurrence)
+                prev = span_usage.get(key)
+                if prev is not None and prev != cid:
                     errors.append(
-                        f"concept {cid}: confirmation evidence does not "
-                        f"correspond to a private concept-alignment event "
-                        f"(act={sorted(acts)[0]}) for its bound Truth concept "
-                        f"(concept is not bound)"
+                        f"evidence span {key} backs both {prev} and {cid} "
+                        f"(bulk self-validation)"
                     )
-                elif not _events_corresponding_at_span(
+                span_usage[key] = cid
+                obs = _obs_by_id(db, ev.observation_id)
+                if obs is None:
+                    errors.append(
+                        f"concept {cid}: validation evidence references "
+                        f"unknown observation"
+                    )
+                    continue
+                ev_span = ev.resolve_span(obs.text)
+                if ev_span is None:
+                    errors.append(
+                        f"concept {cid}: validation evidence span is not exact"
+                    )
+                    continue
+                events_at_turn = alignments.get(obs.turn, [])
+                if concept.validation_status == "confirmed":
+                    acts = {"confirm"}
+                elif concept.validation_status == "partially_confirmed":
+                    acts = {"partial"}
+                elif concept.validation_status == "unknown":
+                    acts = {"unknown"}
+                else:  # disputed handled below
+                    acts = set()
+                if acts and bound is not None and not _events_corresponding_at_span(
                     events_at_turn, obs.text, ev_span, acts, bound
                 ):
                     errors.append(
-                        f"concept {cid}: confirmation evidence does not "
-                        f"correspond to a private concept-alignment event "
-                        f"(act={sorted(acts)[0]}) for Truth concept {bound!r}"
+                        f"concept {cid}: {concept.validation_status} evidence "
+                        f"does not correspond to a private dialogue event "
+                        f"(act={sorted(acts)[0]}) for knowledge concept "
+                        f"{bound!r}"
                     )
-            elif concept.validation_status == "unknown":
-                if bound is None:
+                elif acts and bound is None:
                     errors.append(
-                        f"concept {cid}: unknown evidence does not correspond "
-                        f"to a private concept-alignment event (act=unknown) "
-                        f"for its bound Truth concept (concept is not bound)"
+                        f"concept {cid}: {concept.validation_status} evidence "
+                        f"does not correspond to a private dialogue event for "
+                        f"its bound knowledge concept (concept is not bound)"
                     )
-                elif not _events_corresponding_at_span(
-                    events_at_turn, obs.text, ev_span, {"unknown"}, bound
-                ):
-                    errors.append(
-                        f"concept {cid}: unknown evidence does not correspond "
-                        f"to a private concept-alignment event (act=unknown) "
-                        f"for Truth concept {bound!r}"
-                    )
-            elif concept.validation_status == "disputed":
-                pass  # handled below (>=2 distinct observations)
     # disputed needs >= 2 distinct observations with matching dispute events
     for cid in sorted(referenced):
         concept = agent.concepts[cid]
         if concept.validation_status != "disputed":
             continue
-        bound = agent_to_truth.get(cid)
+        bound = agent_to_knowledge.get(cid)
         obs_with_support = set()
         for ev in concept.validation_evidence:
             obs = _obs_by_id(db, ev.observation_id)
@@ -841,29 +781,27 @@ def _glossary_validation(
             ev_span = ev.resolve_span(obs.text)
             if ev_span is None:
                 continue
-            events_at_turn = alignments.get(obs.turn, [])
             if bound is not None and _events_corresponding_at_span(
-                events_at_turn, obs.text, ev_span, {"dispute"}, bound
+                alignments.get(obs.turn, []), obs.text, ev_span, {"dispute"}, bound
             ):
                 obs_with_support.add(ev.observation_id)
         if bound is None or len(obs_with_support) < 2:
             bound_desc = repr(bound) if bound is not None else "(unbound)"
             errors.append(
-                f"concept {cid}: disputed needs private concept-alignment "
-                f"events (act=dispute) for Truth concept "
-                f"{bound_desc} from at least two distinct Observations"
+                f"concept {cid}: disputed needs private dialogue events "
+                f"(act=dispute) for knowledge concept {bound_desc} from at "
+                f"least two distinct Observations"
             )
-    # terminology agreements: same bound Truth concept + same proposed term +
-    # a corresponding cited Observation span
+    # terminology agreements
     for agreement in agent.terminology_agreements:
         if agreement.concept_id not in agent.concepts:
             errors.append(
                 f"terminology agreement for unknown concept {agreement.concept_id!r}"
             )
             continue
-        bound = agent_to_truth.get(agreement.concept_id)
+        bound = agent_to_knowledge.get(agreement.concept_id)
         if bound is None:
-            continue  # concept not referenced/bound; nothing to validate
+            continue
         matched = False
         for ev in agreement.evidence:
             obs = _obs_by_id(db, ev.observation_id)
@@ -881,11 +819,11 @@ def _glossary_validation(
                 )
                 continue
             for event in terminology.get(obs.turn, []):
-                if event.truth_concept_id != bound:
+                if event.semantic_id != bound:
                     continue
                 if event.proposed_term != agreement.term:
                     continue
-                event_span = _resolve_assertion_span(obs.text, event)
+                event_span = _resolve_span_text(obs.text, event.quote, event.occurrence)
                 if event_span is not None and spans_correspond(ev_span, event_span):
                     matched = True
                     break
@@ -893,8 +831,8 @@ def _glossary_validation(
             errors.append(
                 f"terminology agreement {agreement.term!r} for "
                 f"{agreement.concept_id}: no private terminology-confirmation "
-                f"event for Truth concept {bound!r} with the same proposed "
-                f"term at a corresponding cited span"
+                f"event for knowledge concept {bound!r} with the same "
+                f"proposed term at a corresponding cited span"
             )
     return (not errors), hypothesized, errors
 
@@ -906,7 +844,7 @@ def _glossary_validation(
 
 def _evidence_metrics(
     db: InterviewDB,
-    agent: BusinessProcessGraph,
+    agent: AgentGraph,
 ) -> tuple[int, int, float, float, float]:
     """(invalid, invalid_obs_refs, node_cov, ref_cov, edge_cov)."""
     invalid = 0
@@ -942,7 +880,7 @@ def _evidence_metrics(
             node_refs.extend(node.refs(prop))
         node_total += 1
         if any(
-            r.asserted and any(span_ok(ev) for ev in _ref_evidence(agent, r))
+            r.asserted and any(span_ok(ev) for ev in _ref_evidence(r))
             for r in node_refs
         ):
             node_hit += 1
@@ -950,7 +888,7 @@ def _evidence_metrics(
             if not r.asserted:
                 continue
             ref_total += 1
-            evs = _ref_evidence(agent, r)
+            evs = _ref_evidence(r)
             if evs and check_evidence(evs):
                 ref_hit += 1
     for edge in agent.edges.values():
@@ -958,11 +896,27 @@ def _evidence_metrics(
         if edge.evidence and check_evidence(edge.evidence):
             edge_hit += 1
         if edge.condition is not None:
-            check_evidence(_ref_evidence(agent, edge.condition))
+            check_evidence(_ref_evidence(edge.condition))
     node_cov = node_hit / node_total if node_total else 1.0
     ref_cov = ref_hit / ref_total if ref_total else 1.0
     edge_cov = edge_hit / edge_total if edge_total else 1.0
     return invalid, invalid_obs_refs, node_cov, ref_cov, edge_cov
+
+
+def _all_referenced_observation_ids(agent: AgentGraph) -> set[str]:
+    ids: set[str] = set()
+    for node in agent.nodes.values():
+        for prop in _NODE_PROPS:
+            for ref in node.refs(prop):
+                for ev in _ref_evidence(ref):
+                    ids.add(ev.observation_id)
+    for edge in agent.edges.values():
+        for ev in edge.evidence:
+            ids.add(ev.observation_id)
+        if edge.condition is not None:
+            for ev in _ref_evidence(edge.condition):
+                ids.add(ev.observation_id)
+    return ids
 
 
 # ---------------------------------------------------------------------------
@@ -972,71 +926,70 @@ def _evidence_metrics(
 
 def evaluate(
     db: InterviewDB,
-    truth: BusinessProcessGraph,
+    knowledge: StakeholderKnowledge,
     spec: EvaluationSpec,
-    stakeholder: Optional[StakeholderFilter] = None,
+    stakeholder=None,
     *,
-    claims: Optional[dict[str, TruthClaim]] = None,
-    assertions: Optional[dict[int, list[StakeholderAssertion]]] = None,
+    truth=None,
+    annotations: Optional[dict[int, list[SemanticAnnotation]]] = None,
     alignments: Optional[dict[int, list[ConceptAlignmentAssertion]]] = None,
     terminology: Optional[dict[int, list[TerminologyConfirmation]]] = None,
 ) -> EvaluationResult:
-    """Evaluate the inferred graph against the hidden Truth.
+    """Evaluate the inferred AgentGraph against the stakeholder's world model.
 
-    ``claims`` is the hidden graph-contextual TruthClaim catalog
-    (``Scenario.claims``); ``assertions``, ``alignments`` and ``terminology``
-    are the private sidecar ledgers (``StakeholderAssertionLedger``
-    accessors). All are evaluator-only; the Agent never sees them. Invalid
-    private metadata is rejected deterministically. Without provenance, no
-    ConceptRef can ground a claim.
-
-    Graph context is a **prerequisite**: a node's visible property claims are
-    credited only when the node's reconstructed incoming context covers the
-    complete visible Truth incoming context (missing required incoming
-    topology prevents contextual claim credit).
+    ``knowledge`` is the scenario's ``StakeholderKnowledge``;
+    ``annotations`` / ``alignments`` / ``terminology`` are the private
+    sidecar ledgers (``SemanticLedger`` accessors). All are evaluator-only;
+    the Agent never sees them. Invalid private metadata is rejected
+    deterministically. ``truth`` (optional) is only used for the separate
+    knowledge-coverage metric, never for Agent scoring.
     """
-    agent = db.graph if db.graph is not None else BusinessProcessGraph()
+    agent = db.graph if db.graph is not None else AgentGraph()
     protocol = db.interview_complete
     graph_created = len(agent.nodes) > 0
     graph_valid = agent.is_valid
-    claims = claims or {}
-    ledger = assertions or {}
+    annotation_ledger = annotations or {}
     alignment_ledger = alignments or {}
     terminology_ledger = terminology or {}
-    _validate_assertions(ledger, claims, stakeholder, db.messages)
-    _validate_events(alignment_ledger, terminology_ledger, claims, db.messages)
+    _validate_annotations(annotation_ledger, knowledge, db.messages)
+    _validate_events(alignment_ledger, terminology_ledger, knowledge, db.messages)
 
-    # ---- node/edge correspondence (provenance + topology) ------------------
-    mapping, edge_map = _match_nodes_and_edges(agent, truth, db, claims, ledger)
-    truth_node_ids = list(truth.nodes)
+    # ---- knowledge coverage (Truth vs StakeholderKnowledge; informational) --
+    knowledge_coverage = 0.0
+    if truth is not None:
+        from tau2.domains.business_interview.graph import graph_semantic_ids
+
+        truth_ids = graph_semantic_ids(truth.nodes, truth.edges)
+        if truth_ids:
+            known = 0
+            for sid in truth_ids:
+                value = knowledge.graph.element_value(sid)
+                if value is not None and not is_dont_know(value):
+                    known += 1
+            knowledge_coverage = known / len(truth_ids)
+
+    # ---- node/edge correspondence ------------------------------------------
+    mapping, edge_map = _match_nodes_and_edges(agent, knowledge, db, annotation_ledger)
+    knowledge_node_ids = list(knowledge.graph.nodes)
     agent_node_ids = list(agent.nodes)
-    matched_truth = set(mapping.values())
+    matched_knowledge = set(mapping.values())
     matched_agent = set(mapping.keys())
-    node_recall = len(matched_truth) / len(truth_node_ids) if truth_node_ids else 0.0
+    node_recall = (
+        len(matched_knowledge) / len(knowledge_node_ids)
+        if knowledge_node_ids
+        else 0.0
+    )
     node_precision = len(matched_agent) / len(agent_node_ids) if agent_node_ids else 0.0
     fabricated_node_count = len(agent_node_ids) - len(matched_agent)
 
-    # ---- graph-context prerequisite (complete visible incoming context) -----
-    truth_ctx = truth.node_contexts()
-    visible_edges = (
-        set(stakeholder.visible_edge_ids)
-        if stakeholder is not None
-        else set(truth.edges)
-    )
-    context_ok: dict[str, bool] = {}
-    for anid, tnid in mapping.items():
-        required = {e for e in truth_ctx[tnid].incoming_edge_ids if e in visible_edges}
-        reconstructed = {
-            teid for eid, teid in edge_map.items() if agent.edges[eid].to_node == anid
-        }
-        context_ok[anid] = required <= reconstructed
-
     # ---- edges -------------------------------------------------------------
-    truth_edge_list = list(truth.edges.values())
+    knowledge_edge_list = list(knowledge.graph.edges.values())
     agent_edge_list = list(agent.edges.values())
-    matched_truth_edges = {teid for teid in edge_map.values()}
+    matched_knowledge_edges = {teid for teid in edge_map.values()}
     edge_recall = (
-        len(matched_truth_edges) / len(truth_edge_list) if truth_edge_list else 1.0
+        len(matched_knowledge_edges) / len(knowledge_edge_list)
+        if knowledge_edge_list
+        else 1.0
     )
     edge_precision = len(edge_map) / len(agent_edge_list) if agent_edge_list else 0.0
     fabricated_edge_count = len(agent_edge_list) - len(edge_map)
@@ -1044,35 +997,38 @@ def evaluate(
     # ---- start / end --------------------------------------------------------
     start_correct = bool(
         agent.start_node_id is not None
-        and mapping.get(agent.start_node_id) == truth.start_node_id
+        and mapping.get(agent.start_node_id) == knowledge.graph.start_node_id
     )
     agent_ends = {mapping.get(eid) for eid in agent.end_node_ids if mapping.get(eid)}
-    truth_ends = set(truth.end_node_ids)
-    end_recall = len(agent_ends & truth_ends) / len(truth_ends) if truth_ends else 1.0
+    knowledge_ends = set(knowledge.graph.end_node_ids)
+    end_recall = (
+        len(agent_ends & knowledge_ends) / len(knowledge_ends)
+        if knowledge_ends
+        else 1.0
+    )
     end_precision = (
-        len(agent_ends & truth_ends) / len(agent_ends) if agent_ends else 0.0
+        len(agent_ends & knowledge_ends) / len(agent_ends) if agent_ends else 0.0
+    )
+
+    # ---- concept identity (before property scoring: bindings needed) -------
+    concept_correctness, agent_to_knowledge = _concept_bindings(
+        agent, knowledge, db, annotation_ledger, mapping, edge_map
     )
 
     # ---- property correctness ----------------------------------------------
     hits = {p: 0.0 for p in _NODE_PROPS}
     unsupported_concept_ref_count = 0
-    for anid, tnid in mapping.items():
-        visible = (
-            set(_NODE_PROPS)
-            if stakeholder is None
-            else stakeholder.node_properties_for(tnid)
-        )
+    for anid, mnid in mapping.items():
         for prop in _NODE_PROPS:
             score, unsup = _property_score(
                 agent,
+                knowledge,
                 db,
-                claims,
-                ledger,
-                tnid,
+                annotation_ledger,
+                mnid,
                 anid,
                 prop,
-                prop in visible,
-                context_ok=context_ok.get(anid, True),
+                agent_to_knowledge,
             )
             hits[prop] += score
             unsupported_concept_ref_count += unsup
@@ -1086,57 +1042,34 @@ def evaluate(
 
     # ---- edge conditions ----------------------------------------------------
     cond_hits = cond_total = 0
-    for te in truth_edge_list:
-        expected = _claims_at(claims, te.id, "condition")
-        if not expected:
-            cond_total += 1
-            ae = next(
-                (
-                    edge
-                    for edge in agent.edges.values()
-                    if edge_map.get(edge.id) == te.id
-                ),
-                None,
-            )
-            cond_hits += (
-                1
-                if (ae is None or ae.condition is None or not ae.condition.asserted)
-                else 0
-            )
-            continue
+    for me in knowledge_edge_list:
         cond_total += 1
         ae = next(
-            (edge for edge in agent.edges.values() if edge_map.get(edge.id) == te.id),
+            (edge for edge in agent.edges.values() if edge_map.get(edge.id) == me.id),
             None,
         )
+        value = me.condition
+        if is_dont_know(value) or value is None:
+            cond_hits += 1 if (ae is None or ae.condition is None or not ae.condition.asserted) else 0
+            continue
         if ae is None or ae.condition is None or not ae.condition.asserted:
             continue
-        g, _i, _a = _grounded_claim_ids(
-            db,
-            claims,
-            ledger,
-            _ref_evidence(agent, ae.condition),
-            context_id=te.id,
-            property="condition",
+        grounded, _i, _a = _grounded_ids(
+            db, annotation_ledger, _ref_evidence(ae.condition)
         )
-        if expected[0].id in g:
+        sid = f"edge:{me.id}:condition"
+        bound = agent_to_knowledge.get(ae.condition.concept_id)
+        if (
+            isinstance(value, ConceptRef)
+            and sid in grounded
+            and bound == value.concept_id
+        ):
             cond_hits += 1
     condition_correctness = cond_hits / cond_total if cond_total else 1.0
 
-    # ---- concept identity ---------------------------------------------------
-    concept_correctness, agent_to_truth = _concept_bindings(
-        agent, truth, db, claims, ledger, mapping, edge_map, stakeholder
-    )
-
     # ---- glossary completion + genuine validation ---------------------------
     glossary_pass, hypothesized, glossary_errors = _glossary_validation(
-        agent,
-        db,
-        claims,
-        ledger,
-        alignment_ledger,
-        terminology_ledger,
-        agent_to_truth,
+        agent, db, alignment_ledger, terminology_ledger, agent_to_knowledge
     )
 
     # ---- evidence hygiene ---------------------------------------------------
@@ -1170,30 +1103,18 @@ def evaluate(
     for anid in agent.nodes:
         for prop in _NODE_PROPS:
             for ref in agent.nodes[anid].asserted_refs(prop):
-                _g, _i, amb = _grounded_claim_ids(
-                    db,
-                    claims,
-                    ledger,
-                    _ref_evidence(agent, ref),
-                    property=prop,
+                _g, _i, amb = _grounded_ids(
+                    db, annotation_ledger, _ref_evidence(ref)
                 )
                 ambiguous_evidence_ref_count += amb
     for edge in agent.edges.values():
-        _g, _i, amb = _grounded_claim_ids(
-            db, claims, ledger, edge.evidence, property="edge_exists"
-        )
+        _g, _i, amb = _grounded_ids(db, annotation_ledger, edge.evidence)
         ambiguous_evidence_ref_count += amb
         if edge.condition is not None and edge.condition.asserted:
-            for teid in edge_map.values():
-                _g, _i, amb2 = _grounded_claim_ids(
-                    db,
-                    claims,
-                    ledger,
-                    _ref_evidence(agent, edge.condition),
-                    context_id=teid,
-                    property="condition",
-                )
-                ambiguous_evidence_ref_count += amb2
+            _g, _i, amb2 = _grounded_ids(
+                db, annotation_ledger, _ref_evidence(edge.condition)
+            )
+            ambiguous_evidence_ref_count += amb2
 
     provenance_authenticity_pass = bool(
         invalid_evidence_ref_count == 0
@@ -1271,20 +1192,5 @@ def evaluate(
         structural_pass=structural_pass,
         protocol_pass=protocol_pass,
         quality_pass=quality_pass,
+        knowledge_coverage=knowledge_coverage,
     )
-
-
-def _all_referenced_observation_ids(agent: BusinessProcessGraph) -> set[str]:
-    ids: set[str] = set()
-    for node in agent.nodes.values():
-        for prop in _NODE_PROPS:
-            for ref in node.refs(prop):
-                for ev in _ref_evidence(agent, ref):
-                    ids.add(ev.observation_id)
-    for edge in agent.edges.values():
-        for ev in edge.evidence:
-            ids.add(ev.observation_id)
-        if edge.condition is not None:
-            for ev in _ref_evidence(agent, edge.condition):
-                ids.add(ev.observation_id)
-    return ids

@@ -4,13 +4,13 @@
 Runs the REAL tau2 pipeline (Interview Agent <-> Stakeholder LLM) on the
 ``quotation_workflow_1`` scenario a small number of times using DeepSeek for
 BOTH the Interview Agent and the Stakeholder LLM. The stakeholder runs through
-the fact-grounded ``business_interview_user`` simulator: it answers only from
-hidden atomic StakeholderFacts and returns a private assertion sidecar
-(``[{fact_id, quote, occurrence}]``), which the environment stores privately
-per turn (never in Agent-visible state).
+the knowledge-grounded ``business_interview_user`` simulator: it answers only
+from its world model (StakeholderKnowledge) and returns a private sidecar
+(``[{semantic_id, quote, occurrence}]`` + dialogue events), which the
+environment stores privately per turn (never in Agent-visible state).
 
 The script captures the natural language conversation, the tool calls, the
-final inferred graph + glossary, the private assertion ledger (in a separate
+final inferred graph + glossary, the private semantic ledger (in a separate
 ``*.private.json`` artifact), the domain evaluator metrics
 (structural/glossary/evidence/quality_pass), the standard tau2 reward, a
 private-ID leakage scan, and any errors.
@@ -77,6 +77,8 @@ def _render_ref(ref) -> dict | None:
 
 
 def graph_to_dict(graph) -> dict:
+    """Render an AgentGraph (or Truth graph) for the dump. Tolerant of the
+    different concept shapes (AgentConcept vs TruthConcept)."""
     if graph is None:
         return {}
     return {
@@ -88,11 +90,16 @@ def graph_to_dict(graph) -> dict:
             cid: {
                 "id": concept.id,
                 "kind": concept.kind,
-                "display_label": concept.display_label,
+                "display_label": getattr(concept, "display_label", None),
                 "description": concept.description,
-                "validation_status": concept.validation_status,
-                "mentions": _render_evidence(concept.mentions),
-                "validation_evidence": _render_evidence(concept.validation_evidence),
+                "canonical_terms": getattr(concept, "canonical_terms", None),
+                "validation_status": getattr(concept, "validation_status", None),
+                "mentions": _render_evidence(
+                    getattr(concept, "mentions", []) or []
+                ),
+                "validation_evidence": _render_evidence(
+                    getattr(concept, "validation_evidence", []) or []
+                ),
             }
             for cid, concept in graph.concepts.items()
         },
@@ -103,7 +110,7 @@ def graph_to_dict(graph) -> dict:
                 "stakeholder_id": a.stakeholder_id,
                 "evidence": _render_evidence(a.evidence),
             }
-            for a in graph.terminology_agreements
+            for a in getattr(graph, "terminology_agreements", []) or []
         ],
         "nodes": {
             nid: {
@@ -130,6 +137,11 @@ def graph_to_dict(graph) -> dict:
         "validation_errors": graph.structure_errors(),
         "is_valid": graph.is_valid,
     }
+
+
+def knowledge_concept_ids(scenario) -> set[str]:
+    """Private semantic ids of the scenario knowledge (leakage scan)."""
+    return set(scenario.knowledge.graph.concepts)
 
 
 def _leakage_scan(dump: dict, private_ids: set[str]) -> list[str]:
@@ -174,7 +186,7 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
     """
     # Importing inside the function keeps the script import-light and explicit.
     from tau2.data_model.simulation import TextRunConfig
-    from tau2.domains.business_interview.evaluation import evaluate
+    from tau2.domains.business_interview.evaluation import EvaluationSpec, evaluate
     from tau2.domains.business_interview.scenario import get_scenario
     from tau2.evaluator.evaluator import EvaluationType
     from tau2.registry import registry
@@ -224,7 +236,9 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
     except Exception as exc:  # noqa: BLE001
         errors.append(f"could not read db: {exc}")
     assertion_ledger = getattr(orchestrator.environment, "assertion_ledger", None)
-    assertions = assertion_ledger.assertions() if assertion_ledger is not None else {}
+    annotations = (
+        assertion_ledger.annotations() if assertion_ledger is not None else {}
+    )
     alignments = assertion_ledger.alignments() if assertion_ledger is not None else {}
     terminology = assertion_ledger.terminology() if assertion_ledger is not None else {}
 
@@ -240,11 +254,11 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
         eval_result = (
             evaluate(
                 db,
-                scenario.truth,
-                scenario.spec,
+                scenario.knowledge,
+                EvaluationSpec(),
                 scenario.stakeholder,
-                claims=scenario.claims,
-                assertions=assertions,
+                truth=scenario.truth,
+                annotations=annotations,
                 alignments=alignments,
                 terminology=terminology,
             ).model_dump(mode="json")
@@ -338,16 +352,18 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
     # --- private-ID leakage scan ---------------------------------------------
     private_ids: set[str] = set()
     if scenario is not None:
-        private_ids.update(scenario.claims.keys())
+        private_ids.update(scenario.knowledge.graph.semantic_ids())
+        private_ids.update(knowledge_concept_ids(scenario))
     leakage = _leakage_scan(dump, private_ids)
     dump["private_id_leakage"] = leakage
 
-    # The PRIVATE assertion ledger + claims: kept out of the Agent-visible dump
-    # and written to a separate artifact by main().
+    # The PRIVATE semantic ledger: kept out of the Agent-visible dump and
+    # written to a separate artifact by main().
     private_payload = {
         "task_id": TASK_ID,
-        "assertions_by_turn": {
-            str(turn): [a.model_dump() for a in ass] for turn, ass in assertions.items()
+        "annotations_by_turn": {
+            str(turn): [a.model_dump() for a in ass]
+            for turn, ass in annotations.items()
         },
         "alignments_by_turn": {
             str(turn): [e.model_dump() for e in evs] for turn, evs in alignments.items()
@@ -356,13 +372,8 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
             str(turn): [e.model_dump() for e in evs]
             for turn, evs in terminology.items()
         },
-        "visible_claims": (
-            {cid: claim.model_dump() for cid, claim in scenario.claims.items()}
-            if scenario is not None
-            else {}
-        ),
-        "concept_views": (
-            scenario.knowledge.concept_views if scenario is not None else {}
+        "knowledge": (
+            scenario.knowledge.model_dump(mode="json") if scenario is not None else {}
         ),
     }
     dump["private_assertions_artifact"] = f"run_{run_index:02d}_seed{seed}.private.json"

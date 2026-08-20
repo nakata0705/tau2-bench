@@ -487,19 +487,21 @@ class UserMessage(ParticipantMessageBase):
     role: UserRole = Field(description="The role of the message sender.")  # pyright: ignore[reportIncompatibleVariableOverride]
 
     # PRIVATE benchmark metadata (business_interview only): the hidden
-    # assertion sidecar a fact-grounded stakeholder simulator returns alongside
-    # its natural-language response: [{fact_id, quote, occurrence}]. Only the
-    # content enters the conversation; this field is consumed solely by the
-    # domain environment (sidecar binding) and is excluded from every
-    # serialization, so private fact/claim ids can never appear in
-    # Agent-visible messages, artifacts, or state.
-    stakeholder_assertions: Optional[list[dict]] = Field(
+    # annotation sidecar a fact-grounded stakeholder simulator returns
+    # alongside its natural-language response:
+    # [{semantic_id, quote, occurrence}] — Observation spans resolving
+    # directly to stakeholder semantic IDs. Only the content enters the
+    # conversation; this field is consumed solely by the domain environment
+    # (sidecar binding) and is excluded from every serialization, so private
+    # semantic ids can never appear in Agent-visible messages, artifacts, or
+    # state.
+    stakeholder_annotations: Optional[list[dict]] = Field(
         default=None,
         exclude=True,
         repr=False,
         description=(
-            "Private benchmark sidecar (assertions) of a stakeholder "
-            "response; never serialized or Agent-visible."
+            "Private benchmark sidecar (semantic annotations) of a "
+            "stakeholder response; never serialized or Agent-visible."
         ),
     )
 

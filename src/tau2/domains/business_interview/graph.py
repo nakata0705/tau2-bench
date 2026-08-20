@@ -1,42 +1,130 @@
-"""Unified Agent-local glossary + business process graph (v9 — graph context).
+"""Graph-native semantic model for business_interview (v10 — graph as truth).
 
-The interview's product is a **BusinessProcessGraph**: nodes (what happens, by
-whom, on what data) and directed edges (with optional conditions), both
-referencing a **glossary** of Agent-local ``BusinessConcept``\\ s. Concepts are
-typed (``ConceptKind``) and carry a validation status; every claim in the graph
-cites **EvidenceRef**\\ s — spans of immutable stakeholder Observations.
+The semantic model is the **graph itself**. Truth is a
+``BusinessProcessGraph`` plus ``TruthConcept``\\ s; the agent builds its own
+``AgentGraph`` plus ``AgentConcept``\\ s; the stakeholder's world model is a
+``StakeholderKnowledgeGraph`` (knowledge.py) derived from Truth by masking.
 
-**Mention != terminology.** A ``BusinessConcept`` records ``mentions`` (spans
-the Agent believes refer to this local concept); its ``display_label`` is
-working text, irrelevant to evaluation. An explicit terminology agreement with
-the stakeholder is recorded separately (``TerminologyAgreement``).
+Every addressable graph element carries a **stable semantic ID** (never a
+list index — IDs survive reordering):
 
-Truth semantics live at **graph positions**: every TruthClaim belongs to a
-context (a Truth node or edge), and node contexts carry their full incoming
-topology (``TruthNodeContext``). Cycles are valid — there is no acyclicity
-requirement and no ``LoopNode``.
+    node:<node_id>                     the node itself
+    node:<node_id>:activity            scalar property slot (value/absent/unknown)
+    node:<node_id>:actor
+    node:<node_id>:system
+    node:<node_id>:rationale
+    node:<node_id>:reads               whole-property slot
+    node:<node_id>:reads:<concept_id>  one reads element
+    node:<node_id>:writes              whole-property slot
+    node:<node_id>:writes:<concept_id> one writes element
+    edge:<edge_id>                     the edge itself
+    edge:<edge_id>:condition           the edge-condition slot
+
+A property slot is **three-valued**: ``ConceptRef`` (value known), ``None``
+(value known absent), or ``DONT_KNOW`` (element known, value unknown). This
+is the stakeholder's epistemic state and the agent is scored against it.
+
+**Mention != evidence != validation.** ``AgentConcept.mentions`` are spans
+the Agent interprets as referring to the concept; property references carry
+their own ``EvidenceRef``\\ s (property scoring uses property evidence ONLY);
+validation statuses are backed by explicit validation/dialogue evidence.
 
 The evaluator derives correctness **only** through private provenance:
-ConceptRef -> EvidenceRef -> Observation span -> private assertion ->
-TruthClaim -> Truth concept. None of the text fields here (labels,
-descriptions, mentions, quotes) are ever interpreted semantically.
+Agent EvidenceRef -> Observation span -> private annotation (stakeholder
+semantic ID) -> StakeholderKnowledgeGraph / StakeholderKnowledgeConcept.
+None of the text fields are ever interpreted semantically.
 """
 
-from typing import Literal, Optional
+from typing import Generic, Literal, Optional, TypeVar, Union
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from tau2.environment.db import DB
+
+C = TypeVar("C")
 
 ConceptKind = Literal["activity", "actor", "system", "data", "condition", "rationale"]
 
 ValidationStatus = Literal[
-    "hypothesized", "confirmed", "partially_confirmed", "disputed", "unknown"
+    "hypothesized", "grounded", "confirmed", "partially_confirmed", "disputed",
+    "unknown",
 ]
 
-# Property names scored on nodes / edges (TruthClaim.property).
+# Property names scored on nodes / edges.
 NodeProperty = Literal["activity", "actor", "system", "reads", "writes", "rationale"]
-EdgeProperty = Literal["condition", "edge_exists"]
+EdgeProperty = Literal["condition"]
+
+_NODE_PROPS: tuple[str, ...] = ("activity", "actor", "system", "reads", "writes", "rationale")
+
+
+class DontKnowType(BaseModel):
+    """The DONT_KNOW marker: the element exists but its value is unknown.
+
+    ``DONT_KNOW`` (module singleton) is distinct from ``None`` (known
+    absent) and from ``ConceptRef`` (known value).
+    """
+
+    pass
+
+
+DONT_KNOW = DontKnowType()
+
+
+def is_dont_know(value) -> bool:
+    """True when a property slot carries the DONT_KNOW marker."""
+    return isinstance(value, DontKnowType)
+
+
+# ---------------------------------------------------------------------------
+# Semantic IDs
+# ---------------------------------------------------------------------------
+
+
+def node_id(nid: str) -> str:
+    return f"node:{nid}"
+
+
+def slot_id(nid: str, prop: str) -> str:
+    return f"node:{nid}:{prop}"
+
+
+def element_id(nid: str, axis: str, concept_id: str) -> str:
+    return f"node:{nid}:{axis}:{concept_id}"
+
+
+def edge_id(eid: str) -> str:
+    return f"edge:{eid}"
+
+
+def condition_id(eid: str) -> str:
+    return f"edge:{eid}:condition"
+
+
+def graph_semantic_ids(nodes, edges) -> set[str]:
+    """All addressable semantic IDs of a graph (Truth, Agent or stakeholder
+    knowledge): node ids, every property slot, every reads/writes element,
+    edge ids and the condition slot. Stable — never derived from list
+    positions."""
+    ids: set[str] = set()
+    for nid in nodes:
+        ids.add(node_id(nid))
+        for prop in _NODE_PROPS:
+            ids.add(slot_id(nid, prop))
+        node = nodes[nid]
+        for axis in ("reads", "writes"):
+            refs = getattr(node, axis, None) or []
+            for ref in refs:
+                if ref.concept_id:
+                    ids.add(element_id(nid, axis, ref.concept_id))
+    for eid in edges:
+        ids.add(edge_id(eid))
+        ids.add(condition_id(eid))
+    return ids
+
+
+# ---------------------------------------------------------------------------
+# Evidence
+# ---------------------------------------------------------------------------
 
 
 class EvidenceRef(BaseModel):
@@ -74,46 +162,9 @@ def spans_correspond(a: tuple[int, int], b: tuple[int, int]) -> bool:
     return (a[0] <= b[0] and b[1] <= a[1]) or (b[0] <= a[0] and a[1] <= b[1])
 
 
-class BusinessConcept(BaseModel):
-    """An Agent-local glossary concept (a business thing of one ConceptKind).
-
-    Agent ids are local and arbitrary; ``display_label`` / ``description`` are
-    the Agent's own working text and are never compared to Truth.
-    ``mentions`` are Observation spans the Agent believes refer to this
-    concept — a mention is NOT a terminology agreement. ``validation_status``
-    tracks the Agent's confidence in the concept's identity;
-    ``validation_evidence`` records the stakeholder evidence behind the
-    status (genuine confirmation requires evidence corresponding to a private
-    assertion of the concept's claims; unknown/disputed also need evidence).
-    """
-
-    id: str
-    kind: ConceptKind
-    display_label: str
-    description: str = Field(default="")
-    mentions: list[EvidenceRef] = Field(default_factory=list)
-    validation_status: ValidationStatus = Field(default="hypothesized")
-    validation_evidence: list[EvidenceRef] = Field(default_factory=list)
-
-    @property
-    def resolved(self) -> bool:
-        """True when the concept is no longer merely hypothesized."""
-        return self.validation_status != "hypothesized"
-
-
-class TerminologyAgreement(BaseModel):
-    """A recorded explicit terminology agreement: the Agent proposed ``term``
-    for ``concept_id`` and the stakeholder confirmed it (evidenced by an
-    Observation span). Recorded separately from mere mentions."""
-
-    concept_id: str
-    term: str
-    stakeholder_id: str = Field(default="stakeholder")
-    evidence: list[EvidenceRef] = Field(default_factory=list)
-
-
 class ConceptRef(BaseModel):
-    """A reference from a node/edge to an Agent-local glossary concept.
+    """A reference from a node/edge to a concept (Truth, Agent or stakeholder
+    knowledge — the id namespace depends on the graph).
 
     ``evidence`` cites the Observation spans that support using this concept
     at this slot. ``confidence`` in [0, 1]; 0 = unasserted.
@@ -137,13 +188,13 @@ class ConceptRef(BaseModel):
 
 
 class Node(BaseModel):
-    """A vertex in the business process graph.
+    """A vertex in a business process graph.
 
     ``activity`` is required and references an activity concept; ``actor`` /
     ``system`` / ``necessity_rationale`` are optional single references;
     ``reads`` / ``writes`` are lists of data-concept references. Every ref
     carries its own evidence. ``from``/``to`` structural identity is expressed
-    only through edges; node ids are Agent-local.
+    only through edges; node ids are local to the graph.
     """
 
     id: str
@@ -189,7 +240,7 @@ class Edge(BaseModel):
     evidence: list[EvidenceRef] = Field(default_factory=list)
 
 
-def _node_property_refs(node: "Node") -> dict[str, list[ConceptRef]]:
+def _node_property_refs(node: Node) -> dict[str, list[ConceptRef]]:
     """All refs of a node keyed by property name (single refs as one-element
     lists; reads/writes as their lists)."""
     return {
@@ -204,52 +255,23 @@ def _node_property_refs(node: "Node") -> dict[str, list[ConceptRef]]:
     }
 
 
-class TruthNodeContext(BaseModel):
-    """The workflow position of one Truth node: its id, ALL incoming Truth
-    edges, and whether it is the start node (start nodes may still have
-    incoming edges when cycles exist). Resolved from the Truth graph — never
-    duplicated in claims."""
+class _GraphMixin(BaseModel, Generic[C]):
+    """Shared graph structure + utilities (cycles are valid; no acyclicity
+    requirement). The concrete concept type is fixed by the subclass."""
 
-    node_id: str
-    incoming_edge_ids: list[str] = Field(default_factory=list)
-    is_start: bool = Field(default=False)
-
-
-class BusinessProcessGraph(BaseModel):
-    """A business process graph: nodes, edges, and the Agent-local glossary.
-
-    Cycles are valid — there is deliberately no acyclicity validation.
-    ``start_node_id`` / ``end_node_ids`` restore explicit start/end semantics
-    (Truth contexts use ``is_start``; the Agent declares endpoints too).
-    """
-
-    id: str = Field(default="graph")
-    name: str = Field(default="")
+    id: str = "graph"
+    name: str = ""
     nodes: dict[str, Node] = Field(default_factory=dict)
     edges: dict[str, Edge] = Field(default_factory=dict)
-    concepts: dict[str, BusinessConcept] = Field(default_factory=dict)
-    terminology_agreements: list[TerminologyAgreement] = Field(default_factory=list)
-    start_node_id: Optional[str] = Field(default=None)
+    concepts: dict[str, C] = Field(default_factory=dict)
+    start_node_id: Optional[str] = None
     end_node_ids: list[str] = Field(default_factory=list)
-
-    # ---------------------------------------------------------------- graph utils
 
     def successors(self, node_id: str) -> list[str]:
         return [e.to_node for e in self.edges.values() if e.from_node == node_id]
 
     def incoming_edges(self, node_id: str) -> list[str]:
         return [e.id for e in self.edges.values() if e.to_node == node_id]
-
-    def node_contexts(self) -> dict[str, TruthNodeContext]:
-        """TruthNodeContext per node: ALL incoming edges + start flag."""
-        return {
-            nid: TruthNodeContext(
-                node_id=nid,
-                incoming_edge_ids=sorted(self.incoming_edges(nid)),
-                is_start=(nid == self.start_node_id),
-            )
-            for nid in self.nodes
-        }
 
     def structure_errors(self) -> list[str]:
         """Internal self-consistency errors (empty = well-formed).
@@ -307,11 +329,93 @@ class BusinessProcessGraph(BaseModel):
         return ids
 
 
-class InterviewResult(BaseModel):
-    """The product of an interview: the graph and its evidence."""
+# ---------------------------------------------------------------------------
+# Truth
+# ---------------------------------------------------------------------------
 
-    graph: BusinessProcessGraph = Field(default_factory=BusinessProcessGraph)
-    observations: list["Observation"] = Field(default_factory=list)
+
+class TruthConcept(BaseModel):
+    """One Truth concept: a business thing of one kind.
+
+    ``description`` describes the concept itself (never a workflow-position
+    fact); ``canonical_terms`` are the Truth's own wordings (private — the
+    stakeholder sees only its own knowledge concepts).
+    """
+
+    id: str
+    kind: ConceptKind
+    description: str = Field(default="")
+    canonical_terms: list[str] = Field(default_factory=list)
+
+
+class BusinessProcessGraph(_GraphMixin[TruthConcept]):
+    """The Truth: nodes, edges and the TruthConcept glossary.
+
+    The graph itself is the semantic model — there are no generated claims.
+    Node/edge ids are Truth-local and stable; every addressable element has a
+    semantic ID (see module docstring).
+    """
+
+
+# ---------------------------------------------------------------------------
+# Agent
+# ---------------------------------------------------------------------------
+
+
+class AgentConcept(BaseModel):
+    """An Agent-local glossary concept (a business thing of one ConceptKind).
+
+    Agent ids are local and arbitrary; ``display_label`` / ``description`` are
+    the Agent's own working text and are never compared to Truth.
+    ``mentions`` are Observation spans the Agent interprets as referring to
+    this concept — a mention is NOT evidence for a graph property and NOT a
+    terminology agreement. ``validation_status`` is one of hypothesized /
+    grounded / confirmed / partially_confirmed / disputed / unknown;
+    ``validation_evidence`` records the explicit dialogue/validation evidence
+    behind the status.
+    """
+
+    id: str
+    kind: ConceptKind
+    display_label: str
+    description: str = Field(default="")
+    mentions: list[EvidenceRef] = Field(default_factory=list)
+    validation_status: ValidationStatus = Field(default="hypothesized")
+    validation_evidence: list[EvidenceRef] = Field(default_factory=list)
+
+    @property
+    def resolved(self) -> bool:
+        """True when the concept is no longer merely hypothesized."""
+        return self.validation_status != "hypothesized"
+
+
+class TerminologyAgreement(BaseModel):
+    """A recorded explicit terminology agreement: the Agent proposed ``term``
+    for ``concept_id`` and the stakeholder confirmed it (evidenced by an
+    Observation span). Recorded separately from mere mentions."""
+
+    concept_id: str
+    term: str
+    stakeholder_id: str = Field(default="stakeholder")
+    evidence: list[EvidenceRef] = Field(default_factory=list)
+
+
+class AgentGraph(_GraphMixin[AgentConcept]):
+    """The Agent's inferred business process graph + AgentConcept glossary.
+
+    Every property reference carries its own EvidenceRef; cycles are valid;
+    ``start_node_id`` / ``end_node_ids`` restore explicit start/end
+    semantics.
+    """
+
+    terminology_agreements: list[TerminologyAgreement] = Field(
+        default_factory=list
+    )
+
+
+# ---------------------------------------------------------------------------
+# Observations / interview state
+# ---------------------------------------------------------------------------
 
 
 class Observation(BaseModel):
@@ -321,7 +425,7 @@ class Observation(BaseModel):
     ``turn`` is the conversation message index it derives from.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = {"frozen": True}
 
     id: str
     source_id: str = Field(description="Who said it (e.g. the stakeholder).")
@@ -344,17 +448,25 @@ class Observation(BaseModel):
         return True
 
 
+class InterviewResult(BaseModel):
+    """The product of an interview: the graph and its evidence."""
+
+    graph: AgentGraph = Field(default_factory=AgentGraph)
+    observations: list[Observation] = Field(default_factory=list)
+
+
 class InterviewDB(DB):
-    """State of an interview: the inferred graph, the conversation ledger, and
-    the authentic Observations captured from stakeholder messages.
+    """State of an interview: the inferred AgentGraph, the conversation
+    ledger, and the authentic Observations captured from stakeholder
+    messages.
 
     ``messages`` is an environment-controlled ledger of the conversation
     (role + content per message index); ``observations`` are derived only from
-    user (stakeholder) messages via ``observe_message``. The private
-    assertion ledger lives outside this DB (never Agent-visible).
+    user (stakeholder) messages via ``observe_message``. The private semantic
+    annotation ledger lives outside this DB (never Agent-visible).
     """
 
-    graph: Optional[BusinessProcessGraph] = Field(default=None)
+    graph: Optional[AgentGraph] = Field(default=None)
     messages: list[dict] = Field(
         default_factory=list,
         description="Conversation ledger: {role, content} by message index.",
@@ -365,6 +477,6 @@ class InterviewDB(DB):
 
     def interview_result(self) -> InterviewResult:
         return InterviewResult(
-            graph=self.graph if self.graph is not None else BusinessProcessGraph(),
+            graph=self.graph if self.graph is not None else AgentGraph(),
             observations=list(self.observations),
         )
