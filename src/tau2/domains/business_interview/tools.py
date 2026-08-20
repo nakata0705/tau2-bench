@@ -1,4 +1,7 @@
-"""Agent tools for the graph-context business_interview benchmark (v6).
+"""Agent tools for the graph-context business_interview benchmark (v8).
+
+Dialogue events: confirmations/unknown/disputed/terminology require private
+semantic dialogue events, not ordinary workflow mentions.
 
 The agent records **Observations** (immutable evidence), builds a private
 **glossary** of typed ``BusinessConcept``\\ s (activity / actor / system / data /
@@ -25,7 +28,9 @@ from pydantic import ValidationError
 from tau2.data_model.tasks import Task
 from tau2.domains.business_interview.evaluation import EvaluationResult, evaluate
 from tau2.domains.business_interview.facts import (
+    ConceptAlignmentAssertion,
     StakeholderAssertionLedger,
+    TerminologyConfirmation,
 )
 from tau2.domains.business_interview.graph import (
     BusinessConcept,
@@ -37,6 +42,7 @@ from tau2.domains.business_interview.graph import (
     Node,
     Observation,
     TerminologyAgreement,
+    spans_correspond,
 )
 from tau2.domains.business_interview.scenario import get_scenario
 from tau2.environment.toolkit import ToolKitBase, ToolType, is_tool
@@ -60,6 +66,20 @@ def _ev(value: dict) -> EvidenceRef:
         return EvidenceRef(**value)
     except ValidationError as exc:
         raise ValueError(f"invalid evidence ref {value!r}: {exc}") from exc
+
+
+def _resolve_span_text(
+    text: str, quote: str, occurrence: int
+) -> Optional[tuple[int, int]]:
+    """Resolve (quote, occurrence) to a character span in ``text``, or None."""
+    if not quote:
+        return None
+    start = -1
+    for _ in range(occurrence + 1):
+        start = text.find(quote, start + 1)
+        if start == -1:
+            return None
+    return (start, start + len(quote))
 
 
 class InterviewTools(ToolKitBase):
@@ -250,15 +270,18 @@ class InterviewTools(ToolKitBase):
         evidence: list,
     ) -> str:
         """Record an explicit terminology agreement: you proposed ``term`` for
-        this concept and the stakeholder confirmed it.
+        this concept and the stakeholder explicitly confirmed it.
 
         Record this ONLY when the stakeholder explicitly agreed to the term in
         the interview. The evidence must cite the Observation span where the
-        stakeholder confirmed (or used) the term.
+        stakeholder performed that agreement (a private terminology-
+        confirmation event). A mere authentic mention of the term in ordinary
+        workflow speech is NOT an agreement and cannot authorize this call.
 
         Args:
             concept_id: The concept the term refers to.
-            term: The agreed term.
+            term: The agreed term (must match the proposed term the
+                stakeholder confirmed).
             evidence: Evidence spans of the confirmation (required).
 
         Returns:
@@ -269,6 +292,14 @@ class InterviewTools(ToolKitBase):
         if not evs:
             raise ValueError(
                 f"record_terminology_agreement requires evidence spans for {concept_id}"
+            )
+        matches = self._terminology_matches(evs, term)
+        if not matches:
+            raise ValueError(
+                f"record_terminology_agreement for {concept_id}: evidence does "
+                f"not correspond to a private terminology-confirmation event "
+                f"for proposed term {term!r} — an ordinary mention is not an "
+                f"agreement"
             )
         graph = self._graph()
         graph.terminology_agreements.append(
@@ -364,18 +395,55 @@ class InterviewTools(ToolKitBase):
             "all references re-pointed."
         )
 
-    def _assertion_correspondence(self, evidence: list[EvidenceRef]) -> set[str]:
-        """Claims whose private assertions correspond (span containment) to
-        the given evidence spans — ALL of them (no ambiguity filter, since
-        confirmation only needs the stakeholder to have asserted the
-        concept's identity in that span). Deterministic."""
-        from tau2.domains.business_interview.evaluation import (
-            _corresponding_claim_ids,
-        )
+    def _alignment_matches(
+        self, evidence: list[EvidenceRef], acts: set[str]
+    ) -> list[tuple[str, ConceptAlignmentAssertion]]:
+        """Concept-alignment events (act in ``acts``) whose spans correspond
+        (containment) to the given evidence spans, as
+        ``[(observation_id, event)]``. Deterministic."""
+        matches: list[tuple[str, ConceptAlignmentAssertion]] = []
+        events_by_turn = self.assertion_ledger.alignments()
+        for ev in evidence:
+            obs = next(
+                (o for o in self.db.observations if o.id == ev.observation_id), None
+            )
+            if obs is None:
+                continue
+            ev_span = ev.resolve_span(obs.text)
+            if ev_span is None:
+                continue
+            for event in events_by_turn.get(obs.turn, []):
+                if event.act not in acts:
+                    continue
+                event_span = _resolve_span_text(obs.text, event.quote, event.occurrence)
+                if event_span is not None and spans_correspond(ev_span, event_span):
+                    matches.append((ev.observation_id, event))
+        return matches
 
-        return _corresponding_claim_ids(
-            self.db, self.assertion_ledger.assertions(), evidence
-        )
+    def _terminology_matches(
+        self, evidence: list[EvidenceRef], term: str
+    ) -> list[tuple[str, TerminologyConfirmation]]:
+        """Terminology-confirmation events whose ``proposed_term`` equals
+        ``term`` and whose spans correspond to the given evidence spans, as
+        ``[(observation_id, event)]``. Deterministic."""
+        matches: list[tuple[str, TerminologyConfirmation]] = []
+        events_by_turn = self.assertion_ledger.terminology()
+        for ev in evidence:
+            obs = next(
+                (o for o in self.db.observations if o.id == ev.observation_id), None
+            )
+            if obs is None:
+                continue
+            ev_span = ev.resolve_span(obs.text)
+            if ev_span is None:
+                continue
+            for event in events_by_turn.get(obs.turn, []):
+                if event.proposed_term != term:
+                    continue
+                event_span = _resolve_span_text(obs.text, event.quote, event.occurrence)
+                if event_span is not None and spans_correspond(ev_span, event_span):
+                    matches.append((ev.observation_id, event))
+        return matches
 
     @is_tool(ToolType.WRITE)
     def confirm_concept(
@@ -387,10 +455,12 @@ class InterviewTools(ToolKitBase):
         """Confirm a concept with genuine stakeholder evidence.
 
         Confirmation must represent actual stakeholder confirmation of the
-        concept's identity: every evidence span must correspond to a private
-        assertion of a claim of this concept (the stakeholder actually used
-        this concept's identity in that message), and a span may back at most
-        one concept (no bulk self-confirmation).
+        concept's identity: the evidence must correspond to a private
+        concept-alignment event (act ``confirm``, or ``partial`` when
+        ``partial=True``) — the stakeholder actually performed that dialogue
+        act in that message. A mere mention in ordinary workflow speech is
+        NOT confirmation. A span may back at most one concept (no bulk
+        self-confirmation).
 
         Args:
             concept_id: The concept to confirm.
@@ -419,12 +489,13 @@ class InterviewTools(ToolKitBase):
                         f"already backs {other.id}; a span cannot confirm "
                         f"several concepts"
                     )
-        grounded = self._assertion_correspondence(evs)
-        if not grounded:
+        acts = {"partial"} if partial else {"confirm"}
+        if not self._alignment_matches(evs, acts):
             raise ValueError(
-                f"confirm_concept for {concept_id}: evidence does not "
-                f"correspond to any stakeholder assertion (mention-only "
-                f"speech is not confirmation)"
+                f"confirm_concept for {concept_id}: evidence does not correspond "
+                f"to a private concept-alignment event (act="
+                f"{'partial' if partial else 'confirm'}) — mention-only speech "
+                f"is not confirmation"
             )
         for ev in evs:
             if ev not in concept.validation_evidence:
@@ -439,9 +510,9 @@ class InterviewTools(ToolKitBase):
     def mark_concept_unknown(self, concept_id: str, evidence: list) -> str:
         """Mark a concept as unknown with stakeholder evidence.
 
-        The evidence must be an authentic span from a message where the
-        stakeholder did NOT assert this concept's identity (e.g. the
-        stakeholder said they do not know).
+        The evidence must correspond to a private concept-alignment event with
+        act ``unknown`` (the stakeholder explicitly said they do not know /
+        could not assert the concept's identity).
 
         Args:
             concept_id: The concept to mark unknown.
@@ -454,12 +525,10 @@ class InterviewTools(ToolKitBase):
         evs = self._require_evidence(evidence)
         if not evs:
             raise ValueError(f"mark_concept_unknown requires evidence for {concept_id}")
-        grounded = self._assertion_correspondence(evs)
-        if grounded:
+        if not self._alignment_matches(evs, {"unknown"}):
             raise ValueError(
-                f"mark_concept_unknown for {concept_id}: evidence corresponds "
-                f"to stakeholder assertions — use confirm_concept or "
-                f"mark_concept_disputed instead"
+                f"mark_concept_unknown for {concept_id}: evidence does not "
+                f"correspond to a private concept-alignment event (act=unknown)"
             )
         # a status change replaces the concept's validation evidence
         concept.validation_evidence = list(evs)
@@ -470,9 +539,9 @@ class InterviewTools(ToolKitBase):
     def mark_concept_disputed(self, concept_id: str, evidence: list) -> str:
         """Mark a concept as disputed with stakeholder evidence.
 
-        The evidence must come from at least two distinct Observations in
-        which the stakeholder asserted this concept's identity (statements you
-        judge to conflict).
+        The evidence must correspond to private concept-alignment events with
+        act ``dispute`` (the stakeholder contradicted the proposed identity),
+        from at least two distinct Observations.
 
         Args:
             concept_id: The concept to mark disputed.
@@ -484,14 +553,16 @@ class InterviewTools(ToolKitBase):
         """
         concept = self._concept(concept_id)
         evs = self._require_evidence(evidence)
-        if len({ev.observation_id for ev in evs}) < 2:
-            raise ValueError(
-                f"mark_concept_disputed for {concept_id}: evidence must come "
-                f"from at least two distinct Observations"
-            )
         if not evs:
             raise ValueError(
                 f"mark_concept_disputed requires evidence for {concept_id}"
+            )
+        matches = self._alignment_matches(evs, {"dispute"})
+        if len({oid for oid, _ in matches}) < 2:
+            raise ValueError(
+                f"mark_concept_disputed for {concept_id}: evidence must "
+                f"correspond to private concept-alignment events (act=dispute) "
+                f"from at least two distinct Observations"
             )
         # a status change replaces the concept's validation evidence
         concept.validation_evidence = list(evs)
@@ -524,13 +595,19 @@ class InterviewTools(ToolKitBase):
 
     @is_tool(ToolType.WRITE)
     def start_inference(self, name: str = "") -> str:
-        """Start building the inferred business process graph (destructive)."""
+        """Start (or restart) building the inferred business process graph.
+
+        Resets the inferred graph, the glossary and the completion state.
+        Already captured Observations and the conversation ledger are
+        IMMUTABLE primary evidence and are preserved — you can keep citing
+        them as evidence after a restart.
+        """
         self.db.graph = BusinessProcessGraph(id="graph", name=name)
-        self.db.observations = []
         self.db.interview_complete = False
         self.db.summary = None
         return (
-            "Inference started (previous graph, glossary and observations discarded)."
+            "Inference (re)started; previous graph and glossary discarded, "
+            "captured Observations and the conversation ledger preserved."
         )
 
     def _stakeholder_entries(self) -> list[tuple[str, int, str]]:
@@ -892,7 +969,7 @@ class InterviewTools(ToolKitBase):
     def _evaluate(self, sc) -> EvaluationResult:
         """Evaluate against the scenario truth+spec under the scenario's
         stakeholder visibility, using the hidden TruthClaim catalog and the
-        private assertion sidecar ledger (evaluator-only)."""
+        private assertion/dialogue-event sidecar ledger (evaluator-only)."""
 
         return evaluate(
             self.db,
@@ -901,6 +978,8 @@ class InterviewTools(ToolKitBase):
             sc.stakeholder,
             claims=sc.claims,
             assertions=self.assertion_ledger.assertions(),
+            alignments=self.assertion_ledger.alignments(),
+            terminology=self.assertion_ledger.terminology(),
         )
 
     def assert_finish_interview(self) -> bool:
@@ -931,3 +1010,4 @@ class InterviewTools(ToolKitBase):
         if sc is None:
             return None
         return self._evaluate(sc).model_dump(mode="json")
+

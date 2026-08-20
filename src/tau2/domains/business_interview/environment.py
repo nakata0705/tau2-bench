@@ -4,8 +4,10 @@ from typing import Optional
 from tau2.data_model.message import Message, UserMessage
 from tau2.data_model.tasks import Task
 from tau2.domains.business_interview.facts import (
+    ConceptAlignmentAssertion,
     StakeholderAssertion,
     StakeholderAssertionLedger,
+    TerminologyConfirmation,
 )
 from tau2.domains.business_interview.graph import InterviewDB
 from tau2.domains.business_interview.tools import InterviewTools
@@ -77,6 +79,20 @@ class BusinessInterviewEnvironment(Environment):
                     for a in raw_assertions
                 ]
                 self.assertion_ledger.bind(turn, assertions, content)
+            raw_alignments = getattr(message, "stakeholder_alignments", None)
+            if raw_alignments:
+                events = [
+                    ConceptAlignmentAssertion(**a) if isinstance(a, dict) else a
+                    for a in raw_alignments
+                ]
+                self.assertion_ledger.bind_alignment(turn, events, content)
+            raw_terminology = getattr(message, "stakeholder_terminology", None)
+            if raw_terminology:
+                events = [
+                    TerminologyConfirmation(**a) if isinstance(a, dict) else a
+                    for a in raw_terminology
+                ]
+                self.assertion_ledger.bind_terminology(turn, events, content)
         db.messages.append(
             {
                 "role": str(getattr(message, "role", "")),

@@ -1,0 +1,336 @@
+{
+  "task_id": "quotation_workflow_1",
+  "assertions_by_turn": {
+    "3": [
+      {
+        "claim_id": "r.activity",
+        "quote": "receive the quotation request",
+        "occurrence": 0
+      },
+      {
+        "claim_id": "r.actor",
+        "quote": "I'm the one who handles it",
+        "occurrence": 0
+      }
+    ],
+    "14": [
+      {
+        "claim_id": "r.actor",
+        "quote": "sales employee",
+        "occurrence": 0
+      }
+    ],
+    "24": [
+      {
+        "claim_id": "cc.activity",
+        "quote": "check the customer information",
+        "occurrence": 0
+      },
+      {
+        "claim_id": "cc.actor",
+        "quote": "I",
+        "occurrence": 0
+      },
+      {
+        "claim_id": "cc.reads.tc_customer",
+        "quote": "customer information",
+        "occurrence": 0
+      },
+      {
+        "claim_id": "cc.system",
+        "quote": "CRM",
+        "occurrence": 0
+      }
+    ],
+    "38": [
+      {
+        "claim_id": "cq.activity",
+        "quote": "create the quotation",
+        "occurrence": 0
+      },
+      {
+        "claim_id": "cq.actor",
+        "quote": "I",
+        "occurrence": 0
+      },
+      {
+        "claim_id": "cq.reads.tc_customer",
+        "quote": "customer information",
+        "occurrence": 0
+      },
+      {
+        "claim_id": "cq.reads.tc_pricing",
+        "quote": "pricing information",
+        "occurrence": 0
+      },
+      {
+        "claim_id": "cq.system",
+        "quote": "quoting system",
+        "occurrence": 0
+      }
+    ],
+    "53": [
+      {
+        "claim_id": "e3.edge_exists",
+        "quote": "if it's over 1,000,000 yen, the manager needs to approve it",
+        "occurrence": 0
+      },
+      {
+        "claim_id": "ap.activity",
+        "quote": "approve it",
+        "occurrence": 0
+      },
+      {
+        "claim_id": "ap.actor",
+        "quote": "manager",
+        "occurrence": 0
+      },
+      {
+        "claim_id": "e4.edge_exists",
+        "quote": "Otherwise, I send it to the customer",
+        "occurrence": 0
+      },
+      {
+        "claim_id": "sq.activity",
+        "quote": "send it to the customer",
+        "occurrence": 0
+      }
+    ],
+    "70": [
+      {
+        "claim_id": "ap.activity",
+        "quote": "approves the high-value quotation",
+        "occurrence": 0
+      },
+      {
+        "claim_id": "sq.activity",
+        "quote": "send it to the customer",
+        "occurrence": 0
+      },
+      {
+        "claim_id": "sq.system",
+        "quote": "email",
+        "occurrence": 0
+      }
+    ]
+  },
+  "alignments_by_turn": {},
+  "terminology_by_turn": {},
+  "visible_claims": {
+    "r.activity": {
+      "id": "r.activity",
+      "context_id": "r",
+      "property": "activity",
+      "concept_id": "tc_activity_receive_request"
+    },
+    "r.actor": {
+      "id": "r.actor",
+      "context_id": "r",
+      "property": "actor",
+      "concept_id": "tc_actor_sales"
+    },
+    "r.writes.tc_request": {
+      "id": "r.writes.tc_request",
+      "context_id": "r",
+      "property": "writes",
+      "concept_id": "tc_request"
+    },
+    "cc.activity": {
+      "id": "cc.activity",
+      "context_id": "cc",
+      "property": "activity",
+      "concept_id": "tc_activity_check_customer"
+    },
+    "cc.actor": {
+      "id": "cc.actor",
+      "context_id": "cc",
+      "property": "actor",
+      "concept_id": "tc_actor_sales"
+    },
+    "cc.system": {
+      "id": "cc.system",
+      "context_id": "cc",
+      "property": "system",
+      "concept_id": "tc_system_crm"
+    },
+    "cc.reads.tc_customer": {
+      "id": "cc.reads.tc_customer",
+      "context_id": "cc",
+      "property": "reads",
+      "concept_id": "tc_customer"
+    },
+    "cq.activity": {
+      "id": "cq.activity",
+      "context_id": "cq",
+      "property": "activity",
+      "concept_id": "tc_activity_create_quotation"
+    },
+    "cq.actor": {
+      "id": "cq.actor",
+      "context_id": "cq",
+      "property": "actor",
+      "concept_id": "tc_actor_sales"
+    },
+    "cq.system": {
+      "id": "cq.system",
+      "context_id": "cq",
+      "property": "system",
+      "concept_id": "tc_system_quoting"
+    },
+    "cq.reads.tc_customer": {
+      "id": "cq.reads.tc_customer",
+      "context_id": "cq",
+      "property": "reads",
+      "concept_id": "tc_customer"
+    },
+    "cq.reads.tc_pricing": {
+      "id": "cq.reads.tc_pricing",
+      "context_id": "cq",
+      "property": "reads",
+      "concept_id": "tc_pricing"
+    },
+    "cq.writes.tc_quote": {
+      "id": "cq.writes.tc_quote",
+      "context_id": "cq",
+      "property": "writes",
+      "concept_id": "tc_quote"
+    },
+    "ap.activity": {
+      "id": "ap.activity",
+      "context_id": "ap",
+      "property": "activity",
+      "concept_id": "tc_activity_approve_quotation"
+    },
+    "ap.actor": {
+      "id": "ap.actor",
+      "context_id": "ap",
+      "property": "actor",
+      "concept_id": "tc_actor_manager"
+    },
+    "ap.rationale": {
+      "id": "ap.rationale",
+      "context_id": "ap",
+      "property": "rationale",
+      "concept_id": "tc_rationale_credit_risk"
+    },
+    "sq.activity": {
+      "id": "sq.activity",
+      "context_id": "sq",
+      "property": "activity",
+      "concept_id": "tc_activity_send_quotation"
+    },
+    "sq.actor": {
+      "id": "sq.actor",
+      "context_id": "sq",
+      "property": "actor",
+      "concept_id": "tc_actor_sales"
+    },
+    "sq.system": {
+      "id": "sq.system",
+      "context_id": "sq",
+      "property": "system",
+      "concept_id": "tc_system_email"
+    },
+    "me.activity": {
+      "id": "me.activity",
+      "context_id": "me",
+      "property": "activity",
+      "concept_id": "tc_activity_send_month_end_summary"
+    },
+    "me.actor": {
+      "id": "me.actor",
+      "context_id": "me",
+      "property": "actor",
+      "concept_id": "tc_actor_sales"
+    },
+    "me.system": {
+      "id": "me.system",
+      "context_id": "me",
+      "property": "system",
+      "concept_id": "tc_system_excel"
+    },
+    "me.writes.tc_excel_summary": {
+      "id": "me.writes.tc_excel_summary",
+      "context_id": "me",
+      "property": "writes",
+      "concept_id": "tc_excel_summary"
+    },
+    "e1.edge_exists": {
+      "id": "e1.edge_exists",
+      "context_id": "e1",
+      "property": "edge_exists",
+      "concept_id": null
+    },
+    "e2.edge_exists": {
+      "id": "e2.edge_exists",
+      "context_id": "e2",
+      "property": "edge_exists",
+      "concept_id": null
+    },
+    "e3.edge_exists": {
+      "id": "e3.edge_exists",
+      "context_id": "e3",
+      "property": "edge_exists",
+      "concept_id": null
+    },
+    "e3.condition": {
+      "id": "e3.condition",
+      "context_id": "e3",
+      "property": "condition",
+      "concept_id": "tc_cond_over_1m"
+    },
+    "e4.edge_exists": {
+      "id": "e4.edge_exists",
+      "context_id": "e4",
+      "property": "edge_exists",
+      "concept_id": null
+    },
+    "e4.condition": {
+      "id": "e4.condition",
+      "context_id": "e4",
+      "property": "condition",
+      "concept_id": "tc_cond_at_or_below_1m"
+    },
+    "e5.edge_exists": {
+      "id": "e5.edge_exists",
+      "context_id": "e5",
+      "property": "edge_exists",
+      "concept_id": null
+    },
+    "e6.edge_exists": {
+      "id": "e6.edge_exists",
+      "context_id": "e6",
+      "property": "edge_exists",
+      "concept_id": null
+    },
+    "e6.condition": {
+      "id": "e6.condition",
+      "context_id": "e6",
+      "property": "condition",
+      "concept_id": "tc_cond_month_end"
+    }
+  },
+  "concept_views": {
+    "tc_activity_receive_request": "receive the quotation request",
+    "tc_activity_check_customer": "check the customer information",
+    "tc_activity_create_quotation": "create the quotation",
+    "tc_activity_approve_quotation": "approve the high-value quotation",
+    "tc_activity_send_quotation": "send the quotation to the customer",
+    "tc_activity_send_month_end_summary": "send the month-end summary to Accounting",
+    "tc_actor_sales": "sales employee",
+    "tc_actor_manager": "manager",
+    "tc_system_crm": "CRM",
+    "tc_system_quoting": "quoting system",
+    "tc_system_email": "email",
+    "tc_system_excel": "Excel",
+    "tc_request": "quotation request",
+    "tc_customer": "customer information",
+    "tc_pricing": "pricing information",
+    "tc_quote": "quotation",
+    "tc_excel_summary": "summary of the quotation information",
+    "tc_cond_over_1m": "over 1,000,000 yen",
+    "tc_cond_at_or_below_1m": "at or below 1,000,000 yen",
+    "tc_cond_month_end": "month-end",
+    "tc_rationale_credit_risk": "credit risk management"
+  }
+}

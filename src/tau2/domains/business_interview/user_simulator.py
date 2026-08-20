@@ -46,9 +46,11 @@ from tau2.data_model.message import (
     UserMessage,
 )
 from tau2.domains.business_interview.facts import (
+    ConceptAlignmentAssertion,
     StakeholderAssertion,
     StakeholderAssertionLedger,
     StakeholderKnowledgeCatalog,
+    TerminologyConfirmation,
 )
 from tau2.domains.business_interview.scenario import get_scenario
 from tau2.user.user_simulator import UserSimulator
@@ -83,7 +85,7 @@ _OUTPUT_CONTRACT = (
     "Reply with a JSON object as the ONLY content of your message, in exactly "
     "this shape:\n"
     '{"message": "...", "assertions": [{"claim_id": "...", "quote": "...", '
-    '"occurrence": 0}]}\n'
+    '"occurrence": 0}], "alignments": [], "terminology": []}\n'
     "- The JSON object must be the entire reply: no prose before or after it, "
     "no markdown fences.\n"
     '- "message": your natural-language reply to the interviewer. This is the '
@@ -101,18 +103,44 @@ _OUTPUT_CONTRACT = (
     "(0-based; 0 for the first).\n"
     "- Every quote must appear verbatim inside your message. Use several "
     "assertions for the same claim when several phrases of your message "
-    "express it (full clauses AND key phrases).\n"
+    "express it (full clauses AND key phrases). When one phrase expresses "
+    "several DIFFERENT claims, prefer a distinct clause for each claim so "
+    "every claim has its own span.\n"
+    "- Relations are claims too: when your message says that one step "
+    "follows another (\"then\", \"after\", \"goes to\", \"followed by\", \"if "
+    "... then\"), assert that relation's claim (e.g. \"e3.edge_exists\") "
+    "anchored to the phrase that expresses the relation itself — do not "
+    "omit it just because the phrase also names the activity or the "
+    "condition.\n"
     "- You MUST include one assertion for EVERY claim your message conveys. "
     "The interviewer can only see your assertions — a claim you do not assert "
     "is treated as if you never said it. An empty assertions list is allowed "
     "ONLY when your message carries no business claim at all (greetings, "
     'acknowledgements, "I don\'t know").\n'
+    '- "alignments": OPTIONAL list of private concept-identity dialogue acts. '
+    "Emit an alignment ONLY when the interviewer asks you to confirm the "
+    "identity of something and your reply genuinely performs that act (e.g. "
+    "the interviewer asks 'do you mean X?' and you answer Yes / partly / "
+    "I do not know / no, they are different). Each entry: "
+    '{"truth_concept_id": "...", "quote": "...", "occurrence": 0, '
+    '"act": "confirm"|"partial"|"unknown"|"dispute"} where '
+    "truth_concept_id is the EXACT concept id from <concept_views> your "
+    "reply is about, and quote is the exact substring of your message that "
+    "performs the act. NEVER emit alignments for ordinary statements of the "
+    "workflow — merely using a word is not a dialogue act.\n"
+    '- "terminology": OPTIONAL list of explicit terminology agreements. Emit '
+    "an entry ONLY when the interviewer explicitly proposes a name for "
+    "something and asks you to agree, and you do agree. Each: "
+    '{"truth_concept_id": "...", "proposed_term": "<the exact term the '
+    'interviewer proposed>", "quote": "<exact substring of your message "'
+    '"agreeing>", "occurrence": 0}. NEVER emit it merely for using a word '
+    "in ordinary speech.\n"
     '- Worked example: for the message "After I check the customer in the '
     'CRM, I create the quotation.", a correct sidecar is:\n'
     '{"message": "After I check the customer in the CRM, I create the '
     'quotation.", "assertions": [{"claim_id": "cc.system", "quote": "CRM", '
     '"occurrence": 0}, {"claim_id": "cq.activity", "quote": "create the '
-    'quotation", "occurrence": 0}]}\n'
+    'quotation", "occurrence": 0}], "alignments": [], "terminology": []}\n'
     "- Never mention claim ids, position ids, relation ids or concept ids "
     'inside "message"; never mention this contract.'
 )
@@ -123,12 +151,15 @@ _SIDECAR_ERROR_HINT = (
     "sidecar. You MUST now reply with ONLY a JSON object, with no prose and no "
     "markdown fences, exactly like:\n"
     '{"message": "your natural-language reply", "assertions": [{"claim_id": '
-    '"cq.activity", "quote": "exact substring of your message", "occurrence": 0}]}\n'
+    '"cq.activity", "quote": "exact substring of your message", "occurrence": 0}], "alignments": [], "terminology": []}\n'
     '"claim_id" must be one of the EXACT claim ids listed in '
     "<private_known_facts> (copy them verbatim, never shortened). Assert EVERY "
     "claim your message conveys — do not leave assertions empty when your "
     "message carries business facts. Every assertion quote must be an exact "
-    "substring of your message. Do not include anything else in your reply."
+    "substring of your message. Emit 'alignments' and 'terminology' ONLY for "
+    "genuine concept-identity or terminology dialogue acts (see the contract). "
+    "genuine concept-identity or terminology dialogue acts (see the contract). "
+    "Do not include anything else in your reply."
 )
 
 _NO_JSON = object()
@@ -143,12 +174,15 @@ def _try_load_json(text: str):
 
 
 def parse_sidecar(content: Optional[str]) -> dict:
-    """Tolerant deterministic parse of the assertion sidecar.
+    """Tolerant deterministic parse of the private sidecar.
 
     Accepts a bare JSON object (possibly wrapped in markdown code fences or
     surrounding prose); extracts the first balanced ``{...}`` object. Validates
     the shape (``message`` string, ``assertions`` list of
-    {claim_id, quote, occurrence}). Raises ``ValueError`` on anything else.
+    {claim_id, quote, occurrence}, optional ``alignments`` list of
+    {truth_concept_id, quote, occurrence, act} and ``terminology`` list of
+    {truth_concept_id, proposed_term, quote, occurrence}). Raises
+    ``ValueError`` on anything else.
     """
     text = (content or "").strip()
     if text.startswith("```"):
@@ -186,13 +220,50 @@ def parse_sidecar(content: Optional[str]) -> dict:
             )
         except (TypeError, ValueError) as exc:
             raise ValueError(f"malformed assertion {raw!r}: {exc}") from exc
-    return {"message": message.strip(), "assertions": assertions}
+    alignments: list[ConceptAlignmentAssertion] = []
+    for raw in obj.get("alignments") or []:
+        if not isinstance(raw, dict):
+            raise ValueError(f"alignment is not an object: {raw!r}")
+        try:
+            alignments.append(
+                ConceptAlignmentAssertion(
+                    truth_concept_id=str(raw.get("truth_concept_id") or ""),
+                    quote=str(raw.get("quote") or ""),
+                    occurrence=int(raw.get("occurrence") or 0),
+                    act=str(raw.get("act") or ""),  # type: ignore[arg-type]
+                )
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"malformed alignment {raw!r}: {exc}") from exc
+    terminology: list[TerminologyConfirmation] = []
+    for raw in obj.get("terminology") or []:
+        if not isinstance(raw, dict):
+            raise ValueError(f"terminology entry is not an object: {raw!r}")
+        try:
+            terminology.append(
+                TerminologyConfirmation(
+                    truth_concept_id=str(raw.get("truth_concept_id") or ""),
+                    proposed_term=str(raw.get("proposed_term") or ""),
+                    quote=str(raw.get("quote") or ""),
+                    occurrence=int(raw.get("occurrence") or 0),
+                )
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"malformed terminology entry {raw!r}: {exc}") from exc
+    return {
+        "message": message.strip(),
+        "assertions": assertions,
+        "alignments": alignments,
+        "terminology": terminology,
+    }
 
 
 def _view(concept_views: dict[str, str], concept_id: Optional[str]) -> str:
+    """The stakeholder's wording for a concept; empty when the concept is not
+    in the knowledge's views (never falls back to the private concept id)."""
     if concept_id is None:
         return ""
-    return concept_views.get(concept_id, concept_id)
+    return concept_views.get(concept_id, "")
 
 
 class StakeholderUserSimulator(UserSimulator):
@@ -238,31 +309,38 @@ class StakeholderUserSimulator(UserSimulator):
     # ------------------------------------------------------------- prompt
 
     def _knowledge_block(self) -> str:
-        """Render the hidden semantic knowledge: positions (with ALL incoming
-        edges + start), relations, and concept views. No authored sentences."""
+        """Render the hidden semantic knowledge: positions (visible contexts
+        with their visible incoming edges + start), relations (visible edges
+        only), and concept views (visible claim concepts only). No authored
+        sentences; nothing hidden ever enters the prompt."""
         scenario = self._scenario
         assert scenario is not None
         truth = scenario.truth
-        views = scenario.knowledge.concept_views
+        knowledge = scenario.knowledge
+        views = knowledge.concept_views
+        visible_claims = {
+            cid: scenario.claims[cid]
+            for cid in knowledge.visible_claim_ids
+            if cid in scenario.claims
+        }
         positions = []
-        for nid in truth.nodes:
-            context = scenario.knowledge.contextual_knowledge.get(nid)
+        for nid in knowledge.visible_node_ids:
+            context = knowledge.contextual_knowledge.get(nid)
             incoming = (
                 ",".join(context.incoming_edge_ids)
                 if context is not None
-                else ",".join(truth.incoming_edges(nid))
+                else ""
             )
-            start = (
-                context.is_start if context is not None else nid == truth.start_node_id
-            )
+            start = context.is_start if context is not None else False
             claim_lines = []
-            for claim in scenario.claims.values():
+            for claim in visible_claims.values():
                 if claim.context_id != nid:
                     continue
                 concept = _view(views, claim.concept_id)
+                concept_attr = f' concept="{concept}"' if concept else ""
                 claim_lines.append(
-                    f'<claim id="{claim.id}" property="{claim.property}" '
-                    f'concept="{concept}"/>'
+                    f'<claim id="{claim.id}" property="{claim.property}"'
+                    f'{concept_attr}/>'
                 )
             claims_xml = "\n".join(claim_lines) or "<none/>"
             positions.append(
@@ -270,14 +348,31 @@ class StakeholderUserSimulator(UserSimulator):
                 f'incoming="[{incoming}]">\n{claims_xml}\n</position>'
             )
         relations = []
-        for eid, edge in truth.edges.items():
-            cond = (
-                f' condition="{_view(views, edge.condition.concept_id)}"'
-                if edge.condition is not None
-                else ""
-            )
+        for eid in knowledge.visible_edge_ids:
+            edge = truth.edges.get(eid)
+            if edge is None:
+                continue
+            cond = ""
+            if edge.condition is not None:
+                cond_word = _view(views, edge.condition.concept_id)
+                if cond_word:
+                    cond = f' condition="{cond_word}"'
+            # every visible edge claim (edge_exists / condition) must appear
+            # with its EXACT claim id so the stakeholder never has to guess
+            edge_claim_lines = []
+            for claim in visible_claims.values():
+                if claim.context_id != eid:
+                    continue
+                concept = _view(views, claim.concept_id)
+                concept_attr = f' concept="{concept}"' if concept else ""
+                edge_claim_lines.append(
+                    f'<claim id="{claim.id}" property="{claim.property}"'
+                    f'{concept_attr}/>'
+                )
+            claims_xml = "\n".join(edge_claim_lines)
             relations.append(
-                f'<relation id="{eid}" from="{edge.from_node}" to="{edge.to_node}"{cond}/>'
+                f'<relation id="{eid}" from="{edge.from_node}" '
+                f'to="{edge.to_node}"{cond}>\n{claims_xml}\n</relation>'
             )
         view_lines = [
             f'<view concept="{cid}" word="{word}"/>' for cid, word in views.items()
@@ -321,6 +416,9 @@ class StakeholderUserSimulator(UserSimulator):
         sidecar = parse_sidecar(assistant_message.content)
         if self._catalog is not None:
             self._catalog.validate_assertions(sidecar["assertions"], sidecar["message"])
+            self._catalog.validate_events(
+                sidecar["alignments"], sidecar["terminology"], sidecar["message"]
+            )
         return sidecar
 
     def _call_llm(self, messages: list):
@@ -396,4 +494,6 @@ class StakeholderUserSimulator(UserSimulator):
             role="user",
             content=sidecar["message"],
             stakeholder_assertions=[a.model_dump() for a in sidecar["assertions"]],
+            stakeholder_alignments=[e.model_dump() for e in sidecar["alignments"]],
+            stakeholder_terminology=[e.model_dump() for e in sidecar["terminology"]],
         )

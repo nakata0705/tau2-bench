@@ -503,6 +503,30 @@ class UserMessage(ParticipantMessageBase):
         ),
     )
 
+    # PRIVATE benchmark metadata (business_interview only): private semantic
+    # dialogue events (concept-identity alignments and terminology
+    # confirmations) emitted by the stakeholder simulator only when the reply
+    # genuinely performs that dialogue act. Consumed solely by the domain
+    # environment; excluded from every serialization and never Agent-visible.
+    stakeholder_alignments: Optional[list[dict]] = Field(
+        default=None,
+        exclude=True,
+        repr=False,
+        description=(
+            "Private benchmark sidecar (concept-alignment events) of a "
+            "stakeholder response; never serialized or Agent-visible."
+        ),
+    )
+    stakeholder_terminology: Optional[list[dict]] = Field(
+        default=None,
+        exclude=True,
+        repr=False,
+        description=(
+            "Private benchmark sidecar (terminology-confirmation events) of a "
+            "stakeholder response; never serialized or Agent-visible."
+        ),
+    )
+
     @classmethod
     def text(
         cls,

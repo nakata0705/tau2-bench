@@ -1,0 +1,560 @@
+{
+  "run_index": 0,
+  "run_id": "run_00_e9da820c-27e6-4bd0-8515-301614d610b6",
+  "task_id": "quotation_workflow_1",
+  "seed": 9300,
+  "agent_model": "deepseek/deepseek-chat",
+  "user_model": "deepseek/deepseek-chat",
+  "user_implementation": "business_interview_user",
+  "llm_args": {
+    "temperature": 0.0
+  },
+  "resolved_agent_model": "deepseek/deepseek-chat",
+  "resolved_user_model": "deepseek/deepseek-chat",
+  "termination_reason": null,
+  "reward_info": null,
+  "elapsed_seconds": 13.43,
+  "errors": [
+    "ValueError: stakeholder sidecar rejected twice; invalid private metadata must not enter the conversation: assertion 'r.activity': quote 'receive the quotation request' occurrence 0 does not exactly match the stakeholder message\n"
+  ],
+  "conversation": [],
+  "observations": [
+    {
+      "id": "obs_1",
+      "source_id": "stakeholder",
+      "text": "Sure, that's fine. What would you like to know?",
+      "order": 0,
+      "turn": 1
+    },
+    {
+      "id": "obs_8",
+      "source_id": "stakeholder",
+      "text": "The process starts when I receive the quotation request. That's the first step, and I'm the one who handles it.",
+      "order": 1,
+      "turn": 8
+    }
+  ],
+  "final_graph": {
+    "id": "graph",
+    "name": "Quotation Process",
+    "start_node_id": null,
+    "end_node_ids": [],
+    "concepts": {},
+    "terminology_agreements": [],
+    "nodes": {},
+    "edges": {},
+    "validation_errors": [],
+    "is_valid": true
+  },
+  "evaluator_metrics": {
+    "protocol_completed": false,
+    "graph_created": false,
+    "graph_valid": true,
+    "node_recall": 0.0,
+    "node_precision": 0.0,
+    "edge_recall": 0.0,
+    "edge_precision": 0.0,
+    "start_correct": false,
+    "end_recall": 0.0,
+    "end_precision": 0.0,
+    "activity_correctness": 0.0,
+    "actor_correctness": 0.0,
+    "system_correctness": 0.0,
+    "read_correctness": 0.0,
+    "write_correctness": 0.0,
+    "rationale_correctness": 0.0,
+    "condition_correctness": 0.5,
+    "concept_correctness": 1.0,
+    "unsupported_ref_count": 0,
+    "fabricated_node_count": 0,
+    "fabricated_edge_count": 0,
+    "glossary_pass": true,
+    "referenced_hypothesized_concepts": [],
+    "glossary_validation_errors": [],
+    "node_evidence_coverage": 1.0,
+    "ref_evidence_coverage": 1.0,
+    "edge_evidence_coverage": 1.0,
+    "invalid_evidence_ref_count": 0,
+    "ambiguous_evidence_ref_count": 0,
+    "invalid_observation_reference_count": 0,
+    "authentic_observation_count": 2,
+    "invalid_observation_source_count": 0,
+    "orphan_observation_count": 2,
+    "provenance_authenticity_pass": true,
+    "evidence_pass": true,
+    "structural_pass": false,
+    "protocol_pass": false,
+    "quality_pass": false
+  },
+  "truth_graph": {
+    "id": "quotation",
+    "name": "Quotation creation",
+    "start_node_id": "r",
+    "end_node_ids": [
+      "sq",
+      "me"
+    ],
+    "concepts": {
+      "tc_activity_receive_request": {
+        "id": "tc_activity_receive_request",
+        "kind": "activity",
+        "display_label": "receive quotation request",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_activity_check_customer": {
+        "id": "tc_activity_check_customer",
+        "kind": "activity",
+        "display_label": "check customer information",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_activity_create_quotation": {
+        "id": "tc_activity_create_quotation",
+        "kind": "activity",
+        "display_label": "create quotation",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_activity_approve_quotation": {
+        "id": "tc_activity_approve_quotation",
+        "kind": "activity",
+        "display_label": "approve high-value quotation",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_activity_send_quotation": {
+        "id": "tc_activity_send_quotation",
+        "kind": "activity",
+        "display_label": "send quotation to customer",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_activity_send_month_end_summary": {
+        "id": "tc_activity_send_month_end_summary",
+        "kind": "activity",
+        "display_label": "send month-end summary to accounting",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_actor_sales": {
+        "id": "tc_actor_sales",
+        "kind": "actor",
+        "display_label": "sales",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_actor_manager": {
+        "id": "tc_actor_manager",
+        "kind": "actor",
+        "display_label": "manager",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_system_crm": {
+        "id": "tc_system_crm",
+        "kind": "system",
+        "display_label": "crm",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_system_quoting": {
+        "id": "tc_system_quoting",
+        "kind": "system",
+        "display_label": "quoting system",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_system_email": {
+        "id": "tc_system_email",
+        "kind": "system",
+        "display_label": "email",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_system_excel": {
+        "id": "tc_system_excel",
+        "kind": "system",
+        "display_label": "excel",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_request": {
+        "id": "tc_request",
+        "kind": "data",
+        "display_label": "request",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_customer": {
+        "id": "tc_customer",
+        "kind": "data",
+        "display_label": "customer",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_pricing": {
+        "id": "tc_pricing",
+        "kind": "data",
+        "display_label": "pricing",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_quote": {
+        "id": "tc_quote",
+        "kind": "data",
+        "display_label": "quote",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_approval": {
+        "id": "tc_approval",
+        "kind": "data",
+        "display_label": "approval",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_sent_quote": {
+        "id": "tc_sent_quote",
+        "kind": "data",
+        "display_label": "sent_quote",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_excel_summary": {
+        "id": "tc_excel_summary",
+        "kind": "data",
+        "display_label": "excel_summary",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_cond_over_1m": {
+        "id": "tc_cond_over_1m",
+        "kind": "condition",
+        "display_label": "amount over 1,000,000",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_cond_at_or_below_1m": {
+        "id": "tc_cond_at_or_below_1m",
+        "kind": "condition",
+        "display_label": "amount at or below 1,000,000",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_cond_month_end": {
+        "id": "tc_cond_month_end",
+        "kind": "condition",
+        "display_label": "month-end",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_rationale_credit_risk": {
+        "id": "tc_rationale_credit_risk",
+        "kind": "rationale",
+        "display_label": "credit risk management",
+        "description": "",
+        "validation_status": "hypothesized",
+        "mentions": [],
+        "validation_evidence": []
+      }
+    },
+    "terminology_agreements": [],
+    "nodes": {
+      "r": {
+        "id": "r",
+        "activity": {
+          "concept_id": "tc_activity_receive_request",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_sales",
+          "confidence": 1.0
+        },
+        "system": null,
+        "reads": [],
+        "writes": [
+          {
+            "concept_id": "tc_request",
+            "confidence": 1.0
+          }
+        ],
+        "necessity_rationale": null
+      },
+      "cc": {
+        "id": "cc",
+        "activity": {
+          "concept_id": "tc_activity_check_customer",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_sales",
+          "confidence": 1.0
+        },
+        "system": {
+          "concept_id": "tc_system_crm",
+          "confidence": 1.0
+        },
+        "reads": [
+          {
+            "concept_id": "tc_customer",
+            "confidence": 1.0
+          }
+        ],
+        "writes": [],
+        "necessity_rationale": null
+      },
+      "cq": {
+        "id": "cq",
+        "activity": {
+          "concept_id": "tc_activity_create_quotation",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_sales",
+          "confidence": 1.0
+        },
+        "system": {
+          "concept_id": "tc_system_quoting",
+          "confidence": 1.0
+        },
+        "reads": [
+          {
+            "concept_id": "tc_customer",
+            "confidence": 1.0
+          },
+          {
+            "concept_id": "tc_pricing",
+            "confidence": 1.0
+          }
+        ],
+        "writes": [
+          {
+            "concept_id": "tc_quote",
+            "confidence": 1.0
+          }
+        ],
+        "necessity_rationale": null
+      },
+      "ap": {
+        "id": "ap",
+        "activity": {
+          "concept_id": "tc_activity_approve_quotation",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_manager",
+          "confidence": 1.0
+        },
+        "system": null,
+        "reads": [],
+        "writes": [],
+        "necessity_rationale": {
+          "concept_id": "tc_rationale_credit_risk",
+          "confidence": 1.0
+        }
+      },
+      "sq": {
+        "id": "sq",
+        "activity": {
+          "concept_id": "tc_activity_send_quotation",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_sales",
+          "confidence": 1.0
+        },
+        "system": {
+          "concept_id": "tc_system_email",
+          "confidence": 1.0
+        },
+        "reads": [],
+        "writes": [],
+        "necessity_rationale": null
+      },
+      "me": {
+        "id": "me",
+        "activity": {
+          "concept_id": "tc_activity_send_month_end_summary",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_sales",
+          "confidence": 1.0
+        },
+        "system": {
+          "concept_id": "tc_system_excel",
+          "confidence": 1.0
+        },
+        "reads": [],
+        "writes": [
+          {
+            "concept_id": "tc_excel_summary",
+            "confidence": 1.0
+          }
+        ],
+        "necessity_rationale": null
+      }
+    },
+    "edges": {
+      "e1": {
+        "id": "e1",
+        "from_node": "r",
+        "to_node": "cc",
+        "condition": null,
+        "evidence": []
+      },
+      "e2": {
+        "id": "e2",
+        "from_node": "cc",
+        "to_node": "cq",
+        "condition": null,
+        "evidence": []
+      },
+      "e3": {
+        "id": "e3",
+        "from_node": "cq",
+        "to_node": "ap",
+        "condition": {
+          "concept_id": "tc_cond_over_1m",
+          "confidence": 1.0
+        },
+        "evidence": []
+      },
+      "e4": {
+        "id": "e4",
+        "from_node": "cq",
+        "to_node": "sq",
+        "condition": {
+          "concept_id": "tc_cond_at_or_below_1m",
+          "confidence": 1.0
+        },
+        "evidence": []
+      },
+      "e5": {
+        "id": "e5",
+        "from_node": "ap",
+        "to_node": "sq",
+        "condition": null,
+        "evidence": []
+      },
+      "e6": {
+        "id": "e6",
+        "from_node": "cq",
+        "to_node": "me",
+        "condition": {
+          "concept_id": "tc_cond_month_end",
+          "confidence": 1.0
+        },
+        "evidence": []
+      }
+    },
+    "validation_errors": [],
+    "is_valid": true
+  },
+  "db_messages_ledger": [
+    {
+      "role": "assistant",
+      "content": "Hello, I'm a business analyst and I'd like to interview you about how your team prepares quotations. Is now a good time?"
+    },
+    {
+      "role": "user",
+      "content": "Sure, that's fine. What would you like to know?"
+    },
+    {
+      "role": "assistant",
+      "content": "Let me start by understanding the beginning of your process. Could you tell me what triggers the quotation process and who starts it?\n\nLet me first check the stakeholder messages available."
+    },
+    {
+      "role": "tool",
+      "content": "sm_1: Sure, that's fine. What would you like to know?"
+    },
+    {
+      "role": "assistant",
+      "content": "Let me observe this message and start the inference."
+    },
+    {
+      "role": "tool",
+      "content": "obs_1"
+    },
+    {
+      "role": "tool",
+      "content": "Inference (re)started; previous graph and glossary discarded, captured Observations and the conversation ledger preserved."
+    },
+    {
+      "role": "assistant",
+      "content": "I'd like to understand how your quotation process works. Could you tell me what triggers the process and who starts it?"
+    },
+    {
+      "role": "user",
+      "content": "The process starts when I receive the quotation request. That's the first step, and I'm the one who handles it."
+    },
+    {
+      "role": "assistant",
+      "content": "Let me observe this message."
+    },
+    {
+      "role": "tool",
+      "content": "sm_2"
+    },
+    {
+      "role": "assistant",
+      "content": ""
+    },
+    {
+      "role": "tool",
+      "content": "obs_8"
+    },
+    {
+      "role": "assistant",
+      "content": "Let me understand who you are in this process. What is your role in the company? And could you tell me more about what the \"quotation request\" is — what does it contain?"
+    }
+  ],
+  "interview_complete": false,
+  "private_id_leakage": [],
+  "private_assertions_artifact": "run_00_seed9300.private.json"
+}

@@ -19,7 +19,10 @@ from typing import Optional
 
 from tau2.domains.business_interview.claims import TruthClaim, build_claims
 from tau2.domains.business_interview.evaluation import EvaluationSpec
-from tau2.domains.business_interview.facts import StakeholderKnowledge
+from tau2.domains.business_interview.facts import (
+    StakeholderKnowledge,
+    project_knowledge,
+)
 from tau2.domains.business_interview.graph import (
     BusinessConcept,
     BusinessProcessGraph,
@@ -46,8 +49,8 @@ def _concept(cid: str, kind: str, label: str) -> BusinessConcept:
 
 
 def quotation_truth() -> BusinessProcessGraph:
-    """The quotation workflow Truth graph (1 start / 2 ends; cycles allowed —
-    here it is a DAG)."""
+    """The quotation workflow Truth graph (1 start / 2 ends; a directed
+    process graph — cycles remain valid in general)."""
     return BusinessProcessGraph(
         id="quotation",
         name="Quotation creation",
@@ -231,17 +234,14 @@ def quotation_concept_views(locale: str = "en") -> dict[str, str]:
 
 
 def quotation_knowledge(locale: str = "en") -> StakeholderKnowledge:
-    """The sales stakeholder's semantic knowledge: the visible claim catalog,
-    the contextual graph knowledge (all incoming edges per position + start),
-    and the local concept views."""
+    """The sales stakeholder's semantic knowledge: a **physical projection**
+    of the Truth — only the visible claims, their visible contexts (incoming
+    relations + start), and views for the concepts those claims reference.
+    Hidden concepts/relations never enter the knowledge."""
     truth = quotation_truth()
     filter_ = quotation_sales_filter()
     claims = build_claims(truth, filter_)
-    return StakeholderKnowledge(
-        visible_claim_ids=sorted(claims),
-        contextual_knowledge=truth.node_contexts(),
-        concept_views=quotation_concept_views(locale),
-    )
+    return project_knowledge(truth, filter_, claims, quotation_concept_views(locale))
 
 
 def quotation_claims() -> dict[str, TruthClaim]:
@@ -414,14 +414,13 @@ def lab_sample_views() -> dict[str, str]:
 
 
 def lab_sample_knowledge() -> StakeholderKnowledge:
+    """The lab tech's semantic knowledge: a physical projection of the Truth
+    (visible claims + visible contexts + views for visible claim concepts
+    only)."""
     truth = lab_sample_truth()
     filter_ = lab_sample_filter()
     claims = build_claims(truth, filter_)
-    return StakeholderKnowledge(
-        visible_claim_ids=sorted(claims),
-        contextual_knowledge=truth.node_contexts(),
-        concept_views=lab_sample_views(),
-    )
+    return project_knowledge(truth, filter_, claims, lab_sample_views())
 
 
 def lab_sample_claims() -> dict[str, TruthClaim]:
