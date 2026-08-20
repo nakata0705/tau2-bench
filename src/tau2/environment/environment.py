@@ -503,14 +503,21 @@ class Environment:
             The response of the tool call.
         """
         error = False
-        try:
-            resp = self.make_tool_call(
-                message.name, requestor=message.requestor, **message.arguments
-            )
-            self.sync_tools()
-        except Exception as e:
-            resp = f"Error: {e}"
+        if getattr(message, "parse_error", None):
+            # RECOVERABLE malformed tool-call JSON: never execute (no
+            # semantic repair), answer with a concise parse error that
+            # consumes the ordinary error budget and lets the agent retry.
+            resp = f"Error: {message.parse_error}"
             error = True
+        else:
+            try:
+                resp = self.make_tool_call(
+                    message.name, requestor=message.requestor, **message.arguments
+                )
+                self.sync_tools()
+            except Exception as e:
+                resp = f"Error: {e}"
+                error = True
         logger.debug(f"Response: {resp}")
         resp = self.to_json_str(resp)
         return ToolMessage(

@@ -52,6 +52,8 @@ from tau2.domains.business_interview.facts import (
     TerminologyConfirmation,
 )
 from tau2.domains.business_interview.graph import (
+    UNSET,
+    AbsentType,
     AgentConcept,
     AgentGraph,
     ConceptRef,
@@ -267,6 +269,67 @@ class InterviewTools(ToolKitBase):
         evs = self._require_evidence(arg.get("evidence"))
         matched = self._resolve_dont_know_slots(evs, prop, where)
         return DontKnowType(evidence=matched)
+
+    def _resolve_absent_slots(
+        self,
+        evs: list[EvidenceRef],
+        prop: str,
+        where: str,
+        allowed_props: Optional[set[str]] = None,
+    ) -> list[EvidenceRef]:
+        """Validate ABSENT evidence for one property slot.
+
+        Every evidence span must resolve (global span rule + the canonical
+        stakeholder resolver) to exactly one semantic id that IS the
+        stakeholder's KNOWN-ABSENT slot (value None) of a property in
+        ``allowed_props`` — ABSENT may only be recorded when the evidence
+        resolves to the corresponding stakeholder known-absent semantic
+        slot. Returns the refs that resolve to ``prop`` itself (private
+        stakeholder ids never appear in error messages)."""
+        knowledge = self._knowledge()
+        if knowledge is None:
+            raise ValueError(
+                f"{where}: no knowledge catalog is wired for this interview "
+                f"(cannot verify ABSENT slots)"
+            )
+        if not evs:
+            raise ValueError(f"{where}: ABSENT requires evidence")
+        allowed = allowed_props if allowed_props is not None else {prop}
+        results, invalid, ambiguous = grounded_refs(
+            self.db, self.assertion_ledger.annotations(), evs
+        )
+        if invalid or ambiguous or len(results) != len(evs):
+            raise ValueError(
+                f"{where}: every evidence span must resolve to exactly one semantic id"
+            )
+        resolver = knowledge.graph.resolve
+        for _ref, sid in results:
+            resolved = resolver(sid)
+            if (
+                resolved is None
+                or resolved.kind not in ("node_slot", "edge_slot")
+                or resolved.prop not in allowed
+                or resolved.value is not None
+            ):
+                raise ValueError(
+                    f"{where}: evidence must resolve to the stakeholder's "
+                    f"KNOWN-ABSENT slot for property {sorted(allowed)!r} "
+                    f"(the stakeholder knows a value here, does not know, "
+                    f"or the span is unrelated)"
+                )
+        return [
+            ref
+            for ref, sid in results
+            if (r := resolver(sid)) is not None and r.prop == prop
+        ]
+
+    def _absent_marker(self, arg: dict, where: str, prop: str) -> AbsentType:
+        """Build an ABSENT marker from ``{"absent": true, "evidence":
+        [...]}`` after validating the evidence against the corresponding
+        stakeholder known-absent slot."""
+        evs = self._require_evidence(arg.get("evidence"))
+        matched = self._resolve_absent_slots(evs, prop, where)
+        return AbsentType(evidence=matched)
 
     def _ref_from_arg(
         self, arg, where: str, expected_kind: str, default_evidence: Optional[list]
@@ -854,12 +917,19 @@ class InterviewTools(ToolKitBase):
         if isinstance(arg, dict):
             if arg.get("dont_know"):
                 return self._dont_know_marker(arg, where, prop)
+            if arg.get("absent"):
+                return self._absent_marker(arg, where, prop)
             cid = str(arg.get("concept_id") or "")
             evidence = self._require_evidence(arg.get("evidence"))
         elif arg == "DONT_KNOW":
             raise ValueError(
                 f"{where}: a bare DONT_KNOW needs evidence — pass "
                 f'{{"dont_know": true, "evidence": [...]}}'
+            )
+        elif arg == "ABSENT":
+            raise ValueError(
+                f"{where}: a bare ABSENT needs evidence — pass "
+                f'{{"absent": true, "evidence": [...]}}'
             )
         else:
             cid = str(arg)
@@ -869,16 +939,26 @@ class InterviewTools(ToolKitBase):
 
     def _list_slot_arg(self, arg, where: str, expected_kind: str, prop: str):
         """reads/writes arg: list of concept ids / {concept_id, evidence},
-        or {"dont_know": true, "evidence": [...]} for a whole-property
-        DONT_KNOW."""
+        {"dont_know": true, "evidence": [...]} for a whole-property
+        DONT_KNOW, or {"absent": true, "evidence": [...]} for a
+        whole-property ABSENT. None means UNSET (not investigated)."""
         if arg is None:
-            return None
+            return UNSET
         if isinstance(arg, dict) and arg.get("dont_know"):
             return self._dont_know_marker(arg, where, self._normalize_prop(prop))
+        if isinstance(arg, dict) and arg.get("absent"):
+            return self._absent_marker(arg, where, self._normalize_prop(prop))
         if not isinstance(arg, list):
             raise ValueError(
-                f"{where}: expected a list of concept refs or "
-                f'{{"dont_know": true, "evidence": [...]}}'
+                f"{where}: expected a list of concept refs, "
+                f'{{"dont_know": true, "evidence": [...]}} or '
+                f'{{"absent": true, "evidence": [...]}}'
+            )
+        if not arg:
+            raise ValueError(
+                f"{where}: an empty reads/writes list is ambiguous — record "
+                f'{{"absent": true, "evidence": [...]}} when the stakeholder '
+                f"established that nothing is read/written"
             )
         return self._refs_from_prop_list(arg, where, expected_kind)
 
@@ -889,11 +969,12 @@ class InterviewTools(ToolKitBase):
         refs: list[ConceptRef] = []
         for arg in args or []:
             ref = self._ref_from_prop_arg(arg, where, expected_kind)
-            if isinstance(ref, DontKnowType):
+            if isinstance(ref, (DontKnowType, AbsentType)):
                 raise ValueError(
-                    f"{where}: DONT_KNOW applies to the whole reads/writes "
-                    f"property, not to one element — pass "
-                    f'{{"dont_know": true, "evidence": [...]}} as the '
+                    f"{where}: {type(ref).__name__} applies to the whole "
+                    f"reads/writes property, not to one element — pass "
+                    f'{{"dont_know": true, "evidence": [...]}} or '
+                    f'{{"absent": true, "evidence": [...]}} as the '
                     f"property value"
                 )
             refs.append(ref)
@@ -955,15 +1036,23 @@ class InterviewTools(ToolKitBase):
             actor=(
                 self._ref_from_prop_arg(actor, "add_node actor", "actor")
                 if actor is not None
-                else None
+                else UNSET
             ),
             system=(
                 self._ref_from_prop_arg(system, "add_node system", "system")
                 if system is not None
-                else None
+                else UNSET
             ),
-            reads=self._list_slot_arg(reads, "add_node reads", "data", "reads"),
-            writes=self._list_slot_arg(writes, "add_node writes", "data", "writes"),
+            reads=(
+                self._list_slot_arg(reads, "add_node reads", "data", "reads")
+                if reads is not None
+                else UNSET
+            ),
+            writes=(
+                self._list_slot_arg(writes, "add_node writes", "data", "writes")
+                if writes is not None
+                else UNSET
+            ),
             necessity_rationale=(
                 self._ref_from_prop_arg(
                     necessity_rationale,
@@ -971,7 +1060,7 @@ class InterviewTools(ToolKitBase):
                     "rationale",
                 )
                 if necessity_rationale is not None
-                else None
+                else UNSET
             ),
         )
         return f"Added node {node_id}."
@@ -1002,9 +1091,9 @@ class InterviewTools(ToolKitBase):
         if unset:
             for prop in unset:
                 if prop in ("reads", "writes"):
-                    setattr(node, prop, None)
+                    setattr(node, prop, UNSET)
                 elif prop in ("actor", "system", "necessity_rationale"):
-                    setattr(node, prop, None)
+                    setattr(node, prop, UNSET)
                 else:
                     raise ValueError(f"cannot unset property {prop!r}")
         if activity is not None:
@@ -1111,6 +1200,83 @@ class InterviewTools(ToolKitBase):
         return f"Recorded DONT_KNOW on edge {edge_id} condition."
 
     @is_tool(ToolType.WRITE)
+    def record_absent(
+        self,
+        node_id: str,
+        properties: list[str],
+        evidence: list,
+    ) -> str:
+        """Record that you explicitly established a node property to be
+        ABSENT (e.g. the stakeholder said the step reads nothing).
+
+        ``ABSENT`` is an explicit, evidenced epistemic state — distinct from
+        UNSET (not investigated; ``update_node(unset=...)`` returns a slot to
+        UNSET) and from DONT_KNOW. Every cited span must resolve to the
+        stakeholder's KNOWN-ABSENT slot of one of the given properties (a
+        slot with a known value or a DONT_KNOW slot rejects the recording),
+        and every listed property must be covered by at least one span.
+
+        Args:
+            node_id: The node whose properties are absent.
+            properties: Properties established absent
+                (activity/actor/system/reads/writes/rationale).
+            evidence: Evidence spans resolving to the stakeholder's
+                known-absent slots for these properties (required).
+
+        Returns:
+            A confirmation message.
+        """
+        node = self._node(node_id)
+        props = {self._normalize_prop(p) for p in properties}
+        unknown = props - set(
+            ("activity", "actor", "system", "reads", "writes", "rationale")
+        )
+        if unknown:
+            raise ValueError(
+                f"record_absent: unknown property {sorted(unknown)}; must "
+                f"be one of activity/actor/system/reads/writes/rationale"
+            )
+        if not props:
+            raise ValueError("record_absent: properties must not be empty")
+        evs = self._require_evidence(evidence)
+        by_prop: dict[str, list[EvidenceRef]] = {}
+        for prop in props:
+            where = f"record_absent for {node_id} {prop}"
+            by_prop[prop] = self._resolve_absent_slots(
+                evs, prop, where, allowed_props=props
+            )
+        for prop in sorted(props):
+            attr = "necessity_rationale" if prop == "rationale" else prop
+            setattr(node, attr, AbsentType(evidence=by_prop[prop]))
+        return f"Recorded ABSENT on {node_id} for: {', '.join(sorted(props))}."
+
+    @is_tool(ToolType.WRITE)
+    def record_edge_condition_absent(self, edge_id: str, evidence: list) -> str:
+        """Record that you explicitly established an edge to be
+        UNCONDITIONAL (its condition is ABSENT).
+
+        ``ABSENT`` is an explicit, evidenced epistemic state — distinct from
+        UNSET (not investigated) and from DONT_KNOW. Every cited span must
+        resolve to the stakeholder's KNOWN-ABSENT condition slot (value
+        None) of this kind of edge.
+
+        Args:
+            edge_id: The edge whose condition is absent.
+            evidence: Evidence spans resolving to a stakeholder known-absent
+                condition slot (required).
+
+        Returns:
+            A confirmation message.
+        """
+        self._edge(edge_id)
+        evs = self._require_evidence(evidence)
+        self._resolve_absent_slots(
+            evs, "condition", f"record_edge_condition_absent for {edge_id}"
+        )
+        self._edge(edge_id).condition = AbsentType(evidence=evs)
+        return f"Recorded ABSENT on edge {edge_id} condition."
+
+    @is_tool(ToolType.WRITE)
     def remove_node(self, node_id: str) -> str:
         """Remove a node and its incident edges from the inferred graph."""
         graph = self._graph()
@@ -1161,11 +1327,11 @@ class InterviewTools(ToolKitBase):
             raise ValueError(f"node not found: {from_node}")
         if to_node not in graph.nodes:
             raise ValueError(f"node not found: {to_node}")
-        cond_ref = None
-        if condition is not None:
-            cond_ref = self._ref_from_prop_arg(
-                condition, "add_edge condition", "condition"
-            )
+        cond_ref = (
+            self._ref_from_prop_arg(condition, "add_edge condition", "condition")
+            if condition is not None
+            else UNSET
+        )
         evs = self._require_evidence(evidence)
         graph.edges[edge_id] = Edge(
             id=edge_id,
@@ -1198,7 +1364,7 @@ class InterviewTools(ToolKitBase):
                 raise ValueError(f"node not found: {to_node}")
             edge.to_node = to_node
         if unset_condition:
-            edge.condition = None
+            edge.condition = UNSET
         elif condition is not None:
             edge.condition = self._ref_from_prop_arg(
                 condition, "update_edge condition", "condition"

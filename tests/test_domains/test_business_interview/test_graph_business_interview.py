@@ -53,6 +53,8 @@ from tau2.domains.business_interview.facts import (
 )
 from tau2.domains.business_interview.graph import (
     DONT_KNOW,
+    UNSET,
+    AbsentType,
     BusinessProcessGraph,
     ConceptRef,
     DontKnowType,
@@ -61,8 +63,11 @@ from tau2.domains.business_interview.graph import (
     InterviewDB,
     Node,
     TruthConcept,
+    UnsetType,
     graph_semantic_ids,
+    is_absent,
     is_dont_know,
+    is_unset,
 )
 from tau2.domains.business_interview.knowledge import (
     project_knowledge,
@@ -970,6 +975,31 @@ def test_conceptref_none_dont_know_are_distinct():
     assert DONT_KNOW != None  # noqa: E711 - the three-valued distinction
 
 
+def test_agent_four_states_unset_absent_dont_know_distinct():
+    """The Agent's FOUR epistemic states: UNSET (not investigated) !=
+    ABSENT (explicitly established absent) != DONT_KNOW (unknowable) !=
+    ConceptRef (known value). New Agent properties start UNSET; None is
+    never a slot value."""
+    assert is_unset(UNSET)
+    assert is_absent(AbsentType())
+    assert is_dont_know(DONT_KNOW)
+    assert not is_unset(None) and not is_absent(None) and not is_dont_know(None)
+    assert UNSET != AbsentType() and UNSET != DONT_KNOW
+    assert AbsentType() != DONT_KNOW and AbsentType() != ConceptRef(concept_id="x")
+    assert not UNSET.asserted and not UnsetType().asserted
+    assert AbsentType().asserted and DONT_KNOW.asserted
+    # fresh Agent nodes/edges default every slot to UNSET
+    node = Node(id="n")
+    for prop in ("activity", "actor", "system", "reads", "writes", "rationale"):
+        assert is_unset(node.slot_value(prop)), prop
+    edge = Edge(id="e", from_node="a", to_node="b")
+    assert is_unset(edge.condition)
+    # reset/unset means UNSET, never ABSENT
+    node.system = AbsentType(evidence=[_evr("o1", "x")])
+    node.system = UNSET
+    assert is_unset(node.system)
+
+
 def test_removal_creates_no_shortcut_edge():
     truth = type(quotation_truth())(
         id="t",
@@ -1001,6 +1031,11 @@ def test_removal_creates_no_shortcut_edge():
     g = knowledge.graph
     node_t2l = {t: k for k, t in g.node_truth_ids.items()}
     assert set(g.nodes) == {node_t2l["A"], node_t2l["C"]}
+    # opaque visible ids are CONTIGUOUS (no hidden-element gaps like
+    # skn_001, skn_003): allocated only after visibility filtering
+    assert sorted(g.nodes) == ["skn_001", "skn_002"]
+    assert {c.truth_concept_id: k for k, c in g.concepts.items()} != {}
+    assert all(cid.startswith("skc_") for cid in g.concepts)
     assert set(g.edges) == set()
     # never a shortcut A -> C
     assert not any(
@@ -1379,6 +1414,61 @@ def test_valid_full_graph_passes():
     assert res.knowledge_coverage > 0.0
 
 
+def test_empty_agentgraph_has_no_vacuous_concept_glossary_success():
+    """An empty AgentGraph must not get concept_correctness=1.0 or look
+    glossary-complete merely because nothing is referenced: correctness is
+    evaluated against the expected StakeholderKnowledgeConcept set."""
+    tools = _tools()
+    tools.start_inference("q")
+    res = _eval(tools)
+    assert res.concept_correctness == 0.0
+    assert res.concept_recall == 0.0
+    assert res.glossary_complete is False
+    assert res.structural_pass is False
+    # a FULL build reconstructs every expected concept: recall/precision 1.0
+    tools2 = _tools()
+    _build(tools2)
+    res2 = _eval(tools2)
+    assert res2.concept_recall == 1.0
+    assert res2.concept_precision == 1.0
+    assert res2.concept_correctness == 1.0
+    assert res2.glossary_complete is True
+    # dropping one referenced concept hurts recall (missing expected concept)
+    tools3 = _tools()
+    _build(tools3)
+    assert tools3.db.graph is not None
+    del tools3.db.graph.concepts["pricing"]
+    for node in tools3.db.graph.nodes.values():
+        for prop in ("reads", "writes"):
+            for ref in node.refs(prop):
+                if ref.concept_id == "pricing":
+                    ref.concept_id = "request"
+    res3 = _eval(tools3)
+    assert res3.concept_recall < 1.0
+    assert res3.concept_correctness < 1.0
+    assert res3.glossary_complete is False
+    # a genuine split (two referenced Agent concepts claiming the SAME
+    # knowledge concept) reduces precision AND recall
+    tools4 = _tools()
+    _build(tools4)
+    assert tools4.db.graph is not None
+    tools4.create_concept("sales_dup", "actor", "sales")
+    oid_split = _say(
+        tools4,
+        "I do the sending.",
+        [_annotation("node:sq:actor", "I")],
+    )
+    tools4.db.graph.nodes["e"].actor = ConceptRef(
+        concept_id="sales_dup",
+        confidence=1.0,
+        evidence=[_evr(oid_split, "I")],
+    )
+    res4 = _eval(tools4)
+    assert res4.concept_precision < 1.0
+    assert res4.concept_recall < 1.0
+    assert res4.glossary_complete is False
+
+
 def test_knowledge_coverage_metric_separate():
     """Truth vs StakeholderKnowledge coverage is reported separately and is
     not part of Agent performance."""
@@ -1443,7 +1533,8 @@ def test_missing_visible_property_lowers_score():
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
-    tools.db.graph.nodes["b"].system = None
+    # returning a slot to UNSET (not investigated) never scores as a value
+    tools.db.graph.nodes["b"].system = UNSET
     res = _eval(tools)
     assert res.system_correctness < 1.0
     assert res.structural_pass is False
@@ -1942,6 +2033,7 @@ def test_start_inference_preserves_observations_and_ledger():
         activity={"concept_id": "act2", "evidence": [_ev(oid, "CRM")]},
         system={"concept_id": "crm2", "evidence": [_ev(oid, "CRM")]},
     )
+    assert isinstance(tools.db.graph.nodes["n1"].activity, ConceptRef)
     assert tools.db.graph.nodes["n1"].activity.evidence[0].observation_id == oid
     assert tools.assertion_ledger.annotations() != {}
     res = _eval(tools)
@@ -2933,10 +3025,10 @@ def test_grounded_status_agrees_with_evaluator_binding():
     knowledge = _sc(SCENARIO).knowledge
     annotations = tools.assertion_ledger.annotations()
     mapping, edge_map = _match_nodes_and_edges(graph, knowledge, tools.db, annotations)
-    score, agent_to_knowledge = _concept_bindings(
+    recall, precision, agent_to_knowledge = _concept_bindings(
         graph, knowledge, tools.db, annotations, mapping, edge_map
     )
-    assert score == 1.0
+    assert recall == 1.0 and precision == 1.0
     for cid, concept in graph.concepts.items():
         if concept.validation_status != "grounded":
             continue
@@ -2976,6 +3068,10 @@ def test_agent_none_is_not_dont_know():
     )
     k_absent = project_knowledge(truth, filt_absent)
     k_unknown = project_knowledge(truth, filt_unknown)
+    # the custom filter sees only node r, so its opaque id is the contiguous
+    # skn_001 (allocated after visibility filtering — no hidden gaps)
+    r_local = {t: k for k, t in k_absent.graph.node_truth_ids.items()}["r"]
+    assert r_local == "skn_001"
     tools = _tools()
     tools.assertion_ledger.install_catalog(StakeholderKnowledgeCatalog("s1", k_absent))
     tools.start_inference("q")
@@ -2983,7 +3079,7 @@ def test_agent_none_is_not_dont_know():
     oid_act = _say(
         tools,
         "I receive the quotation request.",
-        [_annotation("node:r:activity", "receive the quotation request")],
+        [_annotation(f"node:{r_local}:activity", "receive the quotation request")],
     )
     tools.create_concept(
         "act1",
@@ -3014,17 +3110,31 @@ def test_agent_none_is_not_dont_know():
             terminology=tools.assertion_ledger.terminology(),
         )
 
-    # stakeholder None: unasserted agent slot is CORRECT
+    # stakeholder None: an UNSET agent slot is NOT correct ("not
+    # investigated" never scores as known absence)
     res = eval_with(k_absent, filt_absent)
-    assert res.read_correctness == 1.0
-    # ... but a DONT_KNOW marker is NOT equivalent to None
+    assert res.read_correctness == 0.0
+    # ... an ABSENT marker whose evidence resolves to the EXACT mapped
+    # stakeholder slot (node:<r_local>:reads) IS correct
+    oid_absent = _say(
+        tools,
+        "The step reads nothing.",
+        [_annotation(f"node:{r_local}:reads", "reads nothing")],
+    )
+    tools.record_absent(
+        "a", properties=["reads"], evidence=[_ev(oid_absent, "reads nothing")]
+    )
+    res_abs = eval_with(k_absent, filt_absent)
+    assert res_abs.read_correctness == 1.0
+    assert res_abs.marker_evidence_errors == 0
+    # ... but a DONT_KNOW marker is NOT equivalent to ABSENT
     assert tools.db.graph is not None
     tools.db.graph.nodes["a"].reads = DontKnowType(evidence=[])
     res_dk = eval_with(k_absent, filt_absent)
     assert res_dk.read_correctness == 0.0
-    # stakeholder DONT_KNOW: unasserted is NOT DONT_KNOW (missing/unasserted
-    # must not score as both None and DONT_KNOW)
-    tools.db.graph.nodes["a"].reads = None
+    # stakeholder DONT_KNOW: UNSET is NOT DONT_KNOW (not investigated must
+    # never score as a known absence or as DONT_KNOW)
+    tools.db.graph.nodes["a"].reads = UNSET
     res_un = eval_with(k_unknown, filt_unknown)
     assert res_un.read_correctness == 0.0
     # ... while an explicit evidenced DONT_KNOW is CORRECT
@@ -3032,14 +3142,20 @@ def test_agent_none_is_not_dont_know():
     oid = _say(
         tools,
         "I do not know what the step reads.",
-        [_annotation("node:r:reads", "what the step reads")],
+        [_annotation(f"node:{r_local}:reads", "what the step reads")],
     )
     tools.record_dont_know(
         "a", properties=["reads"], evidence=[_ev(oid, "what the step reads")]
     )
     res_dk2 = eval_with(k_unknown, filt_unknown)
     assert res_dk2.read_correctness == 1.0
-    assert res_dk2.dont_know_evidence_errors == 0
+    assert res_dk2.marker_evidence_errors == 0
+    # an ABSENT marker against a DONT_KNOW stakeholder slot is wrong
+    tools.db.graph.nodes["a"].reads = AbsentType(
+        evidence=[_evr(oid, "what the step reads")]
+    )
+    res_dk3 = eval_with(k_unknown, filt_unknown)
+    assert res_dk3.read_correctness == 0.0
 
 
 def test_correct_dont_know_is_rewarded_and_guess_wrong():
@@ -3052,20 +3168,20 @@ def test_correct_dont_know_is_rewarded_and_guess_wrong():
     assert res.read_correctness == 1.0
     assert res.write_correctness == 1.0
     assert res.condition_correctness == 1.0
-    assert res.dont_know_evidence_errors == 0
+    assert res.marker_evidence_errors == 0
     graph = tools.db.graph
     assert graph is not None
     assert is_dont_know(graph.nodes["e"].reads)
     assert is_dont_know(graph.nodes["e"].writes)
     assert is_dont_know(graph.edges["e1"].condition)
-    # unasserting a DONT_KNOW slot is NOT correct (missing != DONT_KNOW)
-    graph.nodes["e"].reads = None
-    graph.nodes["e"].writes = None
+    # leaving a DONT_KNOW slot UNSET is NOT correct (UNSET != DONT_KNOW)
+    graph.nodes["e"].reads = UNSET
+    graph.nodes["e"].writes = UNSET
     res_missing = _eval(tools)
     assert res_missing.read_correctness < 1.0
     assert res_missing.write_correctness < 1.0
     # a hidden-Truth guess on a DONT_KNOW slot is wrong
-    graph.nodes["e"].reads = None
+    graph.nodes["e"].reads = UNSET
     oid = _say(
         tools,
         "I use the pricing information.",
@@ -3156,6 +3272,394 @@ def test_knowledge_coverage_known_absent_unknown_removed():
     )
     # known: A(1) + A slots(6) + A element(1) = 8 of 17
     assert coverage(rm2) == 8.0 / 17.0
+
+
+# ---------------------------------------------------------------------------
+# v12: four-state Agent model, exact ABSENT/DONT_KNOW provenance, opaque
+# visible IDs, recoverable malformed tool JSON
+# ---------------------------------------------------------------------------
+
+
+def test_opaque_visible_ids_have_no_hidden_gaps():
+    """Local node/edge ids are allocated ONLY after visibility filtering, so
+    a filter that sees {ap, cq} yields skn_001, skn_002 — never skn_001,
+    skn_003 — and never reveals hidden elements through gaps."""
+    import re
+
+    truth = quotation_truth()
+    filt = StakeholderFilter(
+        name="partial",
+        visible_node_ids=["ap", "cq"],  # two of six Truth nodes
+        visible_edge_ids=["e3"],  # one of six Truth edges
+        visible_node_attributes={
+            "ap": ["activity", "actor", "rationale"],
+            "cq": ["activity", "actor", "system", "reads", "writes"],
+        },
+        visible_edge_attributes={"e3": ["condition"]},
+    )
+    knowledge = project_knowledge(truth, filt)
+    g = knowledge.graph
+    assert sorted(g.nodes) == ["skn_001", "skn_002"]
+    assert sorted(g.edges) == ["ske_001"]
+    for nid in g.nodes:
+        assert re.fullmatch(r"skn_\d{3}", nid)
+    for eid in g.edges:
+        assert re.fullmatch(r"ske_\d{3}", eid)
+    # the private mapping still resolves to the right Truth elements
+    node_t2l = {t: k for k, t in g.node_truth_ids.items()}
+    assert node_t2l["ap"] == "skn_001" and node_t2l["cq"] == "skn_002"
+    # determinism + reordering invariance preserved
+    rev = filt.model_copy(
+        update={
+            "visible_node_ids": list(reversed(filt.visible_node_ids)),
+            "visible_edge_ids": list(reversed(filt.visible_edge_ids)),
+        }
+    )
+    g2 = project_knowledge(truth, rev).graph
+    assert g2.node_truth_ids == g.node_truth_ids
+    assert g2.edge_truth_ids == g.edge_truth_ids
+
+
+def test_absent_requires_exact_slot_evidence():
+    """ABSENT is valid only when the evidence resolves to the exact mapped
+    stakeholder slot whose value is None; evidence about ANOTHER node's slot
+    never supports this marker (tool rejects wrong-property evidence,
+    evaluator rejects wrong-node evidence)."""
+    truth = quotation_truth()
+    # both r.reads and sq.reads are KNOWN-ABSENT (None) for this stakeholder
+    filt = StakeholderFilter(
+        name="s",
+        visible_node_ids=["r", "sq"],
+        visible_edge_ids=[],
+        visible_node_attributes={
+            "r": ["activity", "actor", "writes", "reads"],
+            "sq": ["activity", "actor", "system", "reads"],
+        },
+        visible_edge_attributes={},
+    )
+    knowledge = project_knowledge(truth, filt)
+    node_t2l = {t: k for k, t in knowledge.graph.node_truth_ids.items()}
+    r_local = node_t2l["r"]
+    sq_local = node_t2l["sq"]
+    tools = _tools()
+    tools.assertion_ledger.install_catalog(StakeholderKnowledgeCatalog("s", knowledge))
+    tools.start_inference("q")
+    _ingest(tools, "assistant", "Hello.")
+    oid_act_r = _say(
+        tools,
+        "I receive the quotation request.",
+        [_annotation(f"node:{r_local}:activity", "receive the quotation request")],
+    )
+    oid_act_sq = _say(
+        tools,
+        "I send the quotation.",
+        [_annotation(f"node:{sq_local}:activity", "send the quotation")],
+    )
+    tools.create_concept(
+        "act_r",
+        "activity",
+        "receive",
+        evidence=[_ev(oid_act_r, "receive the quotation request")],
+    )
+    tools.ground_concept(
+        "act_r", evidence=[_ev(oid_act_r, "receive the quotation request")]
+    )
+    tools.create_concept(
+        "act_sq", "activity", "send", evidence=[_ev(oid_act_sq, "send the quotation")]
+    )
+    tools.ground_concept("act_sq", evidence=[_ev(oid_act_sq, "send the quotation")])
+    tools.add_node(
+        "a",
+        activity={
+            "concept_id": "act_r",
+            "evidence": [_ev(oid_act_r, "receive the quotation request")],
+        },
+    )
+    tools.add_node(
+        "b",
+        activity={
+            "concept_id": "act_sq",
+            "evidence": [_ev(oid_act_sq, "send the quotation")],
+        },
+    )
+
+    def eval_with():
+        return evaluate(
+            tools.db,
+            knowledge,
+            EvaluationSpec(),
+            filt,
+            truth=truth,
+            annotations=tools.assertion_ledger.annotations(),
+            alignments=tools.assertion_ledger.alignments(),
+            terminology=tools.assertion_ledger.terminology(),
+        )
+
+    # the stakeholder establishes r.reads is ABSENT
+    oid_absent_r = _say(
+        tools,
+        "The first step reads nothing.",
+        [_annotation(f"node:{r_local}:reads", "reads nothing")],
+    )
+    oid_absent_sq = _say(
+        tools,
+        "The send step reads nothing.",
+        [_annotation(f"node:{sq_local}:reads", "reads nothing")],
+    )
+    # exact-slot evidence on node a (mapped to r) -> correct ABSENT; node b
+    # is still UNSET (never scores as known absence) -> 0.5
+    tools.record_absent(
+        "a", properties=["reads"], evidence=[_ev(oid_absent_r, "reads nothing")]
+    )
+    res = eval_with()
+    assert res.read_correctness == 0.5
+    assert res.marker_evidence_errors == 0
+    # SAME evidence on node b (mapped to sq): the marker's evidence resolves
+    # to node:<r_local>:reads, NOT to node:<sq_local>:reads -> unsupported
+    tools.record_absent(
+        "b", properties=["reads"], evidence=[_ev(oid_absent_r, "reads nothing")]
+    )
+    res2 = eval_with()
+    assert res2.read_correctness < 1.0
+    assert res2.marker_evidence_errors >= 1
+    # the exact-slot evidence for b IS correct
+    tools.record_absent(
+        "b", properties=["reads"], evidence=[_ev(oid_absent_sq, "reads nothing")]
+    )
+    res3 = eval_with()
+    assert res3.read_correctness == 1.0
+    assert res3.marker_evidence_errors == 0
+    # wrong-PROPERTY evidence is rejected at the tool level (r.system is a
+    # DONT_KNOW slot, not a known-absent slot)
+    oid_wrong = _say(
+        tools,
+        "I do not know which system the first step uses.",
+        [_annotation(f"node:{r_local}:system", "which system the first step uses")],
+    )
+    with pytest.raises(ValueError):
+        tools.record_absent(
+            "a",
+            properties=["reads"],
+            evidence=[_ev(oid_wrong, "which system the first step uses")],
+        )
+    # ... and a known-VALUE slot never accepts ABSENT evidence (sq.system is
+    # the email system)
+    oid_val = _say(
+        tools,
+        "I send the quotation by email.",
+        [_annotation(f"node:{sq_local}:system", "email")],
+    )
+    with pytest.raises(ValueError):
+        tools.record_absent(
+            "b", properties=["system"], evidence=[_ev(oid_val, "email")]
+        )
+
+
+def test_dont_know_evidence_from_another_node_rejected():
+    """DONT_KNOW is valid only when the evidence resolves to the exact
+    mapped stakeholder DONT_KNOW slot; evidence about B.system never
+    supports A.system (evaluator-level rejection; tool-level rejections for
+    known-value sources)."""
+    tools = _tools()
+    _build(tools)
+    assert tools.db.graph is not None
+    # node d maps to ap whose system slot is DONT_KNOW; node r's system is
+    # ALSO DONT_KNOW — evidence about r.system must never support d.system
+    oid_other = _say(
+        tools,
+        "I do not know which system the first step uses.",
+        [_annotation("node:r:system", "which system the first step uses")],
+    )
+    tools.db.graph.nodes["d"].system = DontKnowType(
+        evidence=[_evr(oid_other, "which system the first step uses")]
+    )
+    res = _eval(tools)
+    assert res.system_correctness < 1.0
+    assert res.marker_evidence_errors >= 1
+    # the correct exact-slot evidence (ap's system) scores 1.0
+    oid_own = _say(
+        tools,
+        "I do not know which system the approval uses.",
+        [_annotation("node:ap:system", "which system the approval uses")],
+    )
+    tools.record_dont_know(
+        "d",
+        properties=["system"],
+        evidence=[_ev(oid_own, "which system the approval uses")],
+    )
+    res2 = _eval(tools)
+    assert res2.system_correctness == 1.0
+    assert res2.marker_evidence_errors == 0
+    # a KNOWN-VALUE source is rejected at the tool level: sq.system is the
+    # email system, so it cannot back a DONT_KNOW claim on node e (sq)
+    oid_val = _say(
+        tools,
+        "I send the quotation by email.",
+        [_annotation("node:sq:system", "email")],
+    )
+    with pytest.raises(ValueError):
+        tools.record_dont_know(
+            "e", properties=["system"], evidence=[_ev(oid_val, "email")]
+        )
+
+
+def test_edge_marker_requires_exact_mapped_condition_slot():
+    """Edge ABSENT/DONT_KNOW markers must resolve to
+    edge:<mapped stakeholder edge>:condition — another edge's condition
+    slot never supports them."""
+    tools = _tools()
+    _build(tools)
+    assert tools.db.graph is not None
+    # e1's condition is DONT_KNOW; the stakeholder says so -> exact slot
+    oid = _say(
+        tools,
+        "I do not know of any condition before the check.",
+        [_annotation("edge:e1:condition", "any condition before the check")],
+    )
+    tools.record_edge_condition_dont_know(
+        "e1", evidence=[_ev(oid, "any condition before the check")]
+    )
+    res = _eval(tools)
+    assert res.condition_correctness == 1.0
+    # same evidence on e2 (mapped to ske_002, ALSO a DONT_KNOW condition
+    # slot) is still WRONG for e2: the marker must cite its OWN mapped slot
+    tools.db.graph.edges["e2"].condition = DontKnowType(
+        evidence=[_evr(oid, "any condition before the check")]
+    )
+    res2 = _eval(tools)
+    assert res2.condition_correctness < 1.0
+    assert res2.marker_evidence_errors >= 1
+    tools.db.graph.edges["e2"].condition = UNSET
+    # an ABSENT marker on a DONT_KNOW stakeholder slot is wrong
+    tools.db.graph.edges["e1"].condition = AbsentType(
+        evidence=[_evr(oid, "any condition before the check")]
+    )
+    res3 = _eval(tools)
+    assert res3.condition_correctness < 1.0
+
+
+def test_unset_never_scores_as_known_absence():
+    """ "Not asserted" (UNSET) must never score as a known absence: a
+    stakeholder known-absent slot needs an evidenced ABSENT marker."""
+    truth = quotation_truth()
+    filt = StakeholderFilter(
+        name="s",
+        visible_node_ids=["r"],
+        visible_edge_ids=[],
+        visible_node_attributes={"r": ["activity", "actor", "writes", "reads"]},
+        visible_edge_attributes={},
+    )
+    knowledge = project_knowledge(truth, filt)
+    r_local = {t: k for k, t in knowledge.graph.node_truth_ids.items()}["r"]
+    tools = _tools()
+    tools.assertion_ledger.install_catalog(StakeholderKnowledgeCatalog("s", knowledge))
+    tools.start_inference("q")
+    _ingest(tools, "assistant", "Hello.")
+    oid_act = _say(
+        tools,
+        "I receive the quotation request.",
+        [_annotation(f"node:{r_local}:activity", "receive the quotation request")],
+    )
+    tools.create_concept(
+        "act1",
+        "activity",
+        "receive",
+        evidence=[_ev(oid_act, "receive the quotation request")],
+    )
+    tools.ground_concept(
+        "act1", evidence=[_ev(oid_act, "receive the quotation request")]
+    )
+    tools.add_node(
+        "a",
+        activity={
+            "concept_id": "act1",
+            "evidence": [_ev(oid_act, "receive the quotation request")],
+        },
+    )
+    assert tools.db.graph is not None
+    assert is_unset(tools.db.graph.nodes["a"].reads)
+
+    def eval_with():
+        return evaluate(
+            tools.db,
+            knowledge,
+            EvaluationSpec(),
+            filt,
+            truth=truth,
+            annotations=tools.assertion_ledger.annotations(),
+            alignments=tools.assertion_ledger.alignments(),
+            terminology=tools.assertion_ledger.terminology(),
+        )
+
+    # UNSET vs a stakeholder known-absent slot: 0, never a free pass
+    res = eval_with()
+    assert res.read_correctness == 0.0
+    # returning a slot to UNSET (reset/unset) also scores 0
+    oid_absent = _say(
+        tools,
+        "The step reads nothing.",
+        [_annotation(f"node:{r_local}:reads", "reads nothing")],
+    )
+    tools.record_absent(
+        "a", properties=["reads"], evidence=[_ev(oid_absent, "reads nothing")]
+    )
+    res_abs = eval_with()
+    assert res_abs.read_correctness == 1.0
+    tools.update_node("a", unset=["reads"])
+    assert is_unset(tools.db.graph.nodes["a"].reads)
+    res_reset = eval_with()
+    assert res_reset.read_correctness == 0.0
+
+
+def test_malformed_tool_json_is_recoverable():
+    """Malformed tool-call arguments JSON must be a RECOVERABLE tool error:
+    a concise parse error, ordinary error-budget consumption, no abort, and
+    a later valid call succeeds. Semantic content is never repaired."""
+    from tau2.data_model.message import ToolCall
+    from tau2.domains.business_interview.environment import (
+        BusinessInterviewEnvironment,
+    )
+
+    # 1) the text-format parser recovers instead of raising
+    tc = ToolCall.from_string(
+        "ToolCall (from assistant)\nid: t1\nname: add_node\narguments:\n"
+        '{"node_id": "n1", "activity": unquoted_identifier}'
+    )
+    assert tc.name == "add_node"
+    assert tc.parse_error is not None
+    assert "malformed" in tc.parse_error
+    assert tc.arguments == {}
+
+    # 2) the environment answers with an ordinary error ToolMessage
+    env = get_environment()
+    assert isinstance(env, BusinessInterviewEnvironment)
+    bad = ToolCall(
+        id="t2",
+        name="add_node",
+        arguments={},
+        requestor="assistant",
+        parse_error="malformed tool-call arguments JSON for 'add_node': boom",
+    )
+    tm = env.get_response(bad)
+    assert tm.error is True
+    assert "malformed tool-call arguments JSON" in tm.content
+    # no state was mutated by the malformed call
+    assert env.tools is not None
+    assert env.tools.db is not None
+    assert env.tools.db.graph is None or len(env.tools.db.graph.nodes) == 0
+
+    # 3) a later VALID call succeeds (recovery, not abort)
+    env.tools.create_concept("act1", "activity", "first step")
+    ok = ToolCall(
+        id="t3",
+        name="add_node",
+        arguments={"node_id": "n1", "activity": "act1"},
+        requestor="assistant",
+    )
+    tm2 = env.get_response(ok)
+    assert tm2.error is False
+    assert env.tools.db.graph is not None
+    assert "n1" in env.tools.db.graph.nodes
 
 
 # ---------------------------------------------------------------------------

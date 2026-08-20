@@ -433,14 +433,43 @@ def generate(
     )
     content = response_choice.message.content
     raw_tool_calls = response_choice.message.tool_calls or []
-    tool_calls = [
-        ToolCall(
-            id=tool_call.id,
-            name=tool_call.function.name,
-            arguments=json.loads(tool_call.function.arguments),
+    tool_calls = []
+    for tool_call in raw_tool_calls:
+        tool_name = str(tool_call.function.name or "")
+        try:
+            arguments = json.loads(tool_call.function.arguments)
+        except json.JSONDecodeError as exc:
+            # RECOVERABLE: malformed tool-call JSON must not abort the run.
+            # Keep the tool name, drop the malformed arguments and surface a
+            # concise parse error through the ordinary tool-error path (the
+            # agent consumes its error budget and may retry). Semantic
+            # content is never silently repaired.
+            logger.warning(
+                "Malformed tool-call arguments JSON for %r: %s",
+                tool_call.function.name,
+                str(exc),
+            )
+            tool_calls.append(
+                ToolCall(
+                    id=tool_call.id,
+                    name=tool_name,
+                    arguments={},
+                    requestor="assistant",
+                    parse_error=(
+                        f"malformed tool-call arguments JSON for "
+                        f"{tool_name!r}: {str(exc)}"
+                    ),
+                )
+            )
+            continue
+        tool_calls.append(
+            ToolCall(
+                id=tool_call.id,
+                name=tool_name,
+                arguments=arguments,
+                requestor="assistant",
+            )
         )
-        for tool_call in raw_tool_calls
-    ]
     tool_calls = tool_calls or None
 
     message = AssistantMessage(

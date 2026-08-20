@@ -67,6 +67,7 @@ from tau2.domains.business_interview.facts import (
     message_contains_span,
 )
 from tau2.domains.business_interview.graph import (
+    AbsentType,
     AgentGraph,
     ConceptRef,
     DontKnowType,
@@ -135,12 +136,15 @@ class EvaluationResult(BaseModel):
     rationale_correctness: float
     condition_correctness: float
     concept_correctness: float
+    concept_recall: float
+    concept_precision: float
     unsupported_ref_count: int
     fabricated_node_count: int
     fabricated_edge_count: int
 
     # glossary completion + genuine validation
     glossary_pass: bool
+    glossary_complete: bool
     referenced_hypothesized_concepts: list[str]
     glossary_validation_errors: list[str]
 
@@ -150,7 +154,7 @@ class EvaluationResult(BaseModel):
     edge_evidence_coverage: float
     invalid_evidence_ref_count: int
     ambiguous_evidence_ref_count: int
-    dont_know_evidence_errors: int
+    marker_evidence_errors: int
     invalid_observation_reference_count: int
     authentic_observation_count: int
     invalid_observation_source_count: int
@@ -356,10 +360,13 @@ def _match_nodes_and_edges(
             for ref in node.asserted_refs(prop):
                 grounded, _i, _a = _grounded_ids(db, annotations, _ref_evidence(ref))
                 cand.update(_candidate_node_ids(grounded, knowledge))
-        slot = node.slot_value("activity")
-        if is_dont_know(slot):
-            grounded, _i, _a = _grounded_ids(db, annotations, slot.evidence)
-            cand.update(_candidate_node_ids(grounded, knowledge))
+        # ABSENT/DONT_KNOW marker evidence is property provenance too and
+        # contributes node candidates
+        for prop in _NODE_PROPS:
+            slot = node.slot_value(prop)
+            if isinstance(slot, (AbsentType, DontKnowType)):
+                grounded, _i, _a = _grounded_ids(db, annotations, slot.evidence)
+                cand.update(_candidate_node_ids(grounded, knowledge))
         if cand:
             tn[nid] = cand
     order = sorted(tn)
@@ -458,6 +465,17 @@ def _slot_value_concepts(
     return set()
 
 
+def _marker_slot_evidence(
+    db: InterviewDB,
+    annotations: dict[int, list[SemanticAnnotation]],
+    marker,
+) -> set[str]:
+    """Semantic ids grounded by an ABSENT/DONT_KNOW marker's evidence
+    (property evidence ONLY — never mentions or validation evidence)."""
+    grounded, _i, _a = _grounded_ids(db, annotations, list(marker.evidence))
+    return grounded
+
+
 def _property_score(
     agent: AgentGraph,
     knowledge: StakeholderKnowledge,
@@ -468,28 +486,45 @@ def _property_score(
     prop: str,
     agent_to_knowledge: dict[str, str],
 ) -> tuple[float, int]:
-    """Score one node property (activity/actor/system/reads/writes/rationale).
+    """Score one node property (activity/actor/system/reads/writes/rationale)
+    under the four-state Agent model.
 
-    Uses property evidence ONLY. The three-valued epistemic states score
-    asymmetrically:
-    - stakeholder ``DONT_KNOW``: only an explicit agent ``DONT_KNOW`` marker
-      is correct; an unasserted slot is NOT equivalent to DONT_KNOW and a
-      hidden-Truth guess is wrong;
-    - stakeholder ``None`` (known absent): an unasserted agent slot is
-      correct; DONT_KNOW is NOT equivalent to None;
-    - stakeholder known value: recall over the slot's knowledge concepts
-      (each covered by a ref resolving to the element and binding that
-      concept) times precision over the agent refs (each must resolve to
-      the slot and bind one of its concepts).
+    Uses property evidence ONLY. The four Agent epistemic states score
+    against the three stakeholder states as follows:
+    - stakeholder ``ConceptRef``: a matching evidenced Agent ConceptRef is
+      correct; UNSET / ABSENT / DONT_KNOW / wrong value are incorrect;
+    - stakeholder ``None`` (known absent): an Agent ABSENT marker whose
+      evidence resolves to the EXACT mapped stakeholder slot
+      (``node:<mnid>:<prop>``) is correct; UNSET / DONT_KNOW / ConceptRef
+      are incorrect — "not asserted" never scores as known absence;
+    - stakeholder ``DONT_KNOW``: an Agent DONT_KNOW marker whose evidence
+      resolves to the EXACT mapped stakeholder DONT_KNOW slot is correct;
+      UNSET / ABSENT / ConceptRef are incorrect, and a hidden-Truth guess
+      remains wrong.
+
+    Evidence about ANOTHER node's slot never supports this node's marker.
+    For reads/writes, v1 keeps whole-property ABSENT/DONT_KNOW only.
 
     Returns (score, unsupported_ref_count).
     """
     value = _slot_value(knowledge, mnid, prop)
     agent_slot = agent.nodes[anid].slot_value(prop)
     if is_dont_know(value):
-        return (1.0 if is_dont_know(agent_slot) else 0.0), 0
+        if not isinstance(agent_slot, DontKnowType):
+            return 0.0, 0
+        # exact mapped-slot provenance: the marker's evidence must ground
+        # node:<mnid>:<prop> itself
+        slot_sid = f"node:{mnid}:{prop}"
+        grounded = _marker_slot_evidence(db, annotations, agent_slot)
+        return (1.0 if slot_sid in grounded else 0.0), 0
     if value is None:
-        return (1.0 if agent_slot is None else 0.0), 0
+        if not isinstance(agent_slot, AbsentType):
+            return 0.0, 0
+        # exact mapped-slot provenance: the marker's evidence must ground
+        # node:<mnid>:<prop> itself
+        slot_sid = f"node:{mnid}:{prop}"
+        grounded = _marker_slot_evidence(db, annotations, agent_slot)
+        return (1.0 if slot_sid in grounded else 0.0), 0
     refs = agent.nodes[anid].asserted_refs(prop)
     if not refs:
         return 0.0, 0
@@ -529,17 +564,26 @@ def _concept_bindings(
     annotations: dict[int, list[SemanticAnnotation]],
     mapping: dict[str, str],
     edge_map: dict[str, str],
-) -> tuple[float, dict[str, str]]:
-    """Concept-level binding integrity across all matched visible slots.
+) -> tuple[float, float, dict[str, str]]:
+    """Concept-level binding integrity against the EXPECTED
+    StakeholderKnowledgeConcept set (requirement 5: no vacuous success).
 
-    For every ConceptKind:
-    - one Agent concept may bind to exactly ONE knowledge concept of its own
-      kind (bindings from mapped property refs AND mentions must agree);
-    - one knowledge concept referenced by the knowledge graph must be
-      represented by exactly one Agent concept (splits fail; missing
-      concepts fail).
+    Binding sources (all must agree on ONE knowledge concept):
+    mapped property refs, mapped edge conditions, mentions, and grounded
+    concepts' validation evidence. A claim is a referenced Agent concept
+    with exactly one candidate knowledge concept of a compatible kind.
 
-    Returns (concept_correctness, agent concept id -> knowledge concept id).
+    Returns (concept_recall, concept_precision, agent concept id ->
+    knowledge concept id) where:
+    - expected = the knowledge concepts the stakeholder graph actually
+      references with values;
+    - correct = expected concepts claimed by exactly ONE Agent concept;
+    - concept_recall = |correct| / |expected|  (missing expected concepts
+      reduce it; an EMPTY AgentGraph has recall 0.0 — never 1.0);
+    - concept_precision = |correct| / |claimed| (extra/split/merged/
+      conflicting or kind-mismatched claims reduce it);
+    - agent_to_knowledge carries ONLY the correct, unambiguous bindings
+      (used by property scoring).
     """
     candidates: dict[str, set[str]] = {}
     referenced: set[str] = set()
@@ -611,30 +655,32 @@ def _concept_bindings(
         if isinstance(edge.condition, ConceptRef):
             knowledge_kinds.setdefault(edge.condition.concept_id, "condition")
 
-    agent_to_knowledge: dict[str, str] = {}
+    # claims: referenced agent concepts with a UNIQUE kind-compatible
+    # candidate (conflicting/ambiguous evidence leaves the concept
+    # unresolved — no claim)
+    claims: dict[str, str] = {}
     for cid in sorted(referenced):
         concept = agent.concepts.get(cid)
         if concept is None:
-            return 0.0, {}
+            continue
         cand = candidates.get(cid, set())
         if len(cand) != 1:
-            return 0.0, {}
+            continue
         kid = next(iter(cand))
         if knowledge_kinds.get(kid) != concept.kind:
-            return 0.0, {}
-        agent_to_knowledge[cid] = kid
+            continue
+        claims[cid] = kid
 
-    by_kind: dict[str, list[str]] = {}
-    for cid, kid in agent_to_knowledge.items():
-        by_kind.setdefault(agent.concepts[cid].kind, []).append(cid)
-    for kind, agents in by_kind.items():
-        covered = {agent_to_knowledge[c] for c in agents}
-        if len(covered) != len(agents):
-            return 0.0, {}
-        expected_kind = {k for k, kk in knowledge_kinds.items() if kk == kind}
-        if covered != expected_kind:
-            return 0.0, {}
-    return 1.0, agent_to_knowledge
+    claimed_by_kid: dict[str, list[str]] = {}
+    for cid, kid in claims.items():
+        claimed_by_kid.setdefault(kid, []).append(cid)
+    correct = {kid for kid, cids in claimed_by_kid.items() if len(cids) == 1}
+
+    expected = set(knowledge_kinds)
+    concept_recall = len(correct) / len(expected) if expected else 1.0
+    concept_precision = len(correct) / len(claimed_by_kid) if claimed_by_kid else 1.0
+    agent_to_knowledge = {cid: kid for cid, kid in claims.items() if kid in correct}
+    return concept_recall, concept_precision, agent_to_knowledge
 
 
 # ---------------------------------------------------------------------------
@@ -911,19 +957,19 @@ def _evidence_metrics(
 
     for node in agent.nodes.values():
         node_refs: list[ConceptRef] = []
-        dont_know_evs: list[EvidenceRef] = []
+        marker_evs: list[EvidenceRef] = []
         for prop in _NODE_PROPS:
             node_refs.extend(node.refs(prop))
             slot = node.slot_value(prop)
-            if is_dont_know(slot):
-                dont_know_evs.extend(slot.evidence)
+            if isinstance(slot, (AbsentType, DontKnowType)):
+                marker_evs.extend(slot.evidence)
         node_total += 1
         ref_ok = any(
             r.asserted and any(span_ok(ev) for ev in _ref_evidence(r))
             for r in node_refs
         )
         slot_ok = False
-        for ev in dont_know_evs:
+        for ev in marker_evs:
             ref_total += 1
             if span_ok(ev):
                 ref_hit += 1
@@ -963,7 +1009,7 @@ def _all_referenced_observation_ids(agent: AgentGraph) -> set[str]:
                 for ev in _ref_evidence(ref):
                     ids.add(ev.observation_id)
             slot = node.slot_value(prop)
-            if is_dont_know(slot):
+            if isinstance(slot, (AbsentType, DontKnowType)):
                 for ev in slot.evidence:
                     ids.add(ev.observation_id)
     for edge in agent.edges.values():
@@ -973,26 +1019,34 @@ def _all_referenced_observation_ids(agent: AgentGraph) -> set[str]:
         if isinstance(cond, ConceptRef):
             for ev in _ref_evidence(cond):
                 ids.add(ev.observation_id)
-        elif isinstance(cond, DontKnowType):
+        elif isinstance(cond, (AbsentType, DontKnowType)):
             for ev in cond.evidence:
                 ids.add(ev.observation_id)
     return ids
 
 
-def _dont_know_evidence_errors(
+def _marker_evidence_errors(
     agent: AgentGraph,
     knowledge: StakeholderKnowledge,
     db: InterviewDB,
     annotations: dict[int, list[SemanticAnnotation]],
+    mapping: dict[str, str],
+    edge_map: dict[str, str],
 ) -> int:
-    """DONT_KNOW markers whose evidence does not resolve (via the canonical
-    resolver) to stakeholder DONT_KNOW slots: a DONT_KNOW may only be
-    recorded when its evidence resolves to the corresponding stakeholder
-    DONT_KNOW semantic slot."""
+    """ABSENT/DONT_KNOW markers whose evidence does not resolve to the EXACT
+    mapped stakeholder slot.
+
+    ABSENT is valid only when its evidence resolves (global span rule +
+    canonical resolver) to the mapped stakeholder slot
+    ``node:<mnid>:<prop>`` / ``edge:<meid>:condition`` whose value is None;
+    DONT_KNOW only when it resolves to the mapped stakeholder DONT_KNOW
+    slot. Evidence about ANOTHER node's or edge's slot never supports this
+    marker (``grounded == {expected_sid}``). Markers on unmapped agent
+    elements are unsupported."""
     errors = 0
     resolver = knowledge.graph.resolve
 
-    def check(evs: list[EvidenceRef]) -> None:
+    def check(evs: list[EvidenceRef], expected_sid: str, expect_absent: bool) -> None:
         nonlocal errors
         if not evs:
             errors += 1
@@ -1001,24 +1055,46 @@ def _dont_know_evidence_errors(
         if invalid or ambiguous or len(results) != len(evs):
             errors += 1
             return
-        for _ref, sid in results:
-            resolved = resolver(sid)
-            if (
-                resolved is None
-                or resolved.kind not in ("node_slot", "edge_slot")
-                or not is_dont_know(resolved.value)
-            ):
+        grounded = {sid for _r, sid in results}
+        if grounded != {expected_sid}:
+            errors += 1
+            return
+        resolved = resolver(expected_sid)
+        if resolved is None:
+            errors += 1
+            return
+        if expect_absent:
+            if resolved.value is not None:
                 errors += 1
-                return
+        elif not is_dont_know(resolved.value):
+            errors += 1
 
-    for node in agent.nodes.values():
+    for anid, mnid in mapping.items():
         for prop in _NODE_PROPS:
-            slot = node.slot_value(prop)
-            if is_dont_know(slot):
-                check(slot.evidence)
-    for edge in agent.edges.values():
-        if isinstance(edge.condition, DontKnowType):
-            check(edge.condition.evidence)
+            slot = agent.nodes[anid].slot_value(prop)
+            if isinstance(slot, AbsentType):
+                check(slot.evidence, f"node:{mnid}:{prop}", expect_absent=True)
+            elif isinstance(slot, DontKnowType):
+                check(slot.evidence, f"node:{mnid}:{prop}", expect_absent=False)
+    for eid, meid in edge_map.items():
+        cond = agent.edges[eid].condition
+        if isinstance(cond, AbsentType):
+            check(cond.evidence, f"edge:{meid}:condition", expect_absent=True)
+        elif isinstance(cond, DontKnowType):
+            check(cond.evidence, f"edge:{meid}:condition", expect_absent=False)
+    # markers on unmapped agent elements are unsupported
+    for anid in agent.nodes:
+        if anid in mapping:
+            continue
+        for prop in _NODE_PROPS:
+            slot = agent.nodes[anid].slot_value(prop)
+            if isinstance(slot, (AbsentType, DontKnowType)):
+                errors += 1
+    for eid in agent.edges:
+        if eid in edge_map:
+            continue
+        if isinstance(agent.edges[eid].condition, (AbsentType, DontKnowType)):
+            errors += 1
     return errors
 
 
@@ -1166,9 +1242,12 @@ def evaluate(
     )
 
     # ---- concept identity (before property scoring: bindings needed) -------
-    concept_correctness, agent_to_knowledge = _concept_bindings(
+    concept_recall, concept_precision, agent_to_knowledge = _concept_bindings(
         agent, knowledge, db, annotation_ledger, mapping, edge_map
     )
+    # bounded correctness: missing expected concepts and extra/split/wrong
+    # claims both reduce it (never vacuous for an empty AgentGraph)
+    concept_correctness = concept_recall * concept_precision
 
     # ---- property correctness ----------------------------------------------
     hits = {p: 0.0 for p in _NODE_PROPS}
@@ -1205,19 +1284,29 @@ def evaluate(
         )
         value = me.condition
         if is_dont_know(value):
-            # only an explicit, evidenced DONT_KNOW condition is correct
-            cond_hits += (
-                1 if ae is not None and isinstance(ae.condition, DontKnowType) else 0
-            )
+            # only an explicit DONT_KNOW condition whose evidence resolves
+            # to the EXACT mapped condition slot is correct
+            ok = False
+            if ae is not None and isinstance(ae.condition, DontKnowType):
+                sid = f"edge:{me.id}:condition"
+                grounded, _i, _a = _grounded_ids(
+                    db, annotation_ledger, ae.condition.evidence
+                )
+                ok = sid in grounded
+            cond_hits += 1 if ok else 0
             continue
         if value is None:
-            # known absent: no condition is correct; DONT_KNOW is not
-            # equivalent to None
-            cond_hits += (
-                1
-                if ae is None or ae.condition is None or not ae.condition.asserted
-                else 0
-            )
+            # known absent: only an explicit ABSENT condition whose evidence
+            # resolves to the EXACT mapped condition slot is correct;
+            # UNSET / DONT_KNOW / a concept are incorrect
+            ok = False
+            if ae is not None and isinstance(ae.condition, AbsentType):
+                sid = f"edge:{me.id}:condition"
+                grounded, _i, _a = _grounded_ids(
+                    db, annotation_ledger, ae.condition.evidence
+                )
+                ok = sid in grounded
+            cond_hits += 1 if ok else 0
             continue
         if not isinstance(value, ConceptRef):
             continue  # defensive: only known ConceptRef conditions remain
@@ -1235,6 +1324,10 @@ def evaluate(
     condition_correctness = cond_hits / cond_total if cond_total else 1.0
 
     # ---- glossary completion + genuine validation ---------------------------
+    # completeness of the required concept reconstruction (vs the expected
+    # StakeholderKnowledgeConcept set) is SEPARATE from validation
+    # correctness of the referenced concepts
+    glossary_complete = bool(concept_recall == 1.0 and concept_precision == 1.0)
     glossary_pass, hypothesized, glossary_errors = _glossary_validation(
         agent,
         db,
@@ -1271,12 +1364,12 @@ def evaluate(
     ) = _evidence_metrics(db, agent)
 
     # ambiguous evidence refs: GLOBAL span rule, counted across every agent
-    # ref (mapped or not), every DONT_KNOW marker and every edge
+    # ref (mapped or not), every ABSENT/DONT_KNOW marker and every edge
     ambiguous_evidence_ref_count = 0
     for anid in agent.nodes:
         for prop in _NODE_PROPS:
             slot = agent.nodes[anid].slot_value(prop)
-            if is_dont_know(slot):
+            if isinstance(slot, (AbsentType, DontKnowType)):
                 _g, _i, amb = _grounded_ids(db, annotation_ledger, slot.evidence)
                 ambiguous_evidence_ref_count += amb
             for ref in agent.nodes[anid].asserted_refs(prop):
@@ -1289,12 +1382,12 @@ def evaluate(
         if isinstance(cond, ConceptRef) and cond.asserted:
             _g, _i, amb2 = _grounded_ids(db, annotation_ledger, _ref_evidence(cond))
             ambiguous_evidence_ref_count += amb2
-        elif isinstance(cond, DontKnowType):
+        elif isinstance(cond, (AbsentType, DontKnowType)):
             _g, _i, amb2 = _grounded_ids(db, annotation_ledger, cond.evidence)
             ambiguous_evidence_ref_count += amb2
 
-    dont_know_evidence_errors = _dont_know_evidence_errors(
-        agent, knowledge, db, annotation_ledger
+    marker_evidence_errors = _marker_evidence_errors(
+        agent, knowledge, db, annotation_ledger, mapping, edge_map
     )
 
     provenance_authenticity_pass = bool(
@@ -1305,7 +1398,7 @@ def evaluate(
     evidence_pass = bool(
         provenance_authenticity_pass
         and ambiguous_evidence_ref_count == 0
-        and dont_know_evidence_errors == 0
+        and marker_evidence_errors == 0
         and node_evidence_coverage == 1.0
         and ref_evidence_coverage == 1.0
         and edge_evidence_coverage == 1.0
@@ -1329,8 +1422,11 @@ def evaluate(
         and write_correctness == 1.0
         and rationale_correctness == 1.0
         and condition_correctness == 1.0
+        and concept_recall == 1.0
+        and concept_precision == 1.0
         and concept_correctness == 1.0
         and glossary_pass
+        and glossary_complete
     )
     protocol_pass = protocol
     quality_pass = bool(structural_pass and evidence_pass)
@@ -1354,10 +1450,13 @@ def evaluate(
         rationale_correctness=rationale_correctness,
         condition_correctness=condition_correctness,
         concept_correctness=concept_correctness,
+        concept_recall=concept_recall,
+        concept_precision=concept_precision,
         unsupported_ref_count=unsupported_concept_ref_count,
         fabricated_node_count=fabricated_node_count,
         fabricated_edge_count=fabricated_edge_count,
         glossary_pass=glossary_pass,
+        glossary_complete=glossary_complete,
         referenced_hypothesized_concepts=hypothesized,
         glossary_validation_errors=glossary_errors,
         node_evidence_coverage=node_evidence_coverage,
@@ -1365,7 +1464,7 @@ def evaluate(
         edge_evidence_coverage=edge_evidence_coverage,
         invalid_evidence_ref_count=invalid_evidence_ref_count,
         ambiguous_evidence_ref_count=ambiguous_evidence_ref_count,
-        dont_know_evidence_errors=dont_know_evidence_errors,
+        marker_evidence_errors=marker_evidence_errors,
         invalid_observation_reference_count=invalid_observation_reference_count,
         authentic_observation_count=authentic_observation_count,
         invalid_observation_source_count=invalid_observation_source_count,

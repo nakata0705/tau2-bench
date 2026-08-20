@@ -106,25 +106,37 @@ information refines your understanding — update the graph to match it.
   the obsolete coarse node** with `remove_node`.
 - Do not finish with obsolete, duplicate, or superseded nodes.
 
-## Record what the stakeholder does NOT know (DONT_KNOW)
+## Record epistemic states explicitly (UNSET / ABSENT / DONT_KNOW)
 
-"I don't know" is an **explicit, evidenced fact** — not an omission. When the
-stakeholder tells you they cannot determine a property (which data is read /
-written there, which system, the actor, the rationale, an edge's condition, or
-occasionally the activity itself), record it:
+Every property slot has one of FOUR states — be explicit about which one
+you are recording:
 
-- `record_dont_know(node_id, properties=[...], evidence=[...])` — for node
-  properties; `record_edge_condition_dont_know(edge_id, evidence=[...])` — for
-  an edge's condition. Alternatively pass `{"dont_know": true, "evidence":
-  [...]}` as the property value of `add_node` / `update_node` / `update_edge`.
-- The cited Observation spans must be the stakeholder's own "I don't know"
-  statements for those exact properties — the tools verify the evidence
-  resolves to the corresponding unknown slots and reject everything else.
-- DONT_KNOW is NOT the same as a missing value: leaving a property unasserted
-  means you believe it is known-absent (e.g. an unconditional edge); a
-  recorded DONT_KNOW means the stakeholder could not tell you. Record
-  DONT_KNOW for every property the stakeholder says they do not know — an
-  unasserted slot does not count as DONT_KNOW.
+- **UNSET** — not yet investigated / no conclusion. This is the default
+  for every new property; `update_node(unset=[...])` returns a property to
+  UNSET. UNSET is NOT a conclusion: it never counts as "known absent" and
+  never as DONT_KNOW.
+- **ConceptRef** — a known value (the normal `add_node` / `update_node`
+  property reference).
+- **ABSENT** — you explicitly established the value is ABSENT (e.g. the
+  stakeholder said the step reads nothing, or an edge is unconditional).
+  Record it with `record_absent(node_id, properties=[...], evidence=[...])`
+  / `record_edge_condition_absent(edge_id, evidence=[...])`, or pass
+  `{"absent": true, "evidence": [...]}` as the property value. The cited
+  spans must be the stakeholder's own statements for THOSE properties — the
+  tools verify the evidence resolves to the corresponding known-absent
+  slots and reject everything else.
+- **DONT_KNOW** — you explicitly established the value is unknowable from
+  this stakeholder. Record it with `record_dont_know(node_id,
+  properties=[...], evidence=[...])` / `record_edge_condition_dont_know`,
+  or pass `{"dont_know": true, "evidence": [...]}`. The cited spans must
+  be the stakeholder's own "I don't know" statements for those exact
+  properties.
+
+Both ABSENT and DONT_KNOW need the stakeholder's own words about the
+property in question — evidence about one step never supports a marker on
+another step. An unasserted (UNSET) slot is NOT "known absent" and NOT
+DONT_KNOW: leave a property UNSET only while you have not concluded anything
+about it.
 
 Before `finish_interview`, call `validate_graph` and make the graph structurally
 consistent: no dangling edges, no unknown concept references, declared

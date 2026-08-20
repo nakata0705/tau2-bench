@@ -61,6 +61,12 @@ class SystemMessage(BaseModel):
 class ToolCall(BaseModel):
     """
     A tool call.
+
+    ``parse_error`` (when set) means the model produced MALFORMED tool-call
+    JSON (e.g. an unquoted identifier in the arguments): the call is NOT
+    executed, the environment answers with a concise parse error that
+    consumes the ordinary error budget, and the agent may retry. Semantic
+    content is never silently repaired.
     """
 
     id: str = Field(default="", description="The unique identifier for the tool call.")
@@ -69,6 +75,10 @@ class ToolCall(BaseModel):
     requestor: ToolRequestor = Field(
         "assistant",
         description="The requestor of the tool call.",
+    )
+    parse_error: Optional[str] = Field(
+        default=None,
+        description="Concise parse/validation error of the raw tool-call JSON.",
     )
 
     def __str__(self) -> str:
@@ -106,6 +116,7 @@ class ToolCall(BaseModel):
         tool_id = ""
         name = ""
         arguments = {}
+        parse_error = None
 
         i = 1
         while i < len(lines):
@@ -121,10 +132,15 @@ class ToolCall(BaseModel):
                 json_str = "\n".join(json_lines)
                 try:
                     arguments = json.loads(json_str)
-                except json.JSONDecodeError as exc:
-                    raise ValueError(
-                        f"cannot parse tool-call arguments JSON: {json_str[:200]!r}"
-                    ) from exc
+                except json.JSONDecodeError:
+                    # RECOVERABLE: keep the tool name, drop the malformed
+                    # arguments, and surface a concise parse error through
+                    # the normal tool-error path (never repair semantics).
+                    parse_error = (
+                        f"malformed tool-call arguments JSON for {name!r}: "
+                        f"{json_str[:200]!r}"
+                    )
+                    break
                 break
 
             i += 1
@@ -134,6 +150,7 @@ class ToolCall(BaseModel):
             name=name,
             arguments=arguments,
             requestor=requestor,
+            parse_error=parse_error if arguments == {} else None,
         )
 
     def __eq__(self, other: object) -> bool:

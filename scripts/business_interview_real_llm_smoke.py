@@ -40,11 +40,11 @@ from pathlib import Path
 
 from loguru import logger
 
-# DeepSeek for both sides of the interview.
-# In this local environment `deepseek/deepseek-chat` resolves to `deepseek-v4-flash`
-# (confirmed via a live litellm completion test).
-AGENT_MODEL = "deepseek/deepseek-chat"
-USER_MODEL = "deepseek/deepseek-chat"
+# The interview agent and the stakeholder both run on the same model,
+# currently served through OpenRouter (the deepseek account itself ran out
+# of balance; OPENROUTER_API_KEY routes deepseek/deepseek-chat-v3).
+AGENT_MODEL = "openrouter/deepseek/deepseek-chat-v3"
+USER_MODEL = "openrouter/deepseek/deepseek-chat-v3"
 LLM_ARGS = {"temperature": 0.0}
 
 TASK_ID = "quotation_workflow_1"
@@ -66,11 +66,23 @@ def _render_evidence(evs) -> list:
 
 
 def _render_ref(ref) -> dict | None:
-    """Render a ConceptRef or a DONT_KNOW marker for the dump."""
-    from tau2.domains.business_interview.graph import is_dont_know
+    """Render a ConceptRef or an epistemic marker (UNSET/ABSENT/DONT_KNOW)
+    for the dump."""
+    from tau2.domains.business_interview.graph import (
+        is_absent,
+        is_dont_know,
+        is_unset,
+    )
 
     if ref is None:
         return None
+    if is_unset(ref):
+        return {"unset": True}
+    if is_absent(ref):
+        return {
+            "absent": True,
+            "evidence": _render_evidence(ref.evidence or []),
+        }
     if is_dont_know(ref):
         return {
             "dont_know": True,
@@ -85,11 +97,21 @@ def _render_ref(ref) -> dict | None:
 
 
 def _render_list_slot(slot) -> list | dict | None:
-    """Render a reads/writes slot: list of refs, DONT_KNOW, or None."""
-    from tau2.domains.business_interview.graph import is_dont_know
+    """Render a reads/writes slot: list of refs, or a whole-property marker
+    (UNSET/ABSENT/DONT_KNOW)."""
+    from tau2.domains.business_interview.graph import (
+        is_absent,
+        is_dont_know,
+        is_unset,
+    )
 
-    if slot is None:
-        return None
+    if slot is None or is_unset(slot):
+        return None if slot is None else {"unset": True}
+    if is_absent(slot):
+        return {
+            "absent": True,
+            "evidence": _render_evidence(slot.evidence or []),
+        }
     if is_dont_know(slot):
         return {
             "dont_know": True,
@@ -458,7 +480,7 @@ def main() -> int:
                 "read_correctness": metrics.get("read_correctness"),
                 "write_correctness": metrics.get("write_correctness"),
                 "condition_correctness": metrics.get("condition_correctness"),
-                "dont_know_evidence_errors": metrics.get("dont_know_evidence_errors"),
+                "marker_evidence_errors": metrics.get("marker_evidence_errors"),
                 "start_correct": metrics.get("start_correct"),
                 "end_recall": metrics.get("end_recall"),
                 "fabricated_node_count": metrics.get("fabricated_node_count"),

@@ -66,6 +66,7 @@ from tau2.domains.business_interview.graph import (
     DontKnowType,
     graph_semantic_ids,
     is_dont_know,
+    is_unset,
 )
 
 # A property slot: ConceptRef (value known) | None (known absent) |
@@ -322,12 +323,25 @@ def project_knowledge(
     (``skn_001`` / ``ske_001`` / ``skc_001`` style, assigned in sorted Truth
     id order); the private Truth mappings are stored evaluator-only. Only the
     concepts referenced by the resulting graph become knowledge concepts.
+
+    Local node/edge ids are allocated ONLY after visibility filtering (the
+    visible sets, sorted), so the ids are contiguous (``skn_001``,
+    ``skn_002``, ...) and never reveal hidden elements through gaps such as
+    ``skn_001, skn_003``.
     """
     visible_nodes = set(stakeholder.visible_node_ids)
-    visible_edges = set(stakeholder.visible_edge_ids)
+    # edges whose endpoints are both known survive (never shortcut edges);
+    # they get their ids from the post-filter set
+    surviving_edges = [
+        eid
+        for eid in stakeholder.visible_edge_ids
+        if eid in truth.edges
+        and truth.edges[eid].from_node in visible_nodes
+        and truth.edges[eid].to_node in visible_nodes
+    ]
 
-    node_to_local = _local_ids(list(truth.nodes), "skn_")
-    edge_to_local = _local_ids(list(truth.edges), "ske_")
+    node_to_local = _local_ids(sorted(visible_nodes), "skn_")
+    edge_to_local = _local_ids(sorted(surviving_edges), "ske_")
 
     # Truth concept ids referenced by any known property value of a visible
     # element — these are exactly the concepts that become knowledge
@@ -354,10 +368,8 @@ def project_knowledge(
 
     for nid in visible_nodes:
         add_node_refs(nid)
-    for eid in visible_edges:
+    for eid in surviving_edges:
         edge = truth.edges[eid]
-        if edge.from_node not in visible_nodes or edge.to_node not in visible_nodes:
-            continue  # endpoints unknown -> edge removed; never a shortcut
         if "condition" in stakeholder.edge_properties_for(eid):
             if isinstance(edge.condition, ConceptRef):
                 referenced_tids.add(edge.condition.concept_id)
@@ -372,7 +384,7 @@ def project_knowledge(
         def slot(prop: str, refs, known_prop: bool):
             if not known_prop:
                 return DONT_KNOW
-            if refs is None:
+            if refs is None or is_unset(refs):
                 return None
             return ConceptRef(concept_id=truth_to_local[refs.concept_id])
 
@@ -386,7 +398,7 @@ def project_knowledge(
                 if "reads" not in props
                 else (
                     None
-                    if not node.reads
+                    if not isinstance(node.reads, list) or not node.reads
                     else [
                         ConceptRef(concept_id=truth_to_local[r.concept_id])
                         for r in node.reads
@@ -398,7 +410,7 @@ def project_knowledge(
                 if "writes" not in props
                 else (
                     None
-                    if not node.writes
+                    if not isinstance(node.writes, list) or not node.writes
                     else [
                         ConceptRef(concept_id=truth_to_local[r.concept_id])
                         for r in node.writes
@@ -411,10 +423,8 @@ def project_knowledge(
         )
 
     k_edges: dict[str, StakeholderEdge] = {}
-    for eid in visible_edges:
+    for eid in surviving_edges:
         edge = truth.edges[eid]
-        if edge.from_node not in visible_nodes or edge.to_node not in visible_nodes:
-            continue  # endpoints unknown -> edge removed; never a shortcut
         eprops = stakeholder.edge_properties_for(eid)
         k_edges[edge_to_local[eid]] = StakeholderEdge(
             id=edge_to_local[eid],
@@ -425,7 +435,7 @@ def project_knowledge(
                 if "condition" not in eprops
                 else (
                     None
-                    if edge.condition is None
+                    if is_unset(edge.condition) or edge.condition is None
                     else ConceptRef(
                         concept_id=truth_to_local[edge.condition.concept_id]
                     )

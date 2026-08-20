@@ -1,4 +1,4 @@
-# business_interview — graph-native semantic model (v10/v11, real-LLM validation)
+# business_interview — graph-native semantic model (v10/v11/v12, real-LLM validation)
 
 Goal report for "replace TruthClaim semantics with graph-native semantic IDs
 and redesign StakeholderKnowledge as an explicit stakeholder-world graph".
@@ -214,3 +214,56 @@ Follow-up goal report ("tighten graph-native semantics"):
 - Deterministic suite: 75 tests (incl. new opaque-ID, resolver, grounding,
   DONT_KNOW and coverage tests). Real-LLM quotation runs: 4 seeds under
   `artifacts/business_interview_real_llm/` (see the run summaries).
+
+
+## v12 addendum — explicit four-state Agent epistemic model, exact marker provenance, recoverable tool JSON
+
+Follow-up goal report ("complete the Agent epistemic-state model and close remaining provenance gaps"):
+
+- **Four Agent epistemic states**: AgentGraph slots are UNSET (not
+  investigated — the default for every new property; reset/unset means
+  UNSET, never ABSENT) | ConceptRef (known value) | ABSENT (explicitly
+  established absent, evidenced) | DONT_KNOW (explicitly established
+  unknowable, evidenced). Explicit marker types `UnsetType`,
+  `AbsentType(evidence)`, `DontKnowType(evidence)`; `None` is never a slot
+  value (stakeholder side keeps `None` = known absent).
+- **Exact ABSENT/DONT_KNOW provenance**: `record_absent` /
+  `record_edge_condition_absent` (or `{"absent": true, "evidence": [...]}`
+  property args) join `record_dont_know` / `record_edge_condition_dont_know`.
+  At evaluation, a marker is valid ONLY when its evidence resolves (global
+  span rule + canonical resolver) to the EXACT mapped stakeholder slot
+  (`node:<mapped>:<prop>` / `edge:<mapped>:condition`) whose value is None
+  / DONT_KNOW — evidence about another node's or edge's slot never supports
+  the marker (`marker_evidence_errors` hygiene metric gates `evidence_pass`).
+- **Scoring**: stakeholder ConceptRef -> matching evidenced ConceptRef;
+  None -> evidenced ABSENT on the exact slot (UNSET/DONT_KNOW/ConceptRef
+  incorrect; "not asserted" never scores as known absence); DONT_KNOW ->
+  evidenced DONT_KNOW on the exact slot (UNSET/ABSENT/ConceptRef incorrect;
+  hidden-Truth guess wrong). Node/edge existence and endpoints remain
+  separate structural metrics.
+- **Opaque IDs without hidden cardinality**: local node/edge ids are
+  allocated ONLY after visibility filtering (sorted visible sets), so ids
+  are contiguous (`skn_001, skn_002, ...`) and gaps like `skn_001, skn_003`
+  can never reveal hidden elements; determinism and reordering invariance
+  preserved; the private Truth mappings stay evaluator-only.
+- **No vacuous concept/glossary success**: `_concept_bindings` now returns
+  `concept_recall` / `concept_precision` against the EXPECTED
+  StakeholderKnowledgeConcept set; an empty AgentGraph gets recall 0.0
+  (never concept_correctness 1.0); missing expected concepts reduce recall;
+  extra/split/merged/conflicting/kind-mismatched claims reduce precision;
+  `concept_correctness = recall * precision`; `glossary_complete` separates
+  reconstruction completeness from `glossary_pass` (validation correctness
+  of referenced concepts); structural_pass gates on all of them.
+- **Recoverable malformed tool-call JSON**: malformed native tool-call
+  arguments (e.g. an unquoted identifier) previously aborted the whole run.
+  `ToolCall.parse_error` now carries a concise parse error; the environment
+  answers with an ordinary `Error:` tool message (consumes the error
+  budget, allows retry, never aborts) and semantic content is never
+  silently repaired (`ToolCall.from_string` and `llm_utils.generate` both
+  recover).
+- Deterministic suite: 83 tests (four-state distinctness, UNSET defaults,
+  exact ABSENT/DONT_KNOW provenance, wrong-node/edge evidence rejection,
+  UNSET never scoring as known absence, contiguous visible IDs, no vacuous
+  concept/glossary success, malformed-JSON recovery). Real-LLM quotation
+  runs: 8 seeds under `artifacts/business_interview_real_llm/` (see the
+  run summaries).

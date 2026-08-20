@@ -1,4 +1,4 @@
-# business_interview (v11 — graph is the semantic source of truth)
+# business_interview (v12 — graph is the semantic source of truth)
 
 The agent interviews a stakeholder to discover an unknown team's business
 process. The **graph is the semantic model**:
@@ -43,11 +43,25 @@ existence, exact condition slot, knowledge concept); annotation validation,
 provenance, concept binding, DONT_KNOW handling, knowledge coverage and
 diagnostics all go through it.
 
-Property slots are three-valued: `ConceptRef` (value known), `None` (value
-known absent), `DONT_KNOW` (element known, value unknown). The AgentGraph
-uses the same three-valued slots; `DONT_KNOW` markers carry the Observation
-evidence that the stakeholder really said "I don't know" for that exact
-slot.
+Property slots are three-valued on the StakeholderKnowledge side:
+`ConceptRef` (value known), `None` (value known absent), `DONT_KNOW`
+(element known, value unknown).
+
+The AgentGraph is **inference-in-progress** and uses FOUR explicit
+epistemic states (never `None` for both UNSET and ABSENT):
+
+    UNSET      = not yet investigated / no conclusion (the default)
+    ConceptRef = known value
+    ABSENT     = explicitly established absent (evidenced)
+    DONT_KNOW  = explicitly established unknowable (evidenced)
+
+`UnsetType` / `AbsentType(evidence)` / `DontKnowType(evidence)` are the
+explicit marker types; new Agent properties default to UNSET and
+reset/unset means UNSET, never ABSENT. ABSENT/DONT_KNOW are valid ONLY when
+their evidence resolves to the EXACT mapped stakeholder slot
+(`node:<mapped>:<prop>` / `edge:<mapped>:condition`) whose value is None /
+DONT_KNOW — evidence about another node's or edge's slot never supports a
+marker.
 
 ## StakeholderKnowledge (the stakeholder's world model)
 
@@ -131,14 +145,21 @@ Primary achievable target: **AgentGraph vs StakeholderKnowledgeGraph**
 
 - node/edge correspondence falls out of the semantic IDs (deterministic
   assignment maximizing property-level matches);
-- property scoring per slot is ASYMMETRIC: stakeholder `ConceptRef` needs a
-  correct grounded ref; stakeholder `None` (known absent) is satisfied by an
-  unasserted slot (`DONT_KNOW` is NOT equivalent); stakeholder `DONT_KNOW`
-  is satisfied ONLY by an explicit evidenced `DONT_KNOW` marker (unasserted
-  is NOT `DONT_KNOW`, and a hidden-Truth guess is wrong);
+- property scoring per slot: stakeholder `ConceptRef` needs a matching
+  evidenced `ConceptRef`; stakeholder `None` (known absent) needs an
+  evidenced `ABSENT` marker resolving to the exact mapped slot (`UNSET` /
+  `DONT_KNOW` / a concept are incorrect — "not asserted" never scores as
+  known absence); stakeholder `DONT_KNOW` needs an evidenced `DONT_KNOW`
+  marker resolving to the exact mapped slot (`UNSET` / `ABSENT` / a concept
+  are incorrect; a hidden-Truth guess remains wrong);
 - concept identity per kind (mentions + graph provenance incl. grounding
   evidence may participate; bijection over the knowledge concepts the graph
   references; conflicting grounding evidence leaves the concept unresolved);
+  concept completeness is measured as `concept_recall` / `concept_precision`
+  against the EXPECTED StakeholderKnowledgeConcept set — an empty AgentGraph
+  gets recall 0 (no vacuous success), and `glossary_complete` separates
+  reconstruction completeness from `glossary_pass` (validation correctness
+  of the referenced concepts);
 - glossary validation: grounded/confirmed/unknown/disputed/terminology backed
   by the appropriate private evidence;
 - `knowledge_coverage` (Truth vs StakeholderKnowledge) is reported
@@ -160,7 +181,7 @@ preserves Observations and the conversation ledger.
 | `grounding.py` | shared global-span provenance (evidence refs -> semantic ids) |
 | `scenario.py` | Truth graphs + filters + knowledge (quotation / lab / JA) |
 | `evaluation.py` | provenance-only evaluator (AgentGraph vs StakeholderKnowledgeGraph) |
-| `tools.py` | glossary + graph tools (per-property evidence, binding-aware ground/confirm/unknown/disputed/terminology, `record_dont_know` / `record_edge_condition_dont_know`) |
+| `tools.py` | glossary + graph tools (per-property evidence, binding-aware ground/confirm/unknown/disputed/terminology, `record_dont_know` / `record_edge_condition_dont_know` / `record_absent` / `record_edge_condition_absent`) |
 | `user_simulator.py` | semantic stakeholder realization (graph-native sidecar) |
 | `environment.py` | conversation ledger + private sidecar binding + `episode_complete` |
 

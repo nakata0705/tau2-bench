@@ -116,12 +116,66 @@ def spans_correspond(a: tuple[int, int], b: tuple[int, int]) -> bool:
     return (a[0] <= b[0] and b[1] <= a[1]) or (b[0] <= a[0] and a[1] <= b[1])
 
 
-class DontKnowType(BaseModel):
-    """The DONT_KNOW marker: the element exists but its value is unknown.
+class UnsetType(BaseModel):
+    """The UNSET marker: this Agent slot has NOT been investigated yet —
+    no conclusion exists.
 
-    ``DONT_KNOW`` (module singleton) is distinct from ``None`` (known
-    absent) and from ``ConceptRef`` (known value). On the AgentGraph side a
-    marker carries the Observation evidence that the stakeholder really said
+    ``UNSET`` (module singleton) is the default for every new Agent
+    property. It is distinct from ``ABSENT`` (explicitly established
+    absent), from ``DONT_KNOW`` (explicitly established unknowable) and
+    from ``ConceptRef`` (known value). Reset/unset means UNSET, never
+    ABSENT. It carries no evidence and never scores as a known absence.
+    """
+
+    @property
+    def asserted(self) -> bool:
+        """UNSET carries no conclusion — never an active claim."""
+        return False
+
+    pass
+
+
+UNSET = UnsetType()
+
+
+def is_unset(value) -> bool:
+    """True when an Agent slot carries the UNSET marker."""
+    return isinstance(value, UnsetType)
+
+
+class AbsentType(BaseModel):
+    """The ABSENT marker: the Agent explicitly established that the value
+    is ABSENT at this slot.
+
+    ``ABSENT`` is distinct from ``UNSET`` (not investigated), from
+    ``DONT_KNOW`` (unknowable) and from ``ConceptRef`` (known value). On
+    the AgentGraph side a marker carries the Observation evidence that the
+    stakeholder really said the value is absent for that exact slot
+    (validated against the private stakeholder known-absent slots by the
+    tools/evaluator).
+    """
+
+    evidence: list[EvidenceRef] = Field(default_factory=list)
+
+    @property
+    def asserted(self) -> bool:
+        """An ABSENT marker IS an active epistemic claim."""
+        return True
+
+
+def is_absent(value) -> bool:
+    """True when an Agent slot carries the ABSENT marker."""
+    return isinstance(value, AbsentType)
+
+
+class DontKnowType(BaseModel):
+    """The DONT_KNOW marker: the Agent explicitly established that the
+    value is unknowable from this stakeholder.
+
+    ``DONT_KNOW`` (module singleton) is distinct from ``UNSET`` (not
+    investigated), from ``ABSENT`` (explicitly established absent) and
+    from ``ConceptRef`` (known value). On the AgentGraph side a marker
+    carries the Observation evidence that the stakeholder really said
     "I don't know" for that exact slot (validated against the private
     stakeholder DONT_KNOW slots by the tools/evaluator).
     """
@@ -131,7 +185,7 @@ class DontKnowType(BaseModel):
     @property
     def asserted(self) -> bool:
         """A DONT_KNOW marker IS an active epistemic claim ("I cannot
-        determine this") — distinct from an unasserted slot."""
+        determine this") — distinct from an unset slot."""
         return True
 
 
@@ -217,33 +271,40 @@ class ConceptRef(BaseModel):
         return self.confidence > 0
 
 
-class Node(BaseModel):
-    """A vertex in a business process graph.
+# The Agent's four epistemic states per slot.
+AgentSlot = Union[ConceptRef, UnsetType, AbsentType, DontKnowType]
+AgentListSlot = Union[list[ConceptRef], UnsetType, AbsentType, DontKnowType]
 
-    ``activity`` is required and is either an activity reference or
-    ``DONT_KNOW``; ``actor`` / ``system`` / ``necessity_rationale`` are
-    optional single references (``None`` = known absent, ``DONT_KNOW`` =
-    unknown); ``reads`` / ``writes`` are ``None`` (known absent),
-    ``DONT_KNOW`` (unknown), or lists of data-concept references. Every ref
-    and every DONT_KNOW marker carries its own evidence. ``from``/``to``
-    structural identity is expressed only through edges; node ids are local
-    to the graph.
+
+class Node(BaseModel):
+    """A vertex in the Agent's inferred business process graph.
+
+    Every property slot is one of the FOUR epistemic states:
+    ``UNSET`` (not investigated — the default), ``ConceptRef`` (known
+    value), ``ABSENT`` (explicitly established absent, with evidence) or
+    ``DONT_KNOW`` (explicitly established unknowable, with evidence).
+    ``reads`` / ``writes`` are lists of data-concept references, or the
+    whole-property markers UNSET / ABSENT / DONT_KNOW (v1). Every ref and
+    every ABSENT/DONT_KNOW marker carries its own evidence.
+    ``from``/``to`` structural identity is expressed only through edges;
+    node ids are local to the graph.
     """
 
     id: str
-    activity: Union[ConceptRef, DontKnowType]
-    actor: Optional[Union[ConceptRef, DontKnowType]] = None
-    system: Optional[Union[ConceptRef, DontKnowType]] = None
-    reads: Optional[Union[list[ConceptRef], DontKnowType]] = None
-    writes: Optional[Union[list[ConceptRef], DontKnowType]] = None
-    necessity_rationale: Optional[Union[ConceptRef, DontKnowType]] = None
+    activity: AgentSlot = Field(default_factory=lambda: UNSET)
+    actor: AgentSlot = Field(default_factory=lambda: UNSET)
+    system: AgentSlot = Field(default_factory=lambda: UNSET)
+    reads: AgentListSlot = Field(default_factory=lambda: UNSET)
+    writes: AgentListSlot = Field(default_factory=lambda: UNSET)
+    necessity_rationale: AgentSlot = Field(default_factory=lambda: UNSET)
 
     def refs(self, property_name: str) -> list[ConceptRef]:
         """The concept refs of a node property (single or list).
 
         ``property_name`` accepts the claim-style names (activity/actor/system/
         reads/writes/rationale) as well as the attribute name
-        ``necessity_rationale``. DONT_KNOW slots contribute no refs.
+        ``necessity_rationale``. UNSET / ABSENT / DONT_KNOW slots contribute
+        no refs.
         """
         if property_name == "reads":
             return list(self.reads) if isinstance(self.reads, list) else []
@@ -257,28 +318,45 @@ class Node(BaseModel):
         return [r for r in self.refs(property_name) if r.asserted]
 
     def slot_value(self, property_name: str):
-        """The three-valued property slot: ConceptRef / DONT_KNOW / None for
-        scalars; list[ConceptRef] / DONT_KNOW / None for reads/writes."""
+        """The four-state property slot: ConceptRef / UNSET / ABSENT /
+        DONT_KNOW for scalars; list[ConceptRef] / UNSET / ABSENT /
+        DONT_KNOW for reads/writes."""
         if property_name in ("reads", "writes"):
             return getattr(self, property_name)
         attr = "necessity_rationale" if property_name == "rationale" else property_name
         return getattr(self, attr)
+
+    def slot_evidence(self, property_name: str) -> list[EvidenceRef]:
+        """The evidence of an ABSENT/DONT_KNOW marker on this slot (empty
+        for ConceptRef / UNSET / list slots)."""
+        slot = self.slot_value(property_name)
+        if isinstance(slot, (AbsentType, DontKnowType)):
+            return list(slot.evidence)
+        return []
 
 
 class Edge(BaseModel):
     """A directed edge between two nodes.
 
     ``from_node`` / ``to_node`` are structural identities (node ids), not
-    concepts. ``condition`` is ``None`` (known absent), ``DONT_KNOW``
-    (unknown) or a reference to a condition concept (kind=condition).
-    ``evidence`` cites the Observation spans supporting the relation.
+    concepts. ``condition`` is one of the four epistemic states: ``UNSET``
+    (default), ``ConceptRef`` (a condition concept, kind=condition),
+    ``ABSENT`` (explicitly established unconditional, with evidence) or
+    ``DONT_KNOW`` (unknowable, with evidence). ``evidence`` cites the
+    Observation spans supporting the relation.
     """
 
     id: str
     from_node: str
     to_node: str
-    condition: Optional[Union[ConceptRef, DontKnowType]] = None
+    condition: AgentSlot = Field(default_factory=lambda: UNSET)
     evidence: list[EvidenceRef] = Field(default_factory=list)
+
+    def condition_evidence(self) -> list[EvidenceRef]:
+        """The evidence of an ABSENT/DONT_KNOW condition marker."""
+        if isinstance(self.condition, (AbsentType, DontKnowType)):
+            return list(self.condition.evidence)
+        return []
 
 
 def _node_property_refs(node: Node) -> dict[str, list[ConceptRef]]:
@@ -322,8 +400,10 @@ class _GraphMixin(BaseModel, Generic[C]):
         """
         errors: list[str] = []
         for nid, node in self.nodes.items():
-            if not isinstance(node.activity, ConceptRef):
-                pass  # DONT_KNOW — the agent cannot determine it; valid
+            if is_unset(node.activity):
+                errors.append(f"node {nid}: activity is unset (no conclusion)")
+            elif not isinstance(node.activity, ConceptRef):
+                pass  # ABSENT / DONT_KNOW — an explicit epistemic state
             elif not node.activity.concept_id:
                 errors.append(f"node {nid}: activity reference is required")
             for prop, refs in _node_property_refs(node).items():
