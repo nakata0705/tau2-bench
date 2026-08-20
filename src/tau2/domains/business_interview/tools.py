@@ -1010,4 +1010,3 @@ class InterviewTools(ToolKitBase):
         if sc is None:
             return None
         return self._evaluate(sc).model_dump(mode="json")
-

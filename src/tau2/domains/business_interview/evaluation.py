@@ -274,9 +274,7 @@ def _covered_claims_for_span(
     if equal:
         return equal
     contained = [
-        (a, s)
-        for a, s in resolved
-        if s[0] >= ev_span[0] and s[1] <= ev_span[1]
+        (a, s) for a, s in resolved if s[0] >= ev_span[0] and s[1] <= ev_span[1]
     ]
     containing = [
         (a, s)
@@ -286,9 +284,7 @@ def _covered_claims_for_span(
     maximal = [
         (a, s)
         for a, s in contained
-        if not any(
-            s2 != s and s2[0] <= s[0] and s[1] <= s2[1] for _, s2 in contained
-        )
+        if not any(s2 != s and s2[0] <= s[0] and s[1] <= s2[1] for _, s2 in contained)
     ]
     return {a.claim_id for a, _ in maximal} | {a.claim_id for a, _ in containing}
 
@@ -862,8 +858,7 @@ def _glossary_validation(
     for agreement in agent.terminology_agreements:
         if agreement.concept_id not in agent.concepts:
             errors.append(
-                f"terminology agreement for unknown concept "
-                f"{agreement.concept_id!r}"
+                f"terminology agreement for unknown concept {agreement.concept_id!r}"
             )
             continue
         bound = agent_to_truth.get(agreement.concept_id)
@@ -891,9 +886,7 @@ def _glossary_validation(
                 if event.proposed_term != agreement.term:
                     continue
                 event_span = _resolve_assertion_span(obs.text, event)
-                if event_span is not None and spans_correspond(
-                    ev_span, event_span
-                ):
+                if event_span is not None and spans_correspond(ev_span, event_span):
                     matched = True
                     break
         if not matched:
@@ -1032,13 +1025,9 @@ def evaluate(
     )
     context_ok: dict[str, bool] = {}
     for anid, tnid in mapping.items():
-        required = {
-            e for e in truth_ctx[tnid].incoming_edge_ids if e in visible_edges
-        }
+        required = {e for e in truth_ctx[tnid].incoming_edge_ids if e in visible_edges}
         reconstructed = {
-            teid
-            for eid, teid in edge_map.items()
-            if agent.edges[eid].to_node == anid
+            teid for eid, teid in edge_map.items() if agent.edges[eid].to_node == anid
         }
         context_ok[anid] = required <= reconstructed
 

@@ -45,6 +45,7 @@ Missing required incoming topology prevents contextual claim credit.
 ## Visibility-safe StakeholderKnowledge
 
 The knowledge is built by ``project_knowledge`` and contains ONLY:
+
 - visible TruthClaims;
 - graph contexts for nodes the stakeholder can talk about (incoming edges
   restricted to visible relations, start flag);

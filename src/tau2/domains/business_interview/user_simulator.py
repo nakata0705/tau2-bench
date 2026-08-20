@@ -107,8 +107,8 @@ _OUTPUT_CONTRACT = (
     "several DIFFERENT claims, prefer a distinct clause for each claim so "
     "every claim has its own span.\n"
     "- Relations are claims too: when your message says that one step "
-    "follows another (\"then\", \"after\", \"goes to\", \"followed by\", \"if "
-    "... then\"), assert that relation's claim (e.g. \"e3.edge_exists\") "
+    'follows another ("then", "after", "goes to", "followed by", "if '
+    '... then"), assert that relation\'s claim (e.g. "e3.edge_exists") '
     "anchored to the phrase that expresses the relation itself — do not "
     "omit it just because the phrase also names the activity or the "
     "condition.\n"
@@ -327,9 +327,7 @@ class StakeholderUserSimulator(UserSimulator):
         for nid in knowledge.visible_node_ids:
             context = knowledge.contextual_knowledge.get(nid)
             incoming = (
-                ",".join(context.incoming_edge_ids)
-                if context is not None
-                else ""
+                ",".join(context.incoming_edge_ids) if context is not None else ""
             )
             start = context.is_start if context is not None else False
             claim_lines = []
@@ -340,7 +338,7 @@ class StakeholderUserSimulator(UserSimulator):
                 concept_attr = f' concept="{concept}"' if concept else ""
                 claim_lines.append(
                     f'<claim id="{claim.id}" property="{claim.property}"'
-                    f'{concept_attr}/>'
+                    f"{concept_attr}/>"
                 )
             claims_xml = "\n".join(claim_lines) or "<none/>"
             positions.append(
@@ -367,7 +365,7 @@ class StakeholderUserSimulator(UserSimulator):
                 concept_attr = f' concept="{concept}"' if concept else ""
                 edge_claim_lines.append(
                     f'<claim id="{claim.id}" property="{claim.property}"'
-                    f'{concept_attr}/>'
+                    f"{concept_attr}/>"
                 )
             claims_xml = "\n".join(edge_claim_lines)
             relations.append(

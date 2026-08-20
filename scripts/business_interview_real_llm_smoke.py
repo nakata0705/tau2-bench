@@ -226,9 +226,7 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
     assertion_ledger = getattr(orchestrator.environment, "assertion_ledger", None)
     assertions = assertion_ledger.assertions() if assertion_ledger is not None else {}
     alignments = assertion_ledger.alignments() if assertion_ledger is not None else {}
-    terminology = (
-        assertion_ledger.terminology() if assertion_ledger is not None else {}
-    )
+    terminology = assertion_ledger.terminology() if assertion_ledger is not None else {}
 
     # --- domain evaluator ---------------------------------------------------
     eval_result = None
@@ -355,7 +353,8 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
             str(turn): [e.model_dump() for e in evs] for turn, evs in alignments.items()
         },
         "terminology_by_turn": {
-            str(turn): [e.model_dump() for e in evs] for turn, evs in terminology.items()
+            str(turn): [e.model_dump() for e in evs]
+            for turn, evs in terminology.items()
         },
         "visible_claims": (
             {cid: claim.model_dump() for cid, claim in scenario.claims.items()}

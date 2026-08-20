@@ -104,9 +104,7 @@ class ConceptAlignmentAssertion(BaseModel):
     """
 
     truth_concept_id: str
-    quote: str = Field(
-        description="Exact span of the message that performs the act."
-    )
+    quote: str = Field(description="Exact span of the message that performs the act.")
     occurrence: int = Field(
         default=0, description="0-based occurrence index of ``quote``."
     )
@@ -131,9 +129,7 @@ class TerminologyConfirmation(BaseModel):
     """
 
     truth_concept_id: str
-    proposed_term: str = Field(
-        description="The exact term the interviewer proposed."
-    )
+    proposed_term: str = Field(description="The exact term the interviewer proposed.")
     quote: str = Field(
         description="Exact span of the message that performs the agreement."
     )
@@ -285,11 +281,7 @@ class StakeholderKnowledgeCatalog:
 
     def visible_concept_ids(self) -> set[str]:
         """Truth concept ids the stakeholder can talk about (evaluator-only)."""
-        return {
-            c.concept_id
-            for c in self.claims.values()
-            if c.concept_id is not None
-        }
+        return {c.concept_id for c in self.claims.values() if c.concept_id is not None}
 
     def validate_assertions(
         self, assertions: list[StakeholderAssertion], message: Optional[str]
@@ -425,13 +417,9 @@ class StakeholderAssertionLedger:
 
     def alignments(self) -> dict[int, list[ConceptAlignmentAssertion]]:
         """Copy of ``{turn: [concept-alignment events]}`` (evaluator-only)."""
-        return {
-            turn: list(ev) for turn, ev in self._alignment_by_turn.items()
-        }
+        return {turn: list(ev) for turn, ev in self._alignment_by_turn.items()}
 
     def terminology(self) -> dict[int, list[TerminologyConfirmation]]:
         """Copy of ``{turn: [terminology-confirmation events]}``
         (evaluator-only)."""
-        return {
-            turn: list(ev) for turn, ev in self._terminology_by_turn.items()
-        }
+        return {turn: list(ev) for turn, ev in self._terminology_by_turn.items()}

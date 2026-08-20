@@ -372,9 +372,7 @@ def _quote_for_concept(node_obs, truth_cid: str) -> tuple[str, str]:
     raise KeyError(truth_cid)
 
 
-def _confirm_alignment_for(
-    truth_cid: str, quote: str, occurrence: int = 0
-) -> dict:
+def _confirm_alignment_for(truth_cid: str, quote: str, occurrence: int = 0) -> dict:
     """A private concept-alignment event simulating a genuine confirmation of
     ``truth_cid`` performed at ``quote`` (test-side ledger binding)."""
     event: dict = {"truth_concept_id": truth_cid, "quote": quote, "act": "confirm"}
@@ -1481,8 +1479,12 @@ def test_identical_text_different_provenance_grounds_differently():
     ok = _tools()
     _build(ok)
     assert ok.db.graph is not None
-    oid = _claim_obs(ok, text, [_assertion("cq.writes.tc_quote", "paperwork")],
-                     alignments=[_confirm_alignment_for("tc_quote", "paperwork")])
+    oid = _claim_obs(
+        ok,
+        text,
+        [_assertion("cq.writes.tc_quote", "paperwork")],
+        alignments=[_confirm_alignment_for("tc_quote", "paperwork")],
+    )
     ok.create_concept("paper", "data", "paperwork", evidence=[_ev(oid, "paperwork")])
     ok.confirm_concept("paper", evidence=[_ev(oid, "paperwork")])
     ok.db.graph.nodes["c"].writes = [
@@ -1496,8 +1498,12 @@ def test_identical_text_different_provenance_grounds_differently():
     bad = _tools()
     _build(bad)
     assert bad.db.graph is not None
-    oid2 = _claim_obs(bad, text, [_assertion("cq.activity", "handle the paperwork")],
-                      alignments=[_confirm_alignment_for("tc_quote", "paperwork")])
+    oid2 = _claim_obs(
+        bad,
+        text,
+        [_assertion("cq.activity", "handle the paperwork")],
+        alignments=[_confirm_alignment_for("tc_quote", "paperwork")],
+    )
     bad.create_concept("paper2", "data", "paperwork", evidence=[_ev(oid2, "paperwork")])
     bad.confirm_concept("paper2", evidence=[_ev(oid2, "paperwork")])
     bad.db.graph.nodes["c"].writes = [
@@ -1529,7 +1535,8 @@ def test_span_containment_grounds_without_cross_credit():
         [_assertion("cc.activity", "check the customer's information")],
         alignments=[
             _confirm_alignment_for(
-                "tc_activity_check_customer", "check the customer's information in the CRM"
+                "tc_activity_check_customer",
+                "check the customer's information in the CRM",
             )
         ],
     )
@@ -2063,8 +2070,7 @@ def test_ordinary_mention_cannot_confirm_concept():
     # ordinary workflow speech carries claims but NO alignment events
     oid = _claim_obs(
         tools,
-        "I create the quotation using the customer information in the quoting "
-        "system.",
+        "I create the quotation using the customer information in the quoting system.",
         [_assertion("cq.writes.tc_quote", "quotation")],
     )
     with pytest.raises(ValueError):
@@ -2179,7 +2185,9 @@ def test_partially_confirmed_can_complete():
             }
         ],
     )
-    tools.db.graph.concepts["pricing"].validation_evidence = [_evr(oid, "Partly — only for the pricing information.")]
+    tools.db.graph.concepts["pricing"].validation_evidence = [
+        _evr(oid, "Partly — only for the pricing information.")
+    ]
     tools.db.graph.concepts["pricing"].validation_status = "partially_confirmed"
     tools.finish_interview()
     res = _eval(tools)
@@ -2236,7 +2244,9 @@ def test_mention_is_not_terminology():
         ],
     )
     tools.record_terminology_agreement(
-        "quote", "the offer document", evidence=[_ev(oid_agree, "the offer document is fine")]
+        "quote",
+        "the offer document",
+        evidence=[_ev(oid_agree, "the offer document is fine")],
     )
     assert len(tools.db.graph.terminology_agreements) == 1
     agreement = tools.db.graph.terminology_agreements[0]
@@ -3011,12 +3021,28 @@ def test_same_activity_distinct_positions_remain_distinguishable_with_gate():
         start_node_id="s",
         end_node_ids=["n2"],
     )
-    obs_s = _claim_obs(tools, "We start the process.", [_assertion("s.activity", "start the process")])
-    obs_x1 = _claim_obs(tools, "First we do X here.", [_assertion("x1.activity", "do X")])
-    obs_x2 = _claim_obs(tools, "Then we do X again.", [_assertion("x2.activity", "do X")])
-    obs_e1 = _claim_obs(tools, "After the start we do X.", [_assertion("e1.edge_exists", "After the start we do X")])
-    obs_e2 = _claim_obs(tools, "Then we do X again.", [_assertion("e2.edge_exists", "Then we do X again")])
-    obs_e3 = _claim_obs(tools, "Sometimes we must redo X.", [_assertion("e3.edge_exists", "redo X")])
+    obs_s = _claim_obs(
+        tools, "We start the process.", [_assertion("s.activity", "start the process")]
+    )
+    obs_x1 = _claim_obs(
+        tools, "First we do X here.", [_assertion("x1.activity", "do X")]
+    )
+    obs_x2 = _claim_obs(
+        tools, "Then we do X again.", [_assertion("x2.activity", "do X")]
+    )
+    obs_e1 = _claim_obs(
+        tools,
+        "After the start we do X.",
+        [_assertion("e1.edge_exists", "After the start we do X")],
+    )
+    obs_e2 = _claim_obs(
+        tools,
+        "Then we do X again.",
+        [_assertion("e2.edge_exists", "Then we do X again")],
+    )
+    obs_e3 = _claim_obs(
+        tools, "Sometimes we must redo X.", [_assertion("e3.edge_exists", "redo X")]
+    )
     tools.db.graph.nodes["s"].activity.evidence.append(
         EvidenceRef(observation_id=obs_s, quote="start the process")
     )
@@ -3087,7 +3113,9 @@ def test_broad_clause_cannot_independently_ground_activity_system_data():
             _assertion("cc.reads.tc_customer", "customer information"),
         ],
         alignments=[
-            _confirm_alignment_for("tc_activity_check_customer", "I check customer information in CRM"),
+            _confirm_alignment_for(
+                "tc_activity_check_customer", "I check customer information in CRM"
+            ),
             _confirm_alignment_for("tc_system_crm", "CRM"),
             _confirm_alignment_for("tc_customer", "customer information"),
         ],
@@ -3111,7 +3139,9 @@ def test_broad_clause_cannot_independently_ground_activity_system_data():
         "Yes.",
         alignments=[_confirm_alignment_for("tc_customer", "Yes.")],
     )
-    tools.create_concept("broad_act", "activity", "check", evidence=[_ev(yes_act, "Yes.")])
+    tools.create_concept(
+        "broad_act", "activity", "check", evidence=[_ev(yes_act, "Yes.")]
+    )
     tools.confirm_concept("broad_act", evidence=[_ev(yes_act, "Yes.")])
     tools.create_concept("broad_sys", "system", "crm", evidence=[_ev(yes_sys, "Yes.")])
     tools.confirm_concept("broad_sys", evidence=[_ev(yes_sys, "Yes.")])
@@ -3204,9 +3234,7 @@ def test_task_prose_contains_no_scenario_business_facts():
         desc_obj = task.description
         desc = ""
         if desc_obj is not None:
-            desc = (
-                f"{desc_obj.purpose or ''} {desc_obj.notes or ''}"
-            ).lower()
+            desc = (f"{desc_obj.purpose or ''} {desc_obj.notes or ''}").lower()
         assert "dag" not in desc, f"{task.id}: description still says DAG"
     # the JA task is also clean of the scenario specifics
     ti_ja = (
