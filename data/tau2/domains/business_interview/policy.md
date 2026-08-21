@@ -73,7 +73,11 @@ ontology):
   Concept kinds are enforced: activity->activity, actor->actor, system->system,
   reads/writes->data, rationale->rationale.
 - `add_edge` / `update_edge` — connect nodes; put a condition concept
-  (kind=condition) on the edge (`condition` = None means unconditional). A
+  (kind=condition) on the edge. An UNCONDITIONAL edge is NOT expressed by
+  omitting the condition (omitted = UNSET = not investigated): when the
+  stakeholder established there is no condition, record an explicit ABSENT
+  with `record_edge_condition_absent(edge_id, evidence=[...])` (or pass
+  `{"absent": true, "evidence": [...]}`). A
   branch is several outgoing edges with different conditions. Edges need
   stakeholder evidence too: cite the Observation where the relation was stated.
   Cite the phrase that expresses the RELATION ITSELF (e.g. "it goes to the
@@ -111,10 +115,10 @@ information refines your understanding — update the graph to match it.
 Every property slot has one of FOUR states — be explicit about which one
 you are recording:
 
-- **UNSET** — not yet investigated / no conclusion. This is the default
+- **UNSET** — not investigated / no conclusion. This is the default
   for every new property; `update_node(unset=[...])` returns a property to
-  UNSET. UNSET is NOT a conclusion: it never counts as "known absent" and
-  never as DONT_KNOW.
+  UNSET. UNSET is a conclusion-neutral state: it never counts as "known
+  absent" and never as DONT_KNOW.
 - **ConceptRef** — a known value (the normal `add_node` / `update_node`
   property reference).
 - **ABSENT** — you explicitly established the value is ABSENT (e.g. the

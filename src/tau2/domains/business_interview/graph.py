@@ -26,11 +26,20 @@ from sorted Truth ids and never derived from Truth ids, labels, terms, or
 positions); the private Truth mapping lives only in the evaluator-side
 ``StakeholderKnowledge`` structure.
 
-A property slot is **three-valued**: ``ConceptRef`` (value known), ``None``
-(value known absent), or ``DONT_KNOW`` (element known, value unknown). This
-is the stakeholder's epistemic state AND the AgentGraph's epistemic state:
-``DONT_KNOW`` markers carry the Observation evidence that the stakeholder
-really said "I don't know" for that exact slot.
+**Truth and the Agent have DIFFERENT slot semantics.**
+- Truth (``BusinessProcessGraph`` / ``TruthNode`` / ``TruthEdge``) is
+  complete canonical data: every slot is **two-valued** ``ConceptRef | None``
+  (``None`` = canonical absence). Truth has no UNSET / ABSENT / DONT_KNOW
+  states.
+- The stakeholder's world model (``StakeholderKnowledgeGraph``) is
+  **three-valued**: ``ConceptRef`` (value known), ``None`` (value known
+  absent), or ``DONT_KNOW`` (element known, value unknown).
+- The AgentGraph is **four-state**: ``UNSET`` (not investigated / no
+  conclusion — the default), ``ConceptRef`` (known value), ``ABSENT``
+  (explicitly established absent, with evidence) or ``DONT_KNOW``
+  (explicitly established unknowable, with evidence). ``ABSENT`` /
+  ``DONT_KNOW`` markers carry the Observation evidence that the stakeholder
+  really said so for that exact slot.
 
 **Mention != evidence != validation.** ``AgentConcept.mentions`` are spans
 the Agent interprets as referring to the concept; property references carry
@@ -43,13 +52,49 @@ semantic ID) -> StakeholderKnowledgeGraph / StakeholderKnowledgeConcept.
 None of the text fields are ever interpreted semantically.
 """
 
-from typing import Generic, Literal, Optional, TypeVar, Union
+from typing import Any, Generic, Literal, Optional, Protocol, TypeVar, Union
 
 from pydantic import BaseModel, Field, field_validator
 
 from tau2.environment.db import DB
 
 C = TypeVar("C")
+
+
+class _NodeProto(Protocol):
+    """The shared node surface of Truth (two-valued slots) and the Agent
+    (four-state slots): both expose the same slot/ref helpers."""
+
+    id: str
+    activity: Any
+    actor: Any
+    system: Any
+    reads: Any
+    writes: Any
+    necessity_rationale: Any
+
+    def refs(self, property_name: str) -> list["ConceptRef"]: ...
+
+    def asserted_refs(self, property_name: str) -> list["ConceptRef"]: ...
+
+    def slot_value(self, property_name: str) -> Any: ...
+
+    def slot_evidence(self, property_name: str) -> list["EvidenceRef"]: ...
+
+
+class _EdgeProto(Protocol):
+    """The shared edge surface of Truth and the Agent."""
+
+    id: str
+    from_node: str
+    to_node: str
+    condition: Any
+
+    def condition_evidence(self) -> list["EvidenceRef"]: ...
+
+
+N = TypeVar("N", bound=_NodeProto)
+E = TypeVar("E", bound=_EdgeProto)
 
 ConceptKind = Literal["activity", "actor", "system", "data", "condition", "rationale"]
 
@@ -359,7 +404,7 @@ class Edge(BaseModel):
         return []
 
 
-def _node_property_refs(node: Node) -> dict[str, list[ConceptRef]]:
+def _node_property_refs(node) -> dict[str, list[ConceptRef]]:
     """All refs of a node keyed by property name (single refs as one-element
     lists; reads/writes as their lists). DONT_KNOW slots contribute no
     refs."""
@@ -374,13 +419,16 @@ def _node_property_refs(node: Node) -> dict[str, list[ConceptRef]]:
 
 
 class _GraphMixin(BaseModel, Generic[C]):
-    """Shared graph structure + utilities (cycles are valid; no acyclicity
-    requirement). The concrete concept type is fixed by the subclass."""
+    """Shared graph structure plus utilities (cycles are valid; no acyclicity
+    requirement). ``nodes``/``edges`` hold the graph's concrete node/edge
+    types, fixed by the subclass: Truth uses ``TruthNode``/``TruthEdge``
+    (two-valued slots: ``ConceptRef | None``), the Agent uses ``Node``/
+    ``Edge`` (four-state slots)."""
 
     id: str = "graph"
     name: str = ""
-    nodes: dict[str, Node] = Field(default_factory=dict)
-    edges: dict[str, Edge] = Field(default_factory=dict)
+    nodes: dict[str, Any] = Field(default_factory=dict)
+    edges: dict[str, Any] = Field(default_factory=dict)
     concepts: dict[str, C] = Field(default_factory=dict)
     start_node_id: Optional[str] = None
     end_node_ids: list[str] = Field(default_factory=list)
@@ -470,13 +518,80 @@ class TruthConcept(BaseModel):
     canonical_terms: list[str] = Field(default_factory=list)
 
 
+class TruthNode(BaseModel):
+    """A vertex in the COMPLETE canonical Truth graph.
+
+    Truth is complete canonical data and has no ``UNSET``/``ABSENT``/
+    ``DONT_KNOW`` states: every scalar property slot holds either a
+    ``ConceptRef`` (a known value) or ``None`` (canonical absence).
+    ``reads`` / ``writes`` hold ``list[ConceptRef] | None`` where ``None``
+    means canonical absence. ``from``/``to`` structural identity is
+    expressed only through edges; node ids are Truth-local.
+    """
+
+    id: str
+    activity: Optional[ConceptRef] = None
+    actor: Optional[ConceptRef] = None
+    system: Optional[ConceptRef] = None
+    reads: Optional[list[ConceptRef]] = None
+    writes: Optional[list[ConceptRef]] = None
+    necessity_rationale: Optional[ConceptRef] = None
+
+    def refs(self, property_name: str) -> list[ConceptRef]:
+        """The concept refs of a Truth property slot (single or list)."""
+        if property_name == "reads":
+            return list(self.reads) if isinstance(self.reads, list) else []
+        if property_name == "writes":
+            return list(self.writes) if isinstance(self.writes, list) else []
+        attr = "necessity_rationale" if property_name == "rationale" else property_name
+        ref = getattr(self, attr)
+        return [ref] if isinstance(ref, ConceptRef) else []
+
+    def asserted_refs(self, property_name: str) -> list[ConceptRef]:
+        return [r for r in self.refs(property_name) if r.asserted]
+
+    def slot_value(self, property_name: str):
+        """The canonical two-valued slot: ``ConceptRef | None`` (None =
+        canonical absence)."""
+        if property_name in ("reads", "writes"):
+            return getattr(self, property_name)
+        attr = "necessity_rationale" if property_name == "rationale" else property_name
+        return getattr(self, attr)
+
+    def slot_evidence(self, property_name: str) -> list[EvidenceRef]:
+        """Truth carries no evidence — always empty."""
+        return []
+
+
+class TruthEdge(BaseModel):
+    """A directed edge in the complete canonical Truth graph.
+
+    ``condition`` is ``ConceptRef | None`` (``None`` = canonically
+    unconditional). Truth carries no ``UNSET``/``ABSENT``/``DONT_KNOW``
+    states; ``from_node``/``to_node`` are structural identities.
+    """
+
+    id: str
+    from_node: str
+    to_node: str
+    condition: Optional[ConceptRef] = None
+
+    def condition_evidence(self) -> list[EvidenceRef]:
+        """Truth edges carry no evidence; always empty."""
+        return []
+
+
 class BusinessProcessGraph(_GraphMixin[TruthConcept]):
     """The Truth: nodes, edges and the TruthConcept glossary.
 
     The graph itself is the semantic model — there are no generated claims.
     Node/edge ids are Truth-local and stable; every addressable element has a
-    semantic ID (see module docstring).
+    semantic ID (see module docstring). Truth slots are two-valued
+    (``ConceptRef | None``); there is no Agent four-state semantics here.
     """
+
+    nodes: dict[str, TruthNode] = Field(default_factory=dict)
+    edges: dict[str, TruthEdge] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -527,8 +642,12 @@ class AgentGraph(_GraphMixin[AgentConcept]):
 
     Every property reference carries its own EvidenceRef; cycles are valid;
     ``start_node_id`` / ``end_node_ids`` restore explicit start/end
-    semantics.
+    semantics. Slots are four-state (``UNSET`` / ``ConceptRef`` / ``ABSENT``
+    / ``DONT_KNOW``).
     """
+
+    nodes: dict[str, Node] = Field(default_factory=dict)
+    edges: dict[str, Edge] = Field(default_factory=dict)
 
     terminology_agreements: list[TerminologyAgreement] = Field(default_factory=list)
 

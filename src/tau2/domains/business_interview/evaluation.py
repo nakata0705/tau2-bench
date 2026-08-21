@@ -569,19 +569,27 @@ def _concept_bindings(
     StakeholderKnowledgeConcept set (requirement 5: no vacuous success).
 
     Binding sources (all must agree on ONE knowledge concept):
-    mapped property refs, mapped edge conditions, mentions, and grounded
-    concepts' validation evidence. A claim is a referenced Agent concept
-    with exactly one candidate knowledge concept of a compatible kind.
+    property refs, edge conditions, mentions, and grounded concepts'
+    validation evidence. A claim is an ATTEMPTED Agent concept (one the
+    Agent references in its graph) with exactly one candidate knowledge
+    concept of a compatible kind.
 
     Returns (concept_recall, concept_precision, agent concept id ->
     knowledge concept id) where:
     - expected = the knowledge concepts the stakeholder graph actually
       references with values;
-    - correct = expected concepts claimed by exactly ONE Agent concept;
+    - attempted = the Agent concepts the Agent actually references in its
+      graph (mapped and unmapped nodes/edges) — the precision denominator;
+    - correct = expected knowledge concepts claimed by exactly ONE Agent
+      concept (one-to-one identity);
     - concept_recall = |correct| / |expected|  (missing expected concepts
       reduce it; an EMPTY AgentGraph has recall 0.0 — never 1.0);
-    - concept_precision = |correct| / |claimed| (extra/split/merged/
-      conflicting or kind-mismatched claims reduce it);
+    - concept_precision = |correct Agent concepts| / |attempted| — an
+      attempted concept is correct only when it binds one-to-one to a
+      knowledge concept; EXTRA (no binding), unbound (no evidence),
+      ambiguous, conflicting, kind-incompatible and duplicated/split
+      attempts all reduce precision (an EMPTY AgentGraph has no attempted
+      concepts: precision uses the documented neutral value 1.0);
     - agent_to_knowledge carries ONLY the correct, unambiguous bindings
       (used by property scoring).
     """
@@ -613,6 +621,35 @@ def _concept_bindings(
             )
             sid = f"edge:{meid}:condition"
             if sid in grounded:
+                add_binding(
+                    edge.condition.concept_id,
+                    _knowledge_value_concepts(knowledge, sid),
+                )
+    # unmapped node/edge refs are STILL attempted references: their concepts
+    # must satisfy the same one-to-one identity rules (fabricated or
+    # unbound claims reduce precision, never silently vanish from the
+    # denominator).
+    for anid in agent.nodes:
+        if anid in mapping:
+            continue
+        for prop in _NODE_PROPS:
+            for ref in agent.nodes[anid].asserted_refs(prop):
+                referenced.add(ref.concept_id)
+                grounded, _i, _a = _grounded_ids(db, annotations, _ref_evidence(ref))
+                for sid in grounded:
+                    add_binding(
+                        ref.concept_id, _knowledge_value_concepts(knowledge, sid)
+                    )
+    for eid in agent.edges:
+        if eid in edge_map:
+            continue
+        edge = agent.edges[eid]
+        if isinstance(edge.condition, ConceptRef) and edge.condition.asserted:
+            referenced.add(edge.condition.concept_id)
+            grounded, _i, _a = _grounded_ids(
+                db, annotations, _ref_evidence(edge.condition)
+            )
+            for sid in grounded:
                 add_binding(
                     edge.condition.concept_id,
                     _knowledge_value_concepts(knowledge, sid),
@@ -678,7 +715,14 @@ def _concept_bindings(
 
     expected = set(knowledge_kinds)
     concept_recall = len(correct) / len(expected) if expected else 1.0
-    concept_precision = len(correct) / len(claimed_by_kid) if claimed_by_kid else 1.0
+    # precision is diagnostic over the Agent's ATTEMPTED references: every
+    # attempted concept that is not a correct one-to-one binding (extra /
+    # unbound / ambiguous / conflicting / kind-incompatible / duplicated)
+    # reduces it. An empty AgentGraph has no attempted concepts and uses the
+    # documented neutral precision 1.0 (concept_correctness is still 0).
+    attempted = referenced
+    correct_agent = {cid for cid, kid in claims.items() if kid in correct}
+    concept_precision = len(correct_agent) / len(attempted) if attempted else 1.0
     agent_to_knowledge = {cid: kid for cid, kid in claims.items() if kid in correct}
     return concept_recall, concept_precision, agent_to_knowledge
 

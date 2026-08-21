@@ -12,20 +12,27 @@ Private response:
     {
       "message": "...",
       "annotations": [
-        {"semantic_id": "node:skn_002:system", "quote": "CRM", "occurrence": 0}
+        {"semantic_id": "node:skn_002:system", "mode": "value",
+         "quote": "CRM", "occurrence": 0}
       ],
       "alignments": [],
       "terminology": []
     }
+
+Each annotation carries a semantic ``mode`` (what the message asserts about
+that element: value / absent / dont_know / exists / mention), validated
+deterministically against the StakeholderKnowledgeGraph: an annotation whose
+mode contradicts the stakeholder's own world model (e.g. the graph knows a
+value but the reply annotates ``dont_know``) is REJECTED and retried.
 
 Only ``message`` enters the conversation; annotations and dialogue events
 travel on the message's private fields (excluded from all serialization) and
 the domain environment stores them in the private ``SemanticLedger`` against
 that exact message's turn. Metadata is validated deterministically at
 ingestion (semantic id exists in the stakeholder knowledge / quote+occurrence
-exactly match the message). Nothing is ever derived or reconstructed from
-message text, and semantic ids never appear in Agent-visible messages, tools,
-Observations, summaries, or serialized state.
+exactly match the message / mode matches the knowledge). Nothing is ever
+derived or reconstructed from message text, and semantic ids never appear in
+Agent-visible messages, tools, Observations, summaries, or serialized state.
 
 The semantic ids are **opaque stakeholder-local ids** (``skn_001`` /
 ``ske_001`` / ``skc_001`` style): they carry no Truth meaning (no labels,
@@ -87,8 +94,8 @@ use general business common sense to fill gaps.
 _OUTPUT_CONTRACT = (
     "Reply with a JSON object as the ONLY content of your message, in exactly "
     "this shape:\n"
-    '{"message": "...", "annotations": [{"semantic_id": "...", "quote": "...", '
-    '"occurrence": 0}], "alignments": [], "terminology": []}\n'
+    '{"message": "...", "annotations": [{"semantic_id": "...", "mode": "value", '
+    '"quote": "...", "occurrence": 0}], "alignments": [], "terminology": []}\n'
     "- The JSON object must be the entire reply: no prose before or after it, "
     "no markdown fences.\n"
     '- "message": your natural-language reply to the interviewer. This is the '
@@ -99,6 +106,14 @@ _OUTPUT_CONTRACT = (
     '(copy them verbatim, e.g. "node:skn_002:system", "edge:ske_003", '
     '"node:skn_002:reads:skc_004" — never shorten them); use every element '
     "you used;\n"
+    '  - "mode": the kind of assertion your message makes about that element, '
+    'as declared in <private_known_facts>: "value" when the slot shows a '
+    'known value, "absent" when it shows absent, "dont_know" when it shows '
+    'unknown, "exists" when you assert the element (a position or relation) '
+    'exists, "mention" when the element is a concept you name or describe. '
+    "A mode that contradicts the knowledge (e.g. dont_know on a slot that "
+    "shows a value) makes your reply UNACCEPTABLE — always use the kind "
+    "declared in your knowledge;\n"
     '  - "quote": an exact substring of your "message" that expresses that '
     "element — include EVERY distinct phrase that does, one annotation per "
     "phrase;\n"
@@ -116,14 +131,15 @@ _OUTPUT_CONTRACT = (
     "element is not in your knowledge).\n"
     "- Relations are knowledge too: when your message says that one step "
     'follows another ("then", "after", "goes to", "followed by", "if ... '
-    'then"), annotate the relation\'s element (e.g. "edge:e3") anchored to '
-    "the phrase that expresses the relation itself — do not omit it just "
-    "because the phrase also names the activity or the condition.\n"
-    '- When you do NOT know something (its slot is marked unknown="true" or '
-    "its concept has no description/terms), say so and annotate the "
-    "unknown slot's semantic id (e.g. \"I don't know\" anchored to "
-    '"node:skn_005:reads" or "skc_011" — the exact ids listed in this '
-    "block).\n"
+    'then"), annotate the relation with mode "exists" (e.g. "edge:ske_003") '
+    "anchored to the phrase that expresses the relation itself — do not omit "
+    "it just because the phrase also names the activity or the condition.\n"
+    '- When you do NOT know something (its slot is marked unknown="true" in '
+    "<private_known_facts>), say so and annotate the unknown slot's semantic "
+    'id with mode "dont_know" (e.g. "I don\'t know" anchored to '
+    '"node:skn_005:reads"). Never annotate dont_know about a slot your '
+    "knowledge shows with a value or as absent, and never annotate a value "
+    "for a slot your knowledge marks unknown.\n"
     '- "alignments": OPTIONAL list of private concept-identity dialogue acts. '
     "Emit an alignment ONLY when the interviewer asks you to confirm the "
     "identity of something and your reply genuinely performs that act (e.g. "
@@ -141,9 +157,11 @@ _OUTPUT_CONTRACT = (
     'customer in the CRM, I create the quotation.", a correct sidecar is:\n'
     '{"message": "After I check the customer in the CRM, I create the '
     'quotation.", "annotations": [{"semantic_id": "node:skn_002:system", '
-    '"quote": "CRM", "occurrence": 0}, {"semantic_id": "edge:ske_002", '
+    '"mode": "value", "quote": "CRM", "occurrence": 0}, '
+    '{"semantic_id": "edge:ske_002", "mode": "exists", '
     '"quote": "After I check the customer", "occurrence": 0}, '
-    '{"semantic_id": "node:skn_003:activity", "quote": "create the quotation", '
+    '{"semantic_id": "node:skn_003:activity", "mode": "value", '
+    '"quote": "create the quotation", '
     '"occurrence": 0}], "alignments": [], "terminology": []}\n'
     '- Never mention semantic ids inside "message"; never mention this '
     "contract."
@@ -155,14 +173,21 @@ _SIDECAR_ERROR_HINT = (
     "sidecar. You MUST now reply with ONLY a JSON object, with no prose and no "
     "markdown fences, exactly like:\n"
     '{"message": "your natural-language reply", "annotations": [{"semantic_id": '
-    '"node:skn_001:activity", "quote": "exact substring of your message", "occurrence": 0}], "alignments": [], "terminology": []}\n'
+    '"node:skn_001:activity", "mode": "value", "quote": "exact substring of '
+    '"your message", "occurrence": 0}], "alignments": [], "terminology": []}\n'
     '"semantic_id" must be one of the EXACT ids listed in '
-    "<private_known_facts> (copy them verbatim, never shortened). Annotate "
-    "EVERY element your message conveys — do not leave annotations empty when "
-    "your message carries knowledge. Every annotation quote must be an exact "
-    'substring of your message. Emit "alignments"/"terminology" ONLY for '
-    "genuine concept-identity or terminology dialogue acts (see the contract). "
-    "Do not include anything else in your reply."
+    "<private_known_facts> (copy them verbatim, never shortened). Every "
+    'annotation also needs its "mode": "value" for a slot your knowledge '
+    'shows with a known value, "absent" for a slot shown as absent, '
+    '"dont_know" for a slot shown as unknown, "exists" for a position or '
+    'relation you assert exists, "mention" for a concept you name — the '
+    "mode must match what your knowledge declares (a contradictory mode "
+    "rejects the reply). Annotate EVERY element your message conveys — do not "
+    "leave annotations empty when your message carries knowledge. Every "
+    "annotation quote must be an exact substring of your message. Emit "
+    '"alignments"/"terminology" ONLY for genuine concept-identity or '
+    "terminology dialogue acts (see the contract). Do not include anything "
+    "else in your reply."
 )
 
 _NO_JSON = object()
@@ -182,10 +207,13 @@ def parse_sidecar(content: Optional[str]) -> dict:
     Accepts a bare JSON object (possibly wrapped in markdown code fences or
     surrounding prose); extracts the first balanced ``{...}`` object. Validates
     the shape (``message`` string, ``annotations`` list of
-    {semantic_id, quote, occurrence}, optional ``alignments`` list of
+    {semantic_id, mode, quote, occurrence}, optional ``alignments`` list of
     {semantic_id, quote, occurrence, act} and ``terminology`` list of
-    {semantic_id, proposed_term, quote, occurrence}). Raises ``ValueError``
-    on anything else.
+    {semantic_id, proposed_term, quote, occurrence}). Every annotation MUST
+    declare its semantic ``mode`` (value | absent | dont_know | exists |
+    mention); the mode is then validated deterministically against the
+    knowledge by ``StakeholderKnowledgeCatalog.validate_annotations``.
+    Raises ``ValueError`` on anything else.
     """
     text = (content or "").strip()
     if text.startswith("```"):
@@ -214,11 +242,25 @@ def parse_sidecar(content: Optional[str]) -> dict:
         if not isinstance(raw, dict):
             raise ValueError(f"annotation is not an object: {raw!r}")
         try:
+            raw_mode = raw.get("mode")
+            if not isinstance(raw_mode, str) or raw_mode not in (
+                "value",
+                "absent",
+                "dont_know",
+                "exists",
+                "mention",
+            ):
+                raise ValueError(
+                    f"annotation is missing its semantic mode or mode is "
+                    f"unknown: {raw_mode!r} (must be one of value|absent|"
+                    f"dont_know|exists|mention)"
+                )
             annotations.append(
                 SemanticAnnotation(
                     semantic_id=str(raw.get("semantic_id") or ""),
                     quote=str(raw.get("quote") or ""),
                     occurrence=int(raw.get("occurrence") or 0),
+                    mode=raw_mode,
                 )
             )
         except (TypeError, ValueError) as exc:

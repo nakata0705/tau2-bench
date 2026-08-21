@@ -57,20 +57,74 @@ from pydantic import BaseModel, Field, field_validator
 
 AlignmentAct = Literal["confirm", "partial", "unknown", "dispute"]
 
+# The semantic mode of one annotation: WHAT epistemic assertion the
+# stakeholder message makes about the annotated element, validated
+# deterministically against ``StakeholderKnowledgeGraph.resolve()``:
+#
+#   value     - the element's slot holds a KNOWN value (ConceptRef)
+#   absent    - the element's slot is KNOWN ABSENT (None)
+#   dont_know - the element's slot is DONT_KNOW (element known, value unknown)
+#   exists    - the message asserts the element EXISTS (node/edge existence)
+#   mention   - the message mentions a StakeholderKnowledgeConcept
+#
+# The mode is about the KIND of assertion, never the value: subject/property/
+# value still live only in the StakeholderKnowledgeGraph.
+SemanticMode = Literal["value", "absent", "dont_know", "exists", "mention"]
+
+
+def mode_for_resolved(resolved) -> Optional["SemanticMode"]:
+    """The deterministic semantic mode that an annotation of ``resolved``
+    MUST carry, or ``None`` when the id does not resolve. ``resolved`` is a
+    ``ResolvedSemantic`` from ``StakeholderKnowledgeGraph.resolve``:
+    ``ConceptRef -> value``, ``None -> absent``, ``DONT_KNOW -> dont_know``,
+    node/edge existence -> ``exists``, ``StakeholderKnowledgeConcept`` ->
+    ``mention``."""
+    from tau2.domains.business_interview.graph import is_dont_know
+
+    if resolved is None:
+        return None
+    if resolved.kind in ("node", "edge"):
+        return "exists"
+    if resolved.kind == "concept":
+        return "mention"
+    if resolved.kind == "node_element":
+        return "value"
+    if resolved.kind in ("node_slot", "edge_slot"):
+        if resolved.value is None:
+            return "absent"
+        if is_dont_know(resolved.value):
+            return "dont_know"
+        return "value"
+    return None
+
 
 class SemanticAnnotation(BaseModel):
     """One private annotation: an Observation span resolves to ONE
     stakeholder semantic ID (a graph element of StakeholderKnowledgeGraph,
-    including DONT_KNOW slots).
+    including DONT_KNOW slots) and declares the semantic ``mode`` of the
+    assertion the message makes about it.
 
     ``quote`` must be an exact substring of the stakeholder's message and
     ``occurrence`` must select an existing occurrence of that substring.
+    ``mode`` is validated deterministically against
+    ``StakeholderKnowledgeGraph.resolve()``: a message whose annotation mode
+    contradicts the underlying StakeholderKnowledge (e.g. the graph knows a
+    value but the message annotates ``dont_know``) is REJECTED at ingestion.
+    The mode never duplicates subject/property/value — the semantic value
+    still lives only in the StakeholderKnowledgeGraph.
     """
 
     semantic_id: str
     quote: str = Field(description="Exact substring of the stakeholder message.")
     occurrence: int = Field(
         default=0, description="0-based occurrence index of ``quote``."
+    )
+    mode: Optional[SemanticMode] = Field(
+        default=None,
+        description=(
+            "What the message asserts about the element: value | absent | "
+            "dont_know | exists | mention (validated against the knowledge)."
+        ),
     )
 
     @field_validator("quote")
@@ -200,6 +254,23 @@ class StakeholderKnowledgeCatalog:
                     f"{annotation.quote!r} occurrence {annotation.occurrence} "
                     f"does not exactly match the stakeholder message"
                 )
+            if annotation.mode is not None:
+                expected = mode_for_resolved(
+                    self.knowledge.graph.resolve(annotation.semantic_id)
+                )
+                if expected is None:
+                    raise ValueError(
+                        f"annotation {annotation.semantic_id!r}: semantic id "
+                        f"does not resolve in the knowledge graph"
+                    )
+                if annotation.mode != expected:
+                    raise ValueError(
+                        f"annotation {annotation.semantic_id!r}: mode "
+                        f"{annotation.mode!r} contradicts the knowledge — the "
+                        f"stakeholder's own semantic model says "
+                        f"{expected!r} (a message claiming otherwise is "
+                        f"semantically inconsistent and cannot be accepted)"
+                    )
 
     def validate_events(
         self,

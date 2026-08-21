@@ -37,6 +37,16 @@ test-gym:
 test-all:
 	uv run pytest tests/
 
+## Run business_interview deterministic tests only (cheap default: no LLM API calls, compact, fail-fast)
+.PHONY: test-business-interview
+test-business-interview:
+	uv run python scripts/test_business_interview.py quick
+
+## Run business_interview live-LLM end-to-end smoke test (expensive, explicit opt-in, forced to 1 run)
+.PHONY: test-business-interview-smoke
+test-business-interview-smoke:
+	uv run python scripts/test_business_interview.py smoke
+
 ## Start the Environment CLI for interacting with domain environments
 .PHONY: env-cli
 env-cli:

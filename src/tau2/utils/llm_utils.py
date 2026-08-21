@@ -462,6 +462,30 @@ def generate(
                 )
             )
             continue
+        if not isinstance(arguments, dict):
+            # RECOVERABLE: the JSON parses but ToolCall arguments must be a
+            # JSON object. Keep the tool name, drop the invalid arguments and
+            # surface a concise validation error through the ordinary
+            # tool-error path (the agent consumes its error budget and may
+            # retry). Semantic content is never silently repaired.
+            logger.warning(
+                "Tool-call arguments for %r must be a JSON object, got %s",
+                tool_call.function.name,
+                type(arguments).__name__,
+            )
+            tool_calls.append(
+                ToolCall(
+                    id=tool_call.id,
+                    name=tool_name,
+                    arguments={},
+                    requestor="assistant",
+                    parse_error=(
+                        f"tool-call arguments for {tool_name!r} must be a "
+                        f"JSON object, got {type(arguments).__name__}"
+                    ),
+                )
+            )
+            continue
         tool_calls.append(
             ToolCall(
                 id=tool_call.id,

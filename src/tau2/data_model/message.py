@@ -141,6 +141,19 @@ class ToolCall(BaseModel):
                         f"{json_str[:200]!r}"
                     )
                     break
+                if not isinstance(arguments, dict):
+                    # RECOVERABLE: the JSON parses but ToolCall arguments
+                    # must be a JSON object. Keep the tool name, drop the
+                    # invalid arguments and surface a concise validation
+                    # error through the normal tool-error path (never
+                    # repair semantics).
+                    parse_error = (
+                        f"tool-call arguments for {name!r} must be a JSON "
+                        f"object, got {type(arguments).__name__}: "
+                        f"{json_str[:200]!r}"
+                    )
+                    arguments = {}
+                    break
                 break
 
             i += 1

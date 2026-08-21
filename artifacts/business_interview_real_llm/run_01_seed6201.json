@@ -1,0 +1,752 @@
+{
+  "run_index": 1,
+  "run_id": "run_01_8da32d36-9c67-491c-93ca-e86f925a42e5",
+  "task_id": "quotation_workflow_1",
+  "seed": 6201,
+  "agent_model": "openrouter/deepseek/deepseek-chat-v3",
+  "user_model": "openrouter/deepseek/deepseek-chat-v3",
+  "user_implementation": "business_interview_user",
+  "llm_args": {
+    "temperature": 0.0
+  },
+  "resolved_agent_model": "openrouter/deepseek/deepseek-chat-v3",
+  "resolved_user_model": "openrouter/deepseek/deepseek-chat-v3",
+  "termination_reason": null,
+  "reward_info": null,
+  "elapsed_seconds": 101.53,
+  "errors": [
+    "ValueError: stakeholder sidecar rejected twice; invalid private metadata must not enter the conversation: annotation 'edge:ske_004:condition': quote \"if it's at or below 1,000,000 yen\" occurrence 0 does not exactly match the stakeholder message\n"
+  ],
+  "conversation": [],
+  "observations": [
+    {
+      "id": "obs_3",
+      "source_id": "stakeholder",
+      "text": "The process starts when we receive a quotation request from a customer.",
+      "order": 0,
+      "turn": 3
+    },
+    {
+      "id": "obs_12",
+      "source_id": "stakeholder",
+      "text": "The sales employee handles the quotation request once it's received.",
+      "order": 1,
+      "turn": 12
+    },
+    {
+      "id": "obs_20",
+      "source_id": "stakeholder",
+      "text": "After receiving the request, the sales employee checks the customer information in the CRM system.",
+      "order": 2,
+      "turn": 20
+    },
+    {
+      "id": "obs_30",
+      "source_id": "stakeholder",
+      "text": "After checking the customer information, the sales employee creates the quotation document in the quoting system.",
+      "order": 3,
+      "turn": 30
+    }
+  ],
+  "final_graph": {
+    "id": "graph",
+    "name": "",
+    "start_node_id": null,
+    "end_node_ids": [],
+    "concepts": {},
+    "terminology_agreements": [],
+    "nodes": {},
+    "edges": {},
+    "validation_errors": [],
+    "is_valid": true
+  },
+  "evaluator_metrics": {
+    "protocol_completed": false,
+    "graph_created": false,
+    "graph_valid": true,
+    "node_recall": 0.0,
+    "node_precision": 0.0,
+    "edge_recall": 0.0,
+    "edge_precision": 0.0,
+    "start_correct": false,
+    "end_recall": 0.0,
+    "end_precision": 0.0,
+    "activity_correctness": 0.0,
+    "actor_correctness": 0.0,
+    "system_correctness": 0.0,
+    "read_correctness": 0.0,
+    "write_correctness": 0.0,
+    "rationale_correctness": 0.0,
+    "condition_correctness": 0.0,
+    "concept_correctness": 0.0,
+    "concept_recall": 0.0,
+    "concept_precision": 1.0,
+    "unsupported_ref_count": 0,
+    "fabricated_node_count": 0,
+    "fabricated_edge_count": 0,
+    "glossary_pass": true,
+    "glossary_complete": false,
+    "referenced_hypothesized_concepts": [],
+    "glossary_validation_errors": [],
+    "node_evidence_coverage": 1.0,
+    "ref_evidence_coverage": 1.0,
+    "edge_evidence_coverage": 1.0,
+    "invalid_evidence_ref_count": 0,
+    "ambiguous_evidence_ref_count": 0,
+    "marker_evidence_errors": 0,
+    "invalid_observation_reference_count": 0,
+    "authentic_observation_count": 4,
+    "invalid_observation_source_count": 0,
+    "orphan_observation_count": 4,
+    "provenance_authenticity_pass": true,
+    "evidence_pass": true,
+    "structural_pass": false,
+    "protocol_pass": false,
+    "quality_pass": false,
+    "knowledge_coverage": 0.7166666666666667
+  },
+  "truth_graph": {
+    "id": "quotation",
+    "name": "Quotation creation",
+    "start_node_id": "r",
+    "end_node_ids": [
+      "sq",
+      "me"
+    ],
+    "concepts": {
+      "tc_activity_receive_request": {
+        "id": "tc_activity_receive_request",
+        "kind": "activity",
+        "display_label": null,
+        "description": "Receive the customer's quotation request.",
+        "canonical_terms": [
+          "receive the quotation request"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_activity_check_customer": {
+        "id": "tc_activity_check_customer",
+        "kind": "activity",
+        "display_label": null,
+        "description": "Check the customer information.",
+        "canonical_terms": [
+          "check the customer information"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_activity_create_quotation": {
+        "id": "tc_activity_create_quotation",
+        "kind": "activity",
+        "display_label": null,
+        "description": "Create the quotation document.",
+        "canonical_terms": [
+          "create the quotation"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_activity_approve_quotation": {
+        "id": "tc_activity_approve_quotation",
+        "kind": "activity",
+        "display_label": null,
+        "description": "Approve the quotation.",
+        "canonical_terms": [
+          "approve the high-value quotation"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_activity_send_quotation": {
+        "id": "tc_activity_send_quotation",
+        "kind": "activity",
+        "display_label": null,
+        "description": "Send the quotation to the customer.",
+        "canonical_terms": [
+          "send the quotation to the customer"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_activity_send_month_end_summary": {
+        "id": "tc_activity_send_month_end_summary",
+        "kind": "activity",
+        "display_label": null,
+        "description": "Send the month-end summary of quotation information.",
+        "canonical_terms": [
+          "send the month-end summary to Accounting"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_actor_sales": {
+        "id": "tc_actor_sales",
+        "kind": "actor",
+        "display_label": null,
+        "description": "The sales employee.",
+        "canonical_terms": [
+          "sales employee"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_actor_manager": {
+        "id": "tc_actor_manager",
+        "kind": "actor",
+        "display_label": null,
+        "description": "The manager who approves.",
+        "canonical_terms": [
+          "manager"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_system_crm": {
+        "id": "tc_system_crm",
+        "kind": "system",
+        "display_label": null,
+        "description": "The customer relationship management system.",
+        "canonical_terms": [
+          "CRM"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_system_quoting": {
+        "id": "tc_system_quoting",
+        "kind": "system",
+        "display_label": null,
+        "description": "The quoting system.",
+        "canonical_terms": [
+          "quoting system"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_system_email": {
+        "id": "tc_system_email",
+        "kind": "system",
+        "display_label": null,
+        "description": "The email system.",
+        "canonical_terms": [
+          "email"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_system_excel": {
+        "id": "tc_system_excel",
+        "kind": "system",
+        "display_label": null,
+        "description": "The spreadsheet application.",
+        "canonical_terms": [
+          "Excel"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_request": {
+        "id": "tc_request",
+        "kind": "data",
+        "display_label": null,
+        "description": "The customer's quotation request.",
+        "canonical_terms": [
+          "quotation request"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_customer": {
+        "id": "tc_customer",
+        "kind": "data",
+        "display_label": null,
+        "description": "The customer's information.",
+        "canonical_terms": [
+          "customer information"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_pricing": {
+        "id": "tc_pricing",
+        "kind": "data",
+        "display_label": null,
+        "description": "The pricing information.",
+        "canonical_terms": [
+          "pricing information"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_quote": {
+        "id": "tc_quote",
+        "kind": "data",
+        "display_label": null,
+        "description": "The quotation document.",
+        "canonical_terms": [
+          "quotation"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_approval": {
+        "id": "tc_approval",
+        "kind": "data",
+        "display_label": null,
+        "description": "The approval record.",
+        "canonical_terms": [
+          "approval"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_sent_quote": {
+        "id": "tc_sent_quote",
+        "kind": "data",
+        "display_label": null,
+        "description": "The sent quotation.",
+        "canonical_terms": [
+          "sent quotation"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_excel_summary": {
+        "id": "tc_excel_summary",
+        "kind": "data",
+        "display_label": null,
+        "description": "The quotation information summary.",
+        "canonical_terms": [
+          "summary of the quotation information"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_cond_over_1m": {
+        "id": "tc_cond_over_1m",
+        "kind": "condition",
+        "display_label": null,
+        "description": "The quotation amount is over 1,000,000 yen.",
+        "canonical_terms": [
+          "over 1,000,000 yen"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_cond_at_or_below_1m": {
+        "id": "tc_cond_at_or_below_1m",
+        "kind": "condition",
+        "display_label": null,
+        "description": "The quotation amount is at or below 1,000,000 yen.",
+        "canonical_terms": [
+          "at or below 1,000,000 yen"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_cond_month_end": {
+        "id": "tc_cond_month_end",
+        "kind": "condition",
+        "display_label": null,
+        "description": "It is the end of the month.",
+        "canonical_terms": [
+          "month-end"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_rationale_credit_risk": {
+        "id": "tc_rationale_credit_risk",
+        "kind": "rationale",
+        "display_label": null,
+        "description": "Credit risk management.",
+        "canonical_terms": [
+          "credit risk management"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      }
+    },
+    "terminology_agreements": [],
+    "nodes": {
+      "r": {
+        "id": "r",
+        "activity": {
+          "concept_id": "tc_activity_receive_request",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_sales",
+          "confidence": 1.0
+        },
+        "system": null,
+        "reads": null,
+        "writes": [
+          {
+            "concept_id": "tc_request",
+            "confidence": 1.0
+          }
+        ],
+        "necessity_rationale": null
+      },
+      "cc": {
+        "id": "cc",
+        "activity": {
+          "concept_id": "tc_activity_check_customer",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_sales",
+          "confidence": 1.0
+        },
+        "system": {
+          "concept_id": "tc_system_crm",
+          "confidence": 1.0
+        },
+        "reads": [
+          {
+            "concept_id": "tc_customer",
+            "confidence": 1.0
+          }
+        ],
+        "writes": null,
+        "necessity_rationale": null
+      },
+      "cq": {
+        "id": "cq",
+        "activity": {
+          "concept_id": "tc_activity_create_quotation",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_sales",
+          "confidence": 1.0
+        },
+        "system": {
+          "concept_id": "tc_system_quoting",
+          "confidence": 1.0
+        },
+        "reads": [
+          {
+            "concept_id": "tc_customer",
+            "confidence": 1.0
+          },
+          {
+            "concept_id": "tc_pricing",
+            "confidence": 1.0
+          }
+        ],
+        "writes": [
+          {
+            "concept_id": "tc_quote",
+            "confidence": 1.0
+          }
+        ],
+        "necessity_rationale": null
+      },
+      "ap": {
+        "id": "ap",
+        "activity": {
+          "concept_id": "tc_activity_approve_quotation",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_manager",
+          "confidence": 1.0
+        },
+        "system": null,
+        "reads": null,
+        "writes": null,
+        "necessity_rationale": {
+          "concept_id": "tc_rationale_credit_risk",
+          "confidence": 1.0
+        }
+      },
+      "sq": {
+        "id": "sq",
+        "activity": {
+          "concept_id": "tc_activity_send_quotation",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_sales",
+          "confidence": 1.0
+        },
+        "system": {
+          "concept_id": "tc_system_email",
+          "confidence": 1.0
+        },
+        "reads": null,
+        "writes": null,
+        "necessity_rationale": null
+      },
+      "me": {
+        "id": "me",
+        "activity": {
+          "concept_id": "tc_activity_send_month_end_summary",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_sales",
+          "confidence": 1.0
+        },
+        "system": {
+          "concept_id": "tc_system_excel",
+          "confidence": 1.0
+        },
+        "reads": null,
+        "writes": [
+          {
+            "concept_id": "tc_excel_summary",
+            "confidence": 1.0
+          }
+        ],
+        "necessity_rationale": null
+      }
+    },
+    "edges": {
+      "e1": {
+        "id": "e1",
+        "from_node": "r",
+        "to_node": "cc",
+        "condition": null,
+        "evidence": []
+      },
+      "e2": {
+        "id": "e2",
+        "from_node": "cc",
+        "to_node": "cq",
+        "condition": null,
+        "evidence": []
+      },
+      "e3": {
+        "id": "e3",
+        "from_node": "cq",
+        "to_node": "ap",
+        "condition": {
+          "concept_id": "tc_cond_over_1m",
+          "confidence": 1.0
+        },
+        "evidence": []
+      },
+      "e4": {
+        "id": "e4",
+        "from_node": "cq",
+        "to_node": "sq",
+        "condition": {
+          "concept_id": "tc_cond_at_or_below_1m",
+          "confidence": 1.0
+        },
+        "evidence": []
+      },
+      "e5": {
+        "id": "e5",
+        "from_node": "ap",
+        "to_node": "sq",
+        "condition": null,
+        "evidence": []
+      },
+      "e6": {
+        "id": "e6",
+        "from_node": "cq",
+        "to_node": "me",
+        "condition": {
+          "concept_id": "tc_cond_month_end",
+          "confidence": 1.0
+        },
+        "evidence": []
+      }
+    },
+    "validation_errors": [],
+    "is_valid": true
+  },
+  "db_messages_ledger": [
+    {
+      "role": "assistant",
+      "content": "Hello, I'm a business analyst and I'd like to interview you about how your team prepares quotations. Is now a good time?"
+    },
+    {
+      "role": "user",
+      "content": "Sure, that's fine. What would you like to know?"
+    },
+    {
+      "role": "assistant",
+      "content": "Great! Let's start at the beginning. Could you tell me what triggers the process of preparing a quotation in your team?"
+    },
+    {
+      "role": "user",
+      "content": "The process starts when we receive a quotation request from a customer."
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "sm_2"
+    },
+    {
+      "role": "assistant",
+      "content": "Use the results below to formulate an answer to the user question unless additional information is needed.Thank you for that information. I've noted that the process starts when your team receives a quotation request from a customer. \n\nCould you tell me who in your team is responsible for handling this quotation request?"
+    },
+    {
+      "role": "tool",
+      "content": "obs_3"
+    },
+    {
+      "role": "tool",
+      "content": "Error: observation not found: obs_1"
+    },
+    {
+      "role": "tool",
+      "content": "Error: observation not found: obs_1"
+    },
+    {
+      "role": "tool",
+      "content": "Error: concept not found: activity_1"
+    },
+    {
+      "role": "assistant",
+      "content": "It seems there was an issue with capturing the initial observation. Let me correct that. \n\nCould you clarify who in your team is responsible for handling the quotation request once it's received?"
+    },
+    {
+      "role": "user",
+      "content": "The sales employee handles the quotation request once it's received."
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "sm_3"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n"
+    },
+    {
+      "role": "tool",
+      "content": "obs_12"
+    },
+    {
+      "role": "tool",
+      "content": "Error: observation not found: obs_2"
+    },
+    {
+      "role": "tool",
+      "content": "Error: node not found: node_1"
+    },
+    {
+      "role": "assistant",
+      "content": "It seems there was an issue with the previous steps. Let me rephrase my approach. \n\nI understand that the sales employee handles the quotation request. Could you tell me what the sales employee does next after receiving the request?"
+    },
+    {
+      "role": "user",
+      "content": "After receiving the request, the sales employee checks the customer information in the CRM system."
+    },
+    {
+      "role": "assistant",
+      "content": "Use the results below to formulate an answer to the user question unless additional information is needed.\n\n\n\n\nUse the results below to formulate an answer to the user question unless additional information is needed."
+    },
+    {
+      "role": "tool",
+      "content": "sm_4"
+    },
+    {
+      "role": "tool",
+      "content": "obs_20"
+    },
+    {
+      "role": "tool",
+      "content": "Error: evidence quote 'checks the customer information' occurrence 0 is not an exact span of observation obs_3"
+    },
+    {
+      "role": "tool",
+      "content": "Error: evidence quote 'CRM system' occurrence 0 is not an exact span of observation obs_3"
+    },
+    {
+      "role": "tool",
+      "content": "Error: evidence quote 'customer information' occurrence 0 is not an exact span of observation obs_3"
+    },
+    {
+      "role": "tool",
+      "content": "Error: concept not found: activity_2"
+    },
+    {
+      "role": "tool",
+      "content": "Error: node not found: node_1"
+    },
+    {
+      "role": "assistant",
+      "content": "It seems there was an issue with capturing the exact spans of the observation. Let me correct that. \n\nI understand that after receiving the request, the sales employee checks the customer information in the CRM system. \n\nCould you tell me what happens next after the sales employee checks the customer information?"
+    },
+    {
+      "role": "user",
+      "content": "After checking the customer information, the sales employee creates the quotation document in the quoting system."
+    },
+    {
+      "role": "assistant",
+      "content": "Use the results below to formulate an answer to the user question unless additional information is needed.\n\n\n\n\nUse the results below to formulate an answer to the user question unless additional information is needed."
+    },
+    {
+      "role": "tool",
+      "content": "sm_5"
+    },
+    {
+      "role": "tool",
+      "content": "obs_30"
+    },
+    {
+      "role": "tool",
+      "content": "Error: observation not found: obs_4"
+    },
+    {
+      "role": "tool",
+      "content": "Error: observation not found: obs_4"
+    },
+    {
+      "role": "tool",
+      "content": "Error: observation not found: obs_4"
+    },
+    {
+      "role": "tool",
+      "content": "Error: concept not found: activity_3"
+    },
+    {
+      "role": "tool",
+      "content": "Error: node not found: node_2"
+    },
+    {
+      "role": "assistant",
+      "content": "It seems there was an issue with capturing the observation. Let me rephrase my approach. \n\nI understand that after checking the customer information, the sales employee creates the quotation document in the quoting system. \n\nCould you tell me what happens next after the quotation document is created?"
+    }
+  ],
+  "interview_complete": false,
+  "private_id_leakage": [],
+  "private_assertions_artifact": "run_01_seed6201.private.json"
+}

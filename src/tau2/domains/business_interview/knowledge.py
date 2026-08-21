@@ -66,7 +66,6 @@ from tau2.domains.business_interview.graph import (
     DontKnowType,
     graph_semantic_ids,
     is_dont_know,
-    is_unset,
 )
 
 # A property slot: ConceptRef (value known) | None (known absent) |
@@ -384,7 +383,7 @@ def project_knowledge(
         def slot(prop: str, refs, known_prop: bool):
             if not known_prop:
                 return DONT_KNOW
-            if refs is None or is_unset(refs):
+            if refs is None:
                 return None
             return ConceptRef(concept_id=truth_to_local[refs.concept_id])
 
@@ -435,7 +434,7 @@ def project_knowledge(
                 if "condition" not in eprops
                 else (
                     None
-                    if is_unset(edge.condition) or edge.condition is None
+                    if edge.condition is None
                     else ConceptRef(
                         concept_id=truth_to_local[edge.condition.concept_id]
                     )

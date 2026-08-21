@@ -1,0 +1,652 @@
+{
+  "task_id": "quotation_workflow_1",
+  "annotations_by_turn": {
+    "3": [
+      {
+        "semantic_id": "node:skn_005:activity",
+        "quote": "receive a quotation request from a customer",
+        "occurrence": 0,
+        "mode": "value"
+      }
+    ],
+    "13": [
+      {
+        "semantic_id": "node:skn_005:actor",
+        "quote": "The sales employee",
+        "occurrence": 0,
+        "mode": "value"
+      },
+      {
+        "semantic_id": "node:skn_005:system",
+        "quote": "I don't know what system is used to receive it",
+        "occurrence": 0,
+        "mode": "dont_know"
+      },
+      {
+        "semantic_id": "skc_004",
+        "quote": "'receive the quotation request'",
+        "occurrence": 0,
+        "mode": "mention"
+      }
+    ],
+    "22": [
+      {
+        "semantic_id": "node:skn_002:activity",
+        "quote": "checks the customer information",
+        "occurrence": 0,
+        "mode": "value"
+      },
+      {
+        "semantic_id": "node:skn_002:actor",
+        "quote": "the sales employee",
+        "occurrence": 0,
+        "mode": "value"
+      },
+      {
+        "semantic_id": "node:skn_002:system",
+        "quote": "CRM system",
+        "occurrence": 0,
+        "mode": "value"
+      },
+      {
+        "semantic_id": "edge:ske_001",
+        "quote": "After receiving the request",
+        "occurrence": 0,
+        "mode": "exists"
+      }
+    ],
+    "34": [
+      {
+        "semantic_id": "skc_002",
+        "quote": "'check the customer information'",
+        "occurrence": 0,
+        "mode": "mention"
+      },
+      {
+        "semantic_id": "skc_018",
+        "quote": "'CRM system'",
+        "occurrence": 0,
+        "mode": "mention"
+      },
+      {
+        "semantic_id": "skc_012",
+        "quote": "'customer information'",
+        "occurrence": 0,
+        "mode": "mention"
+      }
+    ],
+    "46": [
+      {
+        "semantic_id": "node:skn_002:activity",
+        "quote": "checking the customer information",
+        "occurrence": 0,
+        "mode": "value"
+      },
+      {
+        "semantic_id": "node:skn_003:activity",
+        "quote": "creates the quotation",
+        "occurrence": 0,
+        "mode": "value"
+      },
+      {
+        "semantic_id": "node:skn_003:system",
+        "quote": "quoting system",
+        "occurrence": 0,
+        "mode": "value"
+      },
+      {
+        "semantic_id": "edge:ske_002",
+        "quote": "After checking the customer information",
+        "occurrence": 0,
+        "mode": "exists"
+      }
+    ],
+    "56": [
+      {
+        "semantic_id": "node:skn_003:activity",
+        "quote": "create the quotation",
+        "occurrence": 0,
+        "mode": "value"
+      },
+      {
+        "semantic_id": "node:skn_003:system",
+        "quote": "quoting system",
+        "occurrence": 0,
+        "mode": "value"
+      },
+      {
+        "semantic_id": "node:skn_003:writes:skc_015",
+        "quote": "quotation",
+        "occurrence": 0,
+        "mode": "value"
+      }
+    ],
+    "66": [
+      {
+        "semantic_id": "node:skn_001:activity",
+        "quote": "approves",
+        "occurrence": 0,
+        "mode": "value"
+      },
+      {
+        "semantic_id": "node:skn_001:rationale",
+        "quote": "credit risk management",
+        "occurrence": 0,
+        "mode": "value"
+      },
+      {
+        "semantic_id": "edge:ske_003:condition",
+        "quote": "over 1,000,000 yen",
+        "occurrence": 0,
+        "mode": "value"
+      },
+      {
+        "semantic_id": "edge:ske_004:condition",
+        "quote": "at or below 1,000,000 yen",
+        "occurrence": 0,
+        "mode": "value"
+      },
+      {
+        "semantic_id": "node:skn_006:activity",
+        "quote": "send it directly to the customer",
+        "occurrence": 0,
+        "mode": "value"
+      }
+    ],
+    "68": [
+      {
+        "semantic_id": "edge:ske_003",
+        "quote": "if the amount is over 1,000,000 yen",
+        "occurrence": 0,
+        "mode": "exists"
+      },
+      {
+        "semantic_id": "node:skn_001:activity",
+        "quote": "the manager approves it",
+        "occurrence": 0,
+        "mode": "value"
+      },
+      {
+        "semantic_id": "node:skn_001:rationale",
+        "quote": "credit risk management",
+        "occurrence": 0,
+        "mode": "value"
+      },
+      {
+        "semantic_id": "edge:ske_004",
+        "quote": "If it's at or below 1,000,000 yen",
+        "occurrence": 0,
+        "mode": "exists"
+      },
+      {
+        "semantic_id": "node:skn_006:activity",
+        "quote": "we send it directly to the customer",
+        "occurrence": 0,
+        "mode": "value"
+      }
+    ]
+  },
+  "alignments_by_turn": {},
+  "terminology_by_turn": {},
+  "knowledge": {
+    "graph": {
+      "id": "quotation",
+      "name": "Quotation creation",
+      "nodes": {
+        "skn_002": {
+          "id": "skn_002",
+          "activity": {
+            "concept_id": "skc_002",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "actor": {
+            "concept_id": "skc_008",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "system": {
+            "concept_id": "skc_018",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "reads": [
+            {
+              "concept_id": "skc_012",
+              "confidence": 1.0,
+              "evidence": []
+            }
+          ],
+          "writes": {
+            "evidence": []
+          },
+          "necessity_rationale": {
+            "evidence": []
+          }
+        },
+        "skn_001": {
+          "id": "skn_001",
+          "activity": {
+            "concept_id": "skc_001",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "actor": {
+            "concept_id": "skc_007",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "system": {
+            "evidence": []
+          },
+          "reads": {
+            "evidence": []
+          },
+          "writes": {
+            "evidence": []
+          },
+          "necessity_rationale": {
+            "concept_id": "skc_016",
+            "confidence": 1.0,
+            "evidence": []
+          }
+        },
+        "skn_004": {
+          "id": "skn_004",
+          "activity": {
+            "concept_id": "skc_005",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "actor": {
+            "concept_id": "skc_008",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "system": {
+            "concept_id": "skc_020",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "reads": {
+            "evidence": []
+          },
+          "writes": [
+            {
+              "concept_id": "skc_013",
+              "confidence": 1.0,
+              "evidence": []
+            }
+          ],
+          "necessity_rationale": {
+            "evidence": []
+          }
+        },
+        "skn_005": {
+          "id": "skn_005",
+          "activity": {
+            "concept_id": "skc_004",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "actor": {
+            "concept_id": "skc_008",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "system": {
+            "evidence": []
+          },
+          "reads": {
+            "evidence": []
+          },
+          "writes": [
+            {
+              "concept_id": "skc_017",
+              "confidence": 1.0,
+              "evidence": []
+            }
+          ],
+          "necessity_rationale": {
+            "evidence": []
+          }
+        },
+        "skn_006": {
+          "id": "skn_006",
+          "activity": {
+            "concept_id": "skc_006",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "actor": {
+            "concept_id": "skc_008",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "system": {
+            "concept_id": "skc_019",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "reads": {
+            "evidence": []
+          },
+          "writes": {
+            "evidence": []
+          },
+          "necessity_rationale": {
+            "evidence": []
+          }
+        },
+        "skn_003": {
+          "id": "skn_003",
+          "activity": {
+            "concept_id": "skc_003",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "actor": {
+            "concept_id": "skc_008",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "system": {
+            "concept_id": "skc_021",
+            "confidence": 1.0,
+            "evidence": []
+          },
+          "reads": [
+            {
+              "concept_id": "skc_012",
+              "confidence": 1.0,
+              "evidence": []
+            },
+            {
+              "concept_id": "skc_014",
+              "confidence": 1.0,
+              "evidence": []
+            }
+          ],
+          "writes": [
+            {
+              "concept_id": "skc_015",
+              "confidence": 1.0,
+              "evidence": []
+            }
+          ],
+          "necessity_rationale": {
+            "evidence": []
+          }
+        }
+      },
+      "edges": {
+        "ske_001": {
+          "id": "ske_001",
+          "from_node": "skn_005",
+          "to_node": "skn_002",
+          "condition": {
+            "evidence": []
+          }
+        },
+        "ske_002": {
+          "id": "ske_002",
+          "from_node": "skn_002",
+          "to_node": "skn_003",
+          "condition": {
+            "evidence": []
+          }
+        },
+        "ske_003": {
+          "id": "ske_003",
+          "from_node": "skn_003",
+          "to_node": "skn_001",
+          "condition": {
+            "concept_id": "skc_011",
+            "confidence": 1.0,
+            "evidence": []
+          }
+        },
+        "ske_004": {
+          "id": "ske_004",
+          "from_node": "skn_003",
+          "to_node": "skn_006",
+          "condition": {
+            "concept_id": "skc_009",
+            "confidence": 1.0,
+            "evidence": []
+          }
+        },
+        "ske_005": {
+          "id": "ske_005",
+          "from_node": "skn_001",
+          "to_node": "skn_006",
+          "condition": {
+            "evidence": []
+          }
+        },
+        "ske_006": {
+          "id": "ske_006",
+          "from_node": "skn_003",
+          "to_node": "skn_004",
+          "condition": {
+            "concept_id": "skc_010",
+            "confidence": 1.0,
+            "evidence": []
+          }
+        }
+      },
+      "concepts": {
+        "skc_001": {
+          "id": "skc_001",
+          "truth_concept_id": "tc_activity_approve_quotation",
+          "kind": "activity",
+          "description": "Approve the quotation.",
+          "terms": [
+            "approve the high-value quotation"
+          ]
+        },
+        "skc_002": {
+          "id": "skc_002",
+          "truth_concept_id": "tc_activity_check_customer",
+          "kind": "activity",
+          "description": "Check the customer information.",
+          "terms": [
+            "check the customer information"
+          ]
+        },
+        "skc_003": {
+          "id": "skc_003",
+          "truth_concept_id": "tc_activity_create_quotation",
+          "kind": "activity",
+          "description": "Create the quotation document.",
+          "terms": [
+            "create the quotation"
+          ]
+        },
+        "skc_004": {
+          "id": "skc_004",
+          "truth_concept_id": "tc_activity_receive_request",
+          "kind": "activity",
+          "description": "Receive the customer's quotation request.",
+          "terms": [
+            "receive the quotation request"
+          ]
+        },
+        "skc_005": {
+          "id": "skc_005",
+          "truth_concept_id": "tc_activity_send_month_end_summary",
+          "kind": "activity",
+          "description": "Send the month-end summary of quotation information.",
+          "terms": [
+            "send the month-end summary to Accounting"
+          ]
+        },
+        "skc_006": {
+          "id": "skc_006",
+          "truth_concept_id": "tc_activity_send_quotation",
+          "kind": "activity",
+          "description": "Send the quotation to the customer.",
+          "terms": [
+            "send the quotation to the customer"
+          ]
+        },
+        "skc_007": {
+          "id": "skc_007",
+          "truth_concept_id": "tc_actor_manager",
+          "kind": "actor",
+          "description": "The manager who approves.",
+          "terms": [
+            "manager"
+          ]
+        },
+        "skc_008": {
+          "id": "skc_008",
+          "truth_concept_id": "tc_actor_sales",
+          "kind": "actor",
+          "description": "The sales employee.",
+          "terms": [
+            "sales employee"
+          ]
+        },
+        "skc_009": {
+          "id": "skc_009",
+          "truth_concept_id": "tc_cond_at_or_below_1m",
+          "kind": "condition",
+          "description": "The quotation amount is at or below 1,000,000 yen.",
+          "terms": [
+            "at or below 1,000,000 yen"
+          ]
+        },
+        "skc_010": {
+          "id": "skc_010",
+          "truth_concept_id": "tc_cond_month_end",
+          "kind": "condition",
+          "description": "It is the end of the month.",
+          "terms": [
+            "month-end"
+          ]
+        },
+        "skc_011": {
+          "id": "skc_011",
+          "truth_concept_id": "tc_cond_over_1m",
+          "kind": "condition",
+          "description": "The quotation amount is over 1,000,000 yen.",
+          "terms": [
+            "over 1,000,000 yen"
+          ]
+        },
+        "skc_012": {
+          "id": "skc_012",
+          "truth_concept_id": "tc_customer",
+          "kind": "data",
+          "description": "The customer's information.",
+          "terms": [
+            "customer information"
+          ]
+        },
+        "skc_013": {
+          "id": "skc_013",
+          "truth_concept_id": "tc_excel_summary",
+          "kind": "data",
+          "description": "The quotation information summary.",
+          "terms": [
+            "summary of the quotation information"
+          ]
+        },
+        "skc_014": {
+          "id": "skc_014",
+          "truth_concept_id": "tc_pricing",
+          "kind": "data",
+          "description": "The pricing information.",
+          "terms": [
+            "pricing information"
+          ]
+        },
+        "skc_015": {
+          "id": "skc_015",
+          "truth_concept_id": "tc_quote",
+          "kind": "data",
+          "description": "The quotation document.",
+          "terms": [
+            "quotation"
+          ]
+        },
+        "skc_016": {
+          "id": "skc_016",
+          "truth_concept_id": "tc_rationale_credit_risk",
+          "kind": "rationale",
+          "description": "Credit risk management.",
+          "terms": [
+            "credit risk management"
+          ]
+        },
+        "skc_017": {
+          "id": "skc_017",
+          "truth_concept_id": "tc_request",
+          "kind": "data",
+          "description": "The customer's quotation request.",
+          "terms": [
+            "quotation request"
+          ]
+        },
+        "skc_018": {
+          "id": "skc_018",
+          "truth_concept_id": "tc_system_crm",
+          "kind": "system",
+          "description": "The customer relationship management system.",
+          "terms": [
+            "CRM"
+          ]
+        },
+        "skc_019": {
+          "id": "skc_019",
+          "truth_concept_id": "tc_system_email",
+          "kind": "system",
+          "description": "The email system.",
+          "terms": [
+            "email"
+          ]
+        },
+        "skc_020": {
+          "id": "skc_020",
+          "truth_concept_id": "tc_system_excel",
+          "kind": "system",
+          "description": "The spreadsheet application.",
+          "terms": [
+            "Excel"
+          ]
+        },
+        "skc_021": {
+          "id": "skc_021",
+          "truth_concept_id": "tc_system_quoting",
+          "kind": "system",
+          "description": "The quoting system.",
+          "terms": [
+            "quoting system"
+          ]
+        }
+      },
+      "start_node_id": "skn_005",
+      "end_node_ids": [
+        "skn_006",
+        "skn_004"
+      ],
+      "node_truth_ids": {
+        "skn_001": "ap",
+        "skn_002": "cc",
+        "skn_003": "cq",
+        "skn_004": "me",
+        "skn_005": "r",
+        "skn_006": "sq"
+      },
+      "edge_truth_ids": {
+        "ske_001": "e1",
+        "ske_002": "e2",
+        "ske_003": "e3",
+        "ske_004": "e4",
+        "ske_005": "e5",
+        "ske_006": "e6"
+      }
+    }
+  }
+}

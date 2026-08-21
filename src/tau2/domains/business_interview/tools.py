@@ -3,8 +3,10 @@
 The agent records **Observations** (immutable evidence), builds a private
 glossary of typed ``AgentConcept``\\ s, and constructs an inferred
 ``AgentGraph`` whose node/edge property references each carry their own
-``EvidenceRef``\\ s (three-valued slots: ``ConceptRef`` / ``None`` /
-``DONT_KNOW``).
+``EvidenceRef``\\ s. Every Agent slot is one of the FOUR epistemic states:
+``UNSET`` (not investigated / no conclusion) / ``ConceptRef`` (known value)
+/ ``ABSENT`` (explicitly established absent, with evidence) /
+``DONT_KNOW`` (explicitly established unknown, with evidence).
 
 **Mention != evidence != validation.**
 - ``AgentConcept.mentions`` are Observation spans the Agent interprets as
@@ -215,6 +217,8 @@ class InterviewTools(ToolKitBase):
         prop: str,
         where: str,
         allowed_props: Optional[set[str]] = None,
+        bound_node: Optional[str] = None,
+        bound_edge: Optional[str] = None,
     ) -> list[EvidenceRef]:
         """Validate DONT_KNOW evidence for one property slot.
 
@@ -222,9 +226,13 @@ class InterviewTools(ToolKitBase):
         stakeholder resolver) to exactly one semantic id that IS the
         stakeholder's DONT_KNOW slot of a property in ``allowed_props`` — a
         DONT_KNOW may only be recorded when the evidence resolves to the
-        corresponding stakeholder DONT_KNOW semantic slot. Returns the refs
-        that resolve to ``prop`` itself (private stakeholder ids never appear
-        in error messages)."""
+        corresponding stakeholder DONT_KNOW semantic slot. When ``bound_node``
+        / ``bound_edge`` is given (the Agent element's unique binding), the
+        evidence must resolve EXACTLY to that element's slot
+        (``node:<bound_node>:<prop>`` / ``edge:<bound_edge>:condition``) —
+        evidence about another node's or edge's slot is rejected. Returns the
+        refs that resolve to ``prop`` itself (private stakeholder ids never
+        appear in error messages)."""
         knowledge = self._knowledge()
         if knowledge is None:
             raise ValueError(
@@ -256,18 +264,49 @@ class InterviewTools(ToolKitBase):
                     f"stakeholder knows this value, knows it is absent, or "
                     f"the span is unrelated)"
                 )
+        if bound_node is not None:
+            expected = f"node:{bound_node}:{prop}"
+            for _ref, sid in results:
+                if sid != expected:
+                    raise ValueError(
+                        f"{where}: evidence must resolve to the EXACT "
+                        f"stakeholder DONT_KNOW slot of the bound node's "
+                        f"property {prop!r} — it currently resolves to "
+                        f"another element's slot, which cannot support this "
+                        f"marker"
+                    )
+        if bound_edge is not None:
+            expected = f"edge:{bound_edge}:condition"
+            for _ref, sid in results:
+                if sid != expected:
+                    raise ValueError(
+                        f"{where}: evidence must resolve to the EXACT "
+                        f"stakeholder DONT_KNOW condition slot of the bound "
+                        f"edge — it currently resolves to another edge's "
+                        f"slot, which cannot support this marker"
+                    )
         return [
             ref
             for ref, sid in results
             if (r := resolver(sid)) is not None and r.prop == prop
         ]
 
-    def _dont_know_marker(self, arg: dict, where: str, prop: str) -> DontKnowType:
+    def _dont_know_marker(
+        self,
+        arg: dict,
+        where: str,
+        prop: str,
+        bound_node: Optional[str] = None,
+        bound_edge: Optional[str] = None,
+    ) -> DontKnowType:
         """Build a DONT_KNOW marker from ``{"dont_know": true, "evidence":
         [...]}`` after validating the evidence against the corresponding
-        stakeholder DONT_KNOW slot."""
+        stakeholder DONT_KNOW slot (when a unique binding is available,
+        EXACTLY that bound element's slot)."""
         evs = self._require_evidence(arg.get("evidence"))
-        matched = self._resolve_dont_know_slots(evs, prop, where)
+        matched = self._resolve_dont_know_slots(
+            evs, prop, where, bound_node=bound_node, bound_edge=bound_edge
+        )
         return DontKnowType(evidence=matched)
 
     def _resolve_absent_slots(
@@ -276,6 +315,8 @@ class InterviewTools(ToolKitBase):
         prop: str,
         where: str,
         allowed_props: Optional[set[str]] = None,
+        bound_node: Optional[str] = None,
+        bound_edge: Optional[str] = None,
     ) -> list[EvidenceRef]:
         """Validate ABSENT evidence for one property slot.
 
@@ -284,8 +325,12 @@ class InterviewTools(ToolKitBase):
         stakeholder's KNOWN-ABSENT slot (value None) of a property in
         ``allowed_props`` — ABSENT may only be recorded when the evidence
         resolves to the corresponding stakeholder known-absent semantic
-        slot. Returns the refs that resolve to ``prop`` itself (private
-        stakeholder ids never appear in error messages)."""
+        slot. When ``bound_node`` / ``bound_edge`` is given (the Agent
+        element's unique binding), the evidence must resolve EXACTLY to that
+        element's slot (``node:<bound_node>:<prop>`` /
+        ``edge:<bound_edge>:condition``) — evidence about another node's or
+        edge's slot is rejected. Returns the refs that resolve to ``prop``
+        itself (private stakeholder ids never appear in error messages)."""
         knowledge = self._knowledge()
         if knowledge is None:
             raise ValueError(
@@ -317,18 +362,49 @@ class InterviewTools(ToolKitBase):
                     f"(the stakeholder knows a value here, does not know, "
                     f"or the span is unrelated)"
                 )
+        if bound_node is not None:
+            expected = f"node:{bound_node}:{prop}"
+            for _ref, sid in results:
+                if sid != expected:
+                    raise ValueError(
+                        f"{where}: evidence must resolve to the EXACT "
+                        f"stakeholder known-absent slot of the bound node's "
+                        f"property {prop!r} — it currently resolves to "
+                        f"another element's slot, which cannot support this "
+                        f"marker"
+                    )
+        if bound_edge is not None:
+            expected = f"edge:{bound_edge}:condition"
+            for _ref, sid in results:
+                if sid != expected:
+                    raise ValueError(
+                        f"{where}: evidence must resolve to the EXACT "
+                        f"stakeholder known-absent condition slot of the "
+                        f"bound edge — it currently resolves to another "
+                        f"edge's slot, which cannot support this marker"
+                    )
         return [
             ref
             for ref, sid in results
             if (r := resolver(sid)) is not None and r.prop == prop
         ]
 
-    def _absent_marker(self, arg: dict, where: str, prop: str) -> AbsentType:
+    def _absent_marker(
+        self,
+        arg: dict,
+        where: str,
+        prop: str,
+        bound_node: Optional[str] = None,
+        bound_edge: Optional[str] = None,
+    ) -> AbsentType:
         """Build an ABSENT marker from ``{"absent": true, "evidence":
         [...]}`` after validating the evidence against the corresponding
-        stakeholder known-absent slot."""
+        stakeholder known-absent slot (when a unique binding is available,
+        EXACTLY that bound element's slot)."""
         evs = self._require_evidence(arg.get("evidence"))
-        matched = self._resolve_absent_slots(evs, prop, where)
+        matched = self._resolve_absent_slots(
+            evs, prop, where, bound_node=bound_node, bound_edge=bound_edge
+        )
         return AbsentType(evidence=matched)
 
     def _ref_from_arg(
@@ -903,22 +979,35 @@ class InterviewTools(ToolKitBase):
         return "\n".join(lines) if lines else "(no stakeholder messages yet)"
 
     def _ref_from_prop_arg(
-        self, arg, where: str, expected_kind: str, prop: Optional[str] = None
+        self,
+        arg,
+        where: str,
+        expected_kind: str,
+        prop: Optional[str] = None,
+        bound_node: Optional[str] = None,
+        bound_edge: Optional[str] = None,
     ):
         """Property arg: concept id | {"concept_id", "evidence"} |
-        {"dont_know": true, "evidence": [...]} | None.
+        {"dont_know": true, "evidence": [...]} | {"absent": true,
+        "evidence": [...]} | None.
 
-        DONT_KNOW markers are validated against the corresponding
-        stakeholder DONT_KNOW semantic slot before being recorded.
+        DONT_KNOW / ABSENT markers are validated against the corresponding
+        stakeholder slot; when ``bound_node`` / ``bound_edge`` is given
+        (the Agent element's unique binding) they must resolve EXACTLY to
+        that element's slot.
         """
         prop = self._normalize_prop(prop or where.rsplit(" ", 1)[-1])
         if arg is None:
             raise ValueError(f"{where}: missing concept reference")
         if isinstance(arg, dict):
             if arg.get("dont_know"):
-                return self._dont_know_marker(arg, where, prop)
+                return self._dont_know_marker(
+                    arg, where, prop, bound_node=bound_node, bound_edge=bound_edge
+                )
             if arg.get("absent"):
-                return self._absent_marker(arg, where, prop)
+                return self._absent_marker(
+                    arg, where, prop, bound_node=bound_node, bound_edge=bound_edge
+                )
             cid = str(arg.get("concept_id") or "")
             evidence = self._require_evidence(arg.get("evidence"))
         elif arg == "DONT_KNOW":
@@ -937,7 +1026,14 @@ class InterviewTools(ToolKitBase):
         self._require_kind(cid, expected_kind, where)
         return self._ref(cid, evidence=evidence)
 
-    def _list_slot_arg(self, arg, where: str, expected_kind: str, prop: str):
+    def _list_slot_arg(
+        self,
+        arg,
+        where: str,
+        expected_kind: str,
+        prop: str,
+        bound_node: Optional[str] = None,
+    ):
         """reads/writes arg: list of concept ids / {concept_id, evidence},
         {"dont_know": true, "evidence": [...]} for a whole-property
         DONT_KNOW, or {"absent": true, "evidence": [...]} for a
@@ -945,9 +1041,13 @@ class InterviewTools(ToolKitBase):
         if arg is None:
             return UNSET
         if isinstance(arg, dict) and arg.get("dont_know"):
-            return self._dont_know_marker(arg, where, self._normalize_prop(prop))
+            return self._dont_know_marker(
+                arg, where, self._normalize_prop(prop), bound_node=bound_node
+            )
         if isinstance(arg, dict) and arg.get("absent"):
-            return self._absent_marker(arg, where, self._normalize_prop(prop))
+            return self._absent_marker(
+                arg, where, self._normalize_prop(prop), bound_node=bound_node
+            )
         if not isinstance(arg, list):
             raise ValueError(
                 f"{where}: expected a list of concept refs, "
@@ -1024,8 +1124,43 @@ class InterviewTools(ToolKitBase):
         graph = self._graph()
         if node_id in graph.nodes:
             raise ValueError(f"node already exists: {node_id}")
+        # When any property carries an ABSENT/DONT_KNOW marker, the node must
+        # first be UNIQUELY bound to a stakeholder node from the call's
+        # authentic property evidence — a marker is only valid on the bound
+        # element's own slot (never another node's).
+        has_marker = any(
+            isinstance(v, dict) and (v.get("dont_know") or v.get("absent"))
+            for v in (actor, system, reads, writes, necessity_rationale)
+        )
+        bound_node: Optional[str] = None
+        if has_marker:
+            call_evs: list[EvidenceRef] = []
+            if evidence:
+                call_evs.extend(self._require_evidence(evidence))
+            for prop_arg in (
+                activity,
+                actor,
+                system,
+                reads,
+                writes,
+                necessity_rationale,
+            ):
+                if isinstance(prop_arg, dict):
+                    call_evs.extend(self._require_evidence(prop_arg.get("evidence")))
+                elif isinstance(prop_arg, list):
+                    for item in prop_arg:
+                        if isinstance(item, dict):
+                            call_evs.extend(
+                                self._require_evidence(item.get("evidence"))
+                            )
+            bound_node = self._node_candidates_from_evidence(
+                call_evs, f"add_node for {node_id}", "node"
+            )
         activity_ref = self._ref_from_prop_arg(
-            activity, "add_node activity", "activity"
+            activity,
+            "add_node activity",
+            "activity",
+            bound_node=bound_node,
         )
         if evidence and isinstance(activity_ref, ConceptRef):
             if not activity_ref.evidence:
@@ -1034,22 +1169,38 @@ class InterviewTools(ToolKitBase):
             id=node_id,
             activity=activity_ref,
             actor=(
-                self._ref_from_prop_arg(actor, "add_node actor", "actor")
+                self._ref_from_prop_arg(
+                    actor, "add_node actor", "actor", bound_node=bound_node
+                )
                 if actor is not None
                 else UNSET
             ),
             system=(
-                self._ref_from_prop_arg(system, "add_node system", "system")
+                self._ref_from_prop_arg(
+                    system, "add_node system", "system", bound_node=bound_node
+                )
                 if system is not None
                 else UNSET
             ),
             reads=(
-                self._list_slot_arg(reads, "add_node reads", "data", "reads")
+                self._list_slot_arg(
+                    reads,
+                    "add_node reads",
+                    "data",
+                    "reads",
+                    bound_node=bound_node,
+                )
                 if reads is not None
                 else UNSET
             ),
             writes=(
-                self._list_slot_arg(writes, "add_node writes", "data", "writes")
+                self._list_slot_arg(
+                    writes,
+                    "add_node writes",
+                    "data",
+                    "writes",
+                    bound_node=bound_node,
+                )
                 if writes is not None
                 else UNSET
             ),
@@ -1058,6 +1209,7 @@ class InterviewTools(ToolKitBase):
                     necessity_rationale,
                     "add_node necessity_rationale",
                     "rationale",
+                    bound_node=bound_node,
                 )
                 if necessity_rationale is not None
                 else UNSET
@@ -1084,8 +1236,11 @@ class InterviewTools(ToolKitBase):
         so the reference carries its own evidence, or
         ``{"dont_know": true, "evidence": [...]}`` to record that you
         cannot determine it (evidence must resolve to the stakeholder's
-        DONT_KNOW slot for that property). ``unset`` removes a property
-        (known absent); for reads/writes use an empty list for known-empty.
+        DONT_KNOW slot for that property), or ``{"absent": true,
+        "evidence": [...]}`` to record that the stakeholder established the
+        property is ABSENT (known absent / known-empty — never an empty
+        list, which is ambiguous). ``unset`` returns a property to UNSET
+        (not investigated — never a conclusion).
         """
         node = self._node(node_id)
         if unset:
@@ -1096,32 +1251,295 @@ class InterviewTools(ToolKitBase):
                     setattr(node, prop, UNSET)
                 else:
                     raise ValueError(f"cannot unset property {prop!r}")
+        # When any property carries an ABSENT/DONT_KNOW marker, the node must
+        # be UNIQUELY bound to its stakeholder node first — a marker is only
+        # valid on the bound element's own slot (never another node's).
+        has_marker = any(
+            isinstance(v, dict) and (v.get("dont_know") or v.get("absent"))
+            for v in (activity, actor, system, reads, writes, necessity_rationale)
+        )
+        bound_node: Optional[str] = None
+        if has_marker:
+            bound_node = self._bound_stakeholder_node(
+                node_id, f"update_node for {node_id}"
+            )
         if activity is not None:
             node.activity = self._ref_from_prop_arg(
-                activity, "update_node activity", "activity"
+                activity,
+                "update_node activity",
+                "activity",
+                bound_node=bound_node,
             )
             if evidence and isinstance(node.activity, ConceptRef):
                 if not node.activity.evidence:
                     node.activity.evidence = self._require_evidence(evidence)
         if actor is not None:
-            node.actor = self._ref_from_prop_arg(actor, "update_node actor", "actor")
+            node.actor = self._ref_from_prop_arg(
+                actor, "update_node actor", "actor", bound_node=bound_node
+            )
         if system is not None:
             node.system = self._ref_from_prop_arg(
-                system, "update_node system", "system"
+                system, "update_node system", "system", bound_node=bound_node
             )
         if necessity_rationale is not None:
             node.necessity_rationale = self._ref_from_prop_arg(
-                necessity_rationale, "update_node necessity_rationale", "rationale"
+                necessity_rationale,
+                "update_node necessity_rationale",
+                "rationale",
+                bound_node=bound_node,
             )
         if reads is not None:
             node.reads = self._list_slot_arg(
-                reads, "update_node reads", "data", "reads"
+                reads,
+                "update_node reads",
+                "data",
+                "reads",
+                bound_node=bound_node,
             )
         if writes is not None:
             node.writes = self._list_slot_arg(
-                writes, "update_node writes", "data", "writes"
+                writes,
+                "update_node writes",
+                "data",
+                "writes",
+                bound_node=bound_node,
             )
         return f"Updated node {node_id}."
+
+    def _node_candidates_from_evidence(
+        self,
+        evs: list[EvidenceRef],
+        where: str,
+        kind: str,
+    ) -> str:
+        """The UNIQUE stakeholder node/edge an Agent element is
+        authentically bound to, derived from its evidence provenance
+        (global span rule + the canonical resolver). Raises a concise
+        error when not yet uniquely-bound — the Agent must first
+        add authentic graph/property evidence identifying this element."""
+        knowledge = self._knowledge()
+        assert knowledge is not None
+        resolver = knowledge.graph.resolve
+        results, invalid, ambiguous = grounded_refs(
+            self.db, self.assertion_ledger.annotations(), evs
+        )
+        if invalid or ambiguous or len(results) != len(evs):
+            raise ValueError(
+                f"{where}: every evidence span must resolve to exactly one semantic id"
+            )
+        candidates: set[str] = set()
+        for _ref, sid in results:
+            resolved = resolver(sid)
+            if resolved is None:
+                continue
+            if kind == "edge":
+                if resolved.kind in ("edge", "edge_slot") and resolved.edge_id:
+                    candidates.add(resolved.edge_id)
+            else:
+                if (
+                    resolved.kind
+                    in (
+                        "node",
+                        "node_slot",
+                        "node_element",
+                    )
+                    and resolved.node_id
+                ):
+                    candidates.add(resolved.node_id)
+        if len(candidates) != 1:
+            raise ValueError(
+                f"{where}: the agent {kind} is not uniquely bindable to a "
+                f"stakeholder element (candidates: "
+                f"{sorted(candidates) or 'none'}); add authentic graph/"
+                f"property evidence that identifies it first"
+            )
+        return next(iter(candidates))
+
+    def _require_edge_endpoints_match(
+        self,
+        bound_edge: str,
+        from_node: str,
+        to_node: str,
+        where: str,
+    ) -> None:
+        """Require that the bound stakeholder edge's endpoints equal the
+        stakeholder nodes bound by the agent edge's endpoints — the same
+        condition the evaluator uses to map the edge. A mismatch means the
+        agent edge (and any marker on it) would be unmapped/unsupported."""
+        knowledge = self._knowledge()
+        assert knowledge is not None
+        resolved_edge = knowledge.graph.resolve(f"edge:{bound_edge}")
+        if resolved_edge is None or resolved_edge.edge is None:
+            raise ValueError(
+                f"{where}: bound stakeholder edge {bound_edge!r} does not resolve"
+            )
+        sf = self._bound_stakeholder_node(from_node, f"{where} (edge endpoint)")
+        st = self._bound_stakeholder_node(to_node, f"{where} (edge endpoint)")
+        if resolved_edge.edge.from_node != sf or resolved_edge.edge.to_node != st:
+            raise ValueError(
+                f"{where}: the bound stakeholder edge's endpoints do not "
+                f"match this agent edge's bound endpoints — the marker "
+                f"would be unsupported; add authentic evidence that "
+                f"identifies this edge first"
+            )
+
+    def _bound_stakeholder_node(self, node_id: str, where: str) -> str:
+        """The UNIQUE stakeholder node an Agent node is authentically bound
+        to, derived from its property and marker provenance (global span
+        rule + the canonical resolver).
+
+        Raises a concise error when the Agent graph element is not yet
+        uniquely bindable — the Agent must add authentic graph/property
+        evidence first."""
+        knowledge = self._knowledge()
+        if knowledge is None:
+            raise ValueError(
+                f"{where}: no knowledge catalog is wired for this interview "
+                f"(cannot bind the agent node)"
+            )
+        node = self._node(node_id)
+        resolver = knowledge.graph.resolve
+        candidates: set[str] = set()
+        for prop in (
+            "activity",
+            "actor",
+            "system",
+            "reads",
+            "writes",
+            "rationale",
+        ):
+            slot = node.slot_value(prop)
+            evs: list[EvidenceRef] = []
+            if isinstance(slot, (AbsentType, DontKnowType)):
+                evs.extend(slot.evidence)
+            else:
+                for r in node.asserted_refs(prop):
+                    evs.extend(r.evidence)
+            if not evs:
+                continue
+            results, invalid, ambiguous = grounded_refs(
+                self.db, self.assertion_ledger.annotations(), evs
+            )
+            if invalid or ambiguous or len(results) != len(evs):
+                continue
+            for _ref, sid in results:
+                resolved = resolver(sid)
+                if resolved is not None and resolved.kind in (
+                    "node",
+                    "node_slot",
+                    "node_element",
+                ):
+                    if resolved.node_id is not None:
+                        candidates.add(resolved.node_id)
+        if len(candidates) != 1:
+            raise ValueError(
+                f"{where}: agent node {node_id!r} is not uniquely bindable "
+                f"to a stakeholder node (candidates: "
+                f"{sorted(candidates) or 'none'}); add authentic "
+                f"graph/property evidence that identifies this node first"
+            )
+        return next(iter(candidates))
+
+    def _bound_stake_edge(self, edge_id: str, where: str) -> str:
+        """The UNIQUE stakeholder edge an Agent edge is authentically bound
+        to, derived from its evidence provenance (global span rule + the
+        canonical resolver). Raises when not uniquely bindable."""
+        knowledge = self._knowledge()
+        if knowledge is None:
+            raise ValueError(
+                f"{where}: no knowledge catalog is wired for this interview "
+                f"(cannot bind the agent edge)"
+            )
+        edge = self._edge(edge_id)
+        resolver = knowledge.graph.resolve
+        candidates: set[str] = set()
+        evs: list[EvidenceRef] = list(edge.evidence)
+        if isinstance(edge.condition, ConceptRef) and edge.condition.asserted:
+            evs.extend(edge.condition.evidence)
+        elif isinstance(edge.condition, (AbsentType, DontKnowType)):
+            evs.extend(edge.condition.evidence)
+        results, invalid, ambiguous = grounded_refs(
+            self.db, self.assertion_ledger.annotations(), evs
+        )
+        if not (invalid or ambiguous or len(results) != len(evs)):
+            for _ref, sid in results:
+                resolved = resolver(sid)
+                if resolved is not None and resolved.kind in (
+                    "edge",
+                    "edge_slot",
+                ):
+                    if resolved.edge_id is not None:
+                        candidates.add(resolved.edge_id)
+        if len(candidates) != 1:
+            raise ValueError(
+                f"{where}: agent edge {edge_id!r} is not uniquely bindable "
+                f"to a stakeholder edge (candidates: "
+                f"{sorted(candidates) or 'none'}); add authentic evidence "
+                f"that identifies this edge first"
+            )
+        return next(iter(candidates))
+
+    def _group_marker_evidence(
+        self,
+        evs: list[EvidenceRef],
+        props: set[str],
+        where: str,
+        kind: str,
+        bound_node: str,
+    ) -> dict[str, list[EvidenceRef]]:
+        """Partition marker evidence (ABSENT/DONT_KNOW) per property slot of
+        the bound stakeholder node.
+
+        Every ref must resolve (global span rule + the canonical resolver) to
+        EXACTLY the bound node's slot ``node:<bound>:<prop>`` for one of
+        ``props``, whose value matches the marker ``kind`` (``absent`` =
+        value None, ``dont_know`` = DONT_KNOW). Each listed property must be
+        covered by at least one ref. Returns ``{prop: [refs...]}``."""
+        knowledge = self._knowledge()
+        assert knowledge is not None
+        resolver = knowledge.graph.resolve
+        results, invalid, ambiguous = grounded_refs(
+            self.db, self.assertion_ledger.annotations(), evs
+        )
+        if invalid or ambiguous or len(results) != len(evs):
+            raise ValueError(
+                f"{where}: every evidence span must resolve to exactly one semantic id"
+            )
+        grouped: dict[str, list[EvidenceRef]] = {p: [] for p in props}
+        for ref, sid in results:
+            prop = None
+            for p in sorted(props):
+                if sid == f"node:{bound_node}:{p}":
+                    prop = p
+                    break
+            if prop is None:
+                raise ValueError(
+                    f"{where}: evidence must resolve to the EXACT "
+                    f"stakeholder {kind} slot of the bound node — it "
+                    f"currently resolves to another element's slot, which "
+                    f"cannot support this marker"
+                )
+            resolved = resolver(f"node:{bound_node}:{prop}")
+            if resolved is None:
+                raise ValueError(f"{where}: evidence resolves to an unresolvable slot")
+            if kind == "absent" and resolved.value is not None:
+                raise ValueError(
+                    f"{where}: evidence must resolve to the stakeholder's "
+                    f"KNOWN-ABSENT slot for property {prop!r}"
+                )
+            if kind == "dont_know" and not is_dont_know(resolved.value):
+                raise ValueError(
+                    f"{where}: evidence must resolve to the stakeholder's "
+                    f"DONT_KNOW slot for property {prop!r}"
+                )
+            grouped[prop].append(ref)
+        uncovered = sorted(p for p, refs in grouped.items() if not refs)
+        if uncovered:
+            raise ValueError(
+                f"{where}: every listed property must be covered by at least "
+                f"one evidence span; no span covers {uncovered}"
+            )
+        return grouped
 
     @is_tool(ToolType.WRITE)
     def record_dont_know(
@@ -1134,7 +1552,8 @@ class InterviewTools(ToolKitBase):
         node.
 
         ``DONT_KNOW`` is an explicit, evidenced epistemic state — distinct
-        from a missing value (which means known absent). Every cited span
+        from UNSET (omitted / not investigated, never a conclusion) and from
+        ABSENT (explicitly established absent). Every cited span
         must resolve to the stakeholder's DONT_KNOW slot of one of the given
         properties (a slot the stakeholder knows or knows to be absent
         rejects the recording), and every listed property must be covered by
@@ -1162,12 +1581,20 @@ class InterviewTools(ToolKitBase):
             )
         if not props:
             raise ValueError("record_dont_know: properties must not be empty")
+        bound = self._bound_stakeholder_node(node_id, f"record_dont_know for {node_id}")
         evs = self._require_evidence(evidence)
+        grouped = self._group_marker_evidence(
+            evs, props, f"record_dont_know for {node_id}", "dont_know", bound
+        )
         by_prop: dict[str, list[EvidenceRef]] = {}
         for prop in props:
             where = f"record_dont_know for {node_id} {prop}"
             by_prop[prop] = self._resolve_dont_know_slots(
-                evs, prop, where, allowed_props=props
+                grouped[prop],
+                prop,
+                where,
+                allowed_props={prop},
+                bound_node=bound,
             )
         for prop in sorted(props):
             attr = "necessity_rationale" if prop == "rationale" else prop
@@ -1193,8 +1620,14 @@ class InterviewTools(ToolKitBase):
         """
         self._edge(edge_id)
         evs = self._require_evidence(evidence)
+        bound = self._bound_stake_edge(
+            edge_id, f"record_edge_condition_dont_know for {edge_id}"
+        )
         self._resolve_dont_know_slots(
-            evs, "condition", f"record_edge_condition_dont_know for {edge_id}"
+            evs,
+            "condition",
+            f"record_edge_condition_dont_know for {edge_id}",
+            bound_edge=bound,
         )
         self._edge(edge_id).condition = DontKnowType(evidence=evs)
         return f"Recorded DONT_KNOW on edge {edge_id} condition."
@@ -1238,12 +1671,20 @@ class InterviewTools(ToolKitBase):
             )
         if not props:
             raise ValueError("record_absent: properties must not be empty")
+        bound = self._bound_stakeholder_node(node_id, f"record_absent for {node_id}")
         evs = self._require_evidence(evidence)
+        grouped = self._group_marker_evidence(
+            evs, props, f"record_absent for {node_id}", "absent", bound
+        )
         by_prop: dict[str, list[EvidenceRef]] = {}
         for prop in props:
             where = f"record_absent for {node_id} {prop}"
             by_prop[prop] = self._resolve_absent_slots(
-                evs, prop, where, allowed_props=props
+                grouped[prop],
+                prop,
+                where,
+                allowed_props={prop},
+                bound_node=bound,
             )
         for prop in sorted(props):
             attr = "necessity_rationale" if prop == "rationale" else prop
@@ -1270,8 +1711,14 @@ class InterviewTools(ToolKitBase):
         """
         self._edge(edge_id)
         evs = self._require_evidence(evidence)
+        bound = self._bound_stake_edge(
+            edge_id, f"record_edge_condition_absent for {edge_id}"
+        )
         self._resolve_absent_slots(
-            evs, "condition", f"record_edge_condition_absent for {edge_id}"
+            evs,
+            "condition",
+            f"record_edge_condition_absent for {edge_id}",
+            bound_edge=bound,
         )
         self._edge(edge_id).condition = AbsentType(evidence=evs)
         return f"Recorded ABSENT on edge {edge_id} condition."
@@ -1327,8 +1774,34 @@ class InterviewTools(ToolKitBase):
             raise ValueError(f"node not found: {from_node}")
         if to_node not in graph.nodes:
             raise ValueError(f"node not found: {to_node}")
+        # When the condition carries an ABSENT/DONT_KNOW marker, the edge
+        # must be UNIQUELY bound to a stakeholder edge from the call's
+        # authentic evidence first — the marker is only valid on the bound
+        # edge's own condition slot (never another edge's).
+        has_marker = isinstance(condition, dict) and (
+            condition.get("dont_know") or condition.get("absent")
+        )
+        bound_edge: Optional[str] = None
+        if has_marker:
+            call_evs: list[EvidenceRef] = list(self._require_evidence(evidence))
+            if isinstance(condition, dict):
+                call_evs.extend(self._require_evidence(condition.get("evidence")))
+            bound_edge = self._node_candidates_from_evidence(
+                call_evs, f"add_edge for {edge_id}", "edge"
+            )
+            # the bound stakeholder edge must have the same endpoints as the
+            # agent edge's bound endpoints (else the edge stays unmapped and
+            # any marker on it would be unsupported)
+            self._require_edge_endpoints_match(
+                bound_edge, from_node, to_node, f"add_edge for {edge_id}"
+            )
         cond_ref = (
-            self._ref_from_prop_arg(condition, "add_edge condition", "condition")
+            self._ref_from_prop_arg(
+                condition,
+                "add_edge condition",
+                "condition",
+                bound_edge=bound_edge,
+            )
             if condition is not None
             else UNSET
         )
@@ -1366,8 +1839,19 @@ class InterviewTools(ToolKitBase):
         if unset_condition:
             edge.condition = UNSET
         elif condition is not None:
+            has_marker = isinstance(condition, dict) and (
+                condition.get("dont_know") or condition.get("absent")
+            )
+            bound_edge: Optional[str] = None
+            if has_marker:
+                bound_edge = self._bound_stake_edge(
+                    edge_id, f"update_edge for {edge_id}"
+                )
             edge.condition = self._ref_from_prop_arg(
-                condition, "update_edge condition", "condition"
+                condition,
+                "update_edge condition",
+                "condition",
+                bound_edge=bound_edge,
             )
         if evidence:
             evs = self._require_evidence(evidence)

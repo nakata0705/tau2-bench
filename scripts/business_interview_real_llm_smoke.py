@@ -41,10 +41,15 @@ from pathlib import Path
 from loguru import logger
 
 # The interview agent and the stakeholder both run on the same model,
-# currently served through OpenRouter (the deepseek account itself ran out
-# of balance; OPENROUTER_API_KEY routes deepseek/deepseek-chat-v3).
-AGENT_MODEL = "openrouter/deepseek/deepseek-chat-v3"
-USER_MODEL = "openrouter/deepseek/deepseek-chat-v3"
+# served via an env-configured provider (defaults: DeepSeek via OpenRouter).
+# The script is explicitly manual/exploratory; a working provider key must be
+# set in the environment.
+AGENT_MODEL = __import__("os").environ.get(
+    "BI_AGENT_MODEL", "openrouter/deepseek/deepseek-chat-v3"
+)
+USER_MODEL = __import__("os").environ.get(
+    "BI_USER_MODEL", "openrouter/deepseek/deepseek-chat-v3"
+)
 LLM_ARGS = {"temperature": 0.0}
 
 TASK_ID = "quotation_workflow_1"
@@ -172,7 +177,7 @@ def graph_to_dict(graph) -> dict:
                 "from_node": edge.from_node,
                 "to_node": edge.to_node,
                 "condition": _render_ref(edge.condition),
-                "evidence": _render_evidence(edge.evidence),
+                "evidence": _render_evidence(getattr(edge, "evidence", None) or []),
             }
             for eid, edge in graph.edges.items()
         },

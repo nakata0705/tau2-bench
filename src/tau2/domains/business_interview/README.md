@@ -47,6 +47,10 @@ Property slots are three-valued on the StakeholderKnowledge side:
 `ConceptRef` (value known), `None` (value known absent), `DONT_KNOW`
 (element known, value unknown).
 
+Truth (`BusinessProcessGraph` with `TruthNode` / `TruthEdge`) is complete
+canonical data with its OWN two-valued slots: `ConceptRef | None` (`None` =
+canonical absence). Truth never uses the Agent's four-state markers.
+
 The AgentGraph is **inference-in-progress** and uses FOUR explicit
 epistemic states (never `None` for both UNSET and ABSENT):
 
@@ -84,10 +88,18 @@ never enter the knowledge or the stakeholder prompt.
 ## Provenance (graph-native)
 
 Private Observation annotations point **directly** at stakeholder semantic
-IDs:
+IDs and declare their semantic mode (what the message asserts about the
+element, validated deterministically against the knowledge):
 
     {"semantic_id": "node:skn_002:reads:skc_013",
+     "mode": "value",
      "quote": "customer information", "occurrence": 0}
+
+Modes: `value` (the slot holds a known value), `absent` (the slot is known
+absent), `dont_know` (the slot is DONT_KNOW), `exists` (the element
+itself), `mention` (a knowledge concept). A mode that contradicts the
+stakeholder's own world model (e.g. `dont_know` on a known-value slot) is
+REJECTED at ingestion — the message cannot be accepted.
 
 There is no `StakeholderSemanticAssertion`: no subject/property/value
 duplication — the semantic meaning is resolved from the

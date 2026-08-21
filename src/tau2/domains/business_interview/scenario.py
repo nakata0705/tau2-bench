@@ -18,9 +18,9 @@ from tau2.domains.business_interview.graph import (
     BusinessProcessGraph,
     ConceptKind,
     ConceptRef,
-    Edge,
-    Node,
     TruthConcept,
+    TruthEdge,
+    TruthNode,
 )
 from tau2.domains.business_interview.knowledge import (
     StakeholderKnowledge,
@@ -183,20 +183,20 @@ def quotation_truth() -> BusinessProcessGraph:
             ),
         },
         nodes={
-            "r": Node(
+            "r": TruthNode(
                 id="r",
                 activity=_ref("tc_activity_receive_request"),
                 actor=_ref("tc_actor_sales"),
                 writes=[_ref("tc_request")],
             ),
-            "cc": Node(
+            "cc": TruthNode(
                 id="cc",
                 activity=_ref("tc_activity_check_customer"),
                 actor=_ref("tc_actor_sales"),
                 system=_ref("tc_system_crm"),
                 reads=[_ref("tc_customer")],
             ),
-            "cq": Node(
+            "cq": TruthNode(
                 id="cq",
                 activity=_ref("tc_activity_create_quotation"),
                 actor=_ref("tc_actor_sales"),
@@ -204,19 +204,19 @@ def quotation_truth() -> BusinessProcessGraph:
                 reads=[_ref("tc_customer"), _ref("tc_pricing")],
                 writes=[_ref("tc_quote")],
             ),
-            "ap": Node(
+            "ap": TruthNode(
                 id="ap",
                 activity=_ref("tc_activity_approve_quotation"),
                 actor=_ref("tc_actor_manager"),
                 necessity_rationale=_ref("tc_rationale_credit_risk"),
             ),
-            "sq": Node(
+            "sq": TruthNode(
                 id="sq",
                 activity=_ref("tc_activity_send_quotation"),
                 actor=_ref("tc_actor_sales"),
                 system=_ref("tc_system_email"),
             ),
-            "me": Node(
+            "me": TruthNode(
                 id="me",
                 activity=_ref("tc_activity_send_month_end_summary"),
                 actor=_ref("tc_actor_sales"),
@@ -225,22 +225,22 @@ def quotation_truth() -> BusinessProcessGraph:
             ),
         },
         edges={
-            "e1": Edge(id="e1", from_node="r", to_node="cc"),
-            "e2": Edge(id="e2", from_node="cc", to_node="cq"),
-            "e3": Edge(
+            "e1": TruthEdge(id="e1", from_node="r", to_node="cc"),
+            "e2": TruthEdge(id="e2", from_node="cc", to_node="cq"),
+            "e3": TruthEdge(
                 id="e3",
                 from_node="cq",
                 to_node="ap",
                 condition=_ref("tc_cond_over_1m"),
             ),
-            "e4": Edge(
+            "e4": TruthEdge(
                 id="e4",
                 from_node="cq",
                 to_node="sq",
                 condition=_ref("tc_cond_at_or_below_1m"),
             ),
-            "e5": Edge(id="e5", from_node="ap", to_node="sq"),
-            "e6": Edge(
+            "e5": TruthEdge(id="e5", from_node="ap", to_node="sq"),
+            "e6": TruthEdge(
                 id="e6",
                 from_node="cq",
                 to_node="me",
@@ -390,21 +390,21 @@ def lab_sample_truth() -> BusinessProcessGraph:
             ),
         },
         nodes={
-            "n1": Node(
+            "n1": TruthNode(
                 id="n1",
                 activity=_ref("tc_activity_accession"),
                 actor=_ref("tc_actor_lab_tech"),
                 reads=[_ref("tc_sample")],
                 writes=[_ref("tc_accessioned_sample")],
             ),
-            "n2": Node(
+            "n2": TruthNode(
                 id="n2",
                 activity=_ref("tc_activity_seasoning"),
                 actor=_ref("tc_actor_lab_tech"),
                 system=_ref("tc_system_chamber"),
                 writes=[_ref("tc_seasoned_chamber")],
             ),
-            "n3": Node(
+            "n3": TruthNode(
                 id="n3",
                 activity=_ref("tc_activity_conditioning"),
                 actor=_ref("tc_actor_lab_tech"),
@@ -412,7 +412,7 @@ def lab_sample_truth() -> BusinessProcessGraph:
                 reads=[_ref("tc_accessioned_sample")],
                 writes=[_ref("tc_conditioned_sample")],
             ),
-            "n4": Node(
+            "n4": TruthNode(
                 id="n4",
                 activity=_ref("tc_activity_batch_approval"),
                 actor=_ref("tc_actor_lab_supervisor"),
@@ -421,9 +421,9 @@ def lab_sample_truth() -> BusinessProcessGraph:
             ),
         },
         edges={
-            "l1": Edge(id="l1", from_node="n1", to_node="n2"),
-            "l2": Edge(id="l2", from_node="n2", to_node="n3"),
-            "l3": Edge(id="l3", from_node="n3", to_node="n4"),
+            "l1": TruthEdge(id="l1", from_node="n1", to_node="n2"),
+            "l2": TruthEdge(id="l2", from_node="n2", to_node="n3"),
+            "l3": TruthEdge(id="l3", from_node="n3", to_node="n4"),
         },
         start_node_id="n1",
         end_node_ids=["n4"],

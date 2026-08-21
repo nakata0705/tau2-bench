@@ -24,6 +24,7 @@ uv run tau2 check-data         # verify installation
 Environment variables: copy `.env.example` to `.env` and set API keys. Uses [LiteLLM](https://github.com/BerriAI/litellm) for LLM provider abstraction.
 
 Required keys depend on the task:
+
 - `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` — for LLM-based agents and user simulators
 - `ELEVENLABS_API_KEY` — voice synthesis
 - `DEEPGRAM_API_KEY` — voice transcription
@@ -31,12 +32,14 @@ Required keys depend on the task:
 ## Common Commands
 
 | Command | What it does | Required install |
-|---------|-------------|-----------------|
+| --------- | ------------- | ----------------- |
 | `make test` | Run core tests (skips voice, streaming, gym, banking_knowledge) | `uv sync --extra dev` |
 | `make test-voice` | Run voice + streaming tests | `uv sync --extra voice --extra dev` |
 | `make test-knowledge` | Run banking_knowledge tests | `uv sync --extra knowledge --extra dev` |
 | `make test-gym` | Run gymnasium tests | `uv sync --extra gym --extra dev` |
 | `make test-all` | Run all tests | `uv sync --all-extras` |
+| `make test-business-interview` | Run business_interview deterministic tests only (cheap, no LLM API calls) | `uv sync --extra dev` |
+| `make test-business-interview-smoke` | Run business_interview live-LLM end-to-end smoke test (expensive, opt-in, 1 run) | `uv sync --extra dev` |
 | `make lint` | Lint with ruff | `uv sync --extra dev` |
 | `make format` | Format with ruff | `uv sync --extra dev` |
 | `make lint-fix` | Lint and auto-fix | `uv sync --extra dev` |
@@ -45,6 +48,45 @@ Required keys depend on the task:
 | `make env-cli` | Interactive environment CLI for testing domain tools | — |
 
 `make test` is the safe default -- it works with just `uv sync --extra dev` and does not require voice, knowledge, or gym packages. Always run `make check-all` before committing. A pre-commit hook enforces this.
+
+## business_interview Development Testing (cheap by default)
+
+When iterating on the `business_interview` domain, do **not** run `make test` or the full pytest suite after every change. Each run of the deterministic suite is cheap, but the live-LLM path is not: it makes real, non-deterministic API calls and costs money/tokens. Follow this priority order:
+
+1. **Default to the quick test** — deterministic only, zero LLM API calls:
+
+   ```bash
+   uv run python scripts/test_business_interview.py quick
+   # or via the Make target:
+   make test-business-interview
+   ```
+
+   `quick` runs `tests/test_domains/test_business_interview/` with compact output and fail-fast, and never touches the LLM API.
+
+2. **Narrow to the changed area when possible** — `-k KEYWORD` filters by test name, and `file` mode runs one specific test file/dir under `tests/`:
+
+   ```bash
+   uv run python scripts/test_business_interview.py quick -- -k concept
+   uv run python scripts/test_business_interview.py file \\
+       tests/test_domains/test_business_interview/test_graph_business_interview.py -- -k evidence
+   ```
+
+   The `file` mode safety-checks the target to stay inside `tests/`.
+
+3. **Use the live-LLM smoke test only when necessary** — it is an explicit opt-in for behaviour that deterministic tests cannot verify (real Interview Agent / Stakeholder LLM end-to-end):
+
+   ```bash
+   uv run python scripts/test_business_interview.py smoke
+   # or:
+   make test-business-interview-smoke
+   ```
+
+   `smoke` makes live API calls, costs tokens, and is always forced to exactly **1 run**. Never repeat it after every change. A live-LLM smoke test is only justified when you need to confirm end-to-end agent/stakeholder behaviour that no deterministic test covers.
+
+**High-cost test discipline (applies to any change):**
+
+- Do not re-run a live-LLM smoke test after every change, and do not re-run an already-passed high-cost test for the same code state without a reason.
+- On goal completion, do not mechanically run the whole-repo suite (`make test-all`) solely because the task is done — run only the targeted tests that the change actually affects, and the live-LLM smoke only if the change genuinely requires end-to-end verification.
 
 ## Running Evaluations
 
@@ -87,6 +129,7 @@ src/tau2/
 ```
 
 Other top-level directories:
+
 - `data/` — Domain data (JSON, TOML, policies), simulation outputs
 - `tests/` — All tests (pytest)
 - `scripts/` — Standalone utility scripts
@@ -110,7 +153,7 @@ registry.register_tasks(get_tasks, "my_domain", get_task_splits=get_tasks_split)
 Two base classes, determined by communication mode:
 
 | Mode | Base class | Key method | Used by |
-|------|-----------|------------|---------|
+| ------ | ----------- | ------------ | --------- |
 | Half-duplex (turn-based) | `HalfDuplexAgent` | `generate_next_message()` | `LLMAgent` |
 | Full-duplex (streaming) | `FullDuplexAgent` | `get_next_chunk()` | `DiscreteTimeAudioNativeAgent` |
 
@@ -120,6 +163,7 @@ For LLM-based agents, mix in `LLMConfigMixin` to add `llm` and `llm_args` parame
 ### Domain Structure
 
 Each domain (`src/tau2/domains/<name>/`) contains:
+
 - `data_model.py` — DB subclass with domain data models
 - `tools.py` — `ToolKitBase` subclass with domain tools
 - `environment.py` — `get_environment()`, `get_tasks()`, `get_tasks_split()`
@@ -166,6 +210,7 @@ pytest -m "not full_duplex_integration"
 ```
 
 Test layout mirrors source:
+
 - `tests/test_domains/` — per-domain tool and user-tool tests (except `test_banking_knowledge/` which requires the `knowledge` extra)
 - `tests/test_streaming/` — streaming/full-duplex tests (requires `voice` extra)
 - `tests/test_voice/` — audio-native provider tests (requires `voice` extra; individual providers gated by `{PROVIDER}_TEST_ENABLED=1`)
