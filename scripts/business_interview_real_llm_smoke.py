@@ -41,14 +41,15 @@ from pathlib import Path
 from loguru import logger
 
 # The interview agent and the stakeholder both run on the same model,
-# served via an env-configured provider (defaults: DeepSeek via OpenRouter).
-# The script is explicitly manual/exploratory; a working provider key must be
-# set in the environment.
+# served via an env-configured provider (defaults: DeepSeek V4 Flash 0731
+# via OpenRouter). The script is explicitly manual/exploratory; a working
+# provider key must be set in the environment. Do not switch these defaults
+# to other providers (qwen, deepseek-v3 chat, etc.) for testing.
 AGENT_MODEL = __import__("os").environ.get(
-    "BI_AGENT_MODEL", "openrouter/deepseek/deepseek-chat-v3"
+    "BI_AGENT_MODEL", "openrouter/deepseek/deepseek-v4-flash-0731"
 )
 USER_MODEL = __import__("os").environ.get(
-    "BI_USER_MODEL", "openrouter/deepseek/deepseek-chat-v3"
+    "BI_USER_MODEL", "openrouter/deepseek/deepseek-v4-flash-0731"
 )
 LLM_ARGS = {"temperature": 0.0}
 

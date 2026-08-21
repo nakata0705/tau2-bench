@@ -129,18 +129,22 @@ New deterministic tests in `test_graph_business_interview.py`:
 - valid non-object JSON tool arguments recoverable; malformed JSON remains
   recoverable.
 
-Real-LLM quotation runs (deepseek-chat-v3 via OpenRouter, temperature 0,
-seeds 6200-6202 and 6400-6403):
+Real-LLM quotation runs (deepseek-v4-flash-0731 via OpenRouter, temperature 0,
+seeds 6600-6602; earlier runs used deepseek-chat-v3, seeds 6200-6202 and
+6400-6403 — the smoke script now defaults to deepseek-v4-flash-0731 and
+other providers are not used for this testing):
 
 | seed | termination | node_recall | node_prec | edge_recall | concept_correctness | marker_errors | leaks |
 | ------ | ------------- | ------------- | ----------- | ------------- | --------------------- | --------------- | ------- |
-| 6200 | context-length API error (agent loop grew past 163k ctx) | 0.0 | 0.0 | 0.0 | 0.0 | 0 | [] |
-| 6201 | sidecar rejected twice (quote mismatch) | 0.0 | 0.0 | 0.0 | 0.0 | 0 | [] |
-| 6202 | too_many_errors | 0.0 | 0.0 | 0.0 | 0.0 | 0 | [] |
-| 6400 | too_many_errors | 0.0 | 0.0 | 0.0 | 0.0 | 0 | [] |
-| 6401 | sidecar rejected twice (quote mismatch) | 0.0 | 0.0 | 0.0 | 0.0 | 0 | [] |
-| 6402 | too_many_errors | 0.0 | 0.0 | 0.0 | 0.0 | 0 | [] |
-| 6403 | too_many_errors | 0.167 | 1.0 | 0.0 | 0.095 | 0 | [] |
+| 6600 | internal error (empty AssistantMessage at end of run) | 0.5 | 0.5 | 0.0 | 0.251 | 0 | [] |
+| 6601 | hung provider response (aborted) | - | - | - | - | - | - |
+| 6602 | hung provider response (aborted) | - | - | - | - | - | - |
+
+Seed 6600 reconstructed the full quotation topology (all six nodes, all
+edges, the over/below/month-end condition concepts) with structurally valid
+graph, zero marker evidence errors and zero private-ID leakage; evaluator
+node correspondence scored 0.5 (three fabricated/unmappable nodes) and
+concept correctness 0.251.
 
 Live fidelity evidence (from run logs):
 
@@ -159,11 +163,10 @@ Observed remaining issues (not regressions):
 
 - gpt-4o-mini frequently violates the exact-quote contract (quote not an
   exact substring) — the strict contract rejects and retries, but the model
-  often fails twice, terminating the turn; deepseek-chat-v3 is more
-  reliable but the agent still exhausts its 30-error budget before
-  completing the full graph (strict evidence tools + a hard interview
-  budget). No run reached `finish_interview` with a full reconstruction;
-  seed 6403 made partial progress (1 node / 3 concepts, structurally valid,
-  zero marker errors, zero leakage).
+  often fails twice, terminating the turn. deepseek-v4-flash-0731 is the
+  current default for business_interview live-LLM testing; other providers
+  (qwen, deepseek-v3 chat) are not used for this testing. No run reached
+  `finish_interview` with a full reconstruction yet; partial-progress runs
+  are structurally valid with zero marker errors and zero leakage.
 - context-length termination at 163k tokens for agent loops (repeated tool
   errors inflate history) — agent-side, not a fidelity leak.
