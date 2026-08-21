@@ -35,6 +35,7 @@ from tau2.user.user_simulator_base import (
     is_valid_user_history_message,
 )
 from tau2.utils.llm_utils import get_cost
+from tau2.utils.normalization import normalize_text
 from tau2.utils.utils import format_time, get_now
 
 
@@ -99,6 +100,9 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
         seed: Optional[int] = None,
         simulation_id: Optional[str] = None,
         timeout: Optional[float] = None,
+        max_repeated_questions: Optional[int] = 3,
+        max_repeated_responses: Optional[int] = 3,
+        max_repeated_interactions: Optional[int] = 3,
     ):
         """
         Initialize the base orchestrator.
@@ -114,6 +118,22 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
             seed: Optional random seed for reproducibility. Defaults to None.
             simulation_id: Optional simulation ID. Defaults to generated UUID.
             timeout: Maximum wallclock time in seconds. None means no timeout.
+            max_repeated_questions: How many times the same normalized
+                conversational Agent question may appear before the run is
+                terminated with ``TerminationReason.REPEATED_QUESTION``
+                (default 3; ``0``/``None`` disables the guard).
+            max_repeated_responses: How many times the same normalized
+                stakeholder response may appear before termination with
+                ``TerminationReason.REPEATED_RESPONSE`` (default 3;
+                ``0``/``None`` disables the guard).
+            max_repeated_interactions: How many times the same
+                (normalized Agent question, stakeholder semantic answer)
+                interaction may appear before termination with
+                ``TerminationReason.STALLED_INTERACTION`` (default 3;
+                ``0``/``None`` disables the guard). The semantic answer
+                fingerprint is provided by the user implementation when
+                available (e.g. the business_interview sidecar) and is never
+                exposed to the Agent.
         """
         self.domain = domain
         self.agent: BaseAgentT = agent
@@ -137,6 +157,27 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
         self.num_errors: int = 0
         self._run_start_time: Optional[str] = None
         self._run_start_perf: Optional[float] = None
+
+        # Conversation-loop guards (runtime safeguard; not evaluator
+        # semantics). Counters keyed by normalized fingerprint; the third
+        # identical fingerprint terminates the run early.
+        self.max_repeated_questions = max_repeated_questions
+        self.max_repeated_responses = max_repeated_responses
+        self.max_repeated_interactions = max_repeated_interactions
+        self._question_counts: dict[str, int] = {}
+        self._response_counts: dict[str, int] = {}
+        self._interaction_counts: dict[tuple[str, str], int] = {}
+        # last normalized conversational Agent question (for interaction pairing)
+        self._last_question_norm: Optional[str] = None
+        # per-key first/triggering step for diagnostics
+        self._question_first_step: dict[str, int] = {}
+        self._response_first_step: dict[str, int] = {}
+        self._interaction_first_step: dict[tuple[str, str], int] = {}
+        self._question_trigger_step: dict[str, int] = {}
+        self._response_trigger_step: dict[str, int] = {}
+        self._interaction_trigger_step: dict[tuple[str, str], int] = {}
+        # populated when a loop guard fires; attached to SimulationRun.info
+        self.loop_guard_diagnostics: Optional[dict] = None
 
     @abstractmethod
     def initialize(self) -> None:
@@ -234,6 +275,159 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
                 logger.info(
                     f"Simulation timed out after {elapsed:.1f}s (timeout={self.timeout}s)"
                 )
+
+    # ------------------------------------------------------------------
+    # Conversation-loop guards (runtime safeguard; not evaluator semantics)
+    # ------------------------------------------------------------------
+    # The guards compare NORMALIZED message fingerprints (cosmetic
+    # normalization only — never semantic similarity / LLMs / embeddings).
+    # "Two are fine, three terminate": two occurrences of the same
+    # normalized fingerprint are allowed (legitimate clarification/repetition);
+    # the third occurrence terminates the run early so a broken run does not
+    # consume max_steps. A threshold of 0 or None disables a guard.
+
+    def _guard_enabled(self, threshold: Optional[int]) -> bool:
+        """True when a loop guard is active (threshold > 0)."""
+        return threshold is not None and int(threshold) > 0
+
+    def _record_agent_question(self, text: Optional[str], step_index: int) -> None:
+        """Count one conversational Agent message (normalized) sent to the
+        stakeholder. Tool-only / empty Agent messages are ignored. The last
+        question is tracked whenever the question OR interaction guard is
+        active (the interaction guard pairs it with the semantic answer)."""
+        norm = normalize_text(text or "")
+        if not norm:
+            return
+        if not self._guard_enabled(
+            self.max_repeated_questions
+        ) and not self._guard_enabled(self.max_repeated_interactions):
+            return
+        if norm not in self._question_counts:
+            self._question_counts[norm] = 0
+            self._question_first_step[norm] = step_index
+        self._question_counts[norm] += 1
+        self._question_trigger_step[norm] = step_index
+        self._last_question_norm = norm
+
+    def _record_user_response(
+        self,
+        text: Optional[str],
+        step_index: int,
+        semantic_signature: Optional[str] = None,
+    ) -> None:
+        """Count one stakeholder natural-language response (normalized), and
+        when a semantic signature is available, the (question, semantic
+        answer) interaction. Tool messages / private metadata are ignored;
+        only the public message text is compared."""
+        norm = normalize_text(text or "")
+        if not norm:
+            return
+        if self._guard_enabled(self.max_repeated_responses):
+            if norm not in self._response_counts:
+                self._response_counts[norm] = 0
+                self._response_first_step[norm] = step_index
+            self._response_counts[norm] += 1
+            self._response_trigger_step[norm] = step_index
+        if (
+            self._guard_enabled(self.max_repeated_interactions)
+            and semantic_signature
+            and self._last_question_norm
+        ):
+            key = (self._last_question_norm, semantic_signature)
+            if key not in self._interaction_counts:
+                self._interaction_counts[key] = 0
+                self._interaction_first_step[key] = step_index
+            self._interaction_counts[key] += 1
+            self._interaction_trigger_step[key] = step_index
+
+    @staticmethod
+    def _fingerprint_hash(key) -> str:
+        """Short deterministic hash of a fingerprint key (for diagnostics;
+        private semantic ids are never stored verbatim in public output)."""
+        import hashlib
+
+        return hashlib.sha256(repr(key).encode("utf-8")).hexdigest()[:16]
+
+    def _check_loop_guards(self) -> bool:
+        """Check repetition counters; if any threshold is exceeded, terminate
+        the run with the dedicated termination reason.
+
+        Returns True when a loop guard fired (done + reason set).
+        """
+        if self.loop_guard_diagnostics is not None:
+            return True
+        if self._guard_enabled(self.max_repeated_questions):
+            threshold = int(self.max_repeated_questions or 0)
+            for norm, count in self._question_counts.items():
+                if count >= threshold:
+                    self._fire_loop_guard(
+                        "repeated_question",
+                        TerminationReason.REPEATED_QUESTION,
+                        threshold,
+                        count,
+                        norm,
+                        self._question_first_step.get(norm),
+                        self._question_trigger_step.get(norm),
+                    )
+                    return True
+        if self._guard_enabled(self.max_repeated_responses):
+            threshold = int(self.max_repeated_responses or 0)
+            for norm, count in self._response_counts.items():
+                if count >= threshold:
+                    self._fire_loop_guard(
+                        "repeated_response",
+                        TerminationReason.REPEATED_RESPONSE,
+                        threshold,
+                        count,
+                        norm,
+                        self._response_first_step.get(norm),
+                        self._response_trigger_step.get(norm),
+                    )
+                    return True
+        if self._guard_enabled(self.max_repeated_interactions):
+            threshold = int(self.max_repeated_interactions or 0)
+            for key, count in self._interaction_counts.items():
+                if count >= threshold:
+                    self._fire_loop_guard(
+                        "stalled_interaction",
+                        TerminationReason.STALLED_INTERACTION,
+                        threshold,
+                        count,
+                        key,
+                        self._interaction_first_step.get(key),
+                        self._interaction_trigger_step.get(key),
+                    )
+                    return True
+        return False
+
+    def _fire_loop_guard(
+        self,
+        guard_type: str,
+        reason: TerminationReason,
+        threshold: int,
+        count: int,
+        fingerprint,
+        first_step: Optional[int] = None,
+        trigger_step: Optional[int] = None,
+    ) -> None:
+        """Terminate the run because a loop guard fired, and record concise
+        diagnostics (hashed fingerprint — private semantic ids never leak)."""
+        self.done = True
+        self.termination_reason = reason
+        self.loop_guard_diagnostics = {
+            "type": guard_type,
+            "reason": reason.value,
+            "threshold": threshold,
+            "count": count,
+            "fingerprint_hash": self._fingerprint_hash(fingerprint),
+            "first_step": first_step,
+            "trigger_step": trigger_step,
+        }
+        logger.warning(
+            f"Loop guard [{guard_type}] fired after {count} occurrences "
+            f"(threshold={threshold}) at step {trigger_step}; terminating "
+            f"early: {reason.value}"
+        )
 
     def _cleanup(self) -> None:
         """Best-effort cleanup of agent and user resources.
@@ -405,6 +599,9 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
         simulation_id: Optional[str] = None,
         validate_communication: bool = False,
         timeout: Optional[float] = None,
+        max_repeated_questions: Optional[int] = 3,
+        max_repeated_responses: Optional[int] = 3,
+        max_repeated_interactions: Optional[int] = 3,
     ):
         """
         Initialize the Orchestrator for managing simulation between Agent, User, and Environment.
@@ -428,6 +625,19 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             validate_communication: If True, validates communication protocol rules (e.g., no mixed
                                    messages with both text and tool calls). Defaults to False.
             timeout: Maximum wallclock time in seconds. None means no timeout.
+            max_repeated_questions: How many times the same normalized
+                conversational Agent question may appear before termination
+                with ``TerminationReason.REPEATED_QUESTION`` (default 3;
+                ``0``/``None`` disables the guard).
+            max_repeated_responses: How many times the same normalized
+                stakeholder response may appear before termination with
+                ``TerminationReason.REPEATED_RESPONSE`` (default 3;
+                ``0``/``None`` disables the guard).
+            max_repeated_interactions: How many times the same
+                (normalized Agent question, stakeholder semantic answer)
+                interaction may appear before termination with
+                ``TerminationReason.STALLED_INTERACTION`` (default 3;
+                ``0``/``None`` disables the guard).
         """
         # Initialize base class
         super().__init__(
@@ -441,6 +651,9 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             seed=seed,
             simulation_id=simulation_id,
             timeout=timeout,
+            max_repeated_questions=max_repeated_questions,
+            max_repeated_responses=max_repeated_responses,
+            max_repeated_interactions=max_repeated_interactions,
         )
 
         # Half-duplex specific attributes
@@ -735,13 +948,22 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
         """
         Check for half-duplex specific termination conditions.
 
-        Only checks max_steps/max_errors/timeout when not waiting for environment response.
+        Conversation-loop guards fire FIRST (before max_steps/max_errors) so
+        a clearly-repeating interaction terminates early with its own
+        diagnostic reason instead of consuming max_steps. max_steps /
+        max_errors / timeout are only checked when not waiting for an
+        environment response.
         """
         # Skip termination checks if we're waiting for environment to respond
         if self.to_role == Role.ENV:
             return
         # A termination reason already set (e.g. EPISODE_COMPLETE) wins.
         if self.termination_reason is not None:
+            return
+
+        # Loop guards: same normalized question/response/interaction repeated
+        # `max_repeated_*` times terminates early (before max_steps).
+        if self._check_loop_guards():
             return
 
         if self.step_count >= self.max_steps:
@@ -817,6 +1039,11 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             mode=self.mode.value,
             speech_environment=speech_environment,
         )
+        # Loop-guard diagnostics (only present when a guard fired). The stored
+        # fingerprint is hashed — private semantic ids never leak into
+        # Agent-visible / public output.
+        if self.loop_guard_diagnostics is not None:
+            simulation_run.info = {"loop_guard": self.loop_guard_diagnostics}
         return simulation_run
 
     def step(self):
@@ -855,6 +1082,20 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
                 self.to_role = Role.ENV
             else:
                 self.to_role = Role.AGENT
+            # Conversation-loop guard: count the stakeholder's NATURAL-LANGUAGE
+            # response (public text only; tool messages / private metadata are
+            # ignored). The user implementation may provide an optional private
+            # semantic fingerprint for the stalled_interaction guard.
+            if not user_msg.is_tool_call():
+                sig_fn = getattr(self.user, "interaction_signature", None)
+                semantic_signature: Optional[str] = None
+                if callable(sig_fn):
+                    sig = sig_fn(user_msg)
+                    if isinstance(sig, str):
+                        semantic_signature = sig
+                self._record_user_response(
+                    user_msg.content, self.step_count, semantic_signature
+                )
         # USER/ENV -> AGENT
         elif (
             self.from_role == Role.USER or self.from_role == Role.ENV
@@ -875,6 +1116,10 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
                 self.to_role = Role.ENV
             else:
                 self.to_role = Role.USER
+                # Conversation-loop guard: count the Agent's conversational
+                # question (tool-only / empty messages are ignored).
+                if not self.solo_mode:
+                    self._record_agent_question(agent_msg.content, self.step_count)
                 # In solo mode, there is no user, so if the message is not a tool call and not a stop, then we end and report an agent error
                 if self.solo_mode and not self.agent.is_stop(agent_msg):
                     self.done = True

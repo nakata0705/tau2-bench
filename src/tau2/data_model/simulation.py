@@ -347,6 +347,39 @@ class BaseRunConfig(BaseModel):
             default=None,
         ),
     ]
+    max_repeated_questions: Annotated[
+        Optional[int],
+        Field(
+            description="Conversation-loop guard: how many times the same "
+            "normalized conversational Agent question may appear before the "
+            "run terminates early with repeated_question (default 3). "
+            "0 or None disables the guard.",
+            default=3,
+        ),
+    ]
+    max_repeated_responses: Annotated[
+        Optional[int],
+        Field(
+            description="Conversation-loop guard: how many times the same "
+            "normalized stakeholder response may appear before the run "
+            "terminates early with repeated_response (default 3). "
+            "0 or None disables the guard.",
+            default=3,
+        ),
+    ]
+    max_repeated_interactions: Annotated[
+        Optional[int],
+        Field(
+            description="Conversation-loop guard: how many times the same "
+            "(normalized Agent question, stakeholder semantic answer) "
+            "interaction may appear before the run terminates early with "
+            "stalled_interaction (default 3). The semantic answer fingerprint "
+            "is provided by the user implementation when available (e.g. the "
+            "business_interview sidecar) and is never exposed to the Agent. "
+            "0 or None disables the guard.",
+            default=3,
+        ),
+    ]
     save_to: Annotated[
         Optional[str],
         Field(
@@ -1265,6 +1298,11 @@ class TerminationReason(str, Enum):
     INFRASTRUCTURE_ERROR = "infrastructure_error"  # Task failed due to infrastructure (e.g., API disconnect)
     CONTEXT_WINDOW_EXCEEDED = "context_window_exceeded"
     UNEXPECTED_ERROR = "unexpected_error"
+    # Conversation-loop guards: broken runs stop early instead of consuming
+    # max_steps. These are runtime safeguards, not evaluator semantics.
+    REPEATED_QUESTION = "repeated_question"  # same normalized agent question 3x
+    REPEATED_RESPONSE = "repeated_response"  # same normalized stakeholder response 3x
+    STALLED_INTERACTION = "stalled_interaction"  # same (question, semantic answer) 3x
 
 
 class SimulationRun(BaseModel):

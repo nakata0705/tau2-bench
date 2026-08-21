@@ -257,6 +257,9 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
         seed=seed,
         max_steps=200,
         max_errors=30,  # v11 strict tools reject bad evidence; recovery needs budget
+        max_repeated_questions=3,
+        max_repeated_responses=3,
+        max_repeated_interactions=3,
         save_to=None,
     )
 
@@ -370,6 +373,11 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
         "resolved_agent_model": resolved_agent_model,
         "resolved_user_model": resolved_user_model,
         "termination_reason": termination_reason,
+        "loop_guard": (
+            orchestrator.loop_guard_diagnostics
+            if getattr(orchestrator, "loop_guard_diagnostics", None) is not None
+            else None
+        ),
         "reward_info": reward_info,
         "elapsed_seconds": round(elapsed, 2),
         "errors": errors,

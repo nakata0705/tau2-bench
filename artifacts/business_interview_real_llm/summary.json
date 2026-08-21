@@ -6,13 +6,14 @@
   "llm_args": {
     "temperature": 0.0
   },
-  "num_runs": 1,
+  "num_runs": 2,
   "runs": [
     {
       "run_index": 0,
       "run_id": "run_00_986d329b-ab51-4a75-8664-fb6bb009a3d1",
       "seed": 6600,
       "termination_reason": null,
+      "loop_guard": null,
       "reward": null,
       "quality_pass": false,
       "structural_pass": false,
@@ -37,6 +38,37 @@
       ],
       "elapsed_seconds": 2681.38,
       "artifact": "artifacts/business_interview_real_llm/run_00_seed6600.json"
+    },
+    {
+      "run_index": 1,
+      "run_id": "run_00_37d5a89d-4faf-429b-88da-048dc9daa4bc",
+      "seed": 6800,
+      "termination_reason": null,
+      "loop_guard": null,
+      "reward": null,
+      "quality_pass": false,
+      "structural_pass": false,
+      "glossary_pass": true,
+      "evidence_pass": false,
+      "node_recall": 1.0,
+      "node_precision": 1.0,
+      "edge_recall": 0.0,
+      "edge_precision": 0.0,
+      "concept_correctness": 0.7243107769423559,
+      "read_correctness": 0.041666666666666664,
+      "write_correctness": 0.16666666666666666,
+      "condition_correctness": 0.0,
+      "marker_evidence_errors": 0,
+      "start_correct": true,
+      "end_recall": 1.0,
+      "fabricated_node_count": 0,
+      "fabricated_edge_count": 6,
+      "private_id_leakage": [],
+      "errors": [
+        "ValueError: AssistantMessage must have either content or tool_calls. Got AssistantMessage\nis_final_chunk: True\n"
+      ],
+      "elapsed_seconds": 1958.79,
+      "artifact": "artifacts/business_interview_real_llm/run_00_seed6800.json"
     }
   ]
 }

@@ -103,6 +103,34 @@ tau2 run --domain banking_knowledge --retrieval-config qwen_embeddings --agent-l
 
 Results go to `data/simulations/`. Use `tau2 view` to browse them.
 
+## Conversation-loop guards
+
+Simulations can terminate early with a dedicated diagnostic reason when the
+same interaction **repeats** (a runtime safeguard for broken/stalled runs —
+never evaluator semantics):
+
+- `repeated_question` — the same normalized conversational Agent question
+  appears `max_repeated_questions` times (default 3).
+- `repeated_response` — the same normalized stakeholder response appears
+  `max_repeated_responses` times (default 3).
+- `stalled_interaction` — the same (normalized Agent question, stakeholder
+  semantic answer) interaction appears `max_repeated_interactions` times
+  (default 3). The semantic answer fingerprint is provided by the user
+  implementation (e.g. the business_interview sidecar's sorted
+  `(semantic_id, mode)` tuples) and is NEVER exposed to the Agent.
+
+Normalization is cosmetic only (whitespace / case / line breaks / trivial
+terminal punctuation) — no semantic similarity, no synonyms, no LLMs.
+"Two are fine, three terminate": repetitions separated by other messages
+still count; two occurrences never terminate (legitimate clarification).
+These fire BEFORE `max_steps`; the existing `max_steps` / `max_errors` /
+`timeout` / `episode_complete` termination is unchanged. Configure via
+`TextRunConfig`/`VoiceRunConfig` fields (`max_repeated_questions`,
+`max_repeated_responses`, `max_repeated_interactions`; `0`/`None` disables a
+guard). When a guard fires, `SimulationRun.info["loop_guard"]` carries
+{type, threshold, count, fingerprint_hash, first_step, trigger_step} — the
+hash, never raw content or private ids.
+
 ## Architecture
 
 ```

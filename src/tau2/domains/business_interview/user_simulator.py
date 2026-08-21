@@ -428,6 +428,33 @@ class StakeholderUserSimulator(UserSimulator):
             return base
         return base + self._knowledge_block()
 
+    # ------------------------------------------------- loop-guard fingerprint
+
+    def interaction_signature(self, message) -> Optional[str]:
+        """Deterministic private fingerprint of one stakeholder response for
+        the orchestrator's ``stalled_interaction`` loop guard.
+
+        Derived from the response's private sidecar annotations: the sorted
+        ``(semantic_id, mode)`` tuples. Two responses with the same
+        (semantic_id, mode) set are semantically the same answer, even when
+        surface wording differs slightly — and a different set is a
+        genuinely different answer (never a stall). Returns ``None`` when
+        the message carries no annotations (e.g. greetings) so no interaction
+        is claimed.
+
+        NEVER exposed to the Agent: the orchestrator only compares the value
+        internally and stores a hash in diagnostics.
+        """
+        annotations = getattr(message, "stakeholder_annotations", None) or []
+        pairs = sorted(
+            (a.get("semantic_id"), a.get("mode"))
+            for a in annotations
+            if isinstance(a, dict) and a.get("semantic_id")
+        )
+        if not pairs:
+            return None
+        return repr(pairs)
+
     # ------------------------------------------------------------- sidecar
 
     def _generate_sidecar(self, messages: list, contract: Optional[str] = None) -> dict:

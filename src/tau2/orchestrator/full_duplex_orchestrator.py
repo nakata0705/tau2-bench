@@ -74,6 +74,9 @@ class FullDuplexOrchestrator(BaseOrchestrator[StreamingAgentT, StreamingUserT, T
         simulation_id: Optional[str] = None,
         tick_duration_seconds: Optional[float] = None,
         timeout: Optional[float] = None,
+        max_repeated_questions: Optional[int] = 3,
+        max_repeated_responses: Optional[int] = 3,
+        max_repeated_interactions: Optional[int] = 3,
     ):
         """
         Initialize FullDuplexOrchestrator.
@@ -90,6 +93,12 @@ class FullDuplexOrchestrator(BaseOrchestrator[StreamingAgentT, StreamingUserT, T
             simulation_id: Optional simulation ID.
             tick_duration_seconds: Duration of each simulation tick in seconds (for timing metadata).
             timeout: Maximum wallclock time in seconds. None means no timeout.
+            max_repeated_questions: Same as ``BaseOrchestrator`` — conversation-
+                loop guard threshold for repeated Agent questions (default 3).
+            max_repeated_responses: Conversation-loop guard threshold for
+                repeated stakeholder responses (default 3).
+            max_repeated_interactions: Conversation-loop guard threshold for
+                repeated (question, semantic answer) interactions (default 3).
         """
         super().__init__(
             domain=domain,
@@ -102,6 +111,9 @@ class FullDuplexOrchestrator(BaseOrchestrator[StreamingAgentT, StreamingUserT, T
             seed=seed,
             simulation_id=simulation_id,
             timeout=timeout,
+            max_repeated_questions=max_repeated_questions,
+            max_repeated_responses=max_repeated_responses,
+            max_repeated_interactions=max_repeated_interactions,
         )
 
         # Set mode to FULL_DUPLEX

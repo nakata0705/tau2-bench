@@ -195,6 +195,19 @@ class UserSimulator(
             or OUT_OF_SCOPE in message.content
         )
 
+    def interaction_signature(self, message: UserMessage) -> Optional[str]:
+        """Optional private semantic fingerprint of one user response, used
+        by the orchestrator's ``stalled_interaction`` loop guard.
+
+        The base implementation returns ``None`` (no signature). A domain /
+        user implementation may override it to derive a deterministic
+        signature from its PRIVATE response metadata (e.g. the
+        business_interview stakeholder sidecar). The signature is NEVER
+        exposed to the Agent; the orchestrator only compares it internally
+        and stores a hash in diagnostics.
+        """
+        return None
+
     def generate_next_message(
         self, message: ValidUserInputMessage, state: UserStateType
     ) -> Tuple[UserMessage, UserStateType]:

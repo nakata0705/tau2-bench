@@ -448,6 +448,9 @@ def build_text_orchestrator(
         simulation_id=simulation_id,
         validate_communication=config.enforce_communication_protocol,
         timeout=config.timeout,
+        max_repeated_questions=getattr(config, "max_repeated_questions", None),
+        max_repeated_responses=getattr(config, "max_repeated_responses", None),
+        max_repeated_interactions=getattr(config, "max_repeated_interactions", None),
     )
 
     logger.debug(
