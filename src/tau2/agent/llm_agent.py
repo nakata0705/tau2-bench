@@ -130,6 +130,7 @@ class LLMAgent(
             tools=self.tools,
             messages=messages,
             call_name="agent_response",
+            side="agent",
             **self.llm_args,
         )
         return assistant_message
@@ -254,6 +255,7 @@ class LLMGTAgent(
             tools=self.tools,
             messages=messages,
             call_name="agent_gt_response",
+            side="agent",
             **self.llm_args,
         )
         state.messages.append(assistant_message)
@@ -472,6 +474,7 @@ class LLMSoloAgent(
             messages=messages,
             tool_choice="required",
             call_name="agent_solo_response",
+            side="agent",
             **self.llm_args,
         )
         if not assistant_message.is_tool_call():

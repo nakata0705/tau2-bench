@@ -141,6 +141,58 @@ def get_response_usage(response: ModelResponse) -> Optional[dict]:
     }
 
 
+def _record_llm_call_metrics(
+    *,
+    side: Optional[str],
+    model: str,
+    messages: list[Message],
+    litellm_messages: list[dict],
+    tools_schema: Optional[list[dict]],
+    usage: Optional[dict],
+    latency_seconds: float,
+) -> None:
+    """Record one numeric row into the active LLM call metrics collector (if
+    any). Never persists raw prompts / headers / private content — only
+    char/token/latency numbers plus safe identifiers."""
+    from tau2.utils.llm_call_metrics import (
+        LLMCallRecord,
+        get_llm_call_metrics_collector,
+    )
+
+    collector = get_llm_call_metrics_collector()
+    if collector is None:
+        return
+    request_chars = len(json.dumps(litellm_messages))
+    system_chars = sum(
+        len(json.dumps(m)) for m in litellm_messages if m.get("role") == "system"
+    )
+    conversation_chars = request_chars - system_chars
+    tool_schema_chars = len(json.dumps(tools_schema)) if tools_schema else 0
+    prompt_tokens = usage.get("prompt_tokens") if usage else None
+    completion_tokens = usage.get("completion_tokens") if usage else None
+    total_tokens = (
+        prompt_tokens + completion_tokens
+        if prompt_tokens is not None and completion_tokens is not None
+        else None
+    )
+    collector.record(
+        LLMCallRecord(
+            side=side or "unspecified",
+            call_index=0,  # assigned by the collector
+            model=model,
+            message_count=len(messages),
+            request_chars=request_chars,
+            system_chars=system_chars,
+            conversation_chars=conversation_chars,
+            tool_schema_chars=tool_schema_chars,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            latency_seconds=latency_seconds,
+        )
+    )
+
+
 def to_tau2_messages(
     messages: list[dict], ignore_roles: set[str] = set()
 ) -> list[Message]:
@@ -358,6 +410,7 @@ def generate(
     tools: Optional[list[Tool]] = None,
     tool_choice: Optional[str] = None,
     call_name: Optional[str] = None,
+    side: Optional[str] = None,
     **kwargs: Any,
 ) -> UserMessage | AssistantMessage:
     """
@@ -371,6 +424,9 @@ def generate(
         call_name: Optional name identifying the purpose of this LLM call
                    (e.g., "detect_interrupt", "generate_agent_message").
                    Used for logging and debugging.
+        side: Optional caller side (e.g. "agent" / "stakeholder") for
+                   context-size/latency measurement. Never inferred from
+                   message text.
         **kwargs: Additional arguments to pass to the model.
 
     Returns: A tuple containing the message and the cost.
@@ -518,6 +574,16 @@ def generate(
     # Add timestamp to request data
     request_data["timestamp"] = request_timestamp
     _write_llm_log(request_data, response_data, call_name=call_name)
+
+    _record_llm_call_metrics(
+        side=side,
+        model=model,
+        messages=messages,
+        litellm_messages=litellm_messages,
+        tools_schema=tools_schema,
+        usage=usage,
+        latency_seconds=generation_time_seconds,
+    )
 
     return message
 

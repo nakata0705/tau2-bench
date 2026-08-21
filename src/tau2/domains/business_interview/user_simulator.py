@@ -491,6 +491,7 @@ class StakeholderUserSimulator(UserSimulator):
                 messages=messages,
                 tools=self.tools,
                 call_name="user_simulator_response",
+                side="stakeholder",
                 response_format={"type": "json_object"},
                 **kwargs,
             )
@@ -500,6 +501,7 @@ class StakeholderUserSimulator(UserSimulator):
                 messages=messages,
                 tools=self.tools,
                 call_name="user_simulator_response",
+                side="stakeholder",
                 **kwargs,
             )
 

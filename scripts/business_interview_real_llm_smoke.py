@@ -268,6 +268,19 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
         config, task, seed=seed, simulation_id=simulation_id
     )
 
+    # Install the LLM call metrics collector BEFORE running so every Agent /
+    # Stakeholder generation records one numeric row (context-size + latency).
+    from tau2.utils.llm_call_metrics import (
+        LLMCallMetricsCollector,
+        record_to_dict,
+        set_llm_call_metrics_collector,
+        slowest_calls,
+        summarize_records,
+    )
+
+    metrics_collector = LLMCallMetricsCollector()
+    set_llm_call_metrics_collector(metrics_collector)
+
     started = time.time()
     errors: list[str] = []
     result = None
@@ -402,6 +415,20 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
         "db_messages_ledger": (db.messages if db is not None else []),
         "interview_complete": bool(db.interview_complete) if db is not None else None,
     }
+
+    # --- LLM call metrics (context size + latency per side) ------------------
+    set_llm_call_metrics_collector(None)
+    llm_records = metrics_collector.records()
+    llm_by_side = metrics_collector.by_side()
+    llm_call_metrics = {
+        "records": [record_to_dict(r) for r in llm_records],
+        "by_side_summary": {
+            side: summarize_records(records)
+            for side, records in sorted(llm_by_side.items())
+        },
+        "slowest_calls": slowest_calls(llm_records, n=5),
+    }
+    dump["llm_call_metrics"] = llm_call_metrics
 
     # --- private-ID leakage scan ---------------------------------------------
     private_ids: set[str] = set()
