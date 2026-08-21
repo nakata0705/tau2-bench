@@ -86,7 +86,7 @@ trajectory.
 - cosmetic whitespace/case/punctuation normalize consistently;
 - genuinely different questions do not collide;
 - same stakeholder response twice does not terminate;
-- third identical response → repeated_first_response;
+- third identical response → repeated_response;
 - tool-only Agent messages do not affect counters;
 - business_interview identical question + identical semantic sidecar 3x →
   stalled_interaction;
