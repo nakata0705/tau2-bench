@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -20,14 +21,64 @@ from tau2.domains.business_interview.utils import (
 from tau2.environment.environment import Environment
 from tau2.utils import load_file
 
+# ---------------------------------------------------------------------------
+# Environment-owned Observation delivery.
+#
+# The environment creates one Observation per accepted Stakeholder message
+# BEFORE the Agent sees that message. The Agent never calls an observation
+# tool and can never create/mutate an Observation: the Observation id is
+# delivered deterministically with the public text, embedded at the front of
+# the Agent-visible message content:
+#
+#     [Observation obs_8] We do it to manage credit risk.
+#
+# The embedded id is a private-of-env formatting aid ONLY: the raw public
+# text is what lives in the ledger and in the immutable Observation (quotes
+# in the private sidecar are validated against the raw text). The embed/strip
+# pair is deterministic so set_state replay of a recorded trajectory recovers
+# the exact raw text and never double-embeds.
+# ---------------------------------------------------------------------------
+
+
+_OBSERVATION_EMBED_RE = r"^\s*\[Observation\s+obs_\d+\]\s*(.*)$"
+
+
+def _embed_observation_id(text: str, obs_id: str) -> str:
+    """Front the observation id onto the public text the Agent sees."""
+    text = (text or "").strip()
+    if not text:
+        return text
+    return f"[Observation {obs_id}] {text}"
+
+
+def _strip_observation_id(content: Optional[str]) -> Optional[str]:
+    """Recover the raw public text from an already-embedded Agent-visible
+    content (idempotent replay); passes through non-embedded content."""
+    if not content:
+        return content
+    m = re.match(_OBSERVATION_EMBED_RE, content, re.S)
+    if m:
+        return m.group(1)
+    return content
+
+
+def strip_observation_marker(text: Optional[str]) -> Optional[str]:
+    """Public: strip a leading ``[Observation obs_N]`` marker if present
+    (used by the orchestrator's loop-guard text normalization so the marker
+    never affects repeated-response detection)."""
+    return _strip_observation_id(text)
+
 
 class BusinessInterviewEnvironment(Environment):
-    """Environment that ingests the conversation into the interview DB.
+    """Environment that ingests the conversation into the interview DB and
+    owns Observation creation.
 
     Every conversation message is recorded into ``db.messages`` (an
-    environment-controlled ledger). The agent can then capture stakeholder
-    (user) messages as Observations via ``observe_message``; it never writes
-    Observation text itself.
+    environment-controlled audit ledger). Every ACCEPTED stakeholder (user)
+    message automatically becomes an immutable Observation BEFORE the Agent
+    sees it; the Agent receives the Observation id inline with the public
+    text (``[Observation obs_N] <text>``) and never calls an observation
+    tool.
 
     ``assertion_ledger`` is the private semantic sidecar ledger (annotations
     + dialogue events): when a stakeholder (user) message carries private
@@ -69,27 +120,43 @@ class BusinessInterviewEnvironment(Environment):
         turn = len(db.messages)
         content = getattr(message, "content", None)
         if isinstance(message, UserMessage):
+            # A recorded trajectory already carries the embedded observation
+            # id; recover the RAW public text first (idempotent replay) so
+            # sidecar quotes, the ledger and the Observation all use the
+            # pristine stakeholder utterance.
+            raw = _strip_observation_id(content)
             raw_annotations = getattr(message, "stakeholder_annotations", None)
             if raw_annotations:
                 annotations = [
                     SemanticAnnotation(**a) if isinstance(a, dict) else a
                     for a in raw_annotations
                 ]
-                self.assertion_ledger.bind(turn, annotations, content)
+                self.assertion_ledger.bind(turn, annotations, raw)
             raw_alignments = getattr(message, "stakeholder_alignments", None)
             if raw_alignments:
                 events = [
                     ConceptAlignmentAssertion(**a) if isinstance(a, dict) else a
                     for a in raw_alignments
                 ]
-                self.assertion_ledger.bind_alignment(turn, events, content)
+                self.assertion_ledger.bind_alignment(turn, events, raw)
             raw_terminology = getattr(message, "stakeholder_terminology", None)
             if raw_terminology:
                 events = [
                     TerminologyConfirmation(**a) if isinstance(a, dict) else a
                     for a in raw_terminology
                 ]
-                self.assertion_ledger.bind_terminology(turn, events, content)
+                self.assertion_ledger.bind_terminology(turn, events, raw)
+            # Environment owns Observation creation: an ACCEPTED stakeholder
+            # utterance (sidecar validated above) becomes one Observation here
+            # and one Agent-visible Observation id, automatically. A failed
+            # sidecar bind raises above and never reaches this point, so no
+            # Observation and no id are consumed.
+            if raw is not None and str(raw).strip():
+                obs_id = tools._capture_user_message(turn, str(raw))  # type: ignore[attr-defined]
+                # deliver the Observation id to the Agent inline with the
+                # raw public text; only this composed string reaches the Agent.
+                message.content = _embed_observation_id(str(raw), obs_id)
+                content = str(raw)
         db.messages.append(
             {
                 "role": str(getattr(message, "role", "")),

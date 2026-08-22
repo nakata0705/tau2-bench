@@ -1,4 +1,5 @@
 import json
+import re
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -37,6 +38,21 @@ from tau2.user.user_simulator_base import (
 from tau2.utils.llm_utils import get_cost
 from tau2.utils.normalization import normalize_text
 from tau2.utils.utils import format_time, get_now
+
+_OBSERVATION_MARKER_RE = re.compile(r"^\s*\[Observation\s+obs_\d+\]\s*(.*)$", re.S)
+
+
+def _strip_observation_marker(text: Optional[str]) -> Optional[str]:
+    """Strip a leading ``[Observation obs_N]`` envelope that business_interview
+    embeds in front of the stakeholder's public text to deliver the Observation
+    id to the Agent; the envelope is not part of the stakeholder's wording.
+    Passes through everything else unchanged."""
+    if not text:
+        return text
+    m = _OBSERVATION_MARKER_RE.match(text)
+    if m:
+        return m.group(1)
+    return text
 
 
 class Role(str, Enum):
@@ -318,7 +334,15 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
         """Count one stakeholder natural-language response (normalized), and
         when a semantic signature is available, the (question, semantic
         answer) interaction. Tool messages / private metadata are ignored;
-        only the public message text is compared."""
+        only the public message text is compared.
+
+        In business_interview the environment delivers each Observation id
+        inline at the front of the public text (``[Observation obs_N] ...``);
+        that marker is NOT part of the stakeholder's wording, so it is
+        stripped before normalization so repeated identical answers still
+        collapse to one counter.
+        """
+        text = _strip_observation_marker(text)
         norm = normalize_text(text or "")
         if not norm:
             return

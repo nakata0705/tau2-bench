@@ -135,6 +135,23 @@ class SemanticAnnotation(BaseModel):
         return v
 
 
+class PlannedResponseItem(BaseModel):
+    """One intended semantic assertion of a Stakeholder response plan.
+
+    Produced by the stakeholder simulator BEFORE any natural-language
+    realization — WHAT the stakeholder intends to answer (a semantic address
+    plus the semantic mode it asserts), kept separate from HOW it is worded.
+    It carries no quote: the public-text span is assigned at realization time.
+    Validated deterministically against the catalog's canonical resolver
+    before realization: a DONT_KNOW slot cannot be planned as a known value, a
+    known-value slot cannot be planned as dont_know, and only ids available
+    in the stakeholder's own knowledge can be planned.
+    """
+
+    semantic_id: str
+    mode: SemanticMode
+
+
 class ConceptAlignmentAssertion(BaseModel):
     """A private semantic dialogue event: the stakeholder performed a
     concept-identity dialogue act (confirm / partial / unknown / dispute)
@@ -272,6 +289,76 @@ class StakeholderKnowledgeCatalog:
                         f"semantically inconsistent and cannot be accepted)"
                     )
 
+    def validate_plan(self, plan: list[PlannedResponseItem]) -> None:
+        """Validate every planned semantic item through the canonical
+        resolver BEFORE natural-language realization. Each ``(semantic_id,
+        mode)`` must exist in the stakeholder's own knowledge and its mode
+        must be exactly the mode the knowledge graph declares for that
+        semantic (``ConceptRef -> value``, ``None -> absent``, ``DONT_KNOW
+        -> dont_know``, node/edge -> exists, ``StakeholderKnowledgeConcept``
+        -> mention). A plan that contradicts the StakeholderKnowledge (e.g.
+        plans a value for a DONT_KNOW slot, or a value for a known-absent
+        slot) is REJECTED before any text is produced.
+
+        The plan can never contain Truth-only information: because it can only
+        reference opaque ids that resolve in the stakeholder's own knowledge,
+        there is no way to plan something the Stakeholder does not know.
+        """
+        known = self._graph_ids
+        for item in plan:
+            if item.semantic_id not in known:
+                raise ValueError(
+                    f"plan item {item.semantic_id!r} is not an element of "
+                    f"stakeholder {self.stakeholder_name!r}'s knowledge"
+                )
+            resolved = self.knowledge.graph.resolve(item.semantic_id)
+            expected = mode_for_resolved(resolved)
+            if expected is None:
+                raise ValueError(
+                    f"plan item {item.semantic_id!r} does not resolve in the "
+                    "knowledge graph"
+                )
+            if item.mode != expected:
+                raise ValueError(
+                    f"plan item {item.semantic_id!r}: mode {item.mode!r} "
+                    f"contradicts the knowledge — the stakeholder's own "
+                    f"semantic model says {expected!r}"
+                )
+
+    def check_sidecar_covers_plan(
+        self,
+        annotations: list[SemanticAnnotation],
+        message: Optional[str],
+        plan: list[PlannedResponseItem],
+    ) -> None:
+        """Deterministic completeness/consistency check between the realized
+        sidecar and the validated plan.
+
+        For every planned item there must be an exact public-text span linked
+        to the SAME ``(semantic_id, mode)``; and every sidecar annotation must
+        correspond to a planned item (no unplanned assertions, no extra
+        workflow facts outside the plan).
+        """
+        plan_key = {(it.semantic_id, it.mode) for it in plan}
+        if plan:
+            for a in annotations:
+                if (a.semantic_id, a.mode) not in plan_key:
+                    raise ValueError(
+                        f"sidecar asserts {a.semantic_id} as {a.mode!r} which "
+                        f"is not in the validated plan (unplanned assertion)"
+                    )
+                if not message_contains_span(message, a.quote, a.occurrence):
+                    raise ValueError(
+                        f"sidecar anchor {a.quote!r} for {a.semantic_id} is "
+                        f"not an exact span of the public text"
+                    )
+            covered = {(a.semantic_id, a.mode) for a in annotations}
+            for it in plan:
+                if (it.semantic_id, it.mode) not in covered:
+                    raise ValueError(
+                        f"planned assertion {it.semantic_id} as {it.mode!r} is "
+                        f"missing from the realized sidecar"
+                    )
     def validate_events(
         self,
         alignments: Optional[list[ConceptAlignmentAssertion]],

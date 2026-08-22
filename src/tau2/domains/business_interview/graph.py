@@ -700,8 +700,9 @@ class InterviewDB(DB):
     messages.
 
     ``messages`` is an environment-controlled ledger of the conversation
-    (role + content per message index); ``observations`` are derived only from
-    user (stakeholder) messages via ``observe_message``. The private semantic
+    (role + content per message index); ``observations`` are the ACCEPTED
+    stakeholder utterances, auto-created by the environment — one per accepted
+    Stakeholder message, BEFORE the Agent sees it. The private semantic
     annotation ledger lives outside this DB (never Agent-visible).
     """
 

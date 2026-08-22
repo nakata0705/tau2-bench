@@ -1,12 +1,17 @@
-"""Agent tools for the graph-native business_interview benchmark (v11).
+"""Agent tools for the graph-native business_interview benchmark (v12 —
+env-owned Observations).
 
-The agent records **Observations** (immutable evidence), builds a private
-glossary of typed ``AgentConcept``\\ s, and constructs an inferred
-``AgentGraph`` whose node/edge property references each carry their own
-``EvidenceRef``\\ s. Every Agent slot is one of the FOUR epistemic states:
-``UNSET`` (not investigated / no conclusion) / ``ConceptRef`` (known value)
-/ ``ABSENT`` (explicitly established absent, with evidence) /
-``DONT_KNOW`` (explicitly established unknown, with evidence).
+The environment creates one immutable Observation per ACCEPTED Stakeholder
+message BEFORE the Agent sees it and delivers the Observation id inline with
+the public text (``[Observation obs_N] <text>``). There is therefore NO
+observation-capture tool: the Agent never calls one and never creates or
+mutates an Observation. It builds a private glossary of typed
+``AgentConcept``\\ s and constructs an inferred ``AgentGraph`` whose
+node/edge property references each carry their own ``EvidenceRef``\\ s.
+Every Agent slot is one of the FOUR epistemic states: ``UNSET``
+(not investigated / no conclusion) / ``ConceptRef`` (known value) /
+``ABSENT`` (explicitly established absent, with evidence) /
+``DONT_KNOW`` (explicitly established unknowable, with evidence).
 
 **Mention != evidence != validation.**
 - ``AgentConcept.mentions`` are Observation spans the Agent interprets as
@@ -928,16 +933,16 @@ class InterviewTools(ToolKitBase):
             "captured Observations and the conversation ledger preserved."
         )
 
-    def _stakeholder_entries(self) -> list[tuple[str, int, str]]:
-        entries = []
-        counter = 0
-        for i, msg in enumerate(self.db.messages):
-            if msg.get("role") == "user":
-                counter += 1
-                entries.append((f"sm_{counter}", i, msg.get("content") or ""))
-        return entries
-
     def _capture_user_message(self, turn: int, content: str) -> str:
+        """PRIVATE (environment-owned) Observation creation for one accepted
+        stakeholder utterance at ledger turn ``turn``.
+
+        This is NOT an Agent-facing tool: no Agent can call it, and the Agent
+        never creates or mutates Observations. The environment calls it after
+        its private sidecar validation succeeds, so every accepted Stakeholder
+        utterance becomes exactly one Observation / one Observation id. A
+        rejection before this point never consumes an id.
+        """
         for obs in self.db.observations:
             if obs.turn == turn:
                 return obs.id
@@ -951,45 +956,21 @@ class InterviewTools(ToolKitBase):
         self.db.observations.append(obs)
         return obs.id
 
-    @is_tool(ToolType.WRITE)
-    def observe_message(self, message_id: str) -> str:
-        """Capture the stakeholder message with ``message_id`` as an Observation.
-
-        Returns the observation id (use it in evidence refs on concepts, nodes
-        and edges). Idempotent; only user messages can be observed.
-        """
-        for sm_id, turn, content in self._stakeholder_entries():
-            if sm_id == message_id:
-                return self._capture_user_message(turn, content)
-        raise ValueError(f"no stakeholder message with id {message_id!r}")
-
-    @is_tool(ToolType.WRITE)
-    def observe_latest_stakeholder_message(self) -> str:
-        """Capture the newest stakeholder (user) message as an Observation and
-        return its Observation id directly — the single-step equivalent of
-        ``observe_latest_stakeholder_message`` + ``observe_message(message_id)``,
-        so one Agent decision suffices for this deterministic bookkeeping step.
-
-        Idempotent: re-calling returns the same Observation id, and the
-        captured Observation is byte-for-byte identical to ``observe_message``
-        on the same message (exact ``obs_<turn>`` id, text, source, order).
-        To capture an EARLIER message use ``observe_message(message_id)``;
-        ``list_stakeholder_messages`` still shows the stable ``sm_<n>`` ids.
-        """
-        entries = self._stakeholder_entries()
-        if not entries:
-            raise ValueError("no stakeholder (user) message has been recorded yet")
-        _, turn, content = entries[-1]
-        return self._capture_user_message(turn, content)
-
     @is_tool(ToolType.READ)
     def list_stakeholder_messages(self) -> str:
-        lines = [
-            f"{sm_id}: {content}"
-            for sm_id, turn, content in self._stakeholder_entries()
-        ]
-        return "\n".join(lines) if lines else "(no stakeholder messages yet)"
+        """List the accepted Stakeholder statements and their Observation ids.
 
+        Every accepted Stakeholder response was automatically ingested as an
+        Observation by the environment BEFORE the Agent saw it, so the entry
+        ids here are the same Observation ids delivered inline with each
+        message (``[Observation obs_N] <text>``). Use those ids directly in
+        evidence refs — never guess or reuse an older Observation id.
+        """
+        lines = [
+            f"{o.id}: {o.text}"
+            for o in sorted(self.db.observations, key=lambda o: o.turn)
+        ]
+        return "\n".join(lines) if lines else "(no observations yet)"
     def _ref_from_prop_arg(
         self,
         arg,

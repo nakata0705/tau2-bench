@@ -182,6 +182,52 @@ Primary achievable target: **AgentGraph vs StakeholderKnowledgeGraph**
 `start_inference` resets the AgentGraph/glossary/completion state but
 preserves Observations and the conversation ledger.
 
+## Environment-owned Observations
+
+Every ACCEPTED stakeholder utterance automatically becomes one immutable
+Observation BEFORE the Agent sees it (``environment.py``): the environment
+validates the private sidecar, creates the Observation (id ``obs_<turn>``,
+raw public text, source ``stakeholder``), and delivers the Observation id
+inline at the front of the Agent-visible message (``[Observation obs_N]
+<text>``). There is NO observation-capture tool — ``observe_latest_stakeholder_message``
+and ``observe_message`` are removed, so the Agent never creates or mutates
+Observations and never makes an observation round trip. A rejected
+(failed/retried) Stakeholder generation creates no Observation and consumes
+no id. Guarantee: one accepted Stakeholder utterance <-> one Observation
+<-> one Agent-visible Observation id.
+
+With the Observation id delivered alongside the response, independent
+evidence operations batch in one Agent turn (e.g. several ``create_concept``
+calls carrying ``evidence=obs_N``). Genuine dependencies are preserved: every
+tool in a batch must have all required arguments known before the batch
+starts — a future Observation id/concept id that does not exist yet is
+rejected, never guessed or fabricated.
+
+## Semantic Response Plan (WHAT before HOW)
+
+``user_simulator.py`` separates WHAT the stakeholder semantically answers
+from HOW it is worded:
+
+1. **Plan** — given the question + its own knowledge, the stakeholder builds a
+   private Semantic Response Plan: intended semantic addresses + modes
+   (``semantic_id = node:skn_002:rationale, mode = value``), based only on
+   StakeholderKnowledge (never Truth-only information).
+2. **Validate** — every planned item is checked through the canonical
+   resolver (`ConceptRef -> value`, `None -> absent`, `DONT_KNOW ->
+   dont_know`, node/edge -> exists, StakeholderKnowledgeConcept -> mention);
+   a plan that contradicts the knowledge (known value planned as dont_know,
+   DONT_KNOW planned as value, ...) is rejected before any text is produced.
+3. **Realize** — the validated plan is expressed in natural language; the
+   private sidecar must contain, for EVERY planned item, an exact
+   public-text span anchored to the SAME semantic_id + mode, and nothing
+   outside the plan. Unplanned assertions, missing assertions, contradictions
+   and quotes not in the public text are rejected (bounded retry). Ordinary
+   terminology references stay `mention`; terminology agreement is never
+   inferred.
+
+The Agent never sees the plan, the semantic ids, or the sidecar — only the
+Observation id + public text.
+
 ## Files
 
 | Module | Purpose |
@@ -189,13 +235,14 @@ preserves Observations and the conversation ledger.
 | `graph.py` | shared primitives, semantic-ID scheme, TruthConcept, AgentConcept, BusinessProcessGraph (Truth), AgentGraph, Observation/InterviewDB |
 | `knowledge.py` | StakeholderKnowledge / StakeholderKnowledgeGraph / StakeholderKnowledgeConcept + `project_knowledge` |
 | `stakeholder.py` | StakeholderFilter (element/property/concept knowledge knobs) |
-| `facts.py` | SemanticAnnotation + private dialogue events + SemanticLedger + catalog |
+| `facts.py` | SemanticAnnotation + PlanResponseItem + private dialogue events + SemanticLedger + catalog (annotation/plan validation) |
 | `grounding.py` | shared global-span provenance (evidence refs -> semantic ids) |
 | `scenario.py` | Truth graphs + filters + knowledge (quotation / lab / JA) |
 | `evaluation.py` | provenance-only evaluator (AgentGraph vs StakeholderKnowledgeGraph) |
-| `tools.py` | glossary + graph tools (per-property evidence, binding-aware ground/confirm/unknown/disputed/terminology, `record_dont_know` / `record_edge_condition_dont_know` / `record_absent` / `record_edge_condition_absent`) |
-| `user_simulator.py` | semantic stakeholder realization (graph-native sidecar) |
-| `environment.py` | conversation ledger + private sidecar binding + `episode_complete` |
+| `tools.py` | glossary + graph tools (per-property evidence, binding-aware ground/confirm/unknown/disputed/terminology, `record_dont_know` / `record_edge_condition_dont_know` / `record_absent` / `record_edge_condition_absent`); NO observation tools |
+| `user_simulator.py` | semantic stakeholder: chooses the Semantic Response Plan, validates it, realizes it (graph-native sidecar) |
+| `environment.py` | conversation ledger + private sidecar validation/binding + environment-owned Observation creation + `episode_complete` |
 
 Run `business_interview_user` as the user implementation; the deterministic
-suite is `tests/test_domains/test_business_interview/`.
+suite is `tests/test_domains/test_business_interview/` and
+`tests/test_business_interview_roundtrips.py`.

@@ -1,16 +1,21 @@
-"""Deterministic tests for business_interview LLM-roundtrip reduction.
+"""Deterministic tests for business_interview LLM-roundtrip reduction and
+environment-owned Observations.
 
-These cover the tool-flow ergonomics added to cut unnecessary Agent
-generations WITHOUT weakening provenance/semantics:
+These cover the flow changes that cut Agent generations WITHOUT weakening
+provenance/semantics:
 
-- multiple INDEPENDENT tool calls in one Agent message are all executed as one
-  batch (one env round trip, results returned together);
-- DEPENDENT tool calls cannot bypass a required result (a concept must exist
-  before a node references it; observation ids must come from the tool, never
-  be guessed);
-- the merged observation acquisition (`observe_latest_stakeholder_message`
-  returns the Observation id directly, no separate `observe_message` round
-  trip) preserves the EXACT Observation ids / text / provenance.
+- an ACCEPTED stakeholder response automatically becomes one Observation
+  before the Agent sees it; the Observation id is delivered inline with the
+  public text (``[Observation obs_N] ...``) — no observation tool, no
+  round trip;
+- multiple INDEPENDENT evidence tool calls in one Agent message batch in one
+  env round trip (using the already-delivered Observation id), while a
+  same-batch FUTURE dependency (an id that does not exist when the batch
+  starts) is rejected;
+- the stakeholder's Semantic Response Plan (WHAT it answers) is validated
+  deterministically against its knowledge before realization: the plan can
+  never contradict StakeholderKnowledge, every planned assertion must appear
+  in the realized sidecar, and private ids never leak.
 
 No LLM / provider is ever called (scripted stub agent + the real
 business_interview environment).
@@ -258,70 +263,149 @@ def test_add_node_requires_existing_concept_via_orchestrator_batch():
     assert db.graph.nodes["n1"].activity is not None
     assert db.graph.nodes["n1"].activity.concept_id == "c_actor"  # type: ignore[union-attr]
 
-
 # ---------------------------------------------------------------------------
-# Merged observation acquisition preserves exact ids / provenance
+# Environment-owned Observation creation
 # ---------------------------------------------------------------------------
 
 
-def test_observe_latest_returns_observation_id_directly():
-    """observe_latest_stakeholder_message() captures the newest stakeholder
-    message AND returns its Observation id in one call — matching exactly what
-    observe_message(message_id) would return for the same message."""
+def test_accepted_stakeholder_message_auto_creates_observation():
+    """The environment automatically creates exactly one Observation for an
+    accepted stakeholder utterance — the Agent never calls an observation
+    tool. The Observation id is delivered inline at the front of the public
+    text, and the raw text lives in the immutable Observation + ledger."""
     env = get_environment()
     tools = _get_tools(env)
-    # a stakeholder message arrives through the environment
     from tau2.data_model.message import UserMessage
 
-    env.on_message(UserMessage(role="user", content="First statement."))
-    obs_id = tools.observe_latest_stakeholder_message()
-    assert obs_id.startswith("obs_")
-    obs = next(o for o in tools.db.observations if o.id == obs_id)
-    assert obs.text == "First statement."
-    assert obs.source_id == "stakeholder"
-    # exact equality with the by-id capture (idempotent + identical)
-    assert tools.observe_message("sm_1") == obs_id
-    assert tools.observe_latest_stakeholder_message() == obs_id
+    msg = UserMessage(role="user", content="We do it to manage credit risk.")
+    env.on_message(msg)
     assert len(tools.db.observations) == 1
+    obs = tools.db.observations[0]
+    assert obs.id.startswith("obs_")
+    assert obs.text == "We do it to manage credit risk."
+    assert obs.source_id == "stakeholder"
+    assert obs.order == 0
+    # the raw text (not the marker) is what the ledger / Observation store
+    assert tools.db.messages[-1]["content"] == "We do it to manage credit risk."
+    # the Agent receives the Observation id inline with the public text
+    assert msg.content == f"[Observation {obs.id}] We do it to manage credit risk."
 
 
-def test_observe_latest_preserves_provenance_across_messages():
-    """The merged capture preserves exact obs ids, order and turn binding for
-    several messages, and never duplicates an Observation."""
+def test_accepted_messages_and_observations_remain_1_to_1():
+    """one accepted stakeholder utterance <-> one Observation <-> one
+    Agent-visible Observation id, in order, never duplicated."""
     env = get_environment()
     tools = _get_tools(env)
     from tau2.data_model.message import UserMessage
 
-    env.on_message(UserMessage(role="user", content="Statement one."))
-    oid1 = tools.observe_latest_stakeholder_message()
-    env.on_message(UserMessage(role="user", content="Statement two."))
-    oid2 = tools.observe_latest_stakeholder_message()
-    assert oid1 != oid2
-    assert len(tools.db.observations) == 2
-    obs1 = next(o for o in tools.db.observations if o.id == oid1)
-    obs2 = next(o for o in tools.db.observations if o.id == oid2)
-    assert obs1.text == "Statement one."
-    assert obs2.text == "Statement two."
-    assert obs1.order == 0 and obs2.order == 1
-    # per-message turn binding matches the ledger
-    turns = [i for i, m in enumerate(tools.db.messages) if m.get("role") == "user"]
-    assert obs1.turn == turns[0]
-    assert obs2.turn == turns[1]
-    # observe_message by id yields the SAME observation ids
-    assert tools.observe_message("sm_1") == oid1
-    assert tools.observe_message("sm_2") == oid2
+    delivered: list[str] = []
+    for text in ("Statement one.", "Statement two.", "Statement three."):
+        msg = UserMessage(role="user", content=text)
+        env.on_message(msg)
+        assert msg.content is not None
+        delivered.append(msg.content)
+    assert len(tools.db.observations) == 3
+    ids = [o.id for o in tools.db.observations]
+    assert len(set(ids)) == 3
+    assert [o.order for o in tools.db.observations] == [0, 1, 2]
+    for delivered_content, obs in zip(delivered, tools.db.observations):
+        assert delivered_content == f"[Observation {obs.id}] {obs.text}"
 
 
-def test_observe_latest_single_step_in_orchestrator():
-    """In a real orchestrator run the Agent needs only ONE tool call to
-    capture the newest message: observe_latest_stakeholder_message returns the
-    Observation id; no separate observe_message round trip is required. The
-    captured Observation matches observe_message(message_id) by id exactly."""
+def test_failed_sidecar_retry_creates_no_observation_and_consumes_no_id():
+    """A stakeholder generation whose private sidecar fails validation must
+    not create an Observation or consume an Observation id; only an ACCEPTED
+    (validated) utterance does. Repeated failed generations still leave zero
+    Observations."""
+    env = get_environment()
+    tools = _get_tools(env)
+    from tau2.data_model.message import UserMessage
+    from tau2.domains.business_interview.environment import BusinessInterviewEnvironment
+    from tau2.domains.business_interview.user_simulator import StakeholderUserSimulator
+
+    assert isinstance(env, BusinessInterviewEnvironment)
+    StakeholderUserSimulator(llm="dummy", task=_task(), environment=env, instructions="x")
+    assert env.assertion_ledger is not None
+    assert env.assertion_ledger.catalog is not None
+    for _ in range(2):
+        bad = UserMessage(
+            role="user",
+            content="I check the customer in the CRM.",
+            stakeholder_annotations=[
+                {"semantic_id": "node:skn_002:system",
+                 "quote": "not in the text",
+                 "occurrence": 0, "mode": "value"}
+            ],
+        )
+        try:
+            env.on_message(bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid sidecar must be rejected")
+    assert len(tools.db.observations) == 0
+    assert env.assertion_ledger.annotations() == {}
+
+
+# ---------------------------------------------------------------------------
+# Removed observation tools + batching on the delivered Observation id
+# ---------------------------------------------------------------------------
+
+
+def test_obsolete_observation_tool_is_removed():
+    """observe_latest_stakeholder_message and observe_message are gone (no
+    compatibility shim); the Agent can never create/mutate Observations."""
+    env = get_environment()
+    tools = _get_tools(env)
+    assert not hasattr(tools, "observe_latest_stakeholder_message")
+    assert not hasattr(tools, "observe_message")
+    names = {t.name for t in env.get_tools()}
+    assert "observe_latest_stakeholder_message" not in names
+    assert "observe_message" not in names
+
+
+def test_evidence_ref_immediately_uses_delivered_observation_id():
+    """EvidenceRef can use the Observation id delivered with the response
+    in the very next tool call — no observation round trip."""
+    env = get_environment()
+    tools = _get_tools(env)
+    from tau2.data_model.message import UserMessage
+
+    msg = UserMessage(role="user", content="The process starts with a request.")
+    env.on_message(msg)
+    obs = tools.db.observations[0]
+    assert msg.content is not None and msg.content.startswith("[Observation ")
+    result = tools.create_concept(
+        "c_req",
+        "activity",
+        "receive a request",
+        evidence=[{"observation_id": obs.id, "quote": "starts with a request",
+                    "occurrence": 0}],
+    )
+    assert "c_req" in result
+
+
+def test_independent_evidence_tools_batch_with_same_observation_id():
+    """Once the Observation id is delivered with the response, independent
+    evidence operations batch freely — one Agent turn, many tool calls."""
     env = get_environment()
     tools = _get_tools(env)
     agent = _MultiToolAgent(
         [
-            _assistant([_tool_call("observe_latest_stakeholder_message", {}, 0)]),
+            _assistant(
+                [
+                    _tool_call(
+                        "create_concept",
+                        {"concept_id": "c_a", "kind": "activity",
+                         "label": "alpha"}, 0,
+                    ),
+                    _tool_call(
+                        "create_concept",
+                        {"concept_id": "c_b", "kind": "activity",
+                         "label": "beta"}, 1,
+                    ),
+                ]
+            ),
             _assistant([], content="###STOP###"),
         ]
     )
@@ -341,22 +425,305 @@ def test_observe_latest_single_step_in_orchestrator():
         orch.step()
         orch._check_termination()
         guard += 1
-    # exactly one Observation, captured from the latest stakeholder message
-    obs = tools.db.observations
-    assert len(obs) == 1
-    user_msgs = [i for i, m in enumerate(tools.db.messages) if m.get("role") == "user"]
-    latest_user_id = f"sm_{len(user_msgs)}"
-    assert obs[0].id == tools.observe_message(latest_user_id)
-    assert obs[0].text == tools.db.messages[user_msgs[-1]]["content"]
-    assert obs[0].source_id == "stakeholder"
-    # only ONE agent tool-call turn happened (single-step acquisition)
+    db: InterviewDB = tools.db
+    assert db.graph is not None
+    assert set(db.graph.concepts) >= {"c_a", "c_b"}
     msgs = orch.get_trajectory()
     tool_turns = [
         m for m in msgs if isinstance(m, AssistantMessage) and m.is_tool_call()
     ]
     assert len(tool_turns) == 1
-    # and the returned content was the Observation id
-    from tau2.data_model.message import ToolMessage
 
-    tool_msg = [m for m in msgs if isinstance(m, ToolMessage)][0]
-    assert (tool_msg.content or "").strip() == obs[0].id
+
+def test_same_batch_future_dependency_is_rejected():
+    """A tool in a batch cannot reference an Observation id (or other result)
+    that is not yet known when the batch starts — no speculative/future id
+    is ever resolved or fabricated."""
+    tools = _get_tools(get_environment())
+    try:
+        tools.create_concept(
+            "c_g",
+            "activity",
+            "ghost",
+            evidence=[{"observation_id": "obs_999", "quote": "nope",
+                        "occurrence": 0}],
+        )
+        rejected = False
+    except ValueError:
+        rejected = True
+    assert rejected is True
+    assert tools.db.graph is None or "c_g" not in tools.db.graph.concepts
+    assert len(tools.db.observations) == 0
+
+# ---------------------------------------------------------------------------
+# Semantic Response Plan (WHAT) is validated before realization (HOW)
+# ---------------------------------------------------------------------------
+
+
+def _catalog():
+    """The quotation scenario StakeholderKnowledgeCatalog (with knowledge)."""
+    from tau2.domains.business_interview.facts import StakeholderKnowledgeCatalog
+    from tau2.domains.business_interview.scenario import get_scenario
+
+    sc = get_scenario(_task().id)
+    assert sc is not None
+    return StakeholderKnowledgeCatalog.from_scenario(sc)
+
+
+def test_semantic_response_plan_cannot_contradict_knowledge():
+    """A plan whose (semantic_id, mode) contradicts the StakeholderKnowledge
+    is rejected BEFORE realization."""
+    from tau2.domains.business_interview.facts import (
+        PlannedResponseItem,
+        mode_for_resolved,
+    )
+
+    cat = _catalog()
+    kg = cat.knowledge.graph
+    # find a node with a known-value property slot (e.g. a system slot) and a
+    # DONT_KNOW slot
+    valueslot = None
+    dontknowslot = None
+    for nid in sorted(kg.nodes):
+        for prop in ("system", "activity"):
+            sid = f"node:{nid}:{prop}"
+            mode = mode_for_resolved(kg.resolve(sid))
+            if mode == "value" and valueslot is None:
+                valueslot = sid
+            if mode == "dont_know" and dontknowslot is None:
+                dontknowslot = sid
+    assert valueslot is not None, "expected a known-value slot in the quotation knowledge"
+    # a known value cannot be planned as dont_know
+    try:
+        cat.validate_plan(
+            [PlannedResponseItem(semantic_id=valueslot, mode="dont_know")]
+        )
+        rejected = False
+    except ValueError:
+        rejected = True
+    assert rejected is True
+    # a known value planned as absent is also contradicted
+    try:
+        cat.validate_plan(
+            [PlannedResponseItem(semantic_id=valueslot, mode="absent")]
+        )
+        rejected2 = False
+    except ValueError:
+        rejected2 = True
+    assert rejected2 is True
+    # the same id planned with its true mode is accepted
+    cat.validate_plan([PlannedResponseItem(semantic_id=valueslot, mode="value")])
+
+
+def test_dont_know_cannot_become_value_in_plan():
+    """A DONT_KNOW slot cannot be planned as a known value."""
+    from tau2.domains.business_interview.facts import (
+        PlannedResponseItem,
+        mode_for_resolved,
+    )
+
+    cat = _catalog()
+    kg = cat.knowledge.graph
+    dontknowslot = None
+    for nid in sorted(kg.nodes):
+        for prop in ("system", "activity", "rationale"):
+            sid = f"node:{nid}:{prop}"
+            mode = mode_for_resolved(kg.resolve(sid))
+            if mode == "dont_know":
+                dontknowslot = sid
+                break
+        if dontknowslot is not None:
+            break
+    assert dontknowslot is not None, "expected a DONT_KNOW slot in the scenario"
+    try:
+        cat.validate_plan(
+            [PlannedResponseItem(semantic_id=dontknowslot, mode="value")]
+        )
+        rejected = False
+    except ValueError:
+        rejected = True
+    assert rejected is True
+    # the true dont_know mode is accepted
+    cat.validate_plan([PlannedResponseItem(semantic_id=dontknowslot, mode="dont_know")])
+
+
+def test_plan_cannot_reference_unknown_or_truth_only_id():
+    """A plan item whose semantic id is not in the stakeholder's knowledge is
+    rejected (the plan can never carry Truth-only information)."""
+    from tau2.domains.business_interview.facts import PlannedResponseItem
+
+    cat = _catalog()
+    try:
+        cat.validate_plan(
+            [PlannedResponseItem(semantic_id="node:skn_999:activity", mode="value")]
+        )
+        rejected = False
+    except ValueError:
+        rejected = True
+    assert rejected is True
+
+
+def test_every_planned_assertion_must_appear_in_sidecar():
+    """check_sidecar_covers_plan requires every planned assertion to be
+    present in the realized sidecar with the same id+mode and an exact span."""
+    from tau2.domains.business_interview.facts import (
+        PlannedResponseItem,
+        SemanticAnnotation,
+    )
+
+    cat = _catalog()
+    kg = cat.knowledge.graph
+    valueslot = next(
+        sid
+        for nid in sorted(kg.nodes)
+        for prop in ("system", "activity")
+        if (sid := f"node:{nid}:{prop}")
+        and __import__(
+            "tau2.domains.business_interview.facts", fromlist=["mode_for_resolved"]
+        ).mode_for_resolved(kg.resolve(sid))
+        == "value"
+    )
+    plan = [PlannedResponseItem(semantic_id=valueslot, mode="value")]
+    text = "We do it to manage credit risk for the order."
+    # missing: nothing in the sidecar covers the plan
+    try:
+        cat.check_sidecar_covers_plan([], text, plan)
+        missing_rejected = False
+    except ValueError:
+        missing_rejected = True
+    assert missing_rejected is True
+    # correct coverage: same id+mode with an exact quote
+    good = [
+        SemanticAnnotation(semantic_id=valueslot, quote="order", occurrence=0,
+                           mode="value")
+    ]
+    assert "order" in text
+    cat.check_sidecar_covers_plan(good, text, plan)
+    # an annotation with the RIGHT id but WRONG mode is not coverage
+    bad = [
+        SemanticAnnotation(semantic_id=valueslot, quote="order", occurrence=0,
+                           mode="absent")
+    ]
+    try:
+        cat.check_sidecar_covers_plan(bad, text, plan)
+        wrongmode_rejected = False
+    except ValueError:
+        wrongmode_rejected = True
+    assert wrongmode_rejected is True
+    # an annotation for something NOT in the plan is rejected as unplanned
+    otherslot = None
+    for nid in sorted(kg.nodes):
+        sid = f"node:{nid}:activity"
+        if sid != valueslot and kg.resolve(sid) is not None:
+            otherslot = sid
+            break
+    assert otherslot is not None
+    extra = good + [
+        SemanticAnnotation(semantic_id=otherslot, quote="credit risk",
+                           occurrence=0, mode="value")
+    ]
+    try:
+        cat.check_sidecar_covers_plan(extra, text, plan)
+        extra_rejected = False
+    except ValueError:
+        extra_rejected = True
+    assert extra_rejected is True
+
+def test_stakeholder_generation_plans_then_realizes_with_stubbed_llm():
+    """The stakeholder pipeline is two-phase and deterministic: it first builds
+    a validated Semantic Response Plan (WHAT), then realizes the validated plan
+    into natural language + sidecar, enforcing that every planned assertion
+    appears with the same (semantic_id, mode) and an exact public-text span.
+    Provable without any live LLM by stubbing the completion."""
+    import json as _json
+
+    from tau2.data_model.message import SystemMessage, UserMessage
+    from tau2.domains.business_interview.facts import (
+        PlannedResponseItem,
+        StakeholderKnowledgeCatalog,
+        mode_for_resolved,
+    )
+    from tau2.domains.business_interview.scenario import get_scenario
+    from tau2.domains.business_interview.user_simulator import (
+        StakeholderUserSimulator,
+    )
+
+    env = get_environment()
+    sim = StakeholderUserSimulator(
+        llm="dummy", task=_task(), environment=env, instructions="x"
+    )
+    sc = get_scenario(_task().id)
+    assert sc is not None
+    sim._scenario = sc  # noqa: SLF001
+    sim._catalog = StakeholderKnowledgeCatalog.from_scenario(sc)  # noqa: SLF001
+
+    kg = sc.knowledge.graph
+    valueslot = next(
+        sid
+        for nid in sorted(kg.nodes)
+        for prop in ("system", "activity")
+        if (sid := f"node:{nid}:{prop}")
+        and mode_for_resolved(kg.resolve(sid)) == "value"
+    )
+    plan_payload = _json.dumps(
+        {"plan": [{"semantic_id": valueslot, "mode": "value"}]}
+    )
+    good_sidecar = _json.dumps(
+        {
+            "message": "We check the order to manage credit risk.",
+            "annotations": [
+                {"semantic_id": valueslot, "mode": "value",
+                 "quote": "the order", "occurrence": 0}
+            ],
+            "alignments": [],
+            "terminology": [],
+        }
+    )
+    bad_sidecar = _json.dumps(
+        {
+            "message": "We check the order to manage credit risk.",
+            "annotations": [],
+            "alignments": [],
+            "terminology": [],
+        }
+    )
+
+    msgs = [
+        SystemMessage(role="system", content="stakeholder system prompt"),
+        UserMessage(role="user", content="What is this step for?"),
+    ]
+
+    class _Reply:
+        def __init__(self, content):
+            self.content = content
+
+    # Phase 1 call -> plan; Phase 2 call -> sidecar (the phase-1 contract is
+    # the leading text of the output contract; the realize contract is the
+    # extended sidecar contract).
+    from tau2.domains.business_interview.user_simulator import (
+        _PLAN_CONTRACT as PLAN_CONTRACT,
+    )
+
+    def _stub(messages, output_contract_text=None):  # noqa: ANN001
+        contract = output_contract_text or ""
+        if contract.startswith(PLAN_CONTRACT[:80]):
+            return _Reply(plan_payload)
+        return _Reply(good_sidecar)
+
+    sim._call_llm = _stub  # noqa: SLF001
+    plan = sim._generate_plan(msgs)
+    assert plan == [PlannedResponseItem(semantic_id=valueslot, mode="value")]
+    sidecar = sim._realize_sidecar(msgs, plan)
+    assert sidecar["message"] == "We check the order to manage credit risk."
+    assert len(sidecar["annotations"]) == 1
+
+    # deterministic completeness enforcement: an omission is rejected
+    sim._call_llm = lambda messages, output_contract_text=None: _Reply(  # noqa: SLF001
+        bad_sidecar
+    )
+    try:
+        sim._realize_sidecar(msgs, plan)
+        rejected = False
+    except ValueError:
+        rejected = True
+    assert rejected is True

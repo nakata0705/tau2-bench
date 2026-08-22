@@ -513,10 +513,10 @@ def _say(
             ],
             text,
         )
-    # Single-step observation acquisition: the newest stakeholder message is
-    # captured directly and its Observation id returned (no separate
-    # observe_message round trip).
-    return tools.observe_latest_stakeholder_message()
+    # Environment-owned observation creation: the accepted stakeholder
+    # utterance becomes one Observation (private _capture_user_message — the
+    # same primitive the environment calls; it is NOT an Agent-facing tool).
+    return tools._capture_user_message(turn, text)  # noqa: SLF001 - private env primitive
 
 
 def _ev(obs_id: str, quote: str, occurrence: int = 0) -> dict:
@@ -2273,29 +2273,37 @@ def test_episode_complete_reflects_finish():
 # ---------------------------------------------------------------------------
 
 
-def test_list_stakeholder_messages_returns_stable_ids():
+def test_list_stakeholder_messages_lists_observations():
     tools = _tools()
     _ingest(tools, "assistant", "Hello.")
     _ingest(tools, "user", "Sure, that's fine.")
     _ingest(tools, "assistant", "How does it start?")
     _ingest(tools, "user", "The process starts when a customer sends a request.")
+    # the environment creates one Observation per accepted user message
+    for turn, m in enumerate(tools.db.messages):
+        if m.get("role") == "user":
+            tools._capture_user_message(turn, m["content"])  # noqa: SLF001
     listing = tools.list_stakeholder_messages()
     lines = [ln for ln in listing.splitlines()]
-    assert lines[0].startswith("sm_1:")
-    assert lines[1].startswith("sm_2:")
+    assert lines[0].startswith("obs_1: Sure, that's fine.")
+    assert lines[1].startswith("obs_3: The process starts ")
+    assert "sm_" not in listing
     assert "turn" not in listing
 
 
-def test_observe_message_by_id_creates_correct_observation():
+def test_observation_creation_matches_env_owned_semantics():
+    """(Env-owned observation test; kept for continuity): an accepted
+    stakeholder message auto-creates one Observation with the right
+    id/text/source/turn, and re-capturing the same turn is idempotent."""
     tools = _tools()
     _ingest(tools, "user", "First statement.")
     _ingest(tools, "user", "Second statement.")
-    oid = tools.observe_message("sm_2")
+    oid = tools._capture_user_message(0, "First statement.")  # noqa: SLF001
     obs = next(o for o in tools.db.observations if o.id == oid)
-    assert obs.text == "Second statement."
+    assert obs.text == "First statement."
     assert obs.source_id == "stakeholder"
-    assert tools.db.messages[obs.turn]["content"] == "Second statement."
-    assert tools.observe_message("sm_2") == oid
+    assert tools.db.messages[obs.turn]["content"] == "First statement."
+    assert tools._capture_user_message(0, "First statement.") == oid  # noqa: SLF001
 
 
 def test_observation_capture_survives_set_state_replay():
@@ -2309,7 +2317,7 @@ def test_observation_capture_survives_set_state_replay():
         env.on_message(msg)
         return msg
 
-    def observe_and_record(name, args):
+    def record(name, args):
         cid = len(traj)
         tc = ToolCall(id=f"c{cid}", name=name, arguments=args, requestor="assistant")
         push(AssistantMessage(role="assistant", tool_calls=[tc]))
@@ -2320,9 +2328,11 @@ def test_observation_capture_survives_set_state_replay():
 
     push(AssistantMessage(role="assistant", content="Hello."))
     push(UserMessage(role="user", content="First stakeholder statement."))
-    oid1 = observe_and_record("observe_message", {"message_id": "sm_1"})
+    first_obs = next(o for o in env.tools.db.observations)  # type: ignore[attr-defined]
+    oid1 = first_obs.id
+    record("create_concept", {"concept_id": "c1", "kind": "activity", "label": "x"})
     push(UserMessage(role="user", content="Second stakeholder statement."))
-    oid2 = observe_and_record("observe_message", {"message_id": "sm_2"})
+    oid2 = env.tools.db.observations[1].id  # type: ignore[attr-defined]
     push(AssistantMessage(role="assistant", content="done"))
 
     replay = get_environment()
@@ -2334,8 +2344,7 @@ def test_observation_capture_survives_set_state_replay():
     )
     assert replay.tools is not None
     listing = replay.tools.list_stakeholder_messages()  # type: ignore[attr-defined]
-    assert listing.splitlines()[0].startswith("sm_1:")
-    assert "sm_2:" in listing
+    assert listing.splitlines()[0].startswith("obs_")
     assert replay.tools.db is not None
     assert len(replay.tools.db.observations) == 2
     assert oid1 in {o.id for o in replay.tools.db.observations}
@@ -2501,16 +2510,16 @@ def _reference_trajectory() -> list:
                 ],
                 text,
             )
+        # Environment-owned capture: the accepted utterance automatically
+        # becomes the Observation whose id the tool calls below cite.
+        return tools._capture_user_message(turn, text)  # noqa: SLF001
 
     mk("start_inference", {"name": "Quotation creation"})
     created: set[str] = set()
     node_oid: dict[str, str] = {}
-    sm = 0
     for sid in ("r", "cc", "cq", "ap", "sq", "me"):
         text, anns = _NODE_OBS[sid]
-        sm += 1
-        say(text, anns)
-        oid = mk("observe_message", {"message_id": f"sm_{sm}"})
+        oid = say(text, anns)
         node_oid[sid] = oid
         for semantic_id, q in anns:
             kcid = _SEMANTIC_TO_CONCEPT.get(semantic_id)
@@ -2577,9 +2586,7 @@ def _reference_trajectory() -> list:
     # explicit DONT_KNOW recordings (an unasserted slot is NOT DONT_KNOW)
     for sid in ("r", "cc", "cq", "ap", "sq", "me"):
         text, anns = _NODE_DONT_KNOW_OBS[sid]
-        sm += 1
-        say(text, anns)
-        oid = mk("observe_message", {"message_id": f"sm_{sm}"})
+        oid = say(text, anns)
         agent_node = {v: k for k, v in _NODE_MAP.items()}[sid]
         mk(
             "record_dont_know",
@@ -2594,9 +2601,7 @@ def _reference_trajectory() -> list:
         )
     for eid in ("e1", "e2", "e3", "e4", "e5", "e6"):
         text, anns = _EDGE_OBS[eid]
-        sm += 1
-        say(text, anns)
-        oid = mk("observe_message", {"message_id": f"sm_{sm}"})
+        oid = say(text, anns)
         cond = None
         for semantic_id, q in anns:
             if semantic_id == f"edge:{eid}:condition":
@@ -2637,9 +2642,7 @@ def _reference_trajectory() -> list:
         mk("add_edge", eargs)
     for eid in ("e1", "e2", "e5"):
         text, anns = _EDGE_DONT_KNOW_OBS[eid]
-        sm += 1
-        say(text, anns)
-        oid = mk("observe_message", {"message_id": f"sm_{sm}"})
+        oid = say(text, anns)
         mk(
             "record_edge_condition_dont_know",
             {"edge_id": eid, "evidence": [_ev(oid, q) for _, q in anns]},

@@ -2,10 +2,16 @@
 
 The stakeholder's knowledge is its **world model** (``StakeholderKnowledge``:
 a masked graph with three-valued property slots + local concepts). There are
-**no authored business sentences** — the stakeholder LLM receives question +
-history + its world model (nodes/edges/property slots with their semantic
-IDs, DONT_KNOW slots, and its local concepts with description/terms) and
-**realizes** it into natural language.
+**no authored business sentences** — the stakeholder answers in two phases:
+
+1. **Semantic Response Plan (WHAT)** — before any wording, the stakeholder
+   LLM (given question + history + its world model) picks the semantic
+   addresses + modes it intends to assert; the plan is validated
+   deterministically against the knowledge (a DONT_KNOW slot cannot be
+   planned as a value, a known value cannot be planned as dont_know, etc.).
+2. **Realization (HOW)** — the validated plan is expressed in natural
+   language; the private sidecar must account for EVERY planned assertion
+   (exact public-text span, same semantic_id + mode) and nothing else.
 
 Private response:
 
@@ -23,7 +29,9 @@ Each annotation carries a semantic ``mode`` (what the message asserts about
 that element: value / absent / dont_know / exists / mention), validated
 deterministically against the StakeholderKnowledgeGraph: an annotation whose
 mode contradicts the stakeholder's own world model (e.g. the graph knows a
-value but the reply annotates ``dont_know``) is REJECTED and retried.
+value but the reply annotates ``dont_know``) is REJECTED and retried. The
+same canonical check gates the plan, so the plan can never contain
+Truth-only information unavailable to the Stakeholder.
 
 Only ``message`` enters the conversation; annotations and dialogue events
 travel on the message's private fields (excluded from all serialization) and
@@ -56,6 +64,7 @@ from tau2.data_model.message import (
 )
 from tau2.domains.business_interview.facts import (
     ConceptAlignmentAssertion,
+    PlannedResponseItem,
     SemanticAnnotation,
     SemanticLedger,
     StakeholderKnowledgeCatalog,
@@ -190,6 +199,71 @@ _SIDECAR_ERROR_HINT = (
     "else in your reply."
 )
 
+# Phase-1 output contract: the stakeholder answers WHAT it will semantically
+# convey BEFORE any wording. It returns a private Semantic Response Plan: the
+# semantic addresses + modes it intends to assert, validated deterministically
+# against the knowledge by the catalog before realization.
+_PLAN_CONTRACT = (
+    "Before writing any natural text, decide WHAT you will answer as a private "
+    "Semantic Response Plan. Reply ONLY with a JSON object in exactly this "
+    "shape (the entire reply, no prose, no markdown fences):\n"
+    '{"plan": [{"semantic_id": "...", "mode": "..."}]}\n'
+    "- \"plan\": the knowledge elements you intend to assert in your very next "
+    "reply, each {\"semantic_id\": one of the EXACT ids in "
+    "<private_known_facts> (copy verbatim, e.g. \"node:skn_002:system\", "
+    "\"edge:ske_003\", \"node:skn_002:reads:skc_004\", or a concept id "
+    "from <concepts>); \"mode\": the kind of assertion you will make: "
+    "\"value\" when the slot holds a known value, \"absent\" when the slot "
+    "is known absent, \"dont_know\" when the slot is unknown, \"exists\" "
+    "for a position/relation you assert exists, \"mention\" for a concept "
+    "you name or describe.\n"
+    "- The mode must EXACTLY match what your knowledge declares for that "
+    "semantic_id (a value-only slot cannot be planned as dont_know; a "
+    "dont_know slot cannot be planned as value; a known-absent slot cannot be "
+    "planned as value). A plan whose mode contradicts the knowledge is "
+    "invalid.\n"
+    "- Plan ONLY what you genuinely know. Do not plan a semantic you cannot "
+    "support from <private_known_facts>. An empty \"plan\" ([]) is allowed "
+    "only when you genuinely have nothing from your knowledge to answer "
+    "(greetings/acknowledgements, or an answer whose element is not in your "
+    "knowledge).\n"
+    "- This plan is PRIVATE: never include semantic ids anywhere except in "
+    "the plan JSON itself; there is no message text here.\n"
+    "- Pick EVERY element you will name or realize in your answer — do not "
+    "omit ones you convey."
+)
+
+# Plan retry feedback when the plan is invalid/unparseable.
+_PLAN_ERROR_HINT = (
+    "Your previous reply was rejected because its Semantic Response Plan was "
+    "invalid. Reply ONLY with a JSON object, no prose and no markdown fences, "
+    "exactly like:\n"
+    '{"plan": [{"semantic_id": "node:skn_002:system", "mode": "value"}]}\n'
+    "\"semantic_id\" must be one of the EXACT ids listed in "
+    "<private_known_facts> (copy verbatim, never shortened). Its \"mode\" "
+    "must be the kind the knowledge declares for it (value for a slot showing "
+    "a value; absent for a slot shown as absent; dont_know for an unknown "
+    "slot; exists for a node/edge; mention for a concept) — a mode that "
+    "contradicts the knowledge (e.g. dont_know on a slot showing a value) "
+    "rejects the plan. Plan only what you actually know."
+)
+
+# Phase-2 contract block: the validated plan that the realization MUST cover
+# exactly (and nothing else). Delivered on every realization call, including
+# retries.
+_PLAN_REALIZE_BLOCK = (
+    "\n\nYOUR VALIDATED RESPONSE PLAN (private — realize EXACTLY this plan and "
+    "nothing else):\n{plan}\n"
+    "- Your \"message\" must naturally express every planned element in your "
+    "own words.\n"
+    "- Your \"annotations\" must contain, for EVERY plan item, at least one "
+    "annotation with the SAME semantic_id AND mode, anchored (exact quote + "
+    "occurrence) to an exact span of your \"message\".\n"
+    "- Never add an annotation for any semantic_id or mode NOT in the plan: an "
+    "unplanned assertion is rejected. Ordinary terminology references stay "
+    "\"mention\" as planned."
+)
+
 _NO_JSON = object()
 
 
@@ -301,6 +375,61 @@ def parse_sidecar(content: Optional[str]) -> dict:
         "alignments": alignments,
         "terminology": terminology,
     }
+
+
+
+def parse_plan(content) -> list[PlannedResponseItem]:
+    """Tolerant deterministic parse of the private Semantic Response Plan.
+
+    Accepts a bare JSON object (possibly wrapped in markdown fences or prose);
+    extracts the first balanced ``{...}`` object. Returns the plan as a list of
+    ``PlannedResponseItem`` (semantic_id + mode, no quotes yet). Raises
+    ``ValueError`` on anything else; mode validity against the knowledge is
+    enforced later by ``StakeholderKnowledgeCatalog.validate_plan``.
+    """
+    text = (content or "").strip()
+    if text.startswith("```"):
+        parts = text.split("```")
+        if len(parts) >= 3:
+            text = parts[1].strip()
+    obj = _try_load_json(text)
+    if obj is _NO_JSON:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end <= start:
+            raise ValueError(f"stakeholder plan is not a JSON object: {content!r}")
+        obj = _try_load_json(text[start : end + 1])
+        if obj is _NO_JSON:
+            raise ValueError(f"stakeholder plan is not a JSON object: {content!r}")
+    if not isinstance(obj, dict):
+        raise ValueError(f"stakeholder plan is not an object: {obj!r}")
+    raw_plan = obj.get("plan")
+    if raw_plan is None:
+        raw_plan = []
+    if not isinstance(raw_plan, list):
+        raise ValueError(f"stakeholder plan 'plan' must be a list: {obj!r}")
+    plan: list[PlannedResponseItem] = []
+    for raw in raw_plan:
+        if not isinstance(raw, dict):
+            raise ValueError(f"plan item is not an object: {raw!r}")
+        mode = raw.get("mode")
+        if not isinstance(mode, str) or mode not in (
+            "value",
+            "absent",
+            "dont_know",
+            "exists",
+            "mention",
+        ):
+            raise ValueError(
+                f"plan item is missing a valid mode: {mode!r} "
+                f"(must be one of value|absent|dont_know|exists|mention)"
+            )
+        plan.append(
+            PlannedResponseItem(
+                semantic_id=str(raw.get("semantic_id") or ""), mode=mode
+            )
+        )
+    return plan
 
 
 def _render_value(value) -> str:
@@ -455,13 +584,16 @@ class StakeholderUserSimulator(UserSimulator):
             return None
         return repr(pairs)
 
-    # ------------------------------------------------------------- sidecar
+    # -------------------------------------------- semantic response plan
 
-    def _generate_sidecar(self, messages: list, contract: Optional[str] = None) -> dict:
-        """Call the user LLM and parse/validate the private sidecar."""
-        contract_text = contract or _OUTPUT_CONTRACT
+    def _append_contract(self, messages: list, contract_text: str) -> list:
+        """Append ``contract_text`` to the last user message (maximum-attention
+        position), returning a copy of ``messages``."""
         contract_messages = list(messages)
-        if contract_messages and getattr(contract_messages[-1], "role", None) == "user":
+        if (
+            contract_messages
+            and getattr(contract_messages[-1], "role", None) == "user"
+        ):
             last = contract_messages[-1]
             contract_messages[-1] = UserMessage(
                 role="user",
@@ -469,7 +601,71 @@ class StakeholderUserSimulator(UserSimulator):
             )
         else:
             contract_messages.append(UserMessage(role="user", content=contract_text))
-        assistant_message = self._call_llm(contract_messages)
+        return contract_messages
+
+    def _generate_plan(
+        self, messages: list, contract: Optional[str] = None
+    ) -> list[PlannedResponseItem]:
+        """Phase 1 — WHAT: the stakeholder decides its private Semantic
+        Response Plan (intended semantic addresses + modes) from its own
+        knowledge, BEFORE any wording. The plan is validated deterministically
+        through the canonical resolver; an impossible combination (e.g. a
+        DONT_KNOW slot planned as a value) is rejected before realization."""
+        contract_text = contract or _PLAN_CONTRACT
+        contract_messages = self._append_contract(messages, contract_text)
+        assistant_message = self._call_llm(
+            contract_messages, output_contract_text=contract_text
+        )
+        plan = parse_plan(assistant_message.content)
+        if self._catalog is not None:
+            self._catalog.validate_plan(plan)
+        return plan
+
+    def _realize_sidecar(
+        self,
+        messages: list,
+        plan: list[PlannedResponseItem],
+        contract: Optional[str] = None,
+    ) -> dict:
+        """Phase 2 — HOW: realize the validated plan into natural language and
+        the private sidecar. The realized sidecar must account for EVERY
+        planned (semantic_id, mode) with an exact public-text span and add
+        nothing outside the plan; otherwise the reply is rejected."""
+        plan_block = json.dumps(
+            [
+                {"semantic_id": item.semantic_id, "mode": item.mode}
+                for item in plan
+            ],
+            ensure_ascii=False,
+        )
+        base = contract or _OUTPUT_CONTRACT
+        contract_text = base + "\n\n" + _PLAN_REALIZE_BLOCK.format(plan=plan_block)
+        contract_messages = self._append_contract(messages, contract_text)
+        assistant_message = self._call_llm(
+            contract_messages, output_contract_text=contract_text
+        )
+        sidecar = parse_sidecar(assistant_message.content)
+        if self._catalog is not None:
+            self._catalog.validate_annotations(
+                sidecar["annotations"], sidecar["message"]
+            )
+            self._catalog.validate_events(
+                sidecar["alignments"], sidecar["terminology"], sidecar["message"]
+            )
+            self._catalog.check_sidecar_covers_plan(
+                sidecar["annotations"], sidecar["message"], plan
+            )
+        return sidecar
+
+    def _generate_sidecar(self, messages: list, contract: Optional[str] = None) -> dict:
+        """Legacy single-call path (no semantic plan): used only when the
+        simulator is not wired with a task/catalog (no private knowledge
+        available); the run then has no provenance."""
+        contract_text = contract or _OUTPUT_CONTRACT
+        contract_messages = self._append_contract(messages, contract_text)
+        assistant_message = self._call_llm(
+            contract_messages, output_contract_text=contract_text
+        )
         sidecar = parse_sidecar(assistant_message.content)
         if self._catalog is not None:
             self._catalog.validate_annotations(
@@ -483,9 +679,9 @@ class StakeholderUserSimulator(UserSimulator):
     def _call_llm(self, messages: list, output_contract_text: Optional[str] = None):
         """One LLM completion (kept separate for testability).
 
-        ``output_contract_text`` (the fixed output-sidecar contract appended
-        to the last user message) is passed through to the metrics layer so
-        its length is recorded separately from the conversation
+        ``output_contract_text`` (the fixed contract body appended to the last
+        user message) is passed through to the metrics layer so its length is
+        recorded separately from the conversation
         (``output_contract_chars``); its body is never persisted.
         """
         from tau2.utils.llm_utils import generate
@@ -514,13 +710,21 @@ class StakeholderUserSimulator(UserSimulator):
             )
 
     def _generate_next_message(self, message, state) -> UserMessage:
-        """Generate the stakeholder response with its private sidecar.
+        """Generate the stakeholder response in two phases:
+
+        1. Semantic Response Plan: the stakeholder chooses WHAT it answers
+           (semantic addresses + modes), validated deterministically against
+           its own knowledge;
+        2. realization: the validated plan is expressed in natural language,
+           and the private sidecar must account for every planned assertion
+           (exact public-text span, same semantic_id + mode) and nothing else.
 
         Only ``sidecar["message"]`` becomes the UserMessage; the private
         annotations/events travel on private fields (excluded from
-        serialization) for the environment's ledger binding. One retry with
-        corrective feedback is allowed; a second invalid sidecar is rejected
-        loudly.
+        serialization) for the environment's ledger binding. Bounded retries
+        with corrective feedback are allowed for each phase; a second invalid
+        plan/sidecar is rejected loudly (no Observation is ever created for a
+        rejected response).
         """
         if isinstance(message, AssistantMessage) and message.is_audio:
             raise ValueError(
@@ -535,22 +739,49 @@ class StakeholderUserSimulator(UserSimulator):
             state.messages.append(message)
         messages = state.system_messages + state.flip_roles()
 
-        try:
+        if self._catalog is None:
+            # Not wired with a task (no private knowledge): plain response,
+            # no plan, no provenance.
             sidecar = self._generate_sidecar(messages)
-        except ValueError as first_err:
-            logger.warning("Stakeholder sidecar invalid; retrying once: {}", first_err)
-            retry_messages = list(messages) + [
-                SystemMessage(role="system", content=_SIDECAR_ERROR_HINT)
-            ]
+        else:
+            # Phase 1: semantic response plan
             try:
-                sidecar = self._generate_sidecar(
-                    retry_messages, contract=_SIDECAR_ERROR_HINT
+                plan = self._generate_plan(messages)
+            except ValueError as plan_err:
+                logger.warning(
+                    "Stakeholder response plan invalid; retrying once: {}",
+                    plan_err,
                 )
-            except ValueError as second_err:
-                raise ValueError(
-                    "stakeholder sidecar rejected twice; invalid private "
-                    f"metadata must not enter the conversation: {second_err}"
-                ) from second_err
+                retry_plan = list(messages) + [
+                    SystemMessage(role="system", content=_PLAN_ERROR_HINT)
+                ]
+                try:
+                    plan = self._generate_plan(retry_plan, contract=_PLAN_ERROR_HINT)
+                except ValueError as plan_err2:
+                    raise ValueError(
+                        "stakeholder response plan rejected twice; a plan that "
+                        "contradicts the knowledge must not be realized: "
+                        f"{plan_err2}"
+                    ) from plan_err2
+            # Phase 2: realize the validated plan
+            try:
+                sidecar = self._realize_sidecar(messages, plan)
+            except ValueError as first_err:
+                logger.warning(
+                    "Stakeholder sidecar invalid; retrying once: {}", first_err
+                )
+                retry_messages = list(messages) + [
+                    SystemMessage(role="system", content=_SIDECAR_ERROR_HINT)
+                ]
+                try:
+                    sidecar = self._realize_sidecar(
+                        retry_messages, plan, contract=_SIDECAR_ERROR_HINT
+                    )
+                except ValueError as second_err:
+                    raise ValueError(
+                        "stakeholder sidecar rejected twice; invalid private "
+                        f"metadata must not enter the conversation: {second_err}"
+                    ) from second_err
 
         return UserMessage(
             role="user",
