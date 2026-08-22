@@ -359,6 +359,7 @@ class StakeholderKnowledgeCatalog:
                         f"planned assertion {it.semantic_id} as {it.mode!r} is "
                         f"missing from the realized sidecar"
                     )
+
     def validate_events(
         self,
         alignments: Optional[list[ConceptAlignmentAssertion]],

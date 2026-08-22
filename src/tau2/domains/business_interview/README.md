@@ -1,20 +1,27 @@
-# business_interview (v12 — graph is the semantic source of truth)
+# business_interview (v13 — Truth reconstruction is the primary score)
 
 The agent interviews a stakeholder to discover an unknown team's business
 process. The **graph is the semantic model**:
 
-- Truth = `BusinessProcessGraph` + `TruthConcept[]` (no generated claims);
+- Truth = `BusinessProcessGraph` + `TruthConcept[]` (the ground-truth target);
 - the stakeholder's world model = `StakeholderKnowledge` (a masked
   `StakeholderKnowledgeGraph` with three-valued property slots
-  `ConceptRef | None | DONT_KNOW` + `StakeholderKnowledgeConcept[]`);
+  `ConceptRef | None | DONT_KNOW` + `StakeholderKnowledgeConcept[]`) — a
+  **simulator constraint**, not the scored target;
 - the agent builds an `AgentGraph` + `AgentConcept[]`.
 
-Correctness is grounded **only** through private provenance — no evaluator
-semantic NLP, no aliases, no embeddings, no label matching:
+**Scoring is Truth-reconstruction.** The final AgentConcepts / AgentGraph
+are compared to the TruthConcepts / TruthGraph by **content** (deterministic
+signatures over the glossary labels/terms and slot values). It does NOT
+require conversational provenance: an Agent that infers a fact that was never
+explicitly exposed — but happens to match the Truth — is counted correct.
+Unsupported-but-correct reconstruction is not penalised. Fabricated / wrong
+graph elements still are.
 
-    Agent EvidenceRef -> Observation span -> private annotation
-        (stakeholder semantic ID) -> StakeholderKnowledgeGraph element /
-        StakeholderKnowledgeConcept
+Private provenance (the sidecar annotations / dialogue events) is retained
+as **diagnostic** metadata and for simulator-integrity checks (the
+stakeholder must not reveal facts outside its StakeholderKnowledge), but it
+is never a hard gate for Agent scoring.
 
 ## Semantic IDs
 
@@ -123,61 +130,48 @@ Ordinary workflow mentions never create these events.
 ## Agent-side redesign
 
 - `AgentConcept.mentions` = Observation spans the Agent interprets as
-  referring to the concept (identity may use them; property scoring never
-  does).
-- **Every AgentGraph property reference carries its own EvidenceRef**
-  (activity/actor/system/reads/writes/rationale/condition) — pass a property
-  as `{"concept_id": ..., "evidence": [...]}` in `add_node`/`update_node`/
-  `add_edge`.
-- Property scoring uses **property evidence ONLY**; concept identity may use
-  mentions; validation uses explicit validation/dialogue evidence ONLY.
-  There is no evaluator helper that mixes ref evidence + mentions +
-  validation evidence.
+  referring to the concept (diagnostic only).
+- Graph/property/edge references may carry optional `EvidenceRef`s, but
+  evidence is **diagnostic only**: a tool call never fails merely because a
+  quoted span is missing, ambiguous, or does not resolve to a private
+  stakeholder slot.
 
-## Concept status
+## Concept status (Agent belief records)
 
-    hypothesized  ->  grounded  ->  confirmed
+    hypothesized -> grounded -> confirmed
 
-`grounded` = authentic provenance binds the Agent concept to the stakeholder
-knowledge (`ground_concept` is BINDING-AWARE: its evidence must resolve —
-global span rule + the canonical resolver — to exactly one kind-compatible
-knowledge concept; ambiguous, unrelated or kind-incompatible evidence is
-rejected, private stakeholder ids never appear in tool output, and the
-Agent-visible `grounded` status always agrees with the evaluator binding);
-no confirmation dialogue needed;
-`confirmed` = explicit identity confirmation (`confirm_concept` with a
-private alignment event). `finish_interview` normally requires referenced
-concepts >= grounded. `unknown`/`disputed`/`partially_confirmed` are backed
-by the corresponding private events.
+These are **Agent belief records**, not provenance gates. `ground_concept`
+records that the Agent resolved the concept's identity (evidence is
+optional); `confirm_concept` / `mark_concept_unknown` /
+`mark_concept_disputed` record the Agent's belief without requiring a private
+dialogue event; `record_terminology_agreement` records a proposed term. The
+evaluator judges concept identity by content against Truth, never by
+grounding provenance.
 
 ## Evaluation
 
-Primary achievable target: **AgentGraph vs StakeholderKnowledgeGraph**
-(Truth mapping stays private). `evaluate(db, knowledge, spec, ...)`:
+Primary target: **AgentConcepts / AgentGraph vs TruthConcepts / TruthGraph**.
+`evaluate(db, knowledge, spec, *, truth=..., ...)`:
 
-- node/edge correspondence falls out of the semantic IDs (deterministic
-  assignment maximizing property-level matches);
-- property scoring per slot: stakeholder `ConceptRef` needs a matching
-  evidenced `ConceptRef`; stakeholder `None` (known absent) needs an
-  evidenced `ABSENT` marker resolving to the exact mapped slot (`UNSET` /
-  `DONT_KNOW` / a concept are incorrect — "not asserted" never scores as
-  known absence); stakeholder `DONT_KNOW` needs an evidenced `DONT_KNOW`
-  marker resolving to the exact mapped slot (`UNSET` / `ABSENT` / a concept
-  are incorrect; a hidden-Truth guess remains wrong);
-- concept identity per kind (mentions + graph provenance incl. grounding
-  evidence may participate; bijection over the knowledge concepts the graph
-  references; conflicting grounding evidence leaves the concept unresolved);
-  concept completeness is measured as `concept_recall` / `concept_precision`
-  against the EXPECTED StakeholderKnowledgeConcept set — an empty AgentGraph
-  gets recall 0 (no vacuous success), and `glossary_complete` separates
-  reconstruction completeness from `glossary_pass` (validation correctness
-  of the referenced concepts);
-- glossary validation: grounded/confirmed/unknown/disputed/terminology backed
-  by the appropriate private evidence;
+- concept identity is content-based (deterministic signatures over the agent
+  glossary labels/descriptions vs the Truth concept canonical terms/
+  descriptions, scoped per kind, followed by a content bijection);
+  `concept_recall` / `concept_precision` / `concept_correctness`;
+- node/edge correspondence follows content matching (nodes by their
+  referenced-concept content signature; edges by endpoint pair on the Truth
+  graph); `node_recall` / `node_precision` / `edge_recall` / `edge_precision`
+  / fabricated counts; `start_correct` / `end_recall` / `end_precision`;
+- property scoring per slot: a Truth `ConceptRef` slot needs a matching agent
+  ConceptRef; a Truth-absent (`None`) slot is correct for any no-value state
+  (UNSET / ABSENT / DONT_KNOW). `reads` / `writes` score recall x precision
+  over the element set; `condition_correctness` scores edge conditions;
 - `knowledge_coverage` (Truth vs StakeholderKnowledge) is reported
-  separately and never mixed into Agent performance: known values AND known
-  absence count as known; DONT_KNOW slots and removed nodes/edges count as
-  unknown; node existence is never confused with the activity slot.
+  separately as informational and is never mixed into Agent performance.
+
+`quality_pass` / `structural_pass` require full reconstruction correctness:
+all structural/property/concept metrics == 1.0, valid endpoints, valid graph.
+Provenance (hypothesis / evidence hygiene) is reported as diagnostic only and
+never gates `quality_pass`.
 
 `start_inference` resets the AgentGraph/glossary/completion state but
 preserves Observations and the conversation ledger.
@@ -238,8 +232,8 @@ Observation id + public text.
 | `facts.py` | SemanticAnnotation + PlanResponseItem + private dialogue events + SemanticLedger + catalog (annotation/plan validation) |
 | `grounding.py` | shared global-span provenance (evidence refs -> semantic ids) |
 | `scenario.py` | Truth graphs + filters + knowledge (quotation / lab / JA) |
-| `evaluation.py` | provenance-only evaluator (AgentGraph vs StakeholderKnowledgeGraph) |
-| `tools.py` | glossary + graph tools (per-property evidence, binding-aware ground/confirm/unknown/disputed/terminology, `record_dont_know` / `record_edge_condition_dont_know` / `record_absent` / `record_edge_condition_absent`); NO observation tools |
+| `evaluation.py` | content/Truth-reconstruction evaluator (AgentGraph + AgentConcepts vs TruthGraph + TruthConcepts); provenance reported as diagnostics |
+| `tools.py` | glossary + graph tools (optional diagnostic evidence; ground/confirm/unknown/disputed/terminology as Agent belief records; `record_dont_know` / `record_edge_condition_dont_know` / `record_absent` / `record_edge_condition_absent` as belief markers); NO observation tools |
 | `user_simulator.py` | semantic stakeholder: chooses the Semantic Response Plan, validates it, realizes it (graph-native sidecar) |
 | `environment.py` | conversation ledger + private sidecar validation/binding + environment-owned Observation creation + `episode_complete` |
 

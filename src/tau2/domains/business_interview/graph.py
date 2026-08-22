@@ -127,24 +127,29 @@ _NODE_PROPS: tuple[str, ...] = (
 
 
 class EvidenceRef(BaseModel):
-    """One span of an immutable Observation cited as evidence.
+    """A lightweight, optional citation of one immutable Observation.
 
-    ``quote`` must be an exact substring occurrence of the immutable
-    Observation's text; ``occurrence`` selects which occurrence (0-based) when
-    the quote appears multiple times. Validity is checked deterministically
-    (the evaluator never infers what the quote *means*). The span resolves to
-    concrete character offsets in the Observation text.
+    ``observation_id`` is the primary reference (a debuggable conversation
+    pointer). ``quote`` and ``occurrence`` are **optional diagnostic hints**
+    only --- exact quote matching is never required for graph/concept
+    reconstruction, so the tools never fail merely because a quote is missing
+    or ambiguous. When a quote is provided it should be an exact substring
+    occurrence of the Observation text, but this is advisory.
     """
 
     observation_id: str
-    quote: str = Field(description="Exact substring of the Observation text.")
+    quote: Optional[str] = Field(
+        default=None,
+        description="Optional diagnostic hint: a substring of the Observation text.",
+    )
     occurrence: int = Field(
-        default=0, description="0-based occurrence index of ``quote``."
+        default=0,
+        description="0-based occurrence index of ``quote`` (diagnostic only).",
     )
 
     def resolve_span(self, text: str) -> Optional[tuple[int, int]]:
         """Resolve to (start, end) character offsets in ``text``, or None when
-        the quote/occurrence does not exactly match ``text``."""
+        no quote is present or the quote/occurrence does not match ``text``."""
         if not self.quote:
             return None
         start = -1

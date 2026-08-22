@@ -208,14 +208,14 @@ _PLAN_CONTRACT = (
     "Semantic Response Plan. Reply ONLY with a JSON object in exactly this "
     "shape (the entire reply, no prose, no markdown fences):\n"
     '{"plan": [{"semantic_id": "...", "mode": "..."}]}\n'
-    "- \"plan\": the knowledge elements you intend to assert in your very next "
-    "reply, each {\"semantic_id\": one of the EXACT ids in "
-    "<private_known_facts> (copy verbatim, e.g. \"node:skn_002:system\", "
-    "\"edge:ske_003\", \"node:skn_002:reads:skc_004\", or a concept id "
-    "from <concepts>); \"mode\": the kind of assertion you will make: "
-    "\"value\" when the slot holds a known value, \"absent\" when the slot "
-    "is known absent, \"dont_know\" when the slot is unknown, \"exists\" "
-    "for a position/relation you assert exists, \"mention\" for a concept "
+    '- "plan": the knowledge elements you intend to assert in your very next '
+    'reply, each {"semantic_id": one of the EXACT ids in '
+    '<private_known_facts> (copy verbatim, e.g. "node:skn_002:system", '
+    '"edge:ske_003", "node:skn_002:reads:skc_004", or a concept id '
+    'from <concepts>); "mode": the kind of assertion you will make: '
+    '"value" when the slot holds a known value, "absent" when the slot '
+    'is known absent, "dont_know" when the slot is unknown, "exists" '
+    'for a position/relation you assert exists, "mention" for a concept '
     "you name or describe.\n"
     "- The mode must EXACTLY match what your knowledge declares for that "
     "semantic_id (a value-only slot cannot be planned as dont_know; a "
@@ -223,7 +223,7 @@ _PLAN_CONTRACT = (
     "planned as value). A plan whose mode contradicts the knowledge is "
     "invalid.\n"
     "- Plan ONLY what you genuinely know. Do not plan a semantic you cannot "
-    "support from <private_known_facts>. An empty \"plan\" ([]) is allowed "
+    'support from <private_known_facts>. An empty "plan" ([]) is allowed '
     "only when you genuinely have nothing from your knowledge to answer "
     "(greetings/acknowledgements, or an answer whose element is not in your "
     "knowledge).\n"
@@ -239,8 +239,8 @@ _PLAN_ERROR_HINT = (
     "invalid. Reply ONLY with a JSON object, no prose and no markdown fences, "
     "exactly like:\n"
     '{"plan": [{"semantic_id": "node:skn_002:system", "mode": "value"}]}\n'
-    "\"semantic_id\" must be one of the EXACT ids listed in "
-    "<private_known_facts> (copy verbatim, never shortened). Its \"mode\" "
+    '"semantic_id" must be one of the EXACT ids listed in '
+    '<private_known_facts> (copy verbatim, never shortened). Its "mode" '
     "must be the kind the knowledge declares for it (value for a slot showing "
     "a value; absent for a slot shown as absent; dont_know for an unknown "
     "slot; exists for a node/edge; mention for a concept) — a mode that "
@@ -254,14 +254,14 @@ _PLAN_ERROR_HINT = (
 _PLAN_REALIZE_BLOCK = (
     "\n\nYOUR VALIDATED RESPONSE PLAN (private — realize EXACTLY this plan and "
     "nothing else):\n{plan}\n"
-    "- Your \"message\" must naturally express every planned element in your "
+    '- Your "message" must naturally express every planned element in your '
     "own words.\n"
-    "- Your \"annotations\" must contain, for EVERY plan item, at least one "
+    '- Your "annotations" must contain, for EVERY plan item, at least one '
     "annotation with the SAME semantic_id AND mode, anchored (exact quote + "
-    "occurrence) to an exact span of your \"message\".\n"
+    'occurrence) to an exact span of your "message".\n'
     "- Never add an annotation for any semantic_id or mode NOT in the plan: an "
     "unplanned assertion is rejected. Ordinary terminology references stay "
-    "\"mention\" as planned."
+    '"mention" as planned.'
 )
 
 _NO_JSON = object()
@@ -375,7 +375,6 @@ def parse_sidecar(content: Optional[str]) -> dict:
         "alignments": alignments,
         "terminology": terminology,
     }
-
 
 
 def parse_plan(content) -> list[PlannedResponseItem]:
@@ -590,10 +589,7 @@ class StakeholderUserSimulator(UserSimulator):
         """Append ``contract_text`` to the last user message (maximum-attention
         position), returning a copy of ``messages``."""
         contract_messages = list(messages)
-        if (
-            contract_messages
-            and getattr(contract_messages[-1], "role", None) == "user"
-        ):
+        if contract_messages and getattr(contract_messages[-1], "role", None) == "user":
             last = contract_messages[-1]
             contract_messages[-1] = UserMessage(
                 role="user",
@@ -632,10 +628,7 @@ class StakeholderUserSimulator(UserSimulator):
         planned (semantic_id, mode) with an exact public-text span and add
         nothing outside the plan; otherwise the reply is rejected."""
         plan_block = json.dumps(
-            [
-                {"semantic_id": item.semantic_id, "mode": item.mode}
-                for item in plan
-            ],
+            [{"semantic_id": item.semantic_id, "mode": item.mode} for item in plan],
             ensure_ascii=False,
         )
         base = contract or _OUTPUT_CONTRACT

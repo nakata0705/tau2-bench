@@ -263,6 +263,7 @@ def test_add_node_requires_existing_concept_via_orchestrator_batch():
     assert db.graph.nodes["n1"].activity is not None
     assert db.graph.nodes["n1"].activity.concept_id == "c_actor"  # type: ignore[union-attr]
 
+
 # ---------------------------------------------------------------------------
 # Environment-owned Observation creation
 # ---------------------------------------------------------------------------
@@ -324,7 +325,9 @@ def test_failed_sidecar_retry_creates_no_observation_and_consumes_no_id():
     from tau2.domains.business_interview.user_simulator import StakeholderUserSimulator
 
     assert isinstance(env, BusinessInterviewEnvironment)
-    StakeholderUserSimulator(llm="dummy", task=_task(), environment=env, instructions="x")
+    StakeholderUserSimulator(
+        llm="dummy", task=_task(), environment=env, instructions="x"
+    )
     assert env.assertion_ledger is not None
     assert env.assertion_ledger.catalog is not None
     for _ in range(2):
@@ -332,9 +335,12 @@ def test_failed_sidecar_retry_creates_no_observation_and_consumes_no_id():
             role="user",
             content="I check the customer in the CRM.",
             stakeholder_annotations=[
-                {"semantic_id": "node:skn_002:system",
-                 "quote": "not in the text",
-                 "occurrence": 0, "mode": "value"}
+                {
+                    "semantic_id": "node:skn_002:system",
+                    "quote": "not in the text",
+                    "occurrence": 0,
+                    "mode": "value",
+                }
             ],
         )
         try:
@@ -379,8 +385,13 @@ def test_evidence_ref_immediately_uses_delivered_observation_id():
         "c_req",
         "activity",
         "receive a request",
-        evidence=[{"observation_id": obs.id, "quote": "starts with a request",
-                    "occurrence": 0}],
+        evidence=[
+            {
+                "observation_id": obs.id,
+                "quote": "starts with a request",
+                "occurrence": 0,
+            }
+        ],
     )
     assert "c_req" in result
 
@@ -396,13 +407,13 @@ def test_independent_evidence_tools_batch_with_same_observation_id():
                 [
                     _tool_call(
                         "create_concept",
-                        {"concept_id": "c_a", "kind": "activity",
-                         "label": "alpha"}, 0,
+                        {"concept_id": "c_a", "kind": "activity", "label": "alpha"},
+                        0,
                     ),
                     _tool_call(
                         "create_concept",
-                        {"concept_id": "c_b", "kind": "activity",
-                         "label": "beta"}, 1,
+                        {"concept_id": "c_b", "kind": "activity", "label": "beta"},
+                        1,
                     ),
                 ]
             ),
@@ -445,8 +456,7 @@ def test_same_batch_future_dependency_is_rejected():
             "c_g",
             "activity",
             "ghost",
-            evidence=[{"observation_id": "obs_999", "quote": "nope",
-                        "occurrence": 0}],
+            evidence=[{"observation_id": "obs_999", "quote": "nope", "occurrence": 0}],
         )
         rejected = False
     except ValueError:
@@ -454,6 +464,7 @@ def test_same_batch_future_dependency_is_rejected():
     assert rejected is True
     assert tools.db.graph is None or "c_g" not in tools.db.graph.concepts
     assert len(tools.db.observations) == 0
+
 
 # ---------------------------------------------------------------------------
 # Semantic Response Plan (WHAT) is validated before realization (HOW)
@@ -492,7 +503,9 @@ def test_semantic_response_plan_cannot_contradict_knowledge():
                 valueslot = sid
             if mode == "dont_know" and dontknowslot is None:
                 dontknowslot = sid
-    assert valueslot is not None, "expected a known-value slot in the quotation knowledge"
+    assert valueslot is not None, (
+        "expected a known-value slot in the quotation knowledge"
+    )
     # a known value cannot be planned as dont_know
     try:
         cat.validate_plan(
@@ -504,9 +517,7 @@ def test_semantic_response_plan_cannot_contradict_knowledge():
     assert rejected is True
     # a known value planned as absent is also contradicted
     try:
-        cat.validate_plan(
-            [PlannedResponseItem(semantic_id=valueslot, mode="absent")]
-        )
+        cat.validate_plan([PlannedResponseItem(semantic_id=valueslot, mode="absent")])
         rejected2 = False
     except ValueError:
         rejected2 = True
@@ -536,9 +547,7 @@ def test_dont_know_cannot_become_value_in_plan():
             break
     assert dontknowslot is not None, "expected a DONT_KNOW slot in the scenario"
     try:
-        cat.validate_plan(
-            [PlannedResponseItem(semantic_id=dontknowslot, mode="value")]
-        )
+        cat.validate_plan([PlannedResponseItem(semantic_id=dontknowslot, mode="value")])
         rejected = False
     except ValueError:
         rejected = True
@@ -594,15 +603,17 @@ def test_every_planned_assertion_must_appear_in_sidecar():
     assert missing_rejected is True
     # correct coverage: same id+mode with an exact quote
     good = [
-        SemanticAnnotation(semantic_id=valueslot, quote="order", occurrence=0,
-                           mode="value")
+        SemanticAnnotation(
+            semantic_id=valueslot, quote="order", occurrence=0, mode="value"
+        )
     ]
     assert "order" in text
     cat.check_sidecar_covers_plan(good, text, plan)
     # an annotation with the RIGHT id but WRONG mode is not coverage
     bad = [
-        SemanticAnnotation(semantic_id=valueslot, quote="order", occurrence=0,
-                           mode="absent")
+        SemanticAnnotation(
+            semantic_id=valueslot, quote="order", occurrence=0, mode="absent"
+        )
     ]
     try:
         cat.check_sidecar_covers_plan(bad, text, plan)
@@ -619,8 +630,9 @@ def test_every_planned_assertion_must_appear_in_sidecar():
             break
     assert otherslot is not None
     extra = good + [
-        SemanticAnnotation(semantic_id=otherslot, quote="credit risk",
-                           occurrence=0, mode="value")
+        SemanticAnnotation(
+            semantic_id=otherslot, quote="credit risk", occurrence=0, mode="value"
+        )
     ]
     try:
         cat.check_sidecar_covers_plan(extra, text, plan)
@@ -628,6 +640,7 @@ def test_every_planned_assertion_must_appear_in_sidecar():
     except ValueError:
         extra_rejected = True
     assert extra_rejected is True
+
 
 def test_stakeholder_generation_plans_then_realizes_with_stubbed_llm():
     """The stakeholder pipeline is two-phase and deterministic: it first builds
@@ -665,15 +678,17 @@ def test_stakeholder_generation_plans_then_realizes_with_stubbed_llm():
         if (sid := f"node:{nid}:{prop}")
         and mode_for_resolved(kg.resolve(sid)) == "value"
     )
-    plan_payload = _json.dumps(
-        {"plan": [{"semantic_id": valueslot, "mode": "value"}]}
-    )
+    plan_payload = _json.dumps({"plan": [{"semantic_id": valueslot, "mode": "value"}]})
     good_sidecar = _json.dumps(
         {
             "message": "We check the order to manage credit risk.",
             "annotations": [
-                {"semantic_id": valueslot, "mode": "value",
-                 "quote": "the order", "occurrence": 0}
+                {
+                    "semantic_id": valueslot,
+                    "mode": "value",
+                    "quote": "the order",
+                    "occurrence": 0,
+                }
             ],
             "alignments": [],
             "terminology": [],

@@ -521,7 +521,9 @@ def main() -> int:
                 "read_correctness": metrics.get("read_correctness"),
                 "write_correctness": metrics.get("write_correctness"),
                 "condition_correctness": metrics.get("condition_correctness"),
-                "marker_evidence_errors": metrics.get("marker_evidence_errors"),
+                "marker_evidence_errors": metrics.get(
+                    "marker_evidence_errors_surrogate"
+                ),
                 "start_correct": metrics.get("start_correct"),
                 "end_recall": metrics.get("end_recall"),
                 "fabricated_node_count": metrics.get("fabricated_node_count"),

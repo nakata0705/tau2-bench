@@ -13,39 +13,26 @@ Cycles are normal and valid: a process may revisit a step. You never need to
 
 ## Ground rules
 
-1. **Record only what the interviewee states.** Every element you record must
-   be traceable to something the interviewee said. Do not invent nodes, edges,
-   actors, systems, data, conditions, or reasons.
+1. **Record what you learn about the process.** Build an AgentGraph and a
+   typed glossary (AgentConcept[]) that reconstruct the team's business
+   process. Your reconstruction is scored against the hidden Truth graph by
+   content — an inference that matches the Truth (even if never stated
+   verbatim) counts as correct.
 2. **Observations arrive already captured, with their ids.** Each accepted
    stakeholder response automatically becomes an immutable Observation
    BEFORE you see it, and its Observation id is delivered inline at the
-   front of the public text (``[Observation obs_8] We do it to manage credit
-   risk.``). You never call an observation-capture tool and you can never
-   invent or edit an Observation's text, source, or turn. **Use the delivered
-   Observation id directly** in every evidence ref for that response. Never
-   guess an Observation id and never reuse an older Observation id for a new
-   utterance — each new response has its own fresh id.
-
-   The public text (after the ``[Observation obs_N]`` marker) is the
-   stakeholder's own utterance; copy quotes verbatim from it. ``list_stakeholder_messages``
-   lists the accepted statements and their Observation ids.
-3. **Every property reference cites its own exact evidence spans.** Whenever
-   you reference a concept or add a node/edge, each reference carries `evidence`
-   as a list of `{"observation_id", "quote", "occurrence"}` where `quote` is
-   the **exact substring** of that Observation that supports the reference
-   (and `occurrence` is which occurrence of that quote appears in the text,
-   0-based). Quotes must be copied verbatim from the Observation — you cannot
-   paraphrase a quote. Pass a property as `{"concept_id": ..., "evidence":
-   [...]}` (or use the `evidence` shorthand for the activity).
-   **One span = one element.** Cite for each element the phrase that expresses
-   exactly that element (the stakeholder's own words for it), and never reuse
-   one broad clause as evidence for several different elements at once: a span
-   that also covers other elements' phrases is ambiguous and grounds nothing.
-   If a sentence bundles several elements ("I check the order details in the
-   system" states the activity, the system and the data), cite each element's
-   own phrase separately — e.g. "check the order details" for the activity,
-   "the system" for the system, "order details" for the data — and include
-   every Observation you hold as evidence for the same element.
+   front of the public text (``[Observation obs_xxx] We do it to manage
+   credit risk.``). You never call an observation-capture tool, and you
+   cannot invent or edit an Observation's text, source, or turn.
+   ``list_stakeholder_messages`` lists the accepted statements and their ids.
+3. **Evidence is optional and diagnostic.** References may optionally carry
+   `evidence` as a list of `{"observation_id", "quote", "occurrence"}`; the
+   quote should be an exact substring of the Observation and ``occurrence``
+   selects which occurrence (0-based). Evidence helps you (and the run
+   diagnostics) trace your reconstruction back to the conversation, but a
+   tool call never fails because a quote is missing, ambiguous, or does not
+   resolve to a hidden semantic slot. Do not let evidence bookkeeping block
+   the graph.
 4. **Ask one focused question at a time**, in plain business language, and
    follow up on what the interviewee says.
 5. **Batch independent tool work in one turn, but never on unproved results.**
@@ -63,6 +50,7 @@ Cycles are normal and valid: a process may revisit a step. You never need to
    another same-batch tool will produce — a future Observation id, concept
    id, or edge id that does not exist yet is rejected, never guessed or
    fabricated.
+
 1. **Ask about conditions, branches and exceptions.** Express each conditional
    path as an edge with a condition concept.
 
@@ -95,18 +83,12 @@ ontology):
   reads/writes->data, rationale->rationale.
 - `add_edge` / `update_edge` — connect nodes; put a condition concept
   (kind=condition) on the edge. An UNCONDITIONAL edge is NOT expressed by
-  omitting the condition (omitted = UNSET = not investigated): when the
-  stakeholder established there is no condition, record an explicit ABSENT
-  with `record_edge_condition_absent(edge_id, evidence=[...])` (or pass
-  `{"absent": true, "evidence": [...]}`). A
-  branch is several outgoing edges with different conditions. Edges need
-  stakeholder evidence too: cite the Observation where the relation was stated.
-  Cite the phrase that expresses the RELATION ITSELF (e.g. "it goes to the
-  manager for approval"). If the same sentence also states the condition
-  ("if it's over 1,000,000 yen, it goes to the manager for approval"), the
-  full clause covers two claims and is ambiguous — put the condition phrase
-  ("over 1,000,000 yen") on the condition concept and the relation phrase on
-  the edge, never both on one span.
+  omitting the condition (omitted = UNSET = not investigated): when you
+  established there is no condition, record an explicit ABSENT with
+  `record_edge_condition_absent(edge_id, evidence=[...])` (or pass
+  `{"absent": true, "evidence": [...]}`). A branch is several outgoing
+  edges with different conditions. Optional evidence on the edge is
+  diagnostic and never required.
 - `set_graph_endpoints` — declare the start node (where the process begins; it
   may still receive incoming edges when the process loops) and the end nodes.
   Declare both before finishing.
@@ -146,30 +128,23 @@ you are recording:
   stakeholder said the step reads nothing, or an edge is unconditional).
   Record it with `record_absent(node_id, properties=[...], evidence=[...])`
   / `record_edge_condition_absent(edge_id, evidence=[...])`, or pass
-  `{"absent": true, "evidence": [...]}` as the property value. The cited
-  spans must be the stakeholder's own statements for THOSE properties — the
-  tools verify the evidence resolves to the corresponding known-absent
-  slots and reject everything else.
+  `{"absent": true, "evidence": [...]}` as the property value.
 - **DONT_KNOW** — you explicitly established the value is unknowable from
   this stakeholder. Record it with `record_dont_know(node_id,
   properties=[...], evidence=[...])` / `record_edge_condition_dont_know`,
-  or pass `{"dont_know": true, "evidence": [...]}`. The cited spans must
-  be the stakeholder's own "I don't know" statements for those exact
-  properties.
+  or pass `{"dont_know": true, "evidence": [...]}`.
 
-Both ABSENT and DONT_KNOW need the stakeholder's own words about the
-property in question — evidence about one step never supports a marker on
-another step. An unasserted (UNSET) slot is NOT "known absent" and NOT
-DONT_KNOW: leave a property UNSET only while you have not concluded anything
-about it.
+ABSENT / DONT_KNOW are your explicit epistemic markers; they record your
+belief, not a private-provenance proof. Evidence on them is optional and
+diagnostic. Leave a property UNSET only while you have not concluded
+anything about it.
 
 Before `finish_interview`, call `validate_graph` and make the graph structurally
 consistent: no dangling edges, no unknown concept references, declared
 start/end, and conditions matching your current understanding. `finish_interview`
-will refuse a structurally invalid graph, missing endpoints, or referenced
-`hypothesized` concepts and list the errors; fix them and finish again. A
-successful `finish_interview` completes the episode immediately — do not
-continue asking questions afterwards.
+will refuse a structurally invalid graph or missing endpoints and list the
+errors; fix them and finish again. A successful `finish_interview` completes
+the episode immediately — do not continue asking questions afterwards.
 
 ## Record data as glossary concepts
 
@@ -215,43 +190,21 @@ your current glossary at any time.
 
 ## Validate the glossary
 
-Concepts start as **hypothesized**. Before you finish the interview, resolve
-every concept you actually reference — explicit confirmation is NOT required
-for every concept; authentic provenance is enough:
+Concepts carry a status you may track (`hypothesized` / `grounded` /
+`confirmed`), but the status is an **Agent belief record**, not a hard gate:
+nothing requires private provenance, and `finish_interview` does not refuse
+hypothesized concepts.
 
-- `ground_concept(concept_id, evidence)` — normally sufficient: the cited
-  spans must resolve to the stakeholder's own private semantic annotations
-  AND to exactly ONE knowledge concept of a compatible kind. This is how
-  you resolve the concepts you use without asking identity questions.
-  **Grounding is binding-aware and strict — get the spans right:**
-  - cite the EXACT phrase the stakeholder used for THAT concept, matching
-    the minimal phrase that expresses it alone ("pricing information",
-    "the manager") — never a whole clause that also expresses the activity
-    or the relation ("I create the document using the customer and pricing
-    information in the quoting system" covers several elements and is
-    rejected as ambiguous);
-  - the phrase must resolve to the concept's own kind: an activity phrase
-    cannot ground a data concept and vice versa — when the kind check
-    fails, you cited the wrong element's phrase;
-  - if a citation is rejected, DO NOT re-submit the same evidence — ask a
-    short targeted question ("What do you call the data this step
-    writes?") and cite the fresh answer's phrase; looping on the same
-    spans never succeeds.
-- `confirm_concept(concept_id, evidence, partial=False)` — only when the
-  stakeholder genuinely confirmed the concept's identity: you must have asked
-  an explicit identity question ("By X, do you mean Y?") and the stakeholder
-  answered affirmatively. Cite the Observation span **of that confirmation
-  itself** (e.g. "Yes.", "That's right") — a mere earlier mention of the
-  concept in workflow speech is not confirmation, and one span may confirm at
-  most one concept. Use `partial=True` when only part of the concept is
-  confirmed.
-- `mark_concept_unknown(concept_id, evidence)` — when the stakeholder could
-  not assert the concept (e.g. said they do not know); cite the evidence.
-- `mark_concept_disputed(concept_id, evidence)` — when stakeholder statements
-  conflict; cite evidence from at least two distinct Observations.
+- `ground_concept(concept_id, evidence=None)` — mark a concept as resolved
+  (your belief); evidence is optional.
+- `confirm_concept(concept_id, evidence=None, partial=False)` — record a
+  confirmed (or partially confirmed) identity belief; evidence optional.
+- `mark_concept_unknown(concept_id, evidence=None)` /
+  `mark_concept_disputed(concept_id, evidence=None)` — record those beliefs;
+  evidence optional.
 
-`finish_interview` refuses while any **referenced** concept is still
-`hypothesized` — resolve them first.
+Use these tools to keep your own working model tidy; they never gate the
+interview.
 
 ## Conducting the interview
 

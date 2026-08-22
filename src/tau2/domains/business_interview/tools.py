@@ -15,28 +15,19 @@ Every Agent slot is one of the FOUR epistemic states: ``UNSET``
 
 **Mention != evidence != validation.**
 - ``AgentConcept.mentions`` are Observation spans the Agent interprets as
-  referring to the concept (identity may use them; property scoring never
-  does).
-- Every graph property reference carries its own property evidence; the
-  evaluator scores properties from property evidence ONLY.
+  referring to the concept (diagnostic only).
+- Graph/property references may carry optional evidence spans, but evidence
+  is **diagnostic only**: evaluation scores reconstruction against Truth and
+  never requires exact quote provenance.
 - Validation statuses (grounded / confirmed / partially_confirmed / unknown /
-  disputed) are backed by explicit validation/dialogue evidence:
-  ``ground_concept`` is BINDING-AWARE — it resolves its evidence (global
-  span rule + the canonical stakeholder resolver) to exactly one
-  kind-compatible knowledge concept, rejecting ambiguous, unrelated or
-  kind-incompatible evidence (private stakeholder ids never appear in tool
-  output; the Agent-visible ``grounded`` status always agrees with the
-  evaluator binding); ``confirm_concept`` / ``mark_concept_unknown`` /
-  ``mark_concept_disputed`` require private dialogue events (act confirm /
-  partial / unknown / dispute); ``record_terminology_agreement`` requires a
-  private terminology-confirmation event with the same proposed term. An
-  ordinary workflow mention is never enough.
+  disputed) are Agent belief records; ``ground_concept`` no longer requires
+  (or rejects on) private provenance, and ``finish_interview`` does not gate
+  on grounding.
 
-**DONT_KNOW is explicit and evidenced.** ``record_dont_know`` /
-``record_edge_condition_dont_know`` (or ``{"dont_know": true, "evidence":
-[...]}`` property args) record a DONT_KNOW marker ONLY when the cited
-Observation spans resolve to the corresponding stakeholder DONT_KNOW
-semantic slot — a known value or a known-absent slot rejects the recording.
+**DONT_KNOW / ABSENT are beliefs, not provenance-gated.** ``record_dont_know`` /
+``record_absent`` (and edge-condition variants) record explicit epistemic
+markers; cited evidence spans are optional diagnostic hints and are never
+required to resolve to a private stakeholder slot.
 
 ``start_inference`` may reset the AgentGraph, the glossary and the
 completion state, but preserves already captured Observations and the
@@ -54,9 +45,7 @@ from tau2.domains.business_interview.evaluation import (
     evaluate,
 )
 from tau2.domains.business_interview.facts import (
-    ConceptAlignmentAssertion,
     SemanticLedger,
-    TerminologyConfirmation,
 )
 from tau2.domains.business_interview.graph import (
     UNSET,
@@ -71,18 +60,6 @@ from tau2.domains.business_interview.graph import (
     Node,
     Observation,
     TerminologyAgreement,
-    is_dont_know,
-    spans_correspond,
-)
-from tau2.domains.business_interview.grounding import (
-    grounded_refs,
-)
-from tau2.domains.business_interview.grounding import (
-    resolve_span_text as _resolve_span_text,
-)
-from tau2.domains.business_interview.knowledge import (
-    StakeholderKnowledge,
-    slot_concepts,
 )
 from tau2.domains.business_interview.scenario import get_scenario
 from tau2.environment.toolkit import ToolKitBase, ToolType, is_tool
@@ -155,25 +132,28 @@ class InterviewTools(ToolKitBase):
         return graph.concepts[concept_id]
 
     def _require_observation(self, observation_id: Optional[str]) -> None:
-        """Reject a reference to an observation that does not exist."""
+        """Optionally reject a reference to an observation id that does not
+        exist. Because provenance is no longer a hard gate for reconstruction,
+        callers that only pass diagnostic evidence may pass None freely."""
         if observation_id is None:
             return
         if not any(o.id == observation_id for o in self.db.observations):
             raise ValueError(f"observation not found: {observation_id}")
 
     def _require_evidence(self, evidence: Optional[list]) -> list[EvidenceRef]:
-        """Validate a list of EvidenceRef dicts: shape, observation existence,
-        and exact quote/occurrence spans in the immutable Observation."""
+        """Coerce a list of EvidenceRef dicts (shape-only).
+
+        Provenance is no longer a prerequisite for recording Agent beliefs:
+        we validate the *shape* of each ref (observation_id present and
+        resolvable to an existing Observation when given) but never reject a
+        tool call merely because a quoted span is missing, ambiguous, or does
+        not match an exact span. Evidence is retained as a diagnostic hint.
+        """
         refs: list[EvidenceRef] = []
         for raw in evidence or []:
             ref = _ev(raw)
-            self._require_observation(ref.observation_id)
-            obs = next(o for o in self.db.observations if o.id == ref.observation_id)
-            if not obs.has_span(ref.quote, ref.occurrence):
-                raise ValueError(
-                    f"evidence quote {ref.quote!r} occurrence {ref.occurrence} "
-                    f"is not an exact span of observation {ref.observation_id}"
-                )
+            if ref.observation_id:
+                self._require_observation(ref.observation_id)
             refs.append(ref)
         return refs
 
@@ -188,13 +168,6 @@ class InterviewTools(ToolKitBase):
                 f"{where}: concept {concept_id!r} has kind {concept.kind!r} but "
                 f"requires kind {expected_kind!r}"
             )
-
-    def _knowledge(self) -> Optional[StakeholderKnowledge]:
-        """The scenario's StakeholderKnowledge (via the private catalog), or
-        None when no scenario is wired. Evaluator-only: never exposed to the
-        Agent, never rendered in tool output."""
-        catalog = self.assertion_ledger.catalog
-        return catalog.knowledge if catalog is not None else None
 
     @staticmethod
     def _normalize_prop(prop: str) -> str:
@@ -216,86 +189,6 @@ class InterviewTools(ToolKitBase):
     def _refs(concept_ids: Optional[list[str]]) -> list[ConceptRef]:
         return [ConceptRef(concept_id=cid, confidence=1.0) for cid in concept_ids or []]
 
-    def _resolve_dont_know_slots(
-        self,
-        evs: list[EvidenceRef],
-        prop: str,
-        where: str,
-        allowed_props: Optional[set[str]] = None,
-        bound_node: Optional[str] = None,
-        bound_edge: Optional[str] = None,
-    ) -> list[EvidenceRef]:
-        """Validate DONT_KNOW evidence for one property slot.
-
-        Every evidence span must resolve (global span rule + the canonical
-        stakeholder resolver) to exactly one semantic id that IS the
-        stakeholder's DONT_KNOW slot of a property in ``allowed_props`` — a
-        DONT_KNOW may only be recorded when the evidence resolves to the
-        corresponding stakeholder DONT_KNOW semantic slot. When ``bound_node``
-        / ``bound_edge`` is given (the Agent element's unique binding), the
-        evidence must resolve EXACTLY to that element's slot
-        (``node:<bound_node>:<prop>`` / ``edge:<bound_edge>:condition``) —
-        evidence about another node's or edge's slot is rejected. Returns the
-        refs that resolve to ``prop`` itself (private stakeholder ids never
-        appear in error messages)."""
-        knowledge = self._knowledge()
-        if knowledge is None:
-            raise ValueError(
-                f"{where}: no knowledge catalog is wired for this interview "
-                f"(cannot verify DONT_KNOW slots)"
-            )
-        if not evs:
-            raise ValueError(f"{where}: DONT_KNOW requires evidence")
-        allowed = allowed_props if allowed_props is not None else {prop}
-        results, invalid, ambiguous = grounded_refs(
-            self.db, self.assertion_ledger.annotations(), evs
-        )
-        if invalid or ambiguous or len(results) != len(evs):
-            raise ValueError(
-                f"{where}: every evidence span must resolve to exactly one semantic id"
-            )
-        resolver = knowledge.graph.resolve
-        for _ref, sid in results:
-            resolved = resolver(sid)
-            if (
-                resolved is None
-                or resolved.kind not in ("node_slot", "edge_slot")
-                or resolved.prop not in allowed
-                or not is_dont_know(resolved.value)
-            ):
-                raise ValueError(
-                    f"{where}: evidence must resolve to the stakeholder's "
-                    f"DONT_KNOW slot for property {sorted(allowed)!r} (the "
-                    f"stakeholder knows this value, knows it is absent, or "
-                    f"the span is unrelated)"
-                )
-        if bound_node is not None:
-            expected = f"node:{bound_node}:{prop}"
-            for _ref, sid in results:
-                if sid != expected:
-                    raise ValueError(
-                        f"{where}: evidence must resolve to the EXACT "
-                        f"stakeholder DONT_KNOW slot of the bound node's "
-                        f"property {prop!r} — it currently resolves to "
-                        f"another element's slot, which cannot support this "
-                        f"marker"
-                    )
-        if bound_edge is not None:
-            expected = f"edge:{bound_edge}:condition"
-            for _ref, sid in results:
-                if sid != expected:
-                    raise ValueError(
-                        f"{where}: evidence must resolve to the EXACT "
-                        f"stakeholder DONT_KNOW condition slot of the bound "
-                        f"edge — it currently resolves to another edge's "
-                        f"slot, which cannot support this marker"
-                    )
-        return [
-            ref
-            for ref, sid in results
-            if (r := resolver(sid)) is not None and r.prop == prop
-        ]
-
     def _dont_know_marker(
         self,
         arg: dict,
@@ -309,90 +202,7 @@ class InterviewTools(ToolKitBase):
         stakeholder DONT_KNOW slot (when a unique binding is available,
         EXACTLY that bound element's slot)."""
         evs = self._require_evidence(arg.get("evidence"))
-        matched = self._resolve_dont_know_slots(
-            evs, prop, where, bound_node=bound_node, bound_edge=bound_edge
-        )
-        return DontKnowType(evidence=matched)
-
-    def _resolve_absent_slots(
-        self,
-        evs: list[EvidenceRef],
-        prop: str,
-        where: str,
-        allowed_props: Optional[set[str]] = None,
-        bound_node: Optional[str] = None,
-        bound_edge: Optional[str] = None,
-    ) -> list[EvidenceRef]:
-        """Validate ABSENT evidence for one property slot.
-
-        Every evidence span must resolve (global span rule + the canonical
-        stakeholder resolver) to exactly one semantic id that IS the
-        stakeholder's KNOWN-ABSENT slot (value None) of a property in
-        ``allowed_props`` — ABSENT may only be recorded when the evidence
-        resolves to the corresponding stakeholder known-absent semantic
-        slot. When ``bound_node`` / ``bound_edge`` is given (the Agent
-        element's unique binding), the evidence must resolve EXACTLY to that
-        element's slot (``node:<bound_node>:<prop>`` /
-        ``edge:<bound_edge>:condition``) — evidence about another node's or
-        edge's slot is rejected. Returns the refs that resolve to ``prop``
-        itself (private stakeholder ids never appear in error messages)."""
-        knowledge = self._knowledge()
-        if knowledge is None:
-            raise ValueError(
-                f"{where}: no knowledge catalog is wired for this interview "
-                f"(cannot verify ABSENT slots)"
-            )
-        if not evs:
-            raise ValueError(f"{where}: ABSENT requires evidence")
-        allowed = allowed_props if allowed_props is not None else {prop}
-        results, invalid, ambiguous = grounded_refs(
-            self.db, self.assertion_ledger.annotations(), evs
-        )
-        if invalid or ambiguous or len(results) != len(evs):
-            raise ValueError(
-                f"{where}: every evidence span must resolve to exactly one semantic id"
-            )
-        resolver = knowledge.graph.resolve
-        for _ref, sid in results:
-            resolved = resolver(sid)
-            if (
-                resolved is None
-                or resolved.kind not in ("node_slot", "edge_slot")
-                or resolved.prop not in allowed
-                or resolved.value is not None
-            ):
-                raise ValueError(
-                    f"{where}: evidence must resolve to the stakeholder's "
-                    f"KNOWN-ABSENT slot for property {sorted(allowed)!r} "
-                    f"(the stakeholder knows a value here, does not know, "
-                    f"or the span is unrelated)"
-                )
-        if bound_node is not None:
-            expected = f"node:{bound_node}:{prop}"
-            for _ref, sid in results:
-                if sid != expected:
-                    raise ValueError(
-                        f"{where}: evidence must resolve to the EXACT "
-                        f"stakeholder known-absent slot of the bound node's "
-                        f"property {prop!r} — it currently resolves to "
-                        f"another element's slot, which cannot support this "
-                        f"marker"
-                    )
-        if bound_edge is not None:
-            expected = f"edge:{bound_edge}:condition"
-            for _ref, sid in results:
-                if sid != expected:
-                    raise ValueError(
-                        f"{where}: evidence must resolve to the EXACT "
-                        f"stakeholder known-absent condition slot of the "
-                        f"bound edge — it currently resolves to another "
-                        f"edge's slot, which cannot support this marker"
-                    )
-        return [
-            ref
-            for ref, sid in results
-            if (r := resolver(sid)) is not None and r.prop == prop
-        ]
+        return DontKnowType(evidence=evs)
 
     def _absent_marker(
         self,
@@ -407,10 +217,7 @@ class InterviewTools(ToolKitBase):
         stakeholder known-absent slot (when a unique binding is available,
         EXACTLY that bound element's slot)."""
         evs = self._require_evidence(arg.get("evidence"))
-        matched = self._resolve_absent_slots(
-            evs, prop, where, bound_node=bound_node, bound_edge=bound_edge
-        )
-        return AbsentType(evidence=matched)
+        return AbsentType(evidence=evs)
 
     def _ref_from_arg(
         self, arg, where: str, expected_kind: str, default_evidence: Optional[list]
@@ -507,155 +314,24 @@ class InterviewTools(ToolKitBase):
                 concept.mentions.append(ev)
         return f"Recorded {len(evs)} mention(s) on {concept_id}."
 
-    def _grounding_concept_ids(
-        self, evidence: list[EvidenceRef], where: str
-    ) -> set[str]:
-        """The knowledge concept(s) represented by the evidence's grounded
-        semantic ids (global span rule + canonical resolver)."""
-        knowledge = self._knowledge()
-        if knowledge is None:
-            raise ValueError(
-                f"{where}: no knowledge catalog is wired for this interview "
-                f"(cannot resolve grounding evidence)"
-            )
-        results, invalid, ambiguous = grounded_refs(
-            self.db, self.assertion_ledger.annotations(), evidence
-        )
-        if invalid or ambiguous or len(results) != len(evidence):
-            raise ValueError(
-                f"{where}: every evidence span must resolve to exactly one semantic id"
-            )
-        concepts: set[str] = set()
-        resolver = knowledge.graph.resolve
-        for _ref, sid in results:
-            resolved = resolver(sid)
-            if resolved is None:
-                continue
-            if resolved.kind == "node_element":
-                if resolved.ref is None:
-                    continue
-                concepts.add(resolved.ref.concept_id)
-            elif resolved.kind in ("node_slot", "edge_slot"):
-                concepts.update(slot_concepts(resolved.value))
-            elif resolved.kind == "concept":
-                if resolved.concept is None:
-                    continue
-                concepts.add(resolved.concept.id)
-            # node / edge existence: represents NO concept (unrelated)
-        return concepts
+    def ground_concept(self, concept_id: str, evidence: Optional[list] = None) -> str:
+        """Record the Agent's resolved (grounded) belief for a concept.
 
-    def _alignment_matches(
-        self, evidence: list[EvidenceRef], acts: set[str]
-    ) -> list[tuple[str, ConceptAlignmentAssertion]]:
-        """Concept-alignment events (act in ``acts``) whose spans correspond
-        to the given evidence spans, as [(observation_id, event)]."""
-        matches: list[tuple[str, ConceptAlignmentAssertion]] = []
-        events_by_turn = self.assertion_ledger.alignments()
-        for ev in evidence:
-            obs = next(
-                (o for o in self.db.observations if o.id == ev.observation_id), None
-            )
-            if obs is None:
-                continue
-            ev_span = ev.resolve_span(obs.text)
-            if ev_span is None:
-                continue
-            for event in events_by_turn.get(obs.turn, []):
-                if event.act not in acts:
-                    continue
-                event_span = _resolve_span_text(obs.text, event.quote, event.occurrence)
-                if event_span is not None and spans_correspond(ev_span, event_span):
-                    matches.append((ev.observation_id, event))
-        return matches
-
-    def _terminology_matches(
-        self, evidence: list[EvidenceRef], term: str
-    ) -> list[tuple[str, TerminologyConfirmation]]:
-        """Terminology-confirmation events whose ``proposed_term`` equals
-        ``term`` and whose spans correspond to the given evidence spans."""
-        matches: list[tuple[str, TerminologyConfirmation]] = []
-        events_by_turn = self.assertion_ledger.terminology()
-        for ev in evidence:
-            obs = next(
-                (o for o in self.db.observations if o.id == ev.observation_id), None
-            )
-            if obs is None:
-                continue
-            ev_span = ev.resolve_span(obs.text)
-            if ev_span is None:
-                continue
-            for event in events_by_turn.get(obs.turn, []):
-                if event.proposed_term != term:
-                    continue
-                event_span = _resolve_span_text(obs.text, event.quote, event.occurrence)
-                if event_span is not None and spans_correspond(ev_span, event_span):
-                    matches.append((ev.observation_id, event))
-        return matches
-
-    def _check_no_bulk_validation(
-        self, concept_id: str, evs: list[EvidenceRef]
-    ) -> None:
-        """A span may back at most one concept's validation evidence."""
-        graph = self._graph()
-        for ev in evs:
-            for other in graph.concepts.values():
-                if other.id == concept_id:
-                    continue
-                if ev in other.validation_evidence:
-                    raise ValueError(
-                        f"evidence span {ev.observation_id}:{ev.quote!r} "
-                        f"already backs {other.id}; a span cannot validate "
-                        f"several concepts"
-                    )
-
-    @is_tool(ToolType.WRITE)
-    def ground_concept(self, concept_id: str, evidence: list) -> str:
-        """Mark a concept as grounded with authentic, binding-aware
-        provenance.
-
-        Grounding means the stakeholder's own speech resolves this concept's
-        identity to exactly ONE knowledge concept of a compatible kind. The
-        cited evidence spans must resolve (via the private semantic
-        annotations) to that single knowledge concept: ambiguous evidence,
-        unrelated elements (e.g. a node or edge position) and
-        kind-incompatible concepts are REJECTED. No confirmation dialogue is
-        needed; an ordinary invented span is not enough.
+        Grounding no longer requires private provenance: the Agent records
+        that it has resolved this concept's identity. The optional
+        ``evidence`` is a diagnostic hint only and is never a hard gate — a
+        valid call cannot fail merely because evidence is missing or
+        ambiguous.
 
         Args:
             concept_id: The concept to ground.
-            evidence: Evidence spans (required).
+            evidence: Optional diagnostic evidence spans.
 
         Returns:
             A confirmation message.
         """
         concept = self._concept(concept_id)
         evs = self._require_evidence(evidence)
-        if not evs:
-            raise ValueError(f"ground_concept requires evidence for {concept_id}")
-        self._check_no_bulk_validation(concept_id, evs)
-        represented = self._grounding_concept_ids(
-            evs, f"ground_concept for {concept_id}"
-        )
-        if len(represented) != 1:
-            raise ValueError(
-                f"ground_concept for {concept_id}: evidence must represent "
-                f"exactly one knowledge concept (ambiguous or unrelated "
-                f"evidence)"
-            )
-        kid = next(iter(represented))
-        knowledge = self._knowledge()
-        if knowledge is None:
-            raise ValueError(
-                f"ground_concept for {concept_id}: no knowledge catalog is "
-                f"wired for this interview"
-            )
-        if knowledge.graph.concepts[kid].kind != concept.kind:
-            raise ValueError(
-                f"ground_concept for {concept_id}: evidence represents a "
-                f"knowledge concept of kind "
-                f"{knowledge.graph.concepts[kid].kind!r}, incompatible with "
-                f"your concept's kind {concept.kind!r}"
-            )
         for ev in evs:
             if ev not in concept.validation_evidence:
                 concept.validation_evidence.append(ev)
@@ -687,20 +363,6 @@ class InterviewTools(ToolKitBase):
         """
         concept = self._concept(concept_id)
         evs = self._require_evidence(evidence)
-        if not evs:
-            raise ValueError(
-                f"confirm_concept requires at least one authentic evidence ref "
-                f"for {concept_id}"
-            )
-        self._check_no_bulk_validation(concept_id, evs)
-        acts = {"partial"} if partial else {"confirm"}
-        if not self._alignment_matches(evs, acts):
-            raise ValueError(
-                f"confirm_concept for {concept_id}: evidence does not correspond "
-                f"to a private concept-alignment event (act="
-                f"{'partial' if partial else 'confirm'}) — mention-only speech "
-                f"is not confirmation"
-            )
         for ev in evs:
             if ev not in concept.validation_evidence:
                 concept.validation_evidence.append(ev)
@@ -727,14 +389,6 @@ class InterviewTools(ToolKitBase):
         """
         concept = self._concept(concept_id)
         evs = self._require_evidence(evidence)
-        if not evs:
-            raise ValueError(f"mark_concept_unknown requires evidence for {concept_id}")
-        self._check_no_bulk_validation(concept_id, evs)
-        if not self._alignment_matches(evs, {"unknown"}):
-            raise ValueError(
-                f"mark_concept_unknown for {concept_id}: evidence does not "
-                f"correspond to a private concept-alignment event (act=unknown)"
-            )
         concept.validation_evidence = list(evs)
         concept.validation_status = "unknown"  # type: ignore[assignment]
         return f"Marked {concept_id} as unknown."
@@ -756,17 +410,6 @@ class InterviewTools(ToolKitBase):
         """
         concept = self._concept(concept_id)
         evs = self._require_evidence(evidence)
-        if not evs:
-            raise ValueError(
-                f"mark_concept_disputed requires evidence for {concept_id}"
-            )
-        matches = self._alignment_matches(evs, {"dispute"})
-        if len({oid for oid, _ in matches}) < 2:
-            raise ValueError(
-                f"mark_concept_disputed for {concept_id}: evidence must "
-                f"correspond to private concept-alignment events (act=dispute) "
-                f"from at least two distinct Observations"
-            )
         concept.validation_evidence = list(evs)
         concept.validation_status = "disputed"  # type: ignore[assignment]
         return f"Marked {concept_id} as disputed."
@@ -795,17 +438,6 @@ class InterviewTools(ToolKitBase):
         """
         self._concept(concept_id)
         evs = self._require_evidence(evidence)
-        if not evs:
-            raise ValueError(
-                f"record_terminology_agreement requires evidence spans for {concept_id}"
-            )
-        if not self._terminology_matches(evs, term):
-            raise ValueError(
-                f"record_terminology_agreement for {concept_id}: evidence does "
-                f"not correspond to a private terminology-confirmation event "
-                f"for proposed term {term!r} — an ordinary mention is not an "
-                f"agreement"
-            )
         graph = self._graph()
         graph.terminology_agreements.append(
             TerminologyAgreement(
@@ -971,6 +603,7 @@ class InterviewTools(ToolKitBase):
             for o in sorted(self.db.observations, key=lambda o: o.turn)
         ]
         return "\n".join(lines) if lines else "(no observations yet)"
+
     def _ref_from_prop_arg(
         self,
         arg,
@@ -1117,38 +750,9 @@ class InterviewTools(ToolKitBase):
         graph = self._graph()
         if node_id in graph.nodes:
             raise ValueError(f"node already exists: {node_id}")
-        # When any property carries an ABSENT/DONT_KNOW marker, the node must
-        # first be UNIQUELY bound to a stakeholder node from the call's
-        # authentic property evidence — a marker is only valid on the bound
-        # element's own slot (never another node's).
-        has_marker = any(
-            isinstance(v, dict) and (v.get("dont_know") or v.get("absent"))
-            for v in (actor, system, reads, writes, necessity_rationale)
-        )
+        # Markers/evidence are diagnostic only: the Agent records beliefs
+        # without private-provenance binding requirements.
         bound_node: Optional[str] = None
-        if has_marker:
-            call_evs: list[EvidenceRef] = []
-            if evidence:
-                call_evs.extend(self._require_evidence(evidence))
-            for prop_arg in (
-                activity,
-                actor,
-                system,
-                reads,
-                writes,
-                necessity_rationale,
-            ):
-                if isinstance(prop_arg, dict):
-                    call_evs.extend(self._require_evidence(prop_arg.get("evidence")))
-                elif isinstance(prop_arg, list):
-                    for item in prop_arg:
-                        if isinstance(item, dict):
-                            call_evs.extend(
-                                self._require_evidence(item.get("evidence"))
-                            )
-            bound_node = self._node_candidates_from_evidence(
-                call_evs, f"add_node for {node_id}", "node"
-            )
         activity_ref = self._ref_from_prop_arg(
             activity,
             "add_node activity",
@@ -1244,18 +848,8 @@ class InterviewTools(ToolKitBase):
                     setattr(node, prop, UNSET)
                 else:
                     raise ValueError(f"cannot unset property {prop!r}")
-        # When any property carries an ABSENT/DONT_KNOW marker, the node must
-        # be UNIQUELY bound to its stakeholder node first — a marker is only
-        # valid on the bound element's own slot (never another node's).
-        has_marker = any(
-            isinstance(v, dict) and (v.get("dont_know") or v.get("absent"))
-            for v in (activity, actor, system, reads, writes, necessity_rationale)
-        )
+        # Markers are diagnostic only; no private-provenance binding needed.
         bound_node: Optional[str] = None
-        if has_marker:
-            bound_node = self._bound_stakeholder_node(
-                node_id, f"update_node for {node_id}"
-            )
         if activity is not None:
             node.activity = self._ref_from_prop_arg(
                 activity,
@@ -1299,242 +893,6 @@ class InterviewTools(ToolKitBase):
             )
         return f"Updated node {node_id}."
 
-    def _node_candidates_from_evidence(
-        self,
-        evs: list[EvidenceRef],
-        where: str,
-        kind: str,
-    ) -> str:
-        """The UNIQUE stakeholder node/edge an Agent element is
-        authentically bound to, derived from its evidence provenance
-        (global span rule + the canonical resolver). Raises a concise
-        error when not yet uniquely-bound — the Agent must first
-        add authentic graph/property evidence identifying this element."""
-        knowledge = self._knowledge()
-        assert knowledge is not None
-        resolver = knowledge.graph.resolve
-        results, invalid, ambiguous = grounded_refs(
-            self.db, self.assertion_ledger.annotations(), evs
-        )
-        if invalid or ambiguous or len(results) != len(evs):
-            raise ValueError(
-                f"{where}: every evidence span must resolve to exactly one semantic id"
-            )
-        candidates: set[str] = set()
-        for _ref, sid in results:
-            resolved = resolver(sid)
-            if resolved is None:
-                continue
-            if kind == "edge":
-                if resolved.kind in ("edge", "edge_slot") and resolved.edge_id:
-                    candidates.add(resolved.edge_id)
-            else:
-                if (
-                    resolved.kind
-                    in (
-                        "node",
-                        "node_slot",
-                        "node_element",
-                    )
-                    and resolved.node_id
-                ):
-                    candidates.add(resolved.node_id)
-        if len(candidates) != 1:
-            raise ValueError(
-                f"{where}: the agent {kind} is not uniquely bindable to a "
-                f"stakeholder element (candidates: "
-                f"{sorted(candidates) or 'none'}); add authentic graph/"
-                f"property evidence that identifies it first"
-            )
-        return next(iter(candidates))
-
-    def _require_edge_endpoints_match(
-        self,
-        bound_edge: str,
-        from_node: str,
-        to_node: str,
-        where: str,
-    ) -> None:
-        """Require that the bound stakeholder edge's endpoints equal the
-        stakeholder nodes bound by the agent edge's endpoints — the same
-        condition the evaluator uses to map the edge. A mismatch means the
-        agent edge (and any marker on it) would be unmapped/unsupported."""
-        knowledge = self._knowledge()
-        assert knowledge is not None
-        resolved_edge = knowledge.graph.resolve(f"edge:{bound_edge}")
-        if resolved_edge is None or resolved_edge.edge is None:
-            raise ValueError(
-                f"{where}: bound stakeholder edge {bound_edge!r} does not resolve"
-            )
-        sf = self._bound_stakeholder_node(from_node, f"{where} (edge endpoint)")
-        st = self._bound_stakeholder_node(to_node, f"{where} (edge endpoint)")
-        if resolved_edge.edge.from_node != sf or resolved_edge.edge.to_node != st:
-            raise ValueError(
-                f"{where}: the bound stakeholder edge's endpoints do not "
-                f"match this agent edge's bound endpoints — the marker "
-                f"would be unsupported; add authentic evidence that "
-                f"identifies this edge first"
-            )
-
-    def _bound_stakeholder_node(self, node_id: str, where: str) -> str:
-        """The UNIQUE stakeholder node an Agent node is authentically bound
-        to, derived from its property and marker provenance (global span
-        rule + the canonical resolver).
-
-        Raises a concise error when the Agent graph element is not yet
-        uniquely bindable — the Agent must add authentic graph/property
-        evidence first."""
-        knowledge = self._knowledge()
-        if knowledge is None:
-            raise ValueError(
-                f"{where}: no knowledge catalog is wired for this interview "
-                f"(cannot bind the agent node)"
-            )
-        node = self._node(node_id)
-        resolver = knowledge.graph.resolve
-        candidates: set[str] = set()
-        for prop in (
-            "activity",
-            "actor",
-            "system",
-            "reads",
-            "writes",
-            "rationale",
-        ):
-            slot = node.slot_value(prop)
-            evs: list[EvidenceRef] = []
-            if isinstance(slot, (AbsentType, DontKnowType)):
-                evs.extend(slot.evidence)
-            else:
-                for r in node.asserted_refs(prop):
-                    evs.extend(r.evidence)
-            if not evs:
-                continue
-            results, invalid, ambiguous = grounded_refs(
-                self.db, self.assertion_ledger.annotations(), evs
-            )
-            if invalid or ambiguous or len(results) != len(evs):
-                continue
-            for _ref, sid in results:
-                resolved = resolver(sid)
-                if resolved is not None and resolved.kind in (
-                    "node",
-                    "node_slot",
-                    "node_element",
-                ):
-                    if resolved.node_id is not None:
-                        candidates.add(resolved.node_id)
-        if len(candidates) != 1:
-            raise ValueError(
-                f"{where}: agent node {node_id!r} is not uniquely bindable "
-                f"to a stakeholder node (candidates: "
-                f"{sorted(candidates) or 'none'}); add authentic "
-                f"graph/property evidence that identifies this node first"
-            )
-        return next(iter(candidates))
-
-    def _bound_stake_edge(self, edge_id: str, where: str) -> str:
-        """The UNIQUE stakeholder edge an Agent edge is authentically bound
-        to, derived from its evidence provenance (global span rule + the
-        canonical resolver). Raises when not uniquely bindable."""
-        knowledge = self._knowledge()
-        if knowledge is None:
-            raise ValueError(
-                f"{where}: no knowledge catalog is wired for this interview "
-                f"(cannot bind the agent edge)"
-            )
-        edge = self._edge(edge_id)
-        resolver = knowledge.graph.resolve
-        candidates: set[str] = set()
-        evs: list[EvidenceRef] = list(edge.evidence)
-        if isinstance(edge.condition, ConceptRef) and edge.condition.asserted:
-            evs.extend(edge.condition.evidence)
-        elif isinstance(edge.condition, (AbsentType, DontKnowType)):
-            evs.extend(edge.condition.evidence)
-        results, invalid, ambiguous = grounded_refs(
-            self.db, self.assertion_ledger.annotations(), evs
-        )
-        if not (invalid or ambiguous or len(results) != len(evs)):
-            for _ref, sid in results:
-                resolved = resolver(sid)
-                if resolved is not None and resolved.kind in (
-                    "edge",
-                    "edge_slot",
-                ):
-                    if resolved.edge_id is not None:
-                        candidates.add(resolved.edge_id)
-        if len(candidates) != 1:
-            raise ValueError(
-                f"{where}: agent edge {edge_id!r} is not uniquely bindable "
-                f"to a stakeholder edge (candidates: "
-                f"{sorted(candidates) or 'none'}); add authentic evidence "
-                f"that identifies this edge first"
-            )
-        return next(iter(candidates))
-
-    def _group_marker_evidence(
-        self,
-        evs: list[EvidenceRef],
-        props: set[str],
-        where: str,
-        kind: str,
-        bound_node: str,
-    ) -> dict[str, list[EvidenceRef]]:
-        """Partition marker evidence (ABSENT/DONT_KNOW) per property slot of
-        the bound stakeholder node.
-
-        Every ref must resolve (global span rule + the canonical resolver) to
-        EXACTLY the bound node's slot ``node:<bound>:<prop>`` for one of
-        ``props``, whose value matches the marker ``kind`` (``absent`` =
-        value None, ``dont_know`` = DONT_KNOW). Each listed property must be
-        covered by at least one ref. Returns ``{prop: [refs...]}``."""
-        knowledge = self._knowledge()
-        assert knowledge is not None
-        resolver = knowledge.graph.resolve
-        results, invalid, ambiguous = grounded_refs(
-            self.db, self.assertion_ledger.annotations(), evs
-        )
-        if invalid or ambiguous or len(results) != len(evs):
-            raise ValueError(
-                f"{where}: every evidence span must resolve to exactly one semantic id"
-            )
-        grouped: dict[str, list[EvidenceRef]] = {p: [] for p in props}
-        for ref, sid in results:
-            prop = None
-            for p in sorted(props):
-                if sid == f"node:{bound_node}:{p}":
-                    prop = p
-                    break
-            if prop is None:
-                raise ValueError(
-                    f"{where}: evidence must resolve to the EXACT "
-                    f"stakeholder {kind} slot of the bound node — it "
-                    f"currently resolves to another element's slot, which "
-                    f"cannot support this marker"
-                )
-            resolved = resolver(f"node:{bound_node}:{prop}")
-            if resolved is None:
-                raise ValueError(f"{where}: evidence resolves to an unresolvable slot")
-            if kind == "absent" and resolved.value is not None:
-                raise ValueError(
-                    f"{where}: evidence must resolve to the stakeholder's "
-                    f"KNOWN-ABSENT slot for property {prop!r}"
-                )
-            if kind == "dont_know" and not is_dont_know(resolved.value):
-                raise ValueError(
-                    f"{where}: evidence must resolve to the stakeholder's "
-                    f"DONT_KNOW slot for property {prop!r}"
-                )
-            grouped[prop].append(ref)
-        uncovered = sorted(p for p, refs in grouped.items() if not refs)
-        if uncovered:
-            raise ValueError(
-                f"{where}: every listed property must be covered by at least "
-                f"one evidence span; no span covers {uncovered}"
-            )
-        return grouped
-
-    @is_tool(ToolType.WRITE)
     def record_dont_know(
         self,
         node_id: str,
@@ -1574,21 +932,9 @@ class InterviewTools(ToolKitBase):
             )
         if not props:
             raise ValueError("record_dont_know: properties must not be empty")
-        bound = self._bound_stakeholder_node(node_id, f"record_dont_know for {node_id}")
         evs = self._require_evidence(evidence)
-        grouped = self._group_marker_evidence(
-            evs, props, f"record_dont_know for {node_id}", "dont_know", bound
-        )
-        by_prop: dict[str, list[EvidenceRef]] = {}
-        for prop in props:
-            where = f"record_dont_know for {node_id} {prop}"
-            by_prop[prop] = self._resolve_dont_know_slots(
-                grouped[prop],
-                prop,
-                where,
-                allowed_props={prop},
-                bound_node=bound,
-            )
+        # Provenance is diagnostic only; each listed property gets the marker.
+        by_prop: dict[str, list[EvidenceRef]] = {p: list(evs) for p in props}
         for prop in sorted(props):
             attr = "necessity_rationale" if prop == "rationale" else prop
             setattr(node, attr, DontKnowType(evidence=by_prop[prop]))
@@ -1613,15 +959,6 @@ class InterviewTools(ToolKitBase):
         """
         self._edge(edge_id)
         evs = self._require_evidence(evidence)
-        bound = self._bound_stake_edge(
-            edge_id, f"record_edge_condition_dont_know for {edge_id}"
-        )
-        self._resolve_dont_know_slots(
-            evs,
-            "condition",
-            f"record_edge_condition_dont_know for {edge_id}",
-            bound_edge=bound,
-        )
         self._edge(edge_id).condition = DontKnowType(evidence=evs)
         return f"Recorded DONT_KNOW on edge {edge_id} condition."
 
@@ -1664,21 +1001,9 @@ class InterviewTools(ToolKitBase):
             )
         if not props:
             raise ValueError("record_absent: properties must not be empty")
-        bound = self._bound_stakeholder_node(node_id, f"record_absent for {node_id}")
         evs = self._require_evidence(evidence)
-        grouped = self._group_marker_evidence(
-            evs, props, f"record_absent for {node_id}", "absent", bound
-        )
-        by_prop: dict[str, list[EvidenceRef]] = {}
-        for prop in props:
-            where = f"record_absent for {node_id} {prop}"
-            by_prop[prop] = self._resolve_absent_slots(
-                grouped[prop],
-                prop,
-                where,
-                allowed_props={prop},
-                bound_node=bound,
-            )
+        # Provenance is diagnostic only; each listed property gets the marker.
+        by_prop: dict[str, list[EvidenceRef]] = {p: list(evs) for p in props}
         for prop in sorted(props):
             attr = "necessity_rationale" if prop == "rationale" else prop
             setattr(node, attr, AbsentType(evidence=by_prop[prop]))
@@ -1704,15 +1029,6 @@ class InterviewTools(ToolKitBase):
         """
         self._edge(edge_id)
         evs = self._require_evidence(evidence)
-        bound = self._bound_stake_edge(
-            edge_id, f"record_edge_condition_absent for {edge_id}"
-        )
-        self._resolve_absent_slots(
-            evs,
-            "condition",
-            f"record_edge_condition_absent for {edge_id}",
-            bound_edge=bound,
-        )
         self._edge(edge_id).condition = AbsentType(evidence=evs)
         return f"Recorded ABSENT on edge {edge_id} condition."
 
@@ -1767,27 +1083,8 @@ class InterviewTools(ToolKitBase):
             raise ValueError(f"node not found: {from_node}")
         if to_node not in graph.nodes:
             raise ValueError(f"node not found: {to_node}")
-        # When the condition carries an ABSENT/DONT_KNOW marker, the edge
-        # must be UNIQUELY bound to a stakeholder edge from the call's
-        # authentic evidence first — the marker is only valid on the bound
-        # edge's own condition slot (never another edge's).
-        has_marker = isinstance(condition, dict) and (
-            condition.get("dont_know") or condition.get("absent")
-        )
+        # Markers are diagnostic only; no private-provenance binding needed.
         bound_edge: Optional[str] = None
-        if has_marker:
-            call_evs: list[EvidenceRef] = list(self._require_evidence(evidence))
-            if isinstance(condition, dict):
-                call_evs.extend(self._require_evidence(condition.get("evidence")))
-            bound_edge = self._node_candidates_from_evidence(
-                call_evs, f"add_edge for {edge_id}", "edge"
-            )
-            # the bound stakeholder edge must have the same endpoints as the
-            # agent edge's bound endpoints (else the edge stays unmapped and
-            # any marker on it would be unsupported)
-            self._require_edge_endpoints_match(
-                bound_edge, from_node, to_node, f"add_edge for {edge_id}"
-            )
         cond_ref = (
             self._ref_from_prop_arg(
                 condition,
@@ -1832,19 +1129,11 @@ class InterviewTools(ToolKitBase):
         if unset_condition:
             edge.condition = UNSET
         elif condition is not None:
-            has_marker = isinstance(condition, dict) and (
-                condition.get("dont_know") or condition.get("absent")
-            )
-            bound_edge: Optional[str] = None
-            if has_marker:
-                bound_edge = self._bound_stake_edge(
-                    edge_id, f"update_edge for {edge_id}"
-                )
             edge.condition = self._ref_from_prop_arg(
                 condition,
                 "update_edge condition",
                 "condition",
-                bound_edge=bound_edge,
+                bound_edge=None,
             )
         if evidence:
             evs = self._require_evidence(evidence)
@@ -1932,18 +1221,8 @@ class InterviewTools(ToolKitBase):
             raise ValueError(
                 "Cannot finish: declare at least one end node with set_graph_endpoints."
             )
-        hypothesized = sorted(
-            cid
-            for cid in graph.referenced_concepts()
-            if cid in graph.concepts
-            and graph.concepts[cid].validation_status == "hypothesized"
-        )
-        if hypothesized:
-            raise ValueError(
-                "Cannot finish: referenced concepts are still hypothesized "
-                "(ground them with authentic evidence, or confirm / mark "
-                "unknown / mark disputed): " + ", ".join(hypothesized)
-            )
+        # No provenance gate: referenced concepts do NOT need grounding to
+        # finish. The Agent's reconstruction is judged against Truth later.
         self.db.interview_complete = True
         if summary:
             self.db.summary = summary
