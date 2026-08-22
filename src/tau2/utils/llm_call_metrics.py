@@ -34,23 +34,57 @@ __all__ = [
 ]
 
 
-# One row per real LLM call (numbers + safe identifiers only).
+# One row per real LLM call (actual + safe identifiers only).
 # ``prompt_tokens`` / ``completion_tokens`` / ``total_tokens`` are exact
 # provider usage, or ``None`` when the provider reported none.
+#
+# Char components (numeric only; never the raw prompt body):
+# - ``messages_chars``: serialized message payload (system + conversation).
+# - ``conversation_chars``: conversation portion, excluding system messages.
+# - ``tool_schema_chars``: serialized tool schemas; separate from messages.
+# - ``total_input_chars``: all major serialized input components together
+#   (messages + tool schemas; add any other serialized component here).
+# - ``output_contract_chars``: for stakeholder calls, the fixed output-sidecar
+#   contract appended to every request, kept separate from the conversation.
+#
+# Every provider generation records a row, including failures: ``status`` is
+# ``"success"`` or ``"error"`` and ``error_type`` is a safe exception class
+# name (or ``None``). Exception *messages* are never persisted (they may leak
+# request/provider content).
 @dataclass
 class LLMCallRecord:
     side: str
     call_index: int
     model: str
     message_count: int
-    request_chars: int
+    messages_chars: int
     system_chars: int
     conversation_chars: int
     tool_schema_chars: int
+    total_input_chars: int
+    status: str = "success"
+    error_type: Optional[str] = None
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
     total_tokens: Optional[int] = None
+    output_contract_chars: Optional[int] = None
     latency_seconds: float = 0.0
+    # Which input kind triggered this generation (Agent-side classification,
+    # e.g. ``stakeholder_message`` / ``tool_result`` / ``multi_tool_result`` /
+    # ``initial_turn`` / ``other``); None for unclassified / non-agent calls.
+    trigger: Optional[str] = None
+
+
+# Call-trigger classification for the Agent side (see requirement 3): which kind
+# of input caused this generation. ``None`` means "not classified" (non-agent
+# calls / unknown).
+#
+#   stakeholder_message    -- the Agent is generating a fresh question to the
+#                              stakeholder (or the initial turn).
+#   tool_result            -- a single tool result came back to the Agent.
+#   multi_tool_result      -- several tool results returned together.
+#   other                  -- anything else.
+AgentTrigger = str  # one of the constants below (or None)
 
 
 class LLMCallMetricsCollector:
@@ -98,59 +132,88 @@ def set_llm_call_metrics_collector(
 def _p50(values: list[float]) -> Optional[float]:
     if not values:
         return None
-    return float(median(sorted(values)))
+    try:
+        return float(median(sorted(values)))
+    except (ValueError, TypeError):
+        # Defensive: empty/unnormalized input never reaches this (guarded
+        # above), but a broken record must not take the run down.
+        return None
 
 
 def _p95(values: list[float]) -> Optional[float]:
     if not values:
         return None
-    vals = sorted(values)
-    idx = min(len(vals) - 1, int(round(0.95 * (len(vals) - 1))))
-    return float(vals[idx])
+    try:
+        vals = sorted(values)
+        idx = min(len(vals) - 1, int(round(0.95 * (len(vals) - 1))))
+        return float(vals[idx])
+    except (ValueError, TypeError):
+        return None
 
 
 def summarize_records(side_records: list[LLMCallRecord]) -> dict:
     """One side's summary (numeric only). Exact token totals are aggregated
     only over calls where exact usage exists, with ``token_usage_calls``
-    reporting that coverage."""
+    reporting that coverage. ``successful``/``error`` report call status;
+    qa / trigger breakdowns are reported when available."""
     calls = len(side_records)
     exact = [r for r in side_records if r.prompt_tokens is not None]
-    exact_prompt = [r.prompt_tokens for r in exact if r.prompt_tokens is not None]  # type: ignore[misc]
+    exact_prompt = [r.prompt_tokens for r in exact if r.prompt_tokens is not None]
     exact_completion = [
         r.completion_tokens for r in exact if r.completion_tokens is not None
-    ]  # type: ignore[misc]
+    ]
     token_usage_calls = len(exact)
     latencies = [r.latency_seconds for r in side_records]
+    errors = [r for r in side_records if r.status == "error"]
+    error_types: list[str] = sorted({r.error_type for r in errors if r.error_type})
     return {
         "calls": calls,
+        "success": calls - len(errors),
+        "error": len(errors),
+        "error_types": error_types,
         "max_prompt_tokens": max(exact_prompt) if exact_prompt else None,
-        "max_request_chars": (
-            max(r.request_chars for r in side_records) if side_records else None
+        "max_messages_chars": (
+            max(r.messages_chars for r in side_records) if side_records else None
+        ),
+        "max_total_input_chars": (
+            max(r.total_input_chars for r in side_records) if side_records else None
         ),
         "max_message_count": (
             max(r.message_count for r in side_records) if side_records else None
         ),
         "total_prompt_tokens": sum(exact_prompt) if exact_prompt else None,
-        "total_completion_tokens": (
-            sum(exact_completion) if exact_completion else None
+        "total_completion_tokens": sum(exact_completion) if exact_completion else None,
+        "total_input_chars": (
+            sum(r.total_input_chars for r in side_records) if side_records else None
         ),
         "latency_p50": _p50(latencies),
         "latency_p95": _p95(latencies),
         "latency_max": max(latencies) if latencies else None,
         "token_usage_calls": token_usage_calls,
+        "trigger_counts": _trigger_counts(side_records),
     }
+
+
+def _trigger_counts(side_records: list[LLMCallRecord]) -> dict[str, int]:
+    """Count Agent-generations by the input kind that triggered them. Rows with
+    no ``trigger`` (e.g. stakeholder-side calls) are omitted."""
+    out: dict[str, int] = {}
+    for r in side_records:
+        if r.trigger:
+            out[r.trigger] = out.get(r.trigger, 0) + 1
+    return out
 
 
 def slowest_calls(side_records: list[LLMCallRecord], n: int = 5) -> list[dict]:
     """The ``n`` slowest calls as numeric-only dicts (side, call_index,
-    prompt_tokens, request_chars, message_count, latency_seconds)."""
+    prompt_tokens, messages_chars, message_count, latency_seconds)."""
     ordered = sorted(side_records, key=lambda r: r.latency_seconds, reverse=True)
     return [
         {
             "side": r.side,
             "call_index": r.call_index,
             "prompt_tokens": r.prompt_tokens,
-            "request_chars": r.request_chars,
+            "messages_chars": r.messages_chars,
             "message_count": r.message_count,
             "latency_seconds": r.latency_seconds,
         }
@@ -165,12 +228,16 @@ def record_to_dict(record: LLMCallRecord) -> dict:
         "call_index": record.call_index,
         "model": record.model,
         "message_count": record.message_count,
-        "request_chars": record.request_chars,
+        "messages_chars": record.messages_chars,
         "system_chars": record.system_chars,
         "conversation_chars": record.conversation_chars,
         "tool_schema_chars": record.tool_schema_chars,
+        "total_input_chars": record.total_input_chars,
+        "status": record.status,
+        "error_type": record.error_type,
         "prompt_tokens": record.prompt_tokens,
         "completion_tokens": record.completion_tokens,
         "total_tokens": record.total_tokens,
+        "output_contract_chars": record.output_contract_chars,
         "latency_seconds": record.latency_seconds,
     }

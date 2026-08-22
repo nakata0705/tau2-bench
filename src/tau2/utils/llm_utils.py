@@ -8,7 +8,7 @@ import warnings
 from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 import httpx
 import litellm
@@ -145,15 +145,27 @@ def _record_llm_call_metrics(
     *,
     side: Optional[str],
     model: str,
-    messages: list[Message],
+    messages: Sequence[Message],
     litellm_messages: list[dict],
     tools_schema: Optional[list[dict]],
     usage: Optional[dict],
     latency_seconds: float,
+    status: str = "success",
+    error_type: Optional[str] = None,
+    output_contract_text: Optional[str] = None,
+    trigger: Optional[str] = None,
 ) -> None:
     """Record one numeric row into the active LLM call metrics collector (if
     any). Never persists raw prompts / headers / private content — only
-    char/token/latency numbers plus safe identifiers."""
+    char/token/latency numbers plus safe identifiers.
+
+    ``status``/``error_type`` record the outcome (a row is written even when
+    the provider call raised); ``latency_seconds`` includes time spent before
+    a failure. ``output_contract_text`` (stakeholder side: the fixed
+    output-sidecar contract appended to every request) is measured as a
+    length, never stored. ``trigger`` is the Agent-side classification of
+    which input kind caused the generation.
+    """
     from tau2.utils.llm_call_metrics import (
         LLMCallRecord,
         get_llm_call_metrics_collector,
@@ -162,12 +174,16 @@ def _record_llm_call_metrics(
     collector = get_llm_call_metrics_collector()
     if collector is None:
         return
-    request_chars = len(json.dumps(litellm_messages))
+    # messages_chars = serialized message payload (system + conversation).
+    messages_chars = len(json.dumps(litellm_messages))
     system_chars = sum(
         len(json.dumps(m)) for m in litellm_messages if m.get("role") == "system"
     )
-    conversation_chars = request_chars - system_chars
+    conversation_chars = messages_chars - system_chars
     tool_schema_chars = len(json.dumps(tools_schema)) if tools_schema else 0
+    # total_input_chars = every serialized major input component together.
+    total_input_chars = messages_chars + tool_schema_chars
+    output_contract_chars = len(output_contract_text) if output_contract_text else None
     prompt_tokens = usage.get("prompt_tokens") if usage else None
     completion_tokens = usage.get("completion_tokens") if usage else None
     total_tokens = (
@@ -181,14 +197,19 @@ def _record_llm_call_metrics(
             call_index=0,  # assigned by the collector
             model=model,
             message_count=len(messages),
-            request_chars=request_chars,
+            messages_chars=messages_chars,
             system_chars=system_chars,
             conversation_chars=conversation_chars,
             tool_schema_chars=tool_schema_chars,
+            total_input_chars=total_input_chars,
+            status=status,
+            error_type=error_type,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
+            output_contract_chars=output_contract_chars,
             latency_seconds=latency_seconds,
+            trigger=trigger,
         )
     )
 
@@ -217,7 +238,7 @@ def to_tau2_messages(
     return tau2_messages
 
 
-def to_litellm_messages(messages: list[Message]) -> list[dict]:
+def to_litellm_messages(messages: Sequence[Message]) -> list[dict]:
     """
     Convert a list of Tau2 messages to a list of litellm messages.
     """
@@ -287,7 +308,7 @@ def validate_message(message: Message) -> None:
         )
 
 
-def validate_message_history(messages: list[Message]) -> None:
+def validate_message_history(messages: Sequence[Message]) -> None:
     """
     Validate the message history.
     """
@@ -406,11 +427,13 @@ def _write_llm_log(
 
 def generate(
     model: str,
-    messages: list[Message],
+    messages: Sequence[Message],
     tools: Optional[list[Tool]] = None,
     tool_choice: Optional[str] = None,
     call_name: Optional[str] = None,
     side: Optional[str] = None,
+    trigger: Optional[str] = None,
+    output_contract_text: Optional[str] = None,
     **kwargs: Any,
 ) -> UserMessage | AssistantMessage:
     """
@@ -427,9 +450,25 @@ def generate(
         side: Optional caller side (e.g. "agent" / "stakeholder") for
                    context-size/latency measurement. Never inferred from
                    message text.
+        trigger: Optional Agent-side classification of the input that
+                   triggered this generation (e.g. "stakeholder_message" /
+                   "tool_result" / "multi_tool_result" / "initial_turn" /
+                   "other"). Recorded into the metrics row when a collector
+                   is active; never influences the provider call.
+        output_contract_text: Optional stakeholder output-sidecar contract
+                   text (the fixed block appended to every stakeholder
+                   request). Only its length is recorded as
+                   ``output_contract_chars``; the text itself never persists.
         **kwargs: Additional arguments to pass to the model.
 
     Returns: A tuple containing the message and the cost.
+
+    Notes:
+        A metrics row is recorded for EVERY provider generation attempt,
+        including failures (``status="error"`` with a safe ``error_type``
+        exception class name; ``latency_seconds`` covers the time spent
+        before the failure). Exception messages are never persisted because
+        they may contain request/provider content.
     """
     validate_message_history(messages)
     if kwargs.get("num_retries") is None:
@@ -470,6 +509,23 @@ def generate(
             **kwargs,
         )
     except Exception as e:
+        # Record the failed attempt (latency includes time before the
+        # failure). Only the exception CLASS name is kept — the message can
+        # carry provider/request content and must not be persisted.
+        failed_latency = time.perf_counter() - start_time
+        _record_llm_call_metrics(
+            side=side,
+            model=model,
+            messages=messages,
+            litellm_messages=litellm_messages,
+            tools_schema=tools_schema,
+            usage=None,
+            latency_seconds=failed_latency,
+            status="error",
+            error_type=type(e).__name__,
+            output_contract_text=output_contract_text,
+            trigger=trigger,
+        )
         logger.error(e)
         raise e
     generation_time_seconds = time.perf_counter() - start_time
@@ -583,6 +639,10 @@ def generate(
         tools_schema=tools_schema,
         usage=usage,
         latency_seconds=generation_time_seconds,
+        status="success",
+        error_type=None,
+        output_contract_text=output_contract_text,
+        trigger=trigger,
     )
 
     return message

@@ -1,0 +1,1136 @@
+{
+  "run_index": 0,
+  "run_id": "run_00_073d502b-d4c5-4b81-8e1a-038d630f2668",
+  "task_id": "quotation_workflow_1",
+  "seed": 9801,
+  "agent_model": "openrouter/deepseek/deepseek-v4-flash-0731",
+  "user_model": "openrouter/deepseek/deepseek-v4-flash-0731",
+  "user_implementation": "business_interview_user",
+  "llm_args": {
+    "temperature": 0.0
+  },
+  "resolved_agent_model": "openrouter/deepseek/deepseek-v4-flash-0731",
+  "resolved_user_model": "openrouter/deepseek/deepseek-v4-flash-0731",
+  "termination_reason": null,
+  "loop_guard": null,
+  "reward_info": null,
+  "elapsed_seconds": 115.66,
+  "errors": [
+    "ValueError: stakeholder sidecar rejected twice; invalid private metadata must not enter the conversation: annotation 'skc_004': mode 'value' contradicts the knowledge — the stakeholder's own semantic model says 'mention' (a message claiming otherwise is semantically inconsistent and cannot be accepted)\n"
+  ],
+  "conversation": [],
+  "observations": [
+    {
+      "id": "obs_1",
+      "source_id": "stakeholder",
+      "text": "Sure, that's fine. What would you like to know?",
+      "order": 0,
+      "turn": 1
+    },
+    {
+      "id": "obs_7",
+      "source_id": "stakeholder",
+      "text": "It starts when we receive the customer's quotation request. After that, I check the customer information in the CRM.",
+      "order": 1,
+      "turn": 7
+    }
+  ],
+  "final_graph": {
+    "id": "graph",
+    "name": "Quotation Process Interview",
+    "start_node_id": null,
+    "end_node_ids": [],
+    "concepts": {
+      "act_receive_request": {
+        "id": "act_receive_request",
+        "kind": "activity",
+        "display_label": "receive the customer's quotation request",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_7",
+            "quote": "receive the customer's quotation request",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "data_quotation_request": {
+        "id": "data_quotation_request",
+        "kind": "data",
+        "display_label": "customer's quotation request",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_7",
+            "quote": "the customer's quotation request",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "act_check_customer_info": {
+        "id": "act_check_customer_info",
+        "kind": "activity",
+        "display_label": "check the customer information",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_7",
+            "quote": "check the customer information",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "data_customer_info": {
+        "id": "data_customer_info",
+        "kind": "data",
+        "display_label": "customer information",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_7",
+            "quote": "the customer information",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "sys_crm": {
+        "id": "sys_crm",
+        "kind": "system",
+        "display_label": "CRM",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_7",
+            "quote": "the CRM",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      }
+    },
+    "terminology_agreements": [],
+    "nodes": {
+      "node_receive_request": {
+        "id": "node_receive_request",
+        "activity": {
+          "concept_id": "act_receive_request",
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "observation_id": "obs_7",
+              "quote": "receive the customer's quotation request",
+              "occurrence": 0
+            }
+          ]
+        },
+        "actor": {
+          "unset": true
+        },
+        "system": {
+          "unset": true
+        },
+        "reads": [
+          {
+            "concept_id": "data_quotation_request",
+            "confidence": 1.0,
+            "evidence": [
+              {
+                "observation_id": "obs_7",
+                "quote": "the customer's quotation request",
+                "occurrence": 0
+              }
+            ]
+          }
+        ],
+        "writes": {
+          "unset": true
+        },
+        "necessity_rationale": {
+          "unset": true
+        }
+      },
+      "node_check_customer_info": {
+        "id": "node_check_customer_info",
+        "activity": {
+          "concept_id": "act_check_customer_info",
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "observation_id": "obs_7",
+              "quote": "check the customer information",
+              "occurrence": 0
+            }
+          ]
+        },
+        "actor": {
+          "unset": true
+        },
+        "system": {
+          "concept_id": "sys_crm",
+          "confidence": 1.0
+        },
+        "reads": [
+          {
+            "concept_id": "data_customer_info",
+            "confidence": 1.0,
+            "evidence": [
+              {
+                "observation_id": "obs_7",
+                "quote": "the customer information",
+                "occurrence": 0
+              }
+            ]
+          }
+        ],
+        "writes": {
+          "unset": true
+        },
+        "necessity_rationale": {
+          "unset": true
+        }
+      }
+    },
+    "edges": {
+      "edge_receive_to_check": {
+        "id": "edge_receive_to_check",
+        "from_node": "node_receive_request",
+        "to_node": "node_check_customer_info",
+        "condition": {
+          "unset": true
+        },
+        "evidence": [
+          {
+            "observation_id": "obs_7",
+            "quote": "After that",
+            "occurrence": 0
+          }
+        ]
+      }
+    },
+    "validation_errors": [],
+    "is_valid": true
+  },
+  "evaluator_metrics": {
+    "protocol_completed": false,
+    "graph_created": true,
+    "graph_valid": true,
+    "node_recall": 0.3333333333333333,
+    "node_precision": 1.0,
+    "edge_recall": 0.16666666666666666,
+    "edge_precision": 1.0,
+    "start_correct": false,
+    "end_recall": 0.0,
+    "end_precision": 0.0,
+    "activity_correctness": 1.0,
+    "actor_correctness": 0.0,
+    "system_correctness": 0.0,
+    "read_correctness": 0.0,
+    "write_correctness": 0.0,
+    "rationale_correctness": 0.0,
+    "condition_correctness": 0.0,
+    "concept_correctness": 0.1523809523809524,
+    "concept_recall": 0.19047619047619047,
+    "concept_precision": 0.8,
+    "unsupported_ref_count": 2,
+    "fabricated_node_count": 0,
+    "fabricated_edge_count": 0,
+    "glossary_pass": false,
+    "glossary_complete": false,
+    "referenced_hypothesized_concepts": [
+      "act_check_customer_info",
+      "act_receive_request",
+      "data_customer_info",
+      "data_quotation_request",
+      "sys_crm"
+    ],
+    "glossary_validation_errors": [],
+    "node_evidence_coverage": 1.0,
+    "ref_evidence_coverage": 0.8,
+    "edge_evidence_coverage": 1.0,
+    "invalid_evidence_ref_count": 0,
+    "ambiguous_evidence_ref_count": 1,
+    "marker_evidence_errors": 0,
+    "invalid_observation_reference_count": 0,
+    "authentic_observation_count": 2,
+    "invalid_observation_source_count": 0,
+    "orphan_observation_count": 1,
+    "provenance_authenticity_pass": true,
+    "evidence_pass": false,
+    "structural_pass": false,
+    "protocol_pass": false,
+    "quality_pass": false,
+    "knowledge_coverage": 0.7166666666666667
+  },
+  "truth_graph": {
+    "id": "quotation",
+    "name": "Quotation creation",
+    "start_node_id": "r",
+    "end_node_ids": [
+      "sq",
+      "me"
+    ],
+    "concepts": {
+      "tc_activity_receive_request": {
+        "id": "tc_activity_receive_request",
+        "kind": "activity",
+        "display_label": null,
+        "description": "Receive the customer's quotation request.",
+        "canonical_terms": [
+          "receive the quotation request"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_activity_check_customer": {
+        "id": "tc_activity_check_customer",
+        "kind": "activity",
+        "display_label": null,
+        "description": "Check the customer information.",
+        "canonical_terms": [
+          "check the customer information"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_activity_create_quotation": {
+        "id": "tc_activity_create_quotation",
+        "kind": "activity",
+        "display_label": null,
+        "description": "Create the quotation document.",
+        "canonical_terms": [
+          "create the quotation"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_activity_approve_quotation": {
+        "id": "tc_activity_approve_quotation",
+        "kind": "activity",
+        "display_label": null,
+        "description": "Approve the quotation.",
+        "canonical_terms": [
+          "approve the high-value quotation"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_activity_send_quotation": {
+        "id": "tc_activity_send_quotation",
+        "kind": "activity",
+        "display_label": null,
+        "description": "Send the quotation to the customer.",
+        "canonical_terms": [
+          "send the quotation to the customer"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_activity_send_month_end_summary": {
+        "id": "tc_activity_send_month_end_summary",
+        "kind": "activity",
+        "display_label": null,
+        "description": "Send the month-end summary of quotation information.",
+        "canonical_terms": [
+          "send the month-end summary to Accounting"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_actor_sales": {
+        "id": "tc_actor_sales",
+        "kind": "actor",
+        "display_label": null,
+        "description": "The sales employee.",
+        "canonical_terms": [
+          "sales employee"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_actor_manager": {
+        "id": "tc_actor_manager",
+        "kind": "actor",
+        "display_label": null,
+        "description": "The manager who approves.",
+        "canonical_terms": [
+          "manager"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_system_crm": {
+        "id": "tc_system_crm",
+        "kind": "system",
+        "display_label": null,
+        "description": "The customer relationship management system.",
+        "canonical_terms": [
+          "CRM"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_system_quoting": {
+        "id": "tc_system_quoting",
+        "kind": "system",
+        "display_label": null,
+        "description": "The quoting system.",
+        "canonical_terms": [
+          "quoting system"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_system_email": {
+        "id": "tc_system_email",
+        "kind": "system",
+        "display_label": null,
+        "description": "The email system.",
+        "canonical_terms": [
+          "email"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_system_excel": {
+        "id": "tc_system_excel",
+        "kind": "system",
+        "display_label": null,
+        "description": "The spreadsheet application.",
+        "canonical_terms": [
+          "Excel"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_request": {
+        "id": "tc_request",
+        "kind": "data",
+        "display_label": null,
+        "description": "The customer's quotation request.",
+        "canonical_terms": [
+          "quotation request"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_customer": {
+        "id": "tc_customer",
+        "kind": "data",
+        "display_label": null,
+        "description": "The customer's information.",
+        "canonical_terms": [
+          "customer information"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_pricing": {
+        "id": "tc_pricing",
+        "kind": "data",
+        "display_label": null,
+        "description": "The pricing information.",
+        "canonical_terms": [
+          "pricing information"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_quote": {
+        "id": "tc_quote",
+        "kind": "data",
+        "display_label": null,
+        "description": "The quotation document.",
+        "canonical_terms": [
+          "quotation"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_approval": {
+        "id": "tc_approval",
+        "kind": "data",
+        "display_label": null,
+        "description": "The approval record.",
+        "canonical_terms": [
+          "approval"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_sent_quote": {
+        "id": "tc_sent_quote",
+        "kind": "data",
+        "display_label": null,
+        "description": "The sent quotation.",
+        "canonical_terms": [
+          "sent quotation"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_excel_summary": {
+        "id": "tc_excel_summary",
+        "kind": "data",
+        "display_label": null,
+        "description": "The quotation information summary.",
+        "canonical_terms": [
+          "summary of the quotation information"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_cond_over_1m": {
+        "id": "tc_cond_over_1m",
+        "kind": "condition",
+        "display_label": null,
+        "description": "The quotation amount is over 1,000,000 yen.",
+        "canonical_terms": [
+          "over 1,000,000 yen"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_cond_at_or_below_1m": {
+        "id": "tc_cond_at_or_below_1m",
+        "kind": "condition",
+        "display_label": null,
+        "description": "The quotation amount is at or below 1,000,000 yen.",
+        "canonical_terms": [
+          "at or below 1,000,000 yen"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_cond_month_end": {
+        "id": "tc_cond_month_end",
+        "kind": "condition",
+        "display_label": null,
+        "description": "It is the end of the month.",
+        "canonical_terms": [
+          "month-end"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_rationale_credit_risk": {
+        "id": "tc_rationale_credit_risk",
+        "kind": "rationale",
+        "display_label": null,
+        "description": "Credit risk management.",
+        "canonical_terms": [
+          "credit risk management"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      }
+    },
+    "terminology_agreements": [],
+    "nodes": {
+      "r": {
+        "id": "r",
+        "activity": {
+          "concept_id": "tc_activity_receive_request",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_sales",
+          "confidence": 1.0
+        },
+        "system": null,
+        "reads": null,
+        "writes": [
+          {
+            "concept_id": "tc_request",
+            "confidence": 1.0
+          }
+        ],
+        "necessity_rationale": null
+      },
+      "cc": {
+        "id": "cc",
+        "activity": {
+          "concept_id": "tc_activity_check_customer",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_sales",
+          "confidence": 1.0
+        },
+        "system": {
+          "concept_id": "tc_system_crm",
+          "confidence": 1.0
+        },
+        "reads": [
+          {
+            "concept_id": "tc_customer",
+            "confidence": 1.0
+          }
+        ],
+        "writes": null,
+        "necessity_rationale": null
+      },
+      "cq": {
+        "id": "cq",
+        "activity": {
+          "concept_id": "tc_activity_create_quotation",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_sales",
+          "confidence": 1.0
+        },
+        "system": {
+          "concept_id": "tc_system_quoting",
+          "confidence": 1.0
+        },
+        "reads": [
+          {
+            "concept_id": "tc_customer",
+            "confidence": 1.0
+          },
+          {
+            "concept_id": "tc_pricing",
+            "confidence": 1.0
+          }
+        ],
+        "writes": [
+          {
+            "concept_id": "tc_quote",
+            "confidence": 1.0
+          }
+        ],
+        "necessity_rationale": null
+      },
+      "ap": {
+        "id": "ap",
+        "activity": {
+          "concept_id": "tc_activity_approve_quotation",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_manager",
+          "confidence": 1.0
+        },
+        "system": null,
+        "reads": null,
+        "writes": null,
+        "necessity_rationale": {
+          "concept_id": "tc_rationale_credit_risk",
+          "confidence": 1.0
+        }
+      },
+      "sq": {
+        "id": "sq",
+        "activity": {
+          "concept_id": "tc_activity_send_quotation",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_sales",
+          "confidence": 1.0
+        },
+        "system": {
+          "concept_id": "tc_system_email",
+          "confidence": 1.0
+        },
+        "reads": null,
+        "writes": null,
+        "necessity_rationale": null
+      },
+      "me": {
+        "id": "me",
+        "activity": {
+          "concept_id": "tc_activity_send_month_end_summary",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_sales",
+          "confidence": 1.0
+        },
+        "system": {
+          "concept_id": "tc_system_excel",
+          "confidence": 1.0
+        },
+        "reads": null,
+        "writes": [
+          {
+            "concept_id": "tc_excel_summary",
+            "confidence": 1.0
+          }
+        ],
+        "necessity_rationale": null
+      }
+    },
+    "edges": {
+      "e1": {
+        "id": "e1",
+        "from_node": "r",
+        "to_node": "cc",
+        "condition": null,
+        "evidence": []
+      },
+      "e2": {
+        "id": "e2",
+        "from_node": "cc",
+        "to_node": "cq",
+        "condition": null,
+        "evidence": []
+      },
+      "e3": {
+        "id": "e3",
+        "from_node": "cq",
+        "to_node": "ap",
+        "condition": {
+          "concept_id": "tc_cond_over_1m",
+          "confidence": 1.0
+        },
+        "evidence": []
+      },
+      "e4": {
+        "id": "e4",
+        "from_node": "cq",
+        "to_node": "sq",
+        "condition": {
+          "concept_id": "tc_cond_at_or_below_1m",
+          "confidence": 1.0
+        },
+        "evidence": []
+      },
+      "e5": {
+        "id": "e5",
+        "from_node": "ap",
+        "to_node": "sq",
+        "condition": null,
+        "evidence": []
+      },
+      "e6": {
+        "id": "e6",
+        "from_node": "cq",
+        "to_node": "me",
+        "condition": {
+          "concept_id": "tc_cond_month_end",
+          "confidence": 1.0
+        },
+        "evidence": []
+      }
+    },
+    "validation_errors": [],
+    "is_valid": true
+  },
+  "db_messages_ledger": [
+    {
+      "role": "assistant",
+      "content": "Hello, I'm a business analyst and I'd like to interview you about how your team prepares quotations. Is now a good time?"
+    },
+    {
+      "role": "user",
+      "content": "Sure, that's fine. What would you like to know?"
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Inference (re)started; previous graph and glossary discarded, captured Observations and the conversation ledger preserved."
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "obs_1"
+    },
+    {
+      "role": "assistant",
+      "content": "Thanks! Let's start at the beginning. Could you tell me what triggers the quotation process — who starts it and what happens first?"
+    },
+    {
+      "role": "user",
+      "content": "It starts when we receive the customer's quotation request. After that, I check the customer information in the CRM."
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "obs_7"
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Created activity concept act_receive_request (label: \"receive the customer's quotation request\")."
+    },
+    {
+      "role": "tool",
+      "content": "Created data concept data_quotation_request (label: \"customer's quotation request\")."
+    },
+    {
+      "role": "tool",
+      "content": "Created activity concept act_check_customer_info (label: 'check the customer information')."
+    },
+    {
+      "role": "tool",
+      "content": "Created data concept data_customer_info (label: 'customer information')."
+    },
+    {
+      "role": "tool",
+      "content": "Created system concept sys_crm (label: 'CRM')."
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Added node node_receive_request."
+    },
+    {
+      "role": "tool",
+      "content": "Added node node_check_customer_info."
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Added edge edge_receive_to_check."
+    },
+    {
+      "role": "assistant",
+      "content": "I see — so the process starts when you receive the customer's quotation request, and then you check the customer information in the CRM. Could you tell me what your role is in this process?"
+    }
+  ],
+  "interview_complete": false,
+  "llm_call_metrics": {
+    "records": [
+      {
+        "side": "agent",
+        "call_index": 0,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 3,
+        "messages_chars": 18609,
+        "system_chars": 18349,
+        "conversation_chars": 260,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 38708,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 9324,
+        "completion_tokens": 241,
+        "total_tokens": 9565,
+        "output_contract_chars": null,
+        "latency_seconds": 21.62613291409798
+      },
+      {
+        "side": "agent",
+        "call_index": 1,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 5,
+        "messages_chars": 19058,
+        "system_chars": 18349,
+        "conversation_chars": 709,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 39157,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 9405,
+        "completion_tokens": 59,
+        "total_tokens": 9464,
+        "output_contract_chars": null,
+        "latency_seconds": 5.441412522108294
+      },
+      {
+        "side": "agent",
+        "call_index": 2,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 7,
+        "messages_chars": 19387,
+        "system_chars": 18349,
+        "conversation_chars": 1038,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 39486,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 9454,
+        "completion_tokens": 80,
+        "total_tokens": 9534,
+        "output_contract_chars": null,
+        "latency_seconds": 2.165017109015025
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 3,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 4,
+        "messages_chars": 17556,
+        "system_chars": 12219,
+        "conversation_chars": 5337,
+        "tool_schema_chars": 0,
+        "total_input_chars": 17556,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 4356,
+        "completion_tokens": 1789,
+        "total_tokens": 6145,
+        "output_contract_chars": null,
+        "latency_seconds": 13.524361939984374
+      },
+      {
+        "side": "agent",
+        "call_index": 4,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 9,
+        "messages_chars": 19730,
+        "system_chars": 18349,
+        "conversation_chars": 1381,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 39829,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 9509,
+        "completion_tokens": 421,
+        "total_tokens": 9930,
+        "output_contract_chars": null,
+        "latency_seconds": 9.874527830979787
+      },
+      {
+        "side": "agent",
+        "call_index": 5,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 11,
+        "messages_chars": 20059,
+        "system_chars": 18349,
+        "conversation_chars": 1710,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 40158,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 9558,
+        "completion_tokens": 1002,
+        "total_tokens": 10560,
+        "output_contract_chars": null,
+        "latency_seconds": 17.472342249006033
+      },
+      {
+        "side": "agent",
+        "call_index": 6,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 17,
+        "messages_chars": 22712,
+        "system_chars": 18349,
+        "conversation_chars": 4363,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 42811,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 10255,
+        "completion_tokens": 743,
+        "total_tokens": 10998,
+        "output_contract_chars": null,
+        "latency_seconds": 12.020837886957452
+      },
+      {
+        "side": "agent",
+        "call_index": 7,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 20,
+        "messages_chars": 24033,
+        "system_chars": 18349,
+        "conversation_chars": 5684,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 44132,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 10628,
+        "completion_tokens": 305,
+        "total_tokens": 10933,
+        "output_contract_chars": null,
+        "latency_seconds": 12.01599848002661
+      },
+      {
+        "side": "agent",
+        "call_index": 8,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 22,
+        "messages_chars": 24555,
+        "system_chars": 18349,
+        "conversation_chars": 6206,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 44654,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 10776,
+        "completion_tokens": 123,
+        "total_tokens": 10899,
+        "output_contract_chars": null,
+        "latency_seconds": 2.66220650204923
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 9,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 6,
+        "messages_chars": 17957,
+        "system_chars": 12219,
+        "conversation_chars": 5738,
+        "tool_schema_chars": 0,
+        "total_input_chars": 17957,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 4322,
+        "completion_tokens": 643,
+        "total_tokens": 4965,
+        "output_contract_chars": null,
+        "latency_seconds": 16.267909097950906
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 10,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 8,
+        "messages_chars": 15637,
+        "system_chars": 13512,
+        "conversation_chars": 2125,
+        "tool_schema_chars": 0,
+        "total_input_chars": 15637,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 3738,
+        "completion_tokens": 226,
+        "total_tokens": 3964,
+        "output_contract_chars": null,
+        "latency_seconds": 2.5339999959105626
+      }
+    ],
+    "by_side_summary": {
+      "agent": {
+        "calls": 8,
+        "success": 8,
+        "error": 0,
+        "error_types": [],
+        "max_prompt_tokens": 10776,
+        "max_messages_chars": 24555,
+        "max_total_input_chars": 44654,
+        "max_message_count": 22,
+        "total_prompt_tokens": 78909,
+        "total_completion_tokens": 2974,
+        "total_input_chars": 328935,
+        "latency_p50": 10.945263155503199,
+        "latency_p95": 21.62613291409798,
+        "latency_max": 21.62613291409798,
+        "token_usage_calls": 8,
+        "trigger_counts": {
+          "stakeholder_message": 2,
+          "tool_result": 4,
+          "multi_tool_result": 2
+        }
+      },
+      "stakeholder": {
+        "calls": 3,
+        "success": 3,
+        "error": 0,
+        "error_types": [],
+        "max_prompt_tokens": 4356,
+        "max_messages_chars": 17957,
+        "max_total_input_chars": 17957,
+        "max_message_count": 8,
+        "total_prompt_tokens": 12416,
+        "total_completion_tokens": 2658,
+        "total_input_chars": 51150,
+        "latency_p50": 13.524361939984374,
+        "latency_p95": 16.267909097950906,
+        "latency_max": 16.267909097950906,
+        "token_usage_calls": 3,
+        "trigger_counts": {}
+      }
+    },
+    "slowest_calls": [
+      {
+        "side": "agent",
+        "call_index": 0,
+        "prompt_tokens": 9324,
+        "messages_chars": 18609,
+        "message_count": 3,
+        "latency_seconds": 21.62613291409798
+      },
+      {
+        "side": "agent",
+        "call_index": 5,
+        "prompt_tokens": 9558,
+        "messages_chars": 20059,
+        "message_count": 11,
+        "latency_seconds": 17.472342249006033
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 9,
+        "prompt_tokens": 4322,
+        "messages_chars": 17957,
+        "message_count": 6,
+        "latency_seconds": 16.267909097950906
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 3,
+        "prompt_tokens": 4356,
+        "messages_chars": 17556,
+        "message_count": 4,
+        "latency_seconds": 13.524361939984374
+      },
+      {
+        "side": "agent",
+        "call_index": 6,
+        "prompt_tokens": 10255,
+        "messages_chars": 22712,
+        "message_count": 17,
+        "latency_seconds": 12.020837886957452
+      }
+    ]
+  },
+  "private_id_leakage": [],
+  "private_assertions_artifact": "run_00_seed9801.private.json"
+}

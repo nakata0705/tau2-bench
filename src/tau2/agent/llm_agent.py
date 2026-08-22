@@ -21,6 +21,36 @@ from tau2.data_model.tasks import Action, Task
 from tau2.environment.tool import Tool, as_tool
 from tau2.utils.llm_utils import generate
 
+# ---------------------------------------------------------------------------
+# Agent-side call-trigger classification (measurement only)
+# ---------------------------------------------------------------------------
+# Classify each Agent LLM generation by the input that triggered it. This is
+# used ONLY for the "why does the Agent call the LLM" report; it never changes
+# provider behavior.
+#
+#   initial_turn          -- no input (the very first generation, solo mode)
+#   stakeholder_message   -- the Agent is answering a fresh stakeholder message
+#   tool_result           -- one tool result came back to the Agent
+#   multi_tool_result     -- several tool results returned together
+#   other                 -- anything else
+AGENT_TRIGGER_INITIAL_TURN = "initial_turn"
+AGENT_TRIGGER_STAKEHOLDER_MESSAGE = "stakeholder_message"
+AGENT_TRIGGER_TOOL_RESULT = "tool_result"
+AGENT_TRIGGER_MULTI_TOOL_RESULT = "multi_tool_result"
+AGENT_TRIGGER_OTHER = "other"
+
+
+def classify_agent_trigger(message: Optional[ValidAgentInputMessage]) -> str:
+    """Classify one Agent generation by the input that triggered it."""
+    if message is None:
+        return AGENT_TRIGGER_INITIAL_TURN
+    if isinstance(message, UserMessage):
+        return AGENT_TRIGGER_STAKEHOLDER_MESSAGE
+    if isinstance(message, MultiToolMessage):
+        return AGENT_TRIGGER_MULTI_TOOL_RESULT
+    return AGENT_TRIGGER_TOOL_RESULT
+
+
 AGENT_INSTRUCTION = """
 You are a customer service agent that helps the user according to the <policy> provided below.
 In each turn you can either:
@@ -131,6 +161,7 @@ class LLMAgent(
             messages=messages,
             call_name="agent_response",
             side="agent",
+            trigger=classify_agent_trigger(message),
             **self.llm_args,
         )
         return assistant_message
@@ -256,6 +287,7 @@ class LLMGTAgent(
             messages=messages,
             call_name="agent_gt_response",
             side="agent",
+            trigger=classify_agent_trigger(message),
             **self.llm_args,
         )
         state.messages.append(assistant_message)
@@ -475,6 +507,7 @@ class LLMSoloAgent(
             tool_choice="required",
             call_name="agent_solo_response",
             side="agent",
+            trigger=classify_agent_trigger(message),
             **self.llm_args,
         )
         if not assistant_message.is_tool_call():

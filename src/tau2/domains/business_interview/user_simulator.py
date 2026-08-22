@@ -480,8 +480,14 @@ class StakeholderUserSimulator(UserSimulator):
             )
         return sidecar
 
-    def _call_llm(self, messages: list):
-        """One LLM completion (kept separate for testability)."""
+    def _call_llm(self, messages: list, output_contract_text: Optional[str] = None):
+        """One LLM completion (kept separate for testability).
+
+        ``output_contract_text`` (the fixed output-sidecar contract appended
+        to the last user message) is passed through to the metrics layer so
+        its length is recorded separately from the conversation
+        (``output_contract_chars``); its body is never persisted.
+        """
         from tau2.utils.llm_utils import generate
 
         kwargs = dict(self.llm_args or {})
@@ -493,6 +499,7 @@ class StakeholderUserSimulator(UserSimulator):
                 call_name="user_simulator_response",
                 side="stakeholder",
                 response_format={"type": "json_object"},
+                output_contract_text=output_contract_text,
                 **kwargs,
             )
         except Exception:
@@ -502,6 +509,7 @@ class StakeholderUserSimulator(UserSimulator):
                 tools=self.tools,
                 call_name="user_simulator_response",
                 side="stakeholder",
+                output_contract_text=output_contract_text,
                 **kwargs,
             )
 

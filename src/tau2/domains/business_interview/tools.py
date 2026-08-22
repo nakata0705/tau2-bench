@@ -963,12 +963,24 @@ class InterviewTools(ToolKitBase):
                 return self._capture_user_message(turn, content)
         raise ValueError(f"no stakeholder message with id {message_id!r}")
 
-    @is_tool(ToolType.READ)
+    @is_tool(ToolType.WRITE)
     def observe_latest_stakeholder_message(self) -> str:
+        """Capture the newest stakeholder (user) message as an Observation and
+        return its Observation id directly — the single-step equivalent of
+        ``observe_latest_stakeholder_message`` + ``observe_message(message_id)``,
+        so one Agent decision suffices for this deterministic bookkeeping step.
+
+        Idempotent: re-calling returns the same Observation id, and the
+        captured Observation is byte-for-byte identical to ``observe_message``
+        on the same message (exact ``obs_<turn>`` id, text, source, order).
+        To capture an EARLIER message use ``observe_message(message_id)``;
+        ``list_stakeholder_messages`` still shows the stable ``sm_<n>`` ids.
+        """
         entries = self._stakeholder_entries()
         if not entries:
             raise ValueError("no stakeholder (user) message has been recorded yet")
-        return entries[-1][0]
+        _, turn, content = entries[-1]
+        return self._capture_user_message(turn, content)
 
     @is_tool(ToolType.READ)
     def list_stakeholder_messages(self) -> str:

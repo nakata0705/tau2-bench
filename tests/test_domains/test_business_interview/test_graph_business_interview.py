@@ -513,8 +513,10 @@ def _say(
             ],
             text,
         )
-    sm_id = tools.observe_latest_stakeholder_message()
-    return tools.observe_message(sm_id)
+    # Single-step observation acquisition: the newest stakeholder message is
+    # captured directly and its Observation id returned (no separate
+    # observe_message round trip).
+    return tools.observe_latest_stakeholder_message()
 
 
 def _ev(obs_id: str, quote: str, occurrence: int = 0) -> dict:

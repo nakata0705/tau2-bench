@@ -1,0 +1,3317 @@
+{
+  "run_index": 0,
+  "run_id": "run_00_49751d19-1f8a-49fd-ba06-921a466cc2ec",
+  "task_id": "quotation_workflow_1",
+  "seed": 9802,
+  "agent_model": "openrouter/deepseek/deepseek-v4-flash-0731",
+  "user_model": "openrouter/deepseek/deepseek-v4-flash-0731",
+  "user_implementation": "business_interview_user",
+  "llm_args": {
+    "temperature": 0.0
+  },
+  "resolved_agent_model": "openrouter/deepseek/deepseek-v4-flash-0731",
+  "resolved_user_model": "openrouter/deepseek/deepseek-v4-flash-0731",
+  "termination_reason": null,
+  "loop_guard": null,
+  "reward_info": null,
+  "elapsed_seconds": 1187.74,
+  "errors": [
+    "ValueError: stakeholder sidecar rejected twice; invalid private metadata must not enter the conversation: annotation 'node:skn_004:system': mode 'exists' contradicts the knowledge — the stakeholder's own semantic model says 'value' (a message claiming otherwise is semantically inconsistent and cannot be accepted)\n"
+  ],
+  "conversation": [],
+  "observations": [
+    {
+      "id": "obs_1",
+      "source_id": "stakeholder",
+      "text": "Sure, that's fine. What would you like to know?",
+      "order": 0,
+      "turn": 1
+    },
+    {
+      "id": "obs_7",
+      "source_id": "stakeholder",
+      "text": "The process starts as we — the sales employees — receive the customer's quotation request. The intended outcome is that we send the quotation to the customer.",
+      "order": 1,
+      "turn": 7
+    },
+    {
+      "id": "obs_29",
+      "source_id": "stakeholder",
+      "text": "After we receive the customer's quotation request, I check the customer information in the CRM.",
+      "order": 2,
+      "turn": 29
+    },
+    {
+      "id": "obs_41",
+      "source_id": "stakeholder",
+      "text": "After checking the customer information, I create the quotation document using the quoting system, pulling in the pricing information.",
+      "order": 3,
+      "turn": 41
+    },
+    {
+      "id": "obs_53",
+      "source_id": "stakeholder",
+      "text": "After creating the quotation, it depends on the amount. If it's over 1,000,000 yen, the manager has to approve it first, and then we send it to the customer. If it's at or below 1,000,000 yen, we send it directly. Also, if it's the end of the month, we send a summary of the quotation information to Accounting.",
+      "order": 4,
+      "turn": 53
+    },
+    {
+      "id": "obs_74",
+      "source_id": "stakeholder",
+      "text": "Yes, we send a summary of the quotation information to Accounting at month-end, in addition to sending the quotation to the customer. It happens after we create the quotation, but I don't know if it's exactly at the same time or after the quotation is sent — that's not something I have details on.",
+      "order": 5,
+      "turn": 74
+    },
+    {
+      "id": "obs_80",
+      "source_id": "stakeholder",
+      "text": "When the quotation is over 1,000,000 yen, the manager approves the quotation. I don't know which system the manager uses for that. The reason for the approval is credit risk management. As for what happens if the manager doesn't approve, I don't know.",
+      "order": 6,
+      "turn": 80
+    },
+    {
+      "id": "obs_90",
+      "source_id": "stakeholder",
+      "text": "We send the quotation to the customer by email.",
+      "order": 7,
+      "turn": 90
+    },
+    {
+      "id": "obs_98",
+      "source_id": "stakeholder",
+      "text": "I'm not sure if they are the same thing. I create the quotation document in the quoting system, and then I send the quotation to the customer by email, but I don't know if it's the same document.",
+      "order": 8,
+      "turn": 98
+    },
+    {
+      "id": "obs_102",
+      "source_id": "stakeholder",
+      "text": "I send the summary of the quotation information to Accounting using Excel. I don't know the specific details of what's in it beyond that it's a summary of the quotation information.",
+      "order": 9,
+      "turn": 102
+    },
+    {
+      "id": "obs_110",
+      "source_id": "stakeholder",
+      "text": "I don't know why we check the customer information.",
+      "order": 10,
+      "turn": 110
+    }
+  ],
+  "final_graph": {
+    "id": "graph",
+    "name": "Quotation Process Interview",
+    "start_node_id": null,
+    "end_node_ids": [],
+    "concepts": {
+      "act_receive_request": {
+        "id": "act_receive_request",
+        "kind": "activity",
+        "display_label": "receive the customer's quotation request",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_7",
+            "quote": "receive the customer's quotation request",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "actor_sales_employees": {
+        "id": "actor_sales_employees",
+        "kind": "actor",
+        "display_label": "sales employees",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_7",
+            "quote": "the sales employees",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "data_quotation_request": {
+        "id": "data_quotation_request",
+        "kind": "data",
+        "display_label": "customer's quotation request",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_7",
+            "quote": "the customer's quotation request",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "act_send_quotation": {
+        "id": "act_send_quotation",
+        "kind": "activity",
+        "display_label": "send the quotation to the customer",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_7",
+            "quote": "send the quotation to the customer",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "data_quotation": {
+        "id": "data_quotation",
+        "kind": "data",
+        "display_label": "quotation",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_7",
+            "quote": "the quotation",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "act_check_customer_info": {
+        "id": "act_check_customer_info",
+        "kind": "activity",
+        "display_label": "check the customer information",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_29",
+            "quote": "check the customer information",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "sys_crm": {
+        "id": "sys_crm",
+        "kind": "system",
+        "display_label": "CRM",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_29",
+            "quote": "the CRM",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "data_customer_information": {
+        "id": "data_customer_information",
+        "kind": "data",
+        "display_label": "customer information",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_29",
+            "quote": "the customer information",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "act_create_quotation_document": {
+        "id": "act_create_quotation_document",
+        "kind": "activity",
+        "display_label": "create the quotation document",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_41",
+            "quote": "create the quotation document",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "sys_quoting_system": {
+        "id": "sys_quoting_system",
+        "kind": "system",
+        "display_label": "quoting system",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_41",
+            "quote": "the quoting system",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "data_quotation_document": {
+        "id": "data_quotation_document",
+        "kind": "data",
+        "display_label": "quotation document",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_41",
+            "quote": "the quotation document",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "data_pricing_information": {
+        "id": "data_pricing_information",
+        "kind": "data",
+        "display_label": "pricing information",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_41",
+            "quote": "the pricing information",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "act_manager_approval": {
+        "id": "act_manager_approval",
+        "kind": "activity",
+        "display_label": "approve it",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_53",
+            "quote": "approve it",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "actor_manager": {
+        "id": "actor_manager",
+        "kind": "actor",
+        "display_label": "manager",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_53",
+            "quote": "the manager",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "cond_over_1m": {
+        "id": "cond_over_1m",
+        "kind": "condition",
+        "display_label": "over 1,000,000 yen",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_53",
+            "quote": "over 1,000,000 yen",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "cond_at_or_below_1m": {
+        "id": "cond_at_or_below_1m",
+        "kind": "condition",
+        "display_label": "at or below 1,000,000 yen",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_53",
+            "quote": "at or below 1,000,000 yen",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "cond_end_of_month": {
+        "id": "cond_end_of_month",
+        "kind": "condition",
+        "display_label": "end of the month",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_53",
+            "quote": "the end of the month",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "act_send_summary_to_accounting": {
+        "id": "act_send_summary_to_accounting",
+        "kind": "activity",
+        "display_label": "send a summary of the quotation information to Accounting",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_53",
+            "quote": "send a summary of the quotation information to Accounting",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "actor_accounting": {
+        "id": "actor_accounting",
+        "kind": "actor",
+        "display_label": "Accounting",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_53",
+            "quote": "Accounting",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "data_summary_quotation_info": {
+        "id": "data_summary_quotation_info",
+        "kind": "data",
+        "display_label": "summary of the quotation information",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_53",
+            "quote": "a summary of the quotation information",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "rat_credit_risk_management": {
+        "id": "rat_credit_risk_management",
+        "kind": "rationale",
+        "display_label": "credit risk management",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_80",
+            "quote": "credit risk management",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "sys_email": {
+        "id": "sys_email",
+        "kind": "system",
+        "display_label": "email",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_90",
+            "quote": "by email",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      },
+      "sys_excel": {
+        "id": "sys_excel",
+        "kind": "system",
+        "display_label": "Excel",
+        "description": "",
+        "canonical_terms": null,
+        "validation_status": "hypothesized",
+        "mentions": [
+          {
+            "observation_id": "obs_102",
+            "quote": "Excel",
+            "occurrence": 0
+          }
+        ],
+        "validation_evidence": []
+      }
+    },
+    "terminology_agreements": [],
+    "nodes": {
+      "n_receive_request": {
+        "id": "n_receive_request",
+        "activity": {
+          "concept_id": "act_receive_request",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "actor_sales_employees",
+          "confidence": 1.0
+        },
+        "system": {
+          "unset": true
+        },
+        "reads": [
+          {
+            "concept_id": "data_quotation_request",
+            "confidence": 1.0,
+            "evidence": [
+              {
+                "observation_id": "obs_7",
+                "quote": "receive the customer's quotation request",
+                "occurrence": 0
+              }
+            ]
+          }
+        ],
+        "writes": {
+          "unset": true
+        },
+        "necessity_rationale": {
+          "unset": true
+        }
+      },
+      "n_send_quotation": {
+        "id": "n_send_quotation",
+        "activity": {
+          "concept_id": "act_send_quotation",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "actor_sales_employees",
+          "confidence": 1.0
+        },
+        "system": {
+          "concept_id": "sys_email",
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "observation_id": "obs_90",
+              "quote": "by email",
+              "occurrence": 0
+            }
+          ]
+        },
+        "reads": {
+          "unset": true
+        },
+        "writes": [
+          {
+            "concept_id": "data_quotation",
+            "confidence": 1.0,
+            "evidence": [
+              {
+                "observation_id": "obs_7",
+                "quote": "send the quotation to the customer",
+                "occurrence": 0
+              }
+            ]
+          }
+        ],
+        "necessity_rationale": {
+          "unset": true
+        }
+      },
+      "n_check_customer_info": {
+        "id": "n_check_customer_info",
+        "activity": {
+          "concept_id": "act_check_customer_info",
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "observation_id": "obs_29",
+              "quote": "check the customer information",
+              "occurrence": 0
+            }
+          ]
+        },
+        "actor": {
+          "concept_id": "actor_sales_employees",
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "observation_id": "obs_29",
+              "quote": "I",
+              "occurrence": 0
+            }
+          ]
+        },
+        "system": {
+          "concept_id": "sys_crm",
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "observation_id": "obs_29",
+              "quote": "the CRM",
+              "occurrence": 0
+            }
+          ]
+        },
+        "reads": [
+          {
+            "concept_id": "data_customer_information",
+            "confidence": 1.0,
+            "evidence": [
+              {
+                "observation_id": "obs_29",
+                "quote": "the customer information",
+                "occurrence": 0
+              }
+            ]
+          }
+        ],
+        "writes": {
+          "unset": true
+        },
+        "necessity_rationale": {
+          "unset": true
+        }
+      },
+      "n_create_quotation_document": {
+        "id": "n_create_quotation_document",
+        "activity": {
+          "concept_id": "act_create_quotation_document",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "actor_sales_employees",
+          "confidence": 1.0
+        },
+        "system": {
+          "concept_id": "sys_quoting_system",
+          "confidence": 1.0
+        },
+        "reads": [
+          {
+            "concept_id": "data_pricing_information",
+            "confidence": 1.0,
+            "evidence": [
+              {
+                "observation_id": "obs_41",
+                "quote": "the pricing information",
+                "occurrence": 0
+              }
+            ]
+          }
+        ],
+        "writes": [
+          {
+            "concept_id": "data_quotation_document",
+            "confidence": 1.0,
+            "evidence": [
+              {
+                "observation_id": "obs_41",
+                "quote": "the quotation document",
+                "occurrence": 0
+              }
+            ]
+          }
+        ],
+        "necessity_rationale": {
+          "unset": true
+        }
+      },
+      "n_manager_approval": {
+        "id": "n_manager_approval",
+        "activity": {
+          "concept_id": "act_manager_approval",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "actor_manager",
+          "confidence": 1.0
+        },
+        "system": {
+          "dont_know": true,
+          "evidence": [
+            {
+              "observation_id": "obs_80",
+              "quote": "I don't know which system the manager uses for that",
+              "occurrence": 0
+            }
+          ]
+        },
+        "reads": {
+          "unset": true
+        },
+        "writes": {
+          "unset": true
+        },
+        "necessity_rationale": {
+          "concept_id": "rat_credit_risk_management",
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "observation_id": "obs_80",
+              "quote": "credit risk management",
+              "occurrence": 0
+            }
+          ]
+        }
+      },
+      "n_send_summary_to_accounting": {
+        "id": "n_send_summary_to_accounting",
+        "activity": {
+          "concept_id": "act_send_summary_to_accounting",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "actor_sales_employees",
+          "confidence": 1.0
+        },
+        "system": {
+          "concept_id": "sys_excel",
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "observation_id": "obs_102",
+              "quote": "Excel",
+              "occurrence": 0
+            }
+          ]
+        },
+        "reads": {
+          "unset": true
+        },
+        "writes": [
+          {
+            "concept_id": "data_summary_quotation_info",
+            "confidence": 1.0,
+            "evidence": [
+              {
+                "observation_id": "obs_53",
+                "quote": "a summary of the quotation information",
+                "occurrence": 0
+              }
+            ]
+          }
+        ],
+        "necessity_rationale": {
+          "unset": true
+        }
+      }
+    },
+    "edges": {
+      "e_receive_to_check": {
+        "id": "e_receive_to_check",
+        "from_node": "n_receive_request",
+        "to_node": "n_check_customer_info",
+        "condition": {
+          "unset": true
+        },
+        "evidence": [
+          {
+            "observation_id": "obs_29",
+            "quote": "After we receive the customer's quotation request",
+            "occurrence": 0
+          }
+        ]
+      },
+      "e_check_to_create": {
+        "id": "e_check_to_create",
+        "from_node": "n_check_customer_info",
+        "to_node": "n_create_quotation_document",
+        "condition": {
+          "unset": true
+        },
+        "evidence": [
+          {
+            "observation_id": "obs_41",
+            "quote": "After checking the customer information",
+            "occurrence": 0
+          }
+        ]
+      },
+      "e_create_to_approval": {
+        "id": "e_create_to_approval",
+        "from_node": "n_create_quotation_document",
+        "to_node": "n_manager_approval",
+        "condition": {
+          "concept_id": "cond_over_1m",
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "observation_id": "obs_53",
+              "quote": "over 1,000,000 yen",
+              "occurrence": 0
+            }
+          ]
+        },
+        "evidence": [
+          {
+            "observation_id": "obs_53",
+            "quote": "the manager has to approve it first",
+            "occurrence": 0
+          }
+        ]
+      },
+      "e_create_to_send_direct": {
+        "id": "e_create_to_send_direct",
+        "from_node": "n_create_quotation_document",
+        "to_node": "n_send_quotation",
+        "condition": {
+          "concept_id": "cond_at_or_below_1m",
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "observation_id": "obs_53",
+              "quote": "at or below 1,000,000 yen",
+              "occurrence": 0
+            }
+          ]
+        },
+        "evidence": [
+          {
+            "observation_id": "obs_53",
+            "quote": "we send it directly",
+            "occurrence": 0
+          }
+        ]
+      },
+      "e_create_to_summary": {
+        "id": "e_create_to_summary",
+        "from_node": "n_create_quotation_document",
+        "to_node": "n_send_summary_to_accounting",
+        "condition": {
+          "concept_id": "cond_end_of_month",
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "observation_id": "obs_53",
+              "quote": "the end of the month",
+              "occurrence": 0
+            },
+            {
+              "observation_id": "obs_74",
+              "quote": "at month-end",
+              "occurrence": 0
+            }
+          ]
+        },
+        "evidence": [
+          {
+            "observation_id": "obs_53",
+            "quote": "we send a summary of the quotation information to Accounting",
+            "occurrence": 0
+          },
+          {
+            "observation_id": "obs_53",
+            "quote": "we send a summary of the quotation information to Accounting",
+            "occurrence": 0
+          },
+          {
+            "observation_id": "obs_74",
+            "quote": "It happens after we create the quotation",
+            "occurrence": 0
+          }
+        ]
+      },
+      "e_approval_to_send": {
+        "id": "e_approval_to_send",
+        "from_node": "n_manager_approval",
+        "to_node": "n_send_quotation",
+        "condition": {
+          "unset": true
+        },
+        "evidence": [
+          {
+            "observation_id": "obs_53",
+            "quote": "and then we send it to the customer",
+            "occurrence": 0
+          }
+        ]
+      }
+    },
+    "validation_errors": [],
+    "is_valid": true
+  },
+  "evaluator_metrics": {
+    "protocol_completed": false,
+    "graph_created": true,
+    "graph_valid": true,
+    "node_recall": 1.0,
+    "node_precision": 1.0,
+    "edge_recall": 0.16666666666666666,
+    "edge_precision": 0.16666666666666666,
+    "start_correct": false,
+    "end_recall": 0.0,
+    "end_precision": 0.0,
+    "activity_correctness": 0.16666666666666666,
+    "actor_correctness": 0.16666666666666666,
+    "system_correctness": 0.6666666666666666,
+    "read_correctness": 0.08333333333333333,
+    "write_correctness": 0.0,
+    "rationale_correctness": 0.16666666666666666,
+    "condition_correctness": 0.0,
+    "concept_correctness": 0.7012987012987013,
+    "concept_recall": 0.8571428571428571,
+    "concept_precision": 0.8181818181818182,
+    "unsupported_ref_count": 14,
+    "fabricated_node_count": 0,
+    "fabricated_edge_count": 5,
+    "glossary_pass": false,
+    "glossary_complete": false,
+    "referenced_hypothesized_concepts": [
+      "act_check_customer_info",
+      "act_create_quotation_document",
+      "act_manager_approval",
+      "act_receive_request",
+      "act_send_quotation",
+      "act_send_summary_to_accounting",
+      "actor_manager",
+      "actor_sales_employees",
+      "cond_at_or_below_1m",
+      "cond_end_of_month",
+      "cond_over_1m",
+      "data_customer_information",
+      "data_pricing_information",
+      "data_quotation",
+      "data_quotation_document",
+      "data_quotation_request",
+      "data_summary_quotation_info",
+      "rat_credit_risk_management",
+      "sys_crm",
+      "sys_email",
+      "sys_excel",
+      "sys_quoting_system"
+    ],
+    "glossary_validation_errors": [],
+    "node_evidence_coverage": 1.0,
+    "ref_evidence_coverage": 0.5416666666666666,
+    "edge_evidence_coverage": 1.0,
+    "invalid_evidence_ref_count": 0,
+    "ambiguous_evidence_ref_count": 4,
+    "marker_evidence_errors": 0,
+    "invalid_observation_reference_count": 0,
+    "authentic_observation_count": 11,
+    "invalid_observation_source_count": 0,
+    "orphan_observation_count": 3,
+    "provenance_authenticity_pass": true,
+    "evidence_pass": false,
+    "structural_pass": false,
+    "protocol_pass": false,
+    "quality_pass": false,
+    "knowledge_coverage": 0.7166666666666667
+  },
+  "truth_graph": {
+    "id": "quotation",
+    "name": "Quotation creation",
+    "start_node_id": "r",
+    "end_node_ids": [
+      "sq",
+      "me"
+    ],
+    "concepts": {
+      "tc_activity_receive_request": {
+        "id": "tc_activity_receive_request",
+        "kind": "activity",
+        "display_label": null,
+        "description": "Receive the customer's quotation request.",
+        "canonical_terms": [
+          "receive the quotation request"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_activity_check_customer": {
+        "id": "tc_activity_check_customer",
+        "kind": "activity",
+        "display_label": null,
+        "description": "Check the customer information.",
+        "canonical_terms": [
+          "check the customer information"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_activity_create_quotation": {
+        "id": "tc_activity_create_quotation",
+        "kind": "activity",
+        "display_label": null,
+        "description": "Create the quotation document.",
+        "canonical_terms": [
+          "create the quotation"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_activity_approve_quotation": {
+        "id": "tc_activity_approve_quotation",
+        "kind": "activity",
+        "display_label": null,
+        "description": "Approve the quotation.",
+        "canonical_terms": [
+          "approve the high-value quotation"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_activity_send_quotation": {
+        "id": "tc_activity_send_quotation",
+        "kind": "activity",
+        "display_label": null,
+        "description": "Send the quotation to the customer.",
+        "canonical_terms": [
+          "send the quotation to the customer"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_activity_send_month_end_summary": {
+        "id": "tc_activity_send_month_end_summary",
+        "kind": "activity",
+        "display_label": null,
+        "description": "Send the month-end summary of quotation information.",
+        "canonical_terms": [
+          "send the month-end summary to Accounting"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_actor_sales": {
+        "id": "tc_actor_sales",
+        "kind": "actor",
+        "display_label": null,
+        "description": "The sales employee.",
+        "canonical_terms": [
+          "sales employee"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_actor_manager": {
+        "id": "tc_actor_manager",
+        "kind": "actor",
+        "display_label": null,
+        "description": "The manager who approves.",
+        "canonical_terms": [
+          "manager"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_system_crm": {
+        "id": "tc_system_crm",
+        "kind": "system",
+        "display_label": null,
+        "description": "The customer relationship management system.",
+        "canonical_terms": [
+          "CRM"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_system_quoting": {
+        "id": "tc_system_quoting",
+        "kind": "system",
+        "display_label": null,
+        "description": "The quoting system.",
+        "canonical_terms": [
+          "quoting system"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_system_email": {
+        "id": "tc_system_email",
+        "kind": "system",
+        "display_label": null,
+        "description": "The email system.",
+        "canonical_terms": [
+          "email"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_system_excel": {
+        "id": "tc_system_excel",
+        "kind": "system",
+        "display_label": null,
+        "description": "The spreadsheet application.",
+        "canonical_terms": [
+          "Excel"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_request": {
+        "id": "tc_request",
+        "kind": "data",
+        "display_label": null,
+        "description": "The customer's quotation request.",
+        "canonical_terms": [
+          "quotation request"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_customer": {
+        "id": "tc_customer",
+        "kind": "data",
+        "display_label": null,
+        "description": "The customer's information.",
+        "canonical_terms": [
+          "customer information"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_pricing": {
+        "id": "tc_pricing",
+        "kind": "data",
+        "display_label": null,
+        "description": "The pricing information.",
+        "canonical_terms": [
+          "pricing information"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_quote": {
+        "id": "tc_quote",
+        "kind": "data",
+        "display_label": null,
+        "description": "The quotation document.",
+        "canonical_terms": [
+          "quotation"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_approval": {
+        "id": "tc_approval",
+        "kind": "data",
+        "display_label": null,
+        "description": "The approval record.",
+        "canonical_terms": [
+          "approval"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_sent_quote": {
+        "id": "tc_sent_quote",
+        "kind": "data",
+        "display_label": null,
+        "description": "The sent quotation.",
+        "canonical_terms": [
+          "sent quotation"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_excel_summary": {
+        "id": "tc_excel_summary",
+        "kind": "data",
+        "display_label": null,
+        "description": "The quotation information summary.",
+        "canonical_terms": [
+          "summary of the quotation information"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_cond_over_1m": {
+        "id": "tc_cond_over_1m",
+        "kind": "condition",
+        "display_label": null,
+        "description": "The quotation amount is over 1,000,000 yen.",
+        "canonical_terms": [
+          "over 1,000,000 yen"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_cond_at_or_below_1m": {
+        "id": "tc_cond_at_or_below_1m",
+        "kind": "condition",
+        "display_label": null,
+        "description": "The quotation amount is at or below 1,000,000 yen.",
+        "canonical_terms": [
+          "at or below 1,000,000 yen"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_cond_month_end": {
+        "id": "tc_cond_month_end",
+        "kind": "condition",
+        "display_label": null,
+        "description": "It is the end of the month.",
+        "canonical_terms": [
+          "month-end"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      },
+      "tc_rationale_credit_risk": {
+        "id": "tc_rationale_credit_risk",
+        "kind": "rationale",
+        "display_label": null,
+        "description": "Credit risk management.",
+        "canonical_terms": [
+          "credit risk management"
+        ],
+        "validation_status": null,
+        "mentions": [],
+        "validation_evidence": []
+      }
+    },
+    "terminology_agreements": [],
+    "nodes": {
+      "r": {
+        "id": "r",
+        "activity": {
+          "concept_id": "tc_activity_receive_request",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_sales",
+          "confidence": 1.0
+        },
+        "system": null,
+        "reads": null,
+        "writes": [
+          {
+            "concept_id": "tc_request",
+            "confidence": 1.0
+          }
+        ],
+        "necessity_rationale": null
+      },
+      "cc": {
+        "id": "cc",
+        "activity": {
+          "concept_id": "tc_activity_check_customer",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_sales",
+          "confidence": 1.0
+        },
+        "system": {
+          "concept_id": "tc_system_crm",
+          "confidence": 1.0
+        },
+        "reads": [
+          {
+            "concept_id": "tc_customer",
+            "confidence": 1.0
+          }
+        ],
+        "writes": null,
+        "necessity_rationale": null
+      },
+      "cq": {
+        "id": "cq",
+        "activity": {
+          "concept_id": "tc_activity_create_quotation",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_sales",
+          "confidence": 1.0
+        },
+        "system": {
+          "concept_id": "tc_system_quoting",
+          "confidence": 1.0
+        },
+        "reads": [
+          {
+            "concept_id": "tc_customer",
+            "confidence": 1.0
+          },
+          {
+            "concept_id": "tc_pricing",
+            "confidence": 1.0
+          }
+        ],
+        "writes": [
+          {
+            "concept_id": "tc_quote",
+            "confidence": 1.0
+          }
+        ],
+        "necessity_rationale": null
+      },
+      "ap": {
+        "id": "ap",
+        "activity": {
+          "concept_id": "tc_activity_approve_quotation",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_manager",
+          "confidence": 1.0
+        },
+        "system": null,
+        "reads": null,
+        "writes": null,
+        "necessity_rationale": {
+          "concept_id": "tc_rationale_credit_risk",
+          "confidence": 1.0
+        }
+      },
+      "sq": {
+        "id": "sq",
+        "activity": {
+          "concept_id": "tc_activity_send_quotation",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_sales",
+          "confidence": 1.0
+        },
+        "system": {
+          "concept_id": "tc_system_email",
+          "confidence": 1.0
+        },
+        "reads": null,
+        "writes": null,
+        "necessity_rationale": null
+      },
+      "me": {
+        "id": "me",
+        "activity": {
+          "concept_id": "tc_activity_send_month_end_summary",
+          "confidence": 1.0
+        },
+        "actor": {
+          "concept_id": "tc_actor_sales",
+          "confidence": 1.0
+        },
+        "system": {
+          "concept_id": "tc_system_excel",
+          "confidence": 1.0
+        },
+        "reads": null,
+        "writes": [
+          {
+            "concept_id": "tc_excel_summary",
+            "confidence": 1.0
+          }
+        ],
+        "necessity_rationale": null
+      }
+    },
+    "edges": {
+      "e1": {
+        "id": "e1",
+        "from_node": "r",
+        "to_node": "cc",
+        "condition": null,
+        "evidence": []
+      },
+      "e2": {
+        "id": "e2",
+        "from_node": "cc",
+        "to_node": "cq",
+        "condition": null,
+        "evidence": []
+      },
+      "e3": {
+        "id": "e3",
+        "from_node": "cq",
+        "to_node": "ap",
+        "condition": {
+          "concept_id": "tc_cond_over_1m",
+          "confidence": 1.0
+        },
+        "evidence": []
+      },
+      "e4": {
+        "id": "e4",
+        "from_node": "cq",
+        "to_node": "sq",
+        "condition": {
+          "concept_id": "tc_cond_at_or_below_1m",
+          "confidence": 1.0
+        },
+        "evidence": []
+      },
+      "e5": {
+        "id": "e5",
+        "from_node": "ap",
+        "to_node": "sq",
+        "condition": null,
+        "evidence": []
+      },
+      "e6": {
+        "id": "e6",
+        "from_node": "cq",
+        "to_node": "me",
+        "condition": {
+          "concept_id": "tc_cond_month_end",
+          "confidence": 1.0
+        },
+        "evidence": []
+      }
+    },
+    "validation_errors": [],
+    "is_valid": true
+  },
+  "db_messages_ledger": [
+    {
+      "role": "assistant",
+      "content": "Hello, I'm a business analyst and I'd like to interview you about how your team prepares quotations. Is now a good time?"
+    },
+    {
+      "role": "user",
+      "content": "Sure, that's fine. What would you like to know?"
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Inference (re)started; previous graph and glossary discarded, captured Observations and the conversation ledger preserved."
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "obs_1"
+    },
+    {
+      "role": "assistant",
+      "content": "Thanks! Let's start at the beginning. What triggers the quotation process — who starts it, and what is the intended outcome?"
+    },
+    {
+      "role": "user",
+      "content": "The process starts as we — the sales employees — receive the customer's quotation request. The intended outcome is that we send the quotation to the customer."
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Error: evidence quote \"receive the customer's quotation request\" occurrence 0 is not an exact span of observation obs_1"
+    },
+    {
+      "role": "tool",
+      "content": "Error: evidence quote 'the sales employees' occurrence 0 is not an exact span of observation obs_1"
+    },
+    {
+      "role": "tool",
+      "content": "Error: evidence quote \"the customer's quotation request\" occurrence 0 is not an exact span of observation obs_1"
+    },
+    {
+      "role": "tool",
+      "content": "Error: evidence quote 'send the quotation to the customer' occurrence 0 is not an exact span of observation obs_1"
+    },
+    {
+      "role": "tool",
+      "content": "Error: evidence quote 'the quotation' occurrence 0 is not an exact span of observation obs_1"
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "sm_1: Sure, that's fine. What would you like to know?\nsm_2: The process starts as we — the sales employees — receive the customer's quotation request. The intended outcome is that we send the quotation to the customer."
+    },
+    {
+      "role": "assistant",
+      "content": "Let me make sure I capture the right statements before recording"
+    },
+    {
+      "role": "tool",
+      "content": "obs_1"
+    },
+    {
+      "role": "tool",
+      "content": "obs_7"
+    },
+    {
+      "role": "assistant",
+      "content": "I see — the latest message is captured under a different observation id. Let me record the concepts with the correct evidence.\n\n"
+    },
+    {
+      "role": "tool",
+      "content": "Created activity concept act_receive_request (label: \"receive the customer's quotation request\")."
+    },
+    {
+      "role": "tool",
+      "content": "Created actor concept actor_sales_employees (label: 'sales employees')."
+    },
+    {
+      "role": "tool",
+      "content": "Created data concept data_quotation_request (label: \"customer's quotation request\")."
+    },
+    {
+      "role": "tool",
+      "content": "Created activity concept act_send_quotation (label: 'send the quotation to the customer')."
+    },
+    {
+      "role": "tool",
+      "content": "Created data concept data_quotation (label: 'quotation')."
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Added node n_receive_request."
+    },
+    {
+      "role": "tool",
+      "content": "Added node n_send_quotation."
+    },
+    {
+      "role": "assistant",
+      "content": "I've captured the start and the intended outcome. Now let's walk through what happens in between: after the sales employees receive the customer's quotation request, what do they do next?"
+    },
+    {
+      "role": "user",
+      "content": "After we receive the customer's quotation request, I check the customer information in the CRM."
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "obs_29"
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Created activity concept act_check_customer_info (label: 'check the customer information')."
+    },
+    {
+      "role": "tool",
+      "content": "Created system concept sys_crm (label: 'CRM')."
+    },
+    {
+      "role": "tool",
+      "content": "Created data concept data_customer_information (label: 'customer information')."
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n"
+    },
+    {
+      "role": "tool",
+      "content": "Added node n_check_customer_info."
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n"
+    },
+    {
+      "role": "tool",
+      "content": "Added edge e_receive_to_check."
+    },
+    {
+      "role": "assistant",
+      "content": "So after receiving the request, you check the customer information in the CRM. What do you do after that?"
+    },
+    {
+      "role": "user",
+      "content": "After checking the customer information, I create the quotation document using the quoting system, pulling in the pricing information."
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "obs_41"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n"
+    },
+    {
+      "role": "tool",
+      "content": "Created activity concept act_create_quotation_document (label: 'create the quotation document')."
+    },
+    {
+      "role": "tool",
+      "content": "Created system concept sys_quoting_system (label: 'quoting system')."
+    },
+    {
+      "role": "tool",
+      "content": "Created data concept data_quotation_document (label: 'quotation document')."
+    },
+    {
+      "role": "tool",
+      "content": "Created data concept data_pricing_information (label: 'pricing information')."
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Added node n_create_quotation_document."
+    },
+    {
+      "role": "tool",
+      "content": "Added edge e_check_to_create."
+    },
+    {
+      "role": "assistant",
+      "content": "So after checking the customer information, you create the quotation document in the quoting system using the pricing information. What happens next — is the document sent to the customer right away, or is there anything else before that?"
+    },
+    {
+      "role": "user",
+      "content": "After creating the quotation, it depends on the amount. If it's over 1,000,000 yen, the manager has to approve it first, and then we send it to the customer. If it's at or below 1,000,000 yen, we send it directly. Also, if it's the end of the month, we send a summary of the quotation information to Accounting."
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "obs_53"
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Created activity concept act_manager_approval (label: 'approve it')."
+    },
+    {
+      "role": "tool",
+      "content": "Created actor concept actor_manager (label: 'manager')."
+    },
+    {
+      "role": "tool",
+      "content": "Created condition concept cond_over_1m (label: 'over 1,000,000 yen')."
+    },
+    {
+      "role": "tool",
+      "content": "Created condition concept cond_at_or_below_1m (label: 'at or below 1,000,000 yen')."
+    },
+    {
+      "role": "tool",
+      "content": "Created condition concept cond_end_of_month (label: 'end of the month')."
+    },
+    {
+      "role": "tool",
+      "content": "Created activity concept act_send_summary_to_accounting (label: 'send a summary of the quotation information to Accounting')."
+    },
+    {
+      "role": "tool",
+      "content": "Created actor concept actor_accounting (label: 'Accounting')."
+    },
+    {
+      "role": "tool",
+      "content": "Created data concept data_summary_quotation_info (label: 'summary of the quotation information')."
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Added node n_manager_approval."
+    },
+    {
+      "role": "tool",
+      "content": "Added node n_send_summary_to_accounting."
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Added edge e_create_to_approval."
+    },
+    {
+      "role": "tool",
+      "content": "Added edge e_create_to_send_direct."
+    },
+    {
+      "role": "tool",
+      "content": "Added edge e_create_to_summary."
+    },
+    {
+      "role": "tool",
+      "content": "Added edge e_approval_to_send."
+    },
+    {
+      "role": "assistant",
+      "content": "I've captured the branching. Let me clarify one point: the end-of-month summary to Accounting — is that sent in addition to sending the quotation to the customer, and does it happen at the same time (after creating the quotation), or after the quotation is sent?"
+    },
+    {
+      "role": "user",
+      "content": "Yes, we send a summary of the quotation information to Accounting at month-end, in addition to sending the quotation to the customer. It happens after we create the quotation, but I don't know if it's exactly at the same time or after the quotation is sent — that's not something I have details on."
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "obs_74"
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Updated edge e_create_to_summary."
+    },
+    {
+      "role": "assistant",
+      "content": "Thank you, that clarifies it. Now let me look at the manager approval step more closely. When the quotation is over 1,000,000 yen and goes to the manager for approval — what does the manager do exactly, and in which system? Also, what happens if the manager does not approve it?"
+    },
+    {
+      "role": "user",
+      "content": "When the quotation is over 1,000,000 yen, the manager approves the quotation. I don't know which system the manager uses for that. The reason for the approval is credit risk management. As for what happens if the manager doesn't approve, I don't know."
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "obs_80"
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Created rationale concept rat_credit_risk_management (label: 'credit risk management')."
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n"
+    },
+    {
+      "role": "tool",
+      "content": "Updated node n_manager_approval."
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Recorded DONT_KNOW on n_manager_approval for: system."
+    },
+    {
+      "role": "assistant",
+      "content": "I've noted that the manager's approval system is unknown, and the reason is credit risk management. Let me now ask about the final step: when you send the quotation to the customer, how is that done — which system or channel do you use?"
+    },
+    {
+      "role": "user",
+      "content": "We send the quotation to the customer by email."
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n"
+    },
+    {
+      "role": "tool",
+      "content": "obs_90"
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Created system concept sys_email (label: 'email')."
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n"
+    },
+    {
+      "role": "tool",
+      "content": "Updated node n_send_quotation."
+    },
+    {
+      "role": "assistant",
+      "content": "Let me clarify one terminology point: the \"quotation document\" you create in the quoting system — is that the same thing as \"the quotation\" you send to the customer by email?"
+    },
+    {
+      "role": "user",
+      "content": "I'm not sure if they are the same thing. I create the quotation document in the quoting system, and then I send the quotation to the customer by email, but I don't know if it's the same document."
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "obs_98"
+    },
+    {
+      "role": "assistant",
+      "content": "I'll keep \"quotation document\" and \"quotation\" as separate concepts since you're not sure they're the same. Let me continue with the summary step: what does the summary of the quotation information contain, and how do you send it to Accounting (e.g., by email or another way)?"
+    },
+    {
+      "role": "user",
+      "content": "I send the summary of the quotation information to Accounting using Excel. I don't know the specific details of what's in it beyond that it's a summary of the quotation information."
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n"
+    },
+    {
+      "role": "tool",
+      "content": "obs_102"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n"
+    },
+    {
+      "role": "tool",
+      "content": "Created system concept sys_excel (label: 'Excel')."
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n"
+    },
+    {
+      "role": "tool",
+      "content": "Updated node n_send_summary_to_accounting."
+    },
+    {
+      "role": "assistant",
+      "content": "I've noted that the summary is sent via Excel. Let me ask one more question about the earlier step: why is it necessary to check the customer information in the CRM before creating the quotation?"
+    },
+    {
+      "role": "user",
+      "content": "I don't know why we check the customer information."
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n"
+    },
+    {
+      "role": "tool",
+      "content": "obs_110"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n"
+    },
+    {
+      "role": "tool",
+      "content": "Error: record_dont_know for n_check_customer_info: agent node 'n_check_customer_info' is not uniquely bindable to a stakeholder node (candidates: none); add authentic graph/property evidence that identifies this node first"
+    },
+    {
+      "role": "assistant",
+      "content": "Let me add proper evidence to the node first so it's properly bound.\n\n"
+    },
+    {
+      "role": "tool",
+      "content": "Updated node n_check_customer_info."
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n"
+    },
+    {
+      "role": "tool",
+      "content": "Error: record_dont_know for n_check_customer_info: every evidence span must resolve to exactly one semantic id"
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Error: record_dont_know for n_check_customer_info: every evidence span must resolve to exactly one semantic id"
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Error: record_dont_know for n_check_customer_info: every evidence span must resolve to exactly one semantic id"
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Error: record_dont_know for n_check_customer_info: every evidence span must resolve to exactly one semantic id"
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Error: record_dont_know for n_check_customer_info: every evidence span must resolve to exactly one semantic id"
+    },
+    {
+      "role": "assistant",
+      "content": null
+    },
+    {
+      "role": "tool",
+      "content": "Error: record_dont_know for n_check_customer_info: every evidence span must resolve to exactly one semantic id"
+    },
+    {
+      "role": "assistant",
+      "content": "Let me check the exact message text for this statement"
+    },
+    {
+      "role": "tool",
+      "content": "sm_1: Sure, that's fine. What would you like to know?\nsm_2: The process starts as we — the sales employees — receive the customer's quotation request. The intended outcome is that we send the quotation to the customer.\nsm_3: After we receive the customer's quotation request, I check the customer information in the CRM.\nsm_4: After checking the customer information, I create the quotation document using the quoting system, pulling in the pricing information.\nsm_5: After creating the quotation, it depends on the amount. If it's over 1,000,000 yen, the manager has to approve it first, and then we send it to the customer. If it's at or below 1,000,000 yen, we send it directly. Also, if it's the end of the month, we send a summary of the quotation information to Accounting.\nsm_6: Yes, we send a summary of the quotation information to Accounting at month-end, in addition to sending the quotation to the customer. It happens after we create the quotation, but I don't know if it's exactly at the same time or after the quotation is sent — that's not something I have details on.\nsm_7: When the quotation is over 1,000,000 yen, the manager approves the quotation. I don't know which system the manager uses for that. The reason for the approval is credit risk management. As for what happens if the manager doesn't approve, I don't know.\nsm_8: We send the quotation to the customer by email.\nsm_9: I'm not sure if they are the same thing. I create the quotation document in the quoting system, and then I send the quotation to the customer by email, but I don't know if it's the same document.\nsm_10: I send the summary of the quotation information to Accounting using Excel. I don't know the specific details of what's in it beyond that it's a summary of the quotation information.\nsm_11: I don't know why we check the customer information."
+    },
+    {
+      "role": "assistant",
+      "content": "Let me try recording the unknown rationale with the exact phrasing from the message"
+    },
+    {
+      "role": "tool",
+      "content": "Error: record_dont_know for n_check_customer_info: every evidence span must resolve to exactly one semantic id"
+    },
+    {
+      "role": "assistant",
+      "content": "Let me try a few different phrasings for recording that the rationale"
+    },
+    {
+      "role": "tool",
+      "content": "Error: record_dont_know for n_check_customer_info: every evidence span must resolve to exactly one semantic id"
+    },
+    {
+      "role": "tool",
+      "content": "Error: record_dont_know for n_check_customer_info: every evidence span must resolve to exactly one semantic id"
+    },
+    {
+      "role": "tool",
+      "content": "Error: record_dont_know for n_check_customer_info: every evidence span must resolve to exactly one semantic id"
+    },
+    {
+      "role": "assistant",
+      "content": "I understand — you don't know the reason behind that step. Let me just double-check one thing: do you know why the customer information check in the CRM is done, or is that not something you have insight into?"
+    }
+  ],
+  "interview_complete": false,
+  "llm_call_metrics": {
+    "records": [
+      {
+        "side": "agent",
+        "call_index": 0,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 3,
+        "messages_chars": 18609,
+        "system_chars": 18349,
+        "conversation_chars": 260,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 38708,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 9324,
+        "completion_tokens": 218,
+        "total_tokens": 9542,
+        "output_contract_chars": null,
+        "latency_seconds": 8.13822539197281
+      },
+      {
+        "side": "agent",
+        "call_index": 1,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 5,
+        "messages_chars": 19058,
+        "system_chars": 18349,
+        "conversation_chars": 709,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 39157,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 9405,
+        "completion_tokens": 159,
+        "total_tokens": 9564,
+        "output_contract_chars": null,
+        "latency_seconds": 5.613375055952929
+      },
+      {
+        "side": "agent",
+        "call_index": 2,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 7,
+        "messages_chars": 19387,
+        "system_chars": 18349,
+        "conversation_chars": 1038,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 39486,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 9454,
+        "completion_tokens": 91,
+        "total_tokens": 9545,
+        "output_contract_chars": null,
+        "latency_seconds": 2.3053314939606935
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 3,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 4,
+        "messages_chars": 17549,
+        "system_chars": 12219,
+        "conversation_chars": 5330,
+        "tool_schema_chars": 0,
+        "total_input_chars": 17549,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 4357,
+        "completion_tokens": 4156,
+        "total_tokens": 8513,
+        "output_contract_chars": null,
+        "latency_seconds": 22.33524683699943
+      },
+      {
+        "side": "agent",
+        "call_index": 4,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 9,
+        "messages_chars": 19775,
+        "system_chars": 18349,
+        "conversation_chars": 1426,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 39874,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 9515,
+        "completion_tokens": 1012,
+        "total_tokens": 10527,
+        "output_contract_chars": null,
+        "latency_seconds": 16.673558605951257
+      },
+      {
+        "side": "agent",
+        "call_index": 5,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 15,
+        "messages_chars": 22585,
+        "system_chars": 18349,
+        "conversation_chars": 4236,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 42684,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 10259,
+        "completion_tokens": 242,
+        "total_tokens": 10501,
+        "output_contract_chars": null,
+        "latency_seconds": 7.818002784042619
+      },
+      {
+        "side": "agent",
+        "call_index": 6,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 17,
+        "messages_chars": 23120,
+        "system_chars": 18349,
+        "conversation_chars": 4771,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 43219,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 10353,
+        "completion_tokens": 4642,
+        "total_tokens": 14995,
+        "output_contract_chars": null,
+        "latency_seconds": 26.344598833937198
+      },
+      {
+        "side": "agent",
+        "call_index": 7,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 20,
+        "messages_chars": 23756,
+        "system_chars": 18349,
+        "conversation_chars": 5407,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 43855,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 10472,
+        "completion_tokens": 1960,
+        "total_tokens": 12432,
+        "output_contract_chars": null,
+        "latency_seconds": 31.13993066106923
+      },
+      {
+        "side": "agent",
+        "call_index": 8,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 26,
+        "messages_chars": 26565,
+        "system_chars": 18349,
+        "conversation_chars": 8216,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 46664,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 11211,
+        "completion_tokens": 426,
+        "total_tokens": 11637,
+        "output_contract_chars": null,
+        "latency_seconds": 7.510861761053093
+      },
+      {
+        "side": "agent",
+        "call_index": 9,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 29,
+        "messages_chars": 27685,
+        "system_chars": 18349,
+        "conversation_chars": 9336,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 47784,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 11530,
+        "completion_tokens": 389,
+        "total_tokens": 11919,
+        "output_contract_chars": null,
+        "latency_seconds": 6.709199039032683
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 10,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 6,
+        "messages_chars": 17995,
+        "system_chars": 12219,
+        "conversation_chars": 5776,
+        "tool_schema_chars": 0,
+        "total_input_chars": 17995,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 4405,
+        "completion_tokens": 2141,
+        "total_tokens": 6546,
+        "output_contract_chars": null,
+        "latency_seconds": 40.612684293068014
+      },
+      {
+        "side": "agent",
+        "call_index": 11,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 31,
+        "messages_chars": 28058,
+        "system_chars": 18349,
+        "conversation_chars": 9709,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 48157,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 11590,
+        "completion_tokens": 136,
+        "total_tokens": 11726,
+        "output_contract_chars": null,
+        "latency_seconds": 3.2041587000712752
+      },
+      {
+        "side": "agent",
+        "call_index": 12,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 33,
+        "messages_chars": 28388,
+        "system_chars": 18349,
+        "conversation_chars": 10039,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 48487,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 11639,
+        "completion_tokens": 835,
+        "total_tokens": 12474,
+        "output_contract_chars": null,
+        "latency_seconds": 13.367658346076496
+      },
+      {
+        "side": "agent",
+        "call_index": 13,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 37,
+        "messages_chars": 29948,
+        "system_chars": 18349,
+        "conversation_chars": 11599,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 50047,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 12057,
+        "completion_tokens": 166,
+        "total_tokens": 12223,
+        "output_contract_chars": null,
+        "latency_seconds": 5.402212469023652
+      },
+      {
+        "side": "agent",
+        "call_index": 14,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 39,
+        "messages_chars": 30571,
+        "system_chars": 18349,
+        "conversation_chars": 12222,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 50670,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 12241,
+        "completion_tokens": 137,
+        "total_tokens": 12378,
+        "output_contract_chars": null,
+        "latency_seconds": 3.229942039004527
+      },
+      {
+        "side": "agent",
+        "call_index": 15,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 41,
+        "messages_chars": 31123,
+        "system_chars": 18349,
+        "conversation_chars": 12774,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 51222,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 12396,
+        "completion_tokens": 67,
+        "total_tokens": 12463,
+        "output_contract_chars": null,
+        "latency_seconds": 2.2341146050021052
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 16,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 8,
+        "messages_chars": 18286,
+        "system_chars": 12219,
+        "conversation_chars": 6067,
+        "tool_schema_chars": 0,
+        "total_input_chars": 18286,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 4392,
+        "completion_tokens": 192,
+        "total_tokens": 4584,
+        "output_contract_chars": null,
+        "latency_seconds": 15.311210493091494
+      },
+      {
+        "side": "agent",
+        "call_index": 17,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 43,
+        "messages_chars": 31453,
+        "system_chars": 18349,
+        "conversation_chars": 13104,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 51552,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 12445,
+        "completion_tokens": 147,
+        "total_tokens": 12592,
+        "output_contract_chars": null,
+        "latency_seconds": 3.4964783950708807
+      },
+      {
+        "side": "agent",
+        "call_index": 18,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 45,
+        "messages_chars": 31783,
+        "system_chars": 18349,
+        "conversation_chars": 13434,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 51882,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 12494,
+        "completion_tokens": 467,
+        "total_tokens": 12961,
+        "output_contract_chars": null,
+        "latency_seconds": 8.440332471975125
+      },
+      {
+        "side": "agent",
+        "call_index": 19,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 50,
+        "messages_chars": 33913,
+        "system_chars": 18349,
+        "conversation_chars": 15564,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 54012,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 13063,
+        "completion_tokens": 434,
+        "total_tokens": 13497,
+        "output_contract_chars": null,
+        "latency_seconds": 12.539434241014533
+      },
+      {
+        "side": "agent",
+        "call_index": 20,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 53,
+        "messages_chars": 35222,
+        "system_chars": 18349,
+        "conversation_chars": 16873,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 55321,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 13450,
+        "completion_tokens": 114,
+        "total_tokens": 13564,
+        "output_contract_chars": null,
+        "latency_seconds": 7.915551541023888
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 21,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 10,
+        "messages_chars": 18754,
+        "system_chars": 12219,
+        "conversation_chars": 6535,
+        "tool_schema_chars": 0,
+        "total_input_chars": 18754,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 4439,
+        "completion_tokens": 6333,
+        "total_tokens": 10772,
+        "output_contract_chars": null,
+        "latency_seconds": 40.82107771001756
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 22,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 12,
+        "messages_chars": 16434,
+        "system_chars": 13512,
+        "conversation_chars": 2922,
+        "tool_schema_chars": 0,
+        "total_input_chars": 16434,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 3855,
+        "completion_tokens": 3745,
+        "total_tokens": 7600,
+        "output_contract_chars": null,
+        "latency_seconds": 26.007442564005032
+      },
+      {
+        "side": "agent",
+        "call_index": 23,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 55,
+        "messages_chars": 35867,
+        "system_chars": 18349,
+        "conversation_chars": 17518,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 55966,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 13579,
+        "completion_tokens": 475,
+        "total_tokens": 14054,
+        "output_contract_chars": null,
+        "latency_seconds": 15.969186439062469
+      },
+      {
+        "side": "agent",
+        "call_index": 24,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 57,
+        "messages_chars": 36197,
+        "system_chars": 18349,
+        "conversation_chars": 17848,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 56296,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 13628,
+        "completion_tokens": 5749,
+        "total_tokens": 19377,
+        "output_contract_chars": null,
+        "latency_seconds": 138.64677904499695
+      },
+      {
+        "side": "agent",
+        "call_index": 25,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 66,
+        "messages_chars": 40398,
+        "system_chars": 18349,
+        "conversation_chars": 22049,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 60497,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 14792,
+        "completion_tokens": 1108,
+        "total_tokens": 15900,
+        "output_contract_chars": null,
+        "latency_seconds": 18.46230908308644
+      },
+      {
+        "side": "agent",
+        "call_index": 26,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 69,
+        "messages_chars": 41383,
+        "system_chars": 18349,
+        "conversation_chars": 23034,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 61482,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 15060,
+        "completion_tokens": 1045,
+        "total_tokens": 16105,
+        "output_contract_chars": null,
+        "latency_seconds": 26.66625190002378
+      },
+      {
+        "side": "agent",
+        "call_index": 27,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 74,
+        "messages_chars": 43895,
+        "system_chars": 18349,
+        "conversation_chars": 25546,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 63994,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 15832,
+        "completion_tokens": 393,
+        "total_tokens": 16225,
+        "output_contract_chars": null,
+        "latency_seconds": 11.959871400031261
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 28,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 12,
+        "messages_chars": 19423,
+        "system_chars": 12219,
+        "conversation_chars": 7204,
+        "tool_schema_chars": 0,
+        "total_input_chars": 19423,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 4578,
+        "completion_tokens": 3397,
+        "total_tokens": 7975,
+        "output_contract_chars": null,
+        "latency_seconds": 29.724549405975267
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 29,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 14,
+        "messages_chars": 17103,
+        "system_chars": 13512,
+        "conversation_chars": 3591,
+        "tool_schema_chars": 0,
+        "total_input_chars": 17103,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 3994,
+        "completion_tokens": 1616,
+        "total_tokens": 5610,
+        "output_contract_chars": null,
+        "latency_seconds": 10.62461177201476
+      },
+      {
+        "side": "agent",
+        "call_index": 30,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 76,
+        "messages_chars": 44556,
+        "system_chars": 18349,
+        "conversation_chars": 26207,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 64655,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 15954,
+        "completion_tokens": 709,
+        "total_tokens": 16663,
+        "output_contract_chars": null,
+        "latency_seconds": 12.069937014952302
+      },
+      {
+        "side": "agent",
+        "call_index": 31,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 78,
+        "messages_chars": 44886,
+        "system_chars": 18349,
+        "conversation_chars": 26537,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 64985,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 16003,
+        "completion_tokens": 756,
+        "total_tokens": 16759,
+        "output_contract_chars": null,
+        "latency_seconds": 13.524755224003457
+      },
+      {
+        "side": "agent",
+        "call_index": 32,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 80,
+        "messages_chars": 45733,
+        "system_chars": 18349,
+        "conversation_chars": 27384,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 65832,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 16228,
+        "completion_tokens": 512,
+        "total_tokens": 16740,
+        "output_contract_chars": null,
+        "latency_seconds": 14.375617639976554
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 33,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 14,
+        "messages_chars": 20100,
+        "system_chars": 12219,
+        "conversation_chars": 7881,
+        "tool_schema_chars": 0,
+        "total_input_chars": 20100,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 4708,
+        "completion_tokens": 1707,
+        "total_tokens": 6415,
+        "output_contract_chars": null,
+        "latency_seconds": 16.73027528496459
+      },
+      {
+        "side": "agent",
+        "call_index": 34,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 82,
+        "messages_chars": 46358,
+        "system_chars": 18349,
+        "conversation_chars": 28009,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 66457,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 16353,
+        "completion_tokens": 814,
+        "total_tokens": 17167,
+        "output_contract_chars": null,
+        "latency_seconds": 13.42257996101398
+      },
+      {
+        "side": "agent",
+        "call_index": 35,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 84,
+        "messages_chars": 46688,
+        "system_chars": 18349,
+        "conversation_chars": 28339,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 66787,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 16402,
+        "completion_tokens": 770,
+        "total_tokens": 17172,
+        "output_contract_chars": null,
+        "latency_seconds": 12.480552516994067
+      },
+      {
+        "side": "agent",
+        "call_index": 36,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 86,
+        "messages_chars": 47277,
+        "system_chars": 18349,
+        "conversation_chars": 28928,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 67376,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 16561,
+        "completion_tokens": 112,
+        "total_tokens": 16673,
+        "output_contract_chars": null,
+        "latency_seconds": 2.5032380679622293
+      },
+      {
+        "side": "agent",
+        "call_index": 37,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 88,
+        "messages_chars": 47807,
+        "system_chars": 18349,
+        "conversation_chars": 29458,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 67906,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 16691,
+        "completion_tokens": 1375,
+        "total_tokens": 18066,
+        "output_contract_chars": null,
+        "latency_seconds": 45.31433151406236
+      },
+      {
+        "side": "agent",
+        "call_index": 38,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 90,
+        "messages_chars": 48350,
+        "system_chars": 18349,
+        "conversation_chars": 30001,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 68449,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 16838,
+        "completion_tokens": 491,
+        "total_tokens": 17329,
+        "output_contract_chars": null,
+        "latency_seconds": 9.891811516019516
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 39,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 16,
+        "messages_chars": 20683,
+        "system_chars": 12219,
+        "conversation_chars": 8464,
+        "tool_schema_chars": 0,
+        "total_input_chars": 20683,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 4820,
+        "completion_tokens": 381,
+        "total_tokens": 5201,
+        "output_contract_chars": null,
+        "latency_seconds": 5.116784697049297
+      },
+      {
+        "side": "agent",
+        "call_index": 40,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 92,
+        "messages_chars": 48729,
+        "system_chars": 18349,
+        "conversation_chars": 30380,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 68828,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 16904,
+        "completion_tokens": 35,
+        "total_tokens": 16939,
+        "output_contract_chars": null,
+        "latency_seconds": 1.494578449986875
+      },
+      {
+        "side": "agent",
+        "call_index": 41,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 94,
+        "messages_chars": 49061,
+        "system_chars": 18349,
+        "conversation_chars": 30712,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 69160,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 16953,
+        "completion_tokens": 198,
+        "total_tokens": 17151,
+        "output_contract_chars": null,
+        "latency_seconds": 5.99850487196818
+      },
+      {
+        "side": "agent",
+        "call_index": 42,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 96,
+        "messages_chars": 49562,
+        "system_chars": 18349,
+        "conversation_chars": 31213,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 69661,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 17096,
+        "completion_tokens": 103,
+        "total_tokens": 17199,
+        "output_contract_chars": null,
+        "latency_seconds": 2.6650398609926924
+      },
+      {
+        "side": "agent",
+        "call_index": 43,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 98,
+        "messages_chars": 50044,
+        "system_chars": 18349,
+        "conversation_chars": 31695,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 70143,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 17218,
+        "completion_tokens": 587,
+        "total_tokens": 17805,
+        "output_contract_chars": null,
+        "latency_seconds": 4.4132053619250655
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 44,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 18,
+        "messages_chars": 21004,
+        "system_chars": 12219,
+        "conversation_chars": 8785,
+        "tool_schema_chars": 0,
+        "total_input_chars": 21004,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 4872,
+        "completion_tokens": 1218,
+        "total_tokens": 6090,
+        "output_contract_chars": null,
+        "latency_seconds": 12.565565167111345
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 45,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 20,
+        "messages_chars": 18684,
+        "system_chars": 13512,
+        "conversation_chars": 5172,
+        "tool_schema_chars": 0,
+        "total_input_chars": 18684,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 4288,
+        "completion_tokens": 1461,
+        "total_tokens": 5749,
+        "output_contract_chars": null,
+        "latency_seconds": 11.671277816058137
+      },
+      {
+        "side": "agent",
+        "call_index": 46,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 100,
+        "messages_chars": 50513,
+        "system_chars": 18349,
+        "conversation_chars": 32164,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 70612,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 17306,
+        "completion_tokens": 477,
+        "total_tokens": 17783,
+        "output_contract_chars": null,
+        "latency_seconds": 9.043758064042777
+      },
+      {
+        "side": "agent",
+        "call_index": 47,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 102,
+        "messages_chars": 50843,
+        "system_chars": 18349,
+        "conversation_chars": 32494,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 70942,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 17355,
+        "completion_tokens": 597,
+        "total_tokens": 17952,
+        "output_contract_chars": null,
+        "latency_seconds": 12.819387426017784
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 48,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 20,
+        "messages_chars": 21570,
+        "system_chars": 12219,
+        "conversation_chars": 9351,
+        "tool_schema_chars": 0,
+        "total_input_chars": 21570,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 5084,
+        "completion_tokens": 2313,
+        "total_tokens": 7397,
+        "output_contract_chars": null,
+        "latency_seconds": 42.88631335797254
+      },
+      {
+        "side": "agent",
+        "call_index": 49,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 104,
+        "messages_chars": 51395,
+        "system_chars": 18349,
+        "conversation_chars": 33046,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 71494,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 17458,
+        "completion_tokens": 35,
+        "total_tokens": 17493,
+        "output_contract_chars": null,
+        "latency_seconds": 2.635902301990427
+      },
+      {
+        "side": "agent",
+        "call_index": 50,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 106,
+        "messages_chars": 51728,
+        "system_chars": 18349,
+        "conversation_chars": 33379,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 71827,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 17507,
+        "completion_tokens": 121,
+        "total_tokens": 17628,
+        "output_contract_chars": null,
+        "latency_seconds": 2.714284429093823
+      },
+      {
+        "side": "agent",
+        "call_index": 51,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 108,
+        "messages_chars": 52229,
+        "system_chars": 18349,
+        "conversation_chars": 33880,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 72328,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 17651,
+        "completion_tokens": 105,
+        "total_tokens": 17756,
+        "output_contract_chars": null,
+        "latency_seconds": 4.376769455964677
+      },
+      {
+        "side": "agent",
+        "call_index": 52,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 110,
+        "messages_chars": 52733,
+        "system_chars": 18349,
+        "conversation_chars": 34384,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 72832,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 17777,
+        "completion_tokens": 2713,
+        "total_tokens": 20490,
+        "output_contract_chars": null,
+        "latency_seconds": 44.13563573802821
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 53,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 22,
+        "messages_chars": 22037,
+        "system_chars": 12219,
+        "conversation_chars": 9818,
+        "tool_schema_chars": 0,
+        "total_input_chars": 22037,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 5062,
+        "completion_tokens": 1688,
+        "total_tokens": 6750,
+        "output_contract_chars": null,
+        "latency_seconds": 17.146798672969453
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 54,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 24,
+        "messages_chars": 19717,
+        "system_chars": 13512,
+        "conversation_chars": 6205,
+        "tool_schema_chars": 0,
+        "total_input_chars": 19717,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 4478,
+        "completion_tokens": 538,
+        "total_tokens": 5016,
+        "output_contract_chars": null,
+        "latency_seconds": 52.18049844203051
+      },
+      {
+        "side": "agent",
+        "call_index": 55,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 112,
+        "messages_chars": 53070,
+        "system_chars": 18349,
+        "conversation_chars": 34721,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 73169,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 17832,
+        "completion_tokens": 35,
+        "total_tokens": 17867,
+        "output_contract_chars": null,
+        "latency_seconds": 1.7313912000972778
+      },
+      {
+        "side": "agent",
+        "call_index": 56,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 114,
+        "messages_chars": 53403,
+        "system_chars": 18349,
+        "conversation_chars": 35054,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 73502,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 17881,
+        "completion_tokens": 123,
+        "total_tokens": 18004,
+        "output_contract_chars": null,
+        "latency_seconds": 2.934759213938378
+      },
+      {
+        "side": "agent",
+        "call_index": 57,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 116,
+        "messages_chars": 54133,
+        "system_chars": 18349,
+        "conversation_chars": 35784,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 74232,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 18064,
+        "completion_tokens": 489,
+        "total_tokens": 18553,
+        "output_contract_chars": null,
+        "latency_seconds": 8.12774619506672
+      },
+      {
+        "side": "agent",
+        "call_index": 58,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 118,
+        "messages_chars": 55010,
+        "system_chars": 18349,
+        "conversation_chars": 36661,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 75109,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 18310,
+        "completion_tokens": 123,
+        "total_tokens": 18433,
+        "output_contract_chars": null,
+        "latency_seconds": 4.082454203045927
+      },
+      {
+        "side": "agent",
+        "call_index": 59,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 120,
+        "messages_chars": 55628,
+        "system_chars": 18349,
+        "conversation_chars": 37279,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 75727,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 18468,
+        "completion_tokens": 628,
+        "total_tokens": 19096,
+        "output_contract_chars": null,
+        "latency_seconds": 16.935499192913994
+      },
+      {
+        "side": "agent",
+        "call_index": 60,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 122,
+        "messages_chars": 56210,
+        "system_chars": 18349,
+        "conversation_chars": 37861,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 76309,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 18621,
+        "completion_tokens": 1838,
+        "total_tokens": 20459,
+        "output_contract_chars": null,
+        "latency_seconds": 29.49024301499594
+      },
+      {
+        "side": "agent",
+        "call_index": 61,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 124,
+        "messages_chars": 56788,
+        "system_chars": 18349,
+        "conversation_chars": 38439,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 76887,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 18773,
+        "completion_tokens": 833,
+        "total_tokens": 19606,
+        "output_contract_chars": null,
+        "latency_seconds": 13.34017410792876
+      },
+      {
+        "side": "agent",
+        "call_index": 62,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 126,
+        "messages_chars": 57391,
+        "system_chars": 18349,
+        "conversation_chars": 39042,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 77490,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 18927,
+        "completion_tokens": 207,
+        "total_tokens": 19134,
+        "output_contract_chars": null,
+        "latency_seconds": 4.818887119065039
+      },
+      {
+        "side": "agent",
+        "call_index": 63,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 128,
+        "messages_chars": 57967,
+        "system_chars": 18349,
+        "conversation_chars": 39618,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 78066,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 19078,
+        "completion_tokens": 247,
+        "total_tokens": 19325,
+        "output_contract_chars": null,
+        "latency_seconds": 2.7674705890240148
+      },
+      {
+        "side": "agent",
+        "call_index": 64,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 130,
+        "messages_chars": 58583,
+        "system_chars": 18349,
+        "conversation_chars": 40234,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 78682,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 19236,
+        "completion_tokens": 1137,
+        "total_tokens": 20373,
+        "output_contract_chars": null,
+        "latency_seconds": 6.221411811071448
+      },
+      {
+        "side": "agent",
+        "call_index": 65,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 132,
+        "messages_chars": 60812,
+        "system_chars": 18349,
+        "conversation_chars": 42463,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 80911,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 19719,
+        "completion_tokens": 2359,
+        "total_tokens": 22078,
+        "output_contract_chars": null,
+        "latency_seconds": 11.833366965060122
+      },
+      {
+        "side": "agent",
+        "call_index": 66,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 134,
+        "messages_chars": 61510,
+        "system_chars": 18349,
+        "conversation_chars": 43161,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 81609,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 19891,
+        "completion_tokens": 2376,
+        "total_tokens": 22267,
+        "output_contract_chars": null,
+        "latency_seconds": 11.940702879917808
+      },
+      {
+        "side": "agent",
+        "call_index": 67,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 138,
+        "messages_chars": 63243,
+        "system_chars": 18349,
+        "conversation_chars": 44894,
+        "tool_schema_chars": 20099,
+        "total_input_chars": 83342,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 20332,
+        "completion_tokens": 5586,
+        "total_tokens": 25918,
+        "output_contract_chars": null,
+        "latency_seconds": 28.19752675294876
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 68,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 24,
+        "messages_chars": 22393,
+        "system_chars": 12219,
+        "conversation_chars": 10174,
+        "tool_schema_chars": 0,
+        "total_input_chars": 22393,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 5122,
+        "completion_tokens": 838,
+        "total_tokens": 5960,
+        "output_contract_chars": null,
+        "latency_seconds": 78.1579421130009
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 69,
+        "model": "openrouter/deepseek/deepseek-v4-flash-0731",
+        "message_count": 26,
+        "messages_chars": 20073,
+        "system_chars": 13512,
+        "conversation_chars": 6561,
+        "tool_schema_chars": 0,
+        "total_input_chars": 20073,
+        "status": "success",
+        "error_type": null,
+        "prompt_tokens": 4538,
+        "completion_tokens": 230,
+        "total_tokens": 4768,
+        "output_contract_chars": null,
+        "latency_seconds": 25.40604405698832
+      }
+    ],
+    "by_side_summary": {
+      "agent": {
+        "calls": 54,
+        "success": 54,
+        "error": 0,
+        "error_types": [],
+        "max_prompt_tokens": 20332,
+        "max_messages_chars": 63243,
+        "max_total_input_chars": 83342,
+        "max_message_count": 138,
+        "total_prompt_tokens": 825176,
+        "total_completion_tokens": 46903,
+        "total_input_chars": 3386325,
+        "latency_p50": 8.289278931973968,
+        "latency_p95": 31.13993066106923,
+        "latency_max": 138.64677904499695,
+        "token_usage_calls": 54,
+        "trigger_counts": {
+          "stakeholder_message": 11,
+          "tool_result": 32,
+          "multi_tool_result": 11
+        }
+      },
+      "stakeholder": {
+        "calls": 16,
+        "success": 16,
+        "error": 0,
+        "error_types": [],
+        "max_prompt_tokens": 5122,
+        "max_messages_chars": 22393,
+        "max_total_input_chars": 22393,
+        "max_message_count": 26,
+        "total_prompt_tokens": 72992,
+        "total_completion_tokens": 31954,
+        "total_input_chars": 311805,
+        "latency_p50": 23.870645446993876,
+        "latency_p95": 52.18049844203051,
+        "latency_max": 78.1579421130009,
+        "token_usage_calls": 16,
+        "trigger_counts": {}
+      }
+    },
+    "slowest_calls": [
+      {
+        "side": "agent",
+        "call_index": 24,
+        "prompt_tokens": 13628,
+        "messages_chars": 36197,
+        "message_count": 57,
+        "latency_seconds": 138.64677904499695
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 68,
+        "prompt_tokens": 5122,
+        "messages_chars": 22393,
+        "message_count": 24,
+        "latency_seconds": 78.1579421130009
+      },
+      {
+        "side": "stakeholder",
+        "call_index": 54,
+        "prompt_tokens": 4478,
+        "messages_chars": 19717,
+        "message_count": 24,
+        "latency_seconds": 52.18049844203051
+      },
+      {
+        "side": "agent",
+        "call_index": 37,
+        "prompt_tokens": 16691,
+        "messages_chars": 47807,
+        "message_count": 88,
+        "latency_seconds": 45.31433151406236
+      },
+      {
+        "side": "agent",
+        "call_index": 52,
+        "prompt_tokens": 17777,
+        "messages_chars": 52733,
+        "message_count": 110,
+        "latency_seconds": 44.13563573802821
+      }
+    ]
+  },
+  "private_id_leakage": [],
+  "private_assertions_artifact": "run_00_seed9802.private.json"
+}
