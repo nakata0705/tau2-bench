@@ -303,7 +303,9 @@ def test_third_identical_user_response_terminates(env_and_task):
     orch = _run_until_done(orch)
     assert orch.done is True
     assert orch.termination_reason == TerminationReason.REPEATED_RESPONSE
-    assert orch.loop_guard_diagnostics["type"] == "repeated_response"
+    lg = orch.loop_guard_diagnostics
+    assert lg is not None
+    assert lg["type"] == "repeated_response"
     # the third identical response is recorded in the trajectory, then the
     # run terminates BEFORE another agent generation
     assert orch.step_count < 50
@@ -399,6 +401,77 @@ def test_tool_only_agent_messages_do_not_count(env_and_task):
 
 
 # ---------------------------------------------------------------------------
+# Sidecar internal retries do NOT count as public repetitions
+# ---------------------------------------------------------------------------
+
+
+def test_sidecar_internal_retries_do_not_count_as_public_repetitions(env_and_task):
+    """A stakeholder sidecar generation retry happens INSIDE one
+    ``generate_next_message`` and returns a single public UserMessage. It
+    must not advance the repeated-response counter by itself (a sidecar retry
+    is a private repair, never a repeated public response; only a response
+    that enters the trajectory is counted).
+
+    Here the user internally fails the sidecar twice before producing one
+    public answer each turn (mirroring the business_interview sidecar retry
+    path), while still emitting "R" on three separate turns. If the internal
+    retries were incorrectly counted as if they entered the trajectory, the
+    repeated_response guard would fire after the FIRST turn. Correctly it
+    fires only when the third PUBLIC response repeats - and the stored count
+    is 3 (not 3*retries).
+    """
+    env, task = env_and_task
+    agent = _StubAgent(["Q1", "Q2", "Q3"])
+
+    class _RetryingSidecarUser(_StubUser):
+        """Simulates a stakeholder whose private sidecar is invalid twice and
+        recovers on the retry inside a single generation. Tracks internal
+        attempts vs. public emissions so a bug that counts internal retries as
+        public repetitions would be observable."""
+
+        def __init__(self, contents: list[str]):
+            super().__init__(contents)
+            self.internal_sidecar_attempts = 0
+            self.public_emissions = 0
+
+        def generate_next_message(self, message, state):
+            # Simulate an internal sidecar retry: the first attempts fail and
+            # only a later attempt yields a valid sidecar, but this all stays
+            # inside the single generation call - the caller observes exactly
+            # one UserMessage.
+            self.internal_sidecar_attempts += 2  # two failed attempts each turn
+            content, state = super().generate_next_message(message, state)
+            self.public_emissions += 1
+            return content, state
+
+    user = _RetryingSidecarUser(["R", "R", "R"])
+    orch = Orchestrator(
+        domain="mock",
+        agent=agent,  # type: ignore[arg-type]
+        user=user,  # type: ignore[arg-type]
+        environment=env,
+        task=task,
+        max_steps=50,
+        max_repeated_questions=0,  # isolate the response guard
+        max_repeated_interactions=0,
+    )
+    orch = _run_until_done(orch)
+    assert orch.done is True
+    assert orch.termination_reason == TerminationReason.REPEATED_RESPONSE
+    lg = orch.loop_guard_diagnostics
+    assert lg is not None
+    assert lg["type"] == "repeated_response"
+    # The public response repeated only 3 times, even though the user made 2
+    # internal sidecar attempts per turn (6 total). Only the 3 public
+    # emissions ever enter the trajectory/counter.
+    assert lg["count"] == 3
+    assert user.internal_sidecar_attempts == 6
+    assert user.public_emissions == 3
+    # Termination came at the third public emission, well before max_steps.
+    assert orch.step_count < 50
+
+
+# ---------------------------------------------------------------------------
 # business_interview stalled_interaction guard
 # ---------------------------------------------------------------------------
 
@@ -440,7 +513,9 @@ def test_identical_question_and_semantic_answer_three_times_stalls(env_and_task)
     orch = _run_until_done(orch)
     assert orch.done is True
     assert orch.termination_reason == TerminationReason.STALLED_INTERACTION
-    assert orch.loop_guard_diagnostics["type"] == "stalled_interaction"
+    lg = orch.loop_guard_diagnostics
+    assert lg is not None
+    assert lg["type"] == "stalled_interaction"
     assert orch.step_count < 50
 
 

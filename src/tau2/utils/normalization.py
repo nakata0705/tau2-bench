@@ -18,6 +18,7 @@ for loop-detection counters and diagnostics.
 from __future__ import annotations
 
 import re
+from typing import Optional
 
 # Trivial terminal punctuation removed by default (e.g. "Hello?" == "Hello").
 _TERMINAL_PUNCT = ".!?。！？"
@@ -26,7 +27,7 @@ _WS = re.compile(r"\s+")
 
 
 def normalize_text(
-    text: str,
+    text: Optional[str],
     *,
     strip_terminal_punctuation: bool = True,
 ) -> str:

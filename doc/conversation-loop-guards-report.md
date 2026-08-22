@@ -78,7 +78,7 @@ trajectory.
 
 ## Tests (`tests/test_loop_guards.py`)
 
-15 deterministic tests (scripted stub participants, no LLM):
+16 deterministic tests (scripted stub participants, no LLM):
 
 - same Agent question twice does NOT terminate;
 - third identical Agent question → repeated_question;
@@ -88,6 +88,10 @@ trajectory.
 - same stakeholder response twice does not terminate;
 - third identical response → repeated_response;
 - tool-only Agent messages do not affect counters;
+- sidecar internal retries do not count as public repetitions (a staunch
+  who fails the sidecar twice inside one generation is still counted once
+  per public emission: three public repetitions fire, six internal attempts
+  do not);
 - business_interview identical question + identical semantic sidecar 3x →
   stalled_interaction;
 - same question with different semantic answers does not stall;
