@@ -97,6 +97,31 @@ TrajectoryItemT = TypeVar(
 # Half-duplex specific types for Orchestrator
 AgentT = TypeVar("AgentT", bound=HalfDuplexAgent)
 UserT = TypeVar("UserT", bound=HalfDuplexUser)
+AgentInputMessage = UserMessage | ToolMessage | MultiToolMessage
+UserInputMessage = AssistantMessage | ToolMessage | MultiToolMessage
+
+
+def _as_agent_input(message: Optional[Message]) -> AgentInputMessage:
+    """Return a message that can be delivered to a half-duplex agent."""
+    if isinstance(message, (UserMessage, ToolMessage, MultiToolMessage)):
+        return message
+    raise ValueError(f"Invalid message for agent: {message}")
+
+
+def _as_user_input(message: Optional[Message]) -> UserInputMessage:
+    """Return a message that can be delivered to a half-duplex user."""
+    if isinstance(message, (AssistantMessage, ToolMessage, MultiToolMessage)):
+        return message
+    raise ValueError(f"Invalid message for user: {message}")
+
+
+def _message_timestamp(message: Message) -> str:
+    """Return a sortable timestamp for a half-duplex trajectory message."""
+    if isinstance(message, MultiToolMessage):
+        raise ValueError(
+            "MultiToolMessage cannot be included in a half-duplex trajectory"
+        )
+    return message.timestamp or ""
 
 
 class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
@@ -335,7 +360,7 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
 
     def _guard_enabled(self, threshold: Optional[int]) -> bool:
         """True when a loop guard is active (threshold > 0)."""
-        return threshold is not None and int(threshold) > 0
+        return threshold is not None and threshold > 0
 
     def _record_agent_question(self, text: Optional[str], step_index: int) -> None:
         """Count one conversational Agent message (normalized) sent to the
@@ -520,7 +545,7 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
             self._reset_tool_operation_history()
         self._tool_operation_history.append((fingerprint, target, step_index))
 
-        configured_limit = int(self.max_stalled_tool_operations or 0)
+        configured_limit = self.max_stalled_tool_operations or 0
         # Period 1 allows four identical writes; short period-2 cycles require
         # three complete repetitions. A configured limit caps the suffix size.
         for period in (1, 2, 3):
@@ -572,7 +597,7 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
         if self.loop_guard_diagnostics is not None:
             return True
         if self._guard_enabled(self.max_repeated_questions):
-            threshold = int(self.max_repeated_questions or 0)
+            threshold = self.max_repeated_questions or 0
             for norm, count in self._question_counts.items():
                 if count >= threshold:
                     self._fire_loop_guard(
@@ -586,7 +611,7 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
                     )
                     return True
         if self._guard_enabled(self.max_repeated_responses):
-            threshold = int(self.max_repeated_responses or 0)
+            threshold = self.max_repeated_responses or 0
             for norm, count in self._response_counts.items():
                 if count >= threshold:
                     self._fire_loop_guard(
@@ -600,7 +625,7 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
                     )
                     return True
         if self._guard_enabled(self.max_repeated_interactions):
-            threshold = int(self.max_repeated_interactions or 0)
+            threshold = self.max_repeated_interactions or 0
             for key, count in self._interaction_counts.items():
                 if count >= threshold:
                     self._fire_loop_guard(
@@ -656,13 +681,17 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
         """
         try:
             if hasattr(self, "agent") and self.agent is not None:
-                self.agent.stop(None, getattr(self, "agent_state", None))
+                stop_agent = getattr(self.agent, "stop", None)
+                if callable(stop_agent):
+                    stop_agent(None, getattr(self, "agent_state", None))
         except Exception as e:
             logger.warning(f"Error during agent cleanup: {e}")
 
         try:
             if hasattr(self, "user") and self.user is not None:
-                self.user.stop(None, getattr(self, "user_state", None))
+                stop_user = getattr(self.user, "stop", None)
+                if callable(stop_user):
+                    stop_user(None, getattr(self, "user_state", None))
         except Exception as e:
             logger.warning(f"Error during user cleanup: {e}")
 
@@ -935,20 +964,27 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             else []
         )
         for msg in message_history:
+            if isinstance(msg, MultiToolMessage):
+                raise ValueError(
+                    "MultiToolMessage cannot be included in a half-duplex message history"
+                )
             msg.turn_idx = None
 
         # Add timestamps to the message history
         message_history = self._add_timestamps(message_history)
 
         if self.solo_mode:
-            assert self.environment.solo_mode, "Environment should be in solo mode"
-            assert (
+            if not self.environment.solo_mode:
+                raise ValueError("Environment should be in solo mode")
+            if not (
                 isinstance(self.agent, LLMSoloAgent)
                 or self.agent.__class__.__name__ == "GymAgent"
-            ), "Agent must be a LLMSoloAgent or GymAgent in solo mode"
-            assert isinstance(self.user, DummyUser), (
-                "User must be a DummyUser in solo mode"
-            )
+            ):
+                raise ValueError(
+                    "Agent must be a LLMSoloAgent or GymAgent in solo mode"
+                )
+            if not isinstance(self.user, DummyUser):
+                raise ValueError("User must be a DummyUser in solo mode")
 
         # Initialize Environment state
         self._initialize_environment(
@@ -1073,7 +1109,8 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
                 self.to_role = Role.USER
             else:
                 self.agent_state = self.agent.get_init_state()
-                first_message, self.agent_state = self.agent.generate_next_message(
+                generate_next_message = getattr(self.agent, "generate_next_message")
+                first_message, self.agent_state = generate_next_message(
                     None, self.agent_state
                 )
                 self.trajectory = [first_message]
@@ -1116,15 +1153,16 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
         """
         try:
             self._check_communication_error()
-        except AgentError:
-            self.done = True
-            self.termination_reason = TerminationReason.AGENT_ERROR
-        except UserError:
-            self.done = True
-            self.termination_reason = TerminationReason.USER_ERROR
-        except Exception:
-            # Re-raise all other exceptions
-            raise
+        except Exception as exc:
+            if isinstance(exc, AgentError):
+                self.done = True
+                self.termination_reason = TerminationReason.AGENT_ERROR
+            elif isinstance(exc, UserError):
+                self.done = True
+                self.termination_reason = TerminationReason.USER_ERROR
+            else:
+                # Re-raise all other exceptions
+                raise
 
     def _check_communication_error(self) -> None:
         """
@@ -1140,30 +1178,38 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             UserError: When the user violates communication rules
             ValueError: When from_role is invalid
         """
-        if self.from_role == Role.ENV:
+        role = self.from_role
+        if role == Role.ENV:
             return
-        if self.from_role == Role.USER:
+        message = self.message
+        if message is None:
+            raise ValueError("A participant message is required")
+        if role == Role.USER:
+            if not isinstance(message, UserMessage):
+                raise ValueError(f"Invalid user message: {message}")
             exception_type = UserError
-        elif self.from_role == Role.AGENT:
+        elif role == Role.AGENT:
+            if not isinstance(message, AssistantMessage):
+                raise ValueError(f"Invalid agent message: {message}")
             exception_type = AgentError
         else:
-            raise ValueError(f"Invalid from role: {self.from_role}")
+            raise ValueError(f"Invalid from role: {role}")
         # Check if the message is empty
-        if not self.message.is_tool_call() and not self.message.has_text_content():
-            raise exception_type(
-                f"{self.from_role.value} sent an empty message. {self.message}"
-            )
+        if not message.is_tool_call() and not message.has_text_content():
+            raise exception_type(f"{role.value} sent an empty message. {message}")
         # Check if the message has both text content and tool calls
-        if self.message.is_tool_call() and self.message.has_text_content():
+        if message.is_tool_call() and message.has_text_content():
             raise exception_type(
-                f"{self.from_role.value} sent both text content and tool calls. {self.message}"
+                f"{role.value} sent both text content and tool calls. {message}"
             )
 
         # Check if the agent is allowed to send a message to the user
-        if self.from_role == Role.AGENT and self.solo_mode:
-            if self.message.has_text_content() and not self.agent.is_stop(self.message):
+        if role == Role.AGENT and self.solo_mode:
+            if not isinstance(message, AssistantMessage):
+                raise ValueError(f"Invalid agent message: {message}")
+            if message.has_text_content() and not self.agent.is_stop(message):
                 raise exception_type(
-                    f"{self.from_role.value} can only send tool calls. {self.message}"
+                    f"{role.value} can only send tool calls. {message}"
                 )
 
     def _check_termination(self) -> None:
@@ -1211,12 +1257,12 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             TerminationReason.AGENT_ERROR,
         ]
 
-        last_msg_to_agent = None
-        last_msg_to_user = None
+        last_msg_to_agent: Optional[AgentInputMessage] = None
+        last_msg_to_user: Optional[UserInputMessage] = None
         if self.to_role == Role.AGENT:
-            last_msg_to_agent = self.message
+            last_msg_to_agent = _as_agent_input(self.message)
         elif self.to_role == Role.USER:
-            last_msg_to_user = self.message
+            last_msg_to_user = _as_user_input(self.message)
         elif self.to_role == Role.ENV and not has_error:
             raise ValueError(
                 "Environment should not receive the last message. Last message: "
@@ -1232,6 +1278,13 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             logger.warning(f"Error stopping user during finalization: {e}")
 
         # Wrap up the simulation
+        if self._run_start_perf is None:
+            raise RuntimeError("Simulation start time is not initialized")
+        if self._run_start_time is None:
+            raise RuntimeError("Simulation start timestamp is not initialized")
+        if self.termination_reason is None:
+            raise RuntimeError("Simulation termination reason is not set")
+        termination_reason = self.termination_reason
         duration = time.perf_counter() - self._run_start_perf
         messages = self.get_trajectory()
         agent_cost, user_cost = get_cost(messages)
@@ -1240,11 +1293,9 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
 
         # Get speech_environment from user's voice_settings if available
         speech_environment = None
-        if (
-            hasattr(self.user, "voice_settings")
-            and self.user.voice_settings is not None
-        ):
-            speech_environment = self.user.voice_settings.speech_environment
+        voice_settings = getattr(self.user, "voice_settings", None)
+        if voice_settings is not None:
+            speech_environment = voice_settings.speech_environment
 
         simulation_run = SimulationRun(
             id=self.simulation_id,
@@ -1252,7 +1303,7 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             start_time=self._run_start_time,
             end_time=get_now(),
             duration=duration,
-            termination_reason=self.termination_reason.value,
+            termination_reason=termination_reason,
             reward_info=None,
             user_cost=user_cost,
             agent_cost=agent_cost,
@@ -1287,7 +1338,7 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
         # AGENT/ENV -> USER
         if self.from_role in [Role.AGENT, Role.ENV] and self.to_role == Role.USER:
             user_msg, self.user_state = self.user.generate_next_message(
-                self.message, self.user_state
+                _as_user_input(self.message), self.user_state
             )
             user_msg.validate()
             if UserSimulator.is_stop(user_msg):
@@ -1323,7 +1374,7 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             self.from_role == Role.USER or self.from_role == Role.ENV
         ) and self.to_role == Role.AGENT:
             agent_msg, self.agent_state = self.agent.generate_next_message(
-                self.message, self.agent_state
+                _as_agent_input(self.message), self.agent_state
             )
             agent_msg.validate()
             if self.agent.is_stop(agent_msg):
@@ -1348,12 +1399,17 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
                     self.termination_reason = TerminationReason.AGENT_ERROR
         # AGENT/USER -> ENV
         elif self.from_role in [Role.AGENT, Role.USER] and self.to_role == Role.ENV:
-            if not self.message.is_tool_call():
+            message = self.message
+            if not isinstance(message, (AssistantMessage, UserMessage)):
+                raise ValueError("Agent or User should send a participant message")
+            tool_calls = message.tool_calls
+            if tool_calls is None:
                 raise ValueError("Agent or User should send tool call to environment")
-            tool_results = self._execute_tool_calls(self.message.tool_calls)
-            assert len(self.message.tool_calls) == len(tool_results), (
-                "Number of tool calls and tool messages should be the same"
-            )
+            tool_results = self._execute_tool_calls(tool_calls)
+            if len(tool_calls) != len(tool_results):
+                raise RuntimeError(
+                    "Number of tool calls and tool messages should be the same"
+                )
             self.trajectory.extend(tool_results)
             for tr in tool_results:
                 self.environment.on_message(tr)
@@ -1385,10 +1441,14 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
         """
         messages: list[Message] = sorted(
             deepcopy(self.trajectory),
-            key=lambda x: x.timestamp,
+            key=_message_timestamp,
         )
-        trajectory = []
+        trajectory: list[Message] = []
         for i, msg in enumerate(messages):
+            if isinstance(msg, MultiToolMessage):
+                raise ValueError(
+                    "MultiToolMessage cannot be included in a half-duplex trajectory"
+                )
             msg = deepcopy(msg)
             msg.turn_idx = i
             trajectory.append(msg)
@@ -1420,10 +1480,13 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
                         raise ValueError(
                             f"{num_expected_tool_messages} tool messages are missing. Got {msg.role} message."
                         )
-                    num_expected_tool_messages = len(msg.tool_calls)
+                    tool_calls = msg.tool_calls
+                    if tool_calls is None:
+                        raise ValueError("A tool-call message must contain tool calls")
+                    num_expected_tool_messages = len(tool_calls)
                     requestor = msg.role
                 else:
-                    num_expected_tool_messages == 0
+                    num_expected_tool_messages = 0
                     requestor = None
             elif isinstance(msg, ToolMessage):
                 if num_expected_tool_messages == 0 or requestor is None:
@@ -1444,20 +1507,41 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             1 for msg in message_history if isinstance(msg, ToolMessage) and msg.error
         )
 
-    def _add_timestamps(
-        self, message_history: list[Message]
-    ) -> list[tuple[str, Message]]:
+    def _add_timestamps(self, message_history: list[Message]) -> list[Message]:
         """
         Add timestamps to the message history.
         This is used to sort the messages by timestamp.
         """
         time_offset = datetime.now() - timedelta(seconds=len(message_history))
         for i, msg in enumerate(message_history):
+            if isinstance(msg, MultiToolMessage):
+                raise ValueError(
+                    "MultiToolMessage cannot be included in a half-duplex message history"
+                )
             # Use ISO format (use_compact_format=False) to match get_now() default
             msg.timestamp = format_time(
                 time_offset + timedelta(seconds=i), use_compact_format=False
             )
         return message_history
+
+    def _voice_metadata_path(self, audio_path: str) -> Optional[Path]:
+        """Return a metadata path constrained to the configured voice output."""
+        voice_settings = getattr(self.user, "voice_settings", None)
+        output_dir = getattr(voice_settings, "output_dir", None)
+        if output_dir is None:
+            return None
+
+        output_root = Path(output_dir).expanduser().resolve()
+        audio_file = Path(audio_path).expanduser().resolve()
+        try:
+            relative_audio_path = audio_file.relative_to(output_root)
+        except ValueError:
+            logger.warning(
+                "Ignoring voice metadata path outside the configured output directory: {}",
+                audio_path,
+            )
+            return None
+        return output_root / relative_audio_path.parent / "metadata.json"
 
     def _update_voice_metadata(self, message: UserMessage) -> None:
         """
@@ -1465,45 +1549,59 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
         Note: turn_idx is not available until get_trajectory() is called.
         """
         # Check if message has voice UUID (set during synthesis)
-        if (
-            hasattr(message, "_voice_uuid")
-            and message.audio_path
-            and self.simulation_id
-        ):
-            voice_uuid = message._voice_uuid
-            audio_dir = Path(message.audio_path).parent
-            metadata_path = audio_dir / "metadata.json"
+        voice_uuid = getattr(message, "_voice_uuid", None)
+        if voice_uuid is None or not message.audio_path or not self.simulation_id:
+            return
 
-            metadata = {
-                "simulation_id": self.simulation_id,
-                "timestamp": message.timestamp,
-                "turn_uuid": voice_uuid,
-            }
+        metadata_path = self._voice_metadata_path(message.audio_path)
+        if metadata_path is None:
+            return
+        metadata = {
+            "simulation_id": self.simulation_id,
+            "timestamp": message.timestamp,
+            "turn_uuid": voice_uuid,
+        }
 
-            with open(metadata_path, "w") as f:
+        try:
+            with metadata_path.open("w", encoding="utf-8") as f:
                 json.dump(metadata, f, indent=2)
+        except (OSError, TypeError, ValueError) as exc:
+            logger.warning(f"Unable to write voice metadata {metadata_path}: {exc}")
 
     def _finalize_voice_metadata(self, messages: list[Message]) -> None:
         """
         Update all voice metadata files with final turn_idx values.
         """
         for msg in messages:
+            voice_uuid = getattr(msg, "_voice_uuid", None)
             if (
                 isinstance(msg, UserMessage)
-                and hasattr(msg, "_voice_uuid")
+                and voice_uuid is not None
                 and msg.audio_path
             ):
-                audio_dir = Path(msg.audio_path).parent
-                metadata_path = audio_dir / "metadata.json"
+                metadata_path = self._voice_metadata_path(msg.audio_path)
+                if metadata_path is None or not metadata_path.exists():
+                    continue
 
                 if metadata_path.exists():
                     # Read existing metadata
-                    with open(metadata_path, "r") as f:
-                        metadata = json.load(f)
+                    try:
+                        with metadata_path.open("r", encoding="utf-8") as f:
+                            metadata = json.load(f)
+                    except (OSError, TypeError, ValueError) as exc:
+                        logger.warning(
+                            f"Unable to read voice metadata {metadata_path}: {exc}"
+                        )
+                        continue
 
                     # Update with turn_idx
                     metadata["turn_idx"] = msg.turn_idx
 
                     # Write back
-                    with open(metadata_path, "w") as f:
-                        json.dump(metadata, f, indent=2)
+                    try:
+                        with metadata_path.open("w", encoding="utf-8") as f:
+                            json.dump(metadata, f, indent=2)
+                    except (OSError, TypeError, ValueError) as exc:
+                        logger.warning(
+                            f"Unable to update voice metadata {metadata_path}: {exc}"
+                        )
