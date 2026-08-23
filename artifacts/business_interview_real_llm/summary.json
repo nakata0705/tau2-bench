@@ -10,31 +10,49 @@
   "runs": [
     {
       "run_index": 0,
-      "run_id": "run_00_4b1865a9-ebb5-4c9e-b3f4-6c4489aa3ffa",
-      "seed": 9000,
+      "run_id": "run_00_4856cfee-928e-40e3-a32c-861f874ffff4",
+      "seed": 9001,
       "termination_reason": "episode_complete",
       "reward": 0.0,
       "quality_pass": false,
       "structural_pass": false,
-      "glossary_pass": true,
-      "evidence_pass": true,
+      "glossary_complete": false,
+      "evidence_pass": false,
+      "provider_error_count": 0,
+      "tool_error_count": 1,
+      "tool_error_categories": [
+        "invalid_argument"
+      ],
+      "tool_error_counts_by_tool": {
+        "add_node": 1
+      },
+      "agent_calls": 56,
+      "accepted_observations": 22,
       "node_recall": 1.0,
       "node_precision": 1.0,
       "edge_recall": 1.0,
       "edge_precision": 1.0,
-      "concept_correctness": 1.0,
-      "read_correctness": 0.6666666666666666,
-      "write_correctness": 0.8333333333333334,
+      "concept_recall": 0.9047619047619048,
+      "concept_precision": 0.9047619047619048,
+      "concept_correctness": 0.8185941043083901,
+      "activity_correctness": 0.8333333333333334,
+      "actor_correctness": 1.0,
+      "system_correctness": 0.6666666666666666,
+      "read_correctness": 0.3333333333333333,
+      "write_correctness": 0.16666666666666666,
+      "rationale_correctness": 0.16666666666666666,
       "condition_correctness": 1.0,
+      "reconstruction_pass": false,
       "marker_evidence_errors": 0,
       "start_correct": true,
       "end_recall": 1.0,
+      "end_precision": 1.0,
       "fabricated_node_count": 0,
       "fabricated_edge_count": 0,
       "private_id_leakage": [],
       "errors": [],
-      "elapsed_seconds": 927.3,
-      "artifact": "artifacts/business_interview_real_llm/run_00_seed9000.json"
+      "elapsed_seconds": 483.01,
+      "artifact": "artifacts/business_interview_real_llm/run_00_seed9001.json"
     }
   ]
 }

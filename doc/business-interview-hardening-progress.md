@@ -2,14 +2,13 @@
 
 ## Status
 
-Work-in-progress checkpoint on the hardening task. Primary benchmark goal
-unchanged:
+Completed hardening checkpoint. Primary benchmark goal:
 
     AgentConcepts + AgentGraph -> compare directly with TruthConcepts + TruthGraph
 
 Conversational provenance remains diagnostic only; unsupported-but-correct
-reconstruction still counts as correct. Deterministic suite: **113 passed**
-(roundtrips + graph domain), ruff lint clean, all modules compile.
+reconstruction still counts as correct. The deterministic business-interview
+suite passes **113 tests** and ruff is clean.
 
 ## 1. Removed the obsolete concept grounding lifecycle
 
@@ -107,19 +106,80 @@ New module `src/tau2/domains/business_interview/run_metrics.py`:
 `provider_error_count`, `tool_error_count`, `tool_error_categories`,
 `tool_error_counts_by_tool`, `tool_error_counts_by_category`, `agent_calls`
 and `accepted_observations` in each run dump and in summary.json (no longer
-infers success from `errors == []`); it also drops the removed
-`validation_status`/`validation_evidence` from the graph dump and renames
-`glossary_pass` -> `glossary_complete`.
+infers success from `errors == []`). The summary also includes concept
+recall/precision/correctness, every node-property correctness metric,
+`reconstruction_pass`, fabricated counts, and elapsed time. The graph dump
+drops the removed `validation_status`/`validation_evidence` and the old
+`glossary_pass` name is replaced by `glossary_complete`.
 
 Tests added: `test_tool_error_accounting_classifies_and_groups`,
 `test_tool_error_accounting_empty_trajectory`.
 
-## Not yet done
+## Verification
 
-- Full shared-test sweep after the scenario/matcher changes (was in flight).
-- One real-LLM seed run with the hardened tool-error accounting.
-- Handoff doc + final commit message.
+### Deterministic and shared tests
 
-## Commit
+- Business-interview roundtrips + domain tests: **113 passed**.
+- Relevant shared tests (`test_environment.py`,
+  `test_evaluate_trajectories.py`, `test_tasks.py`, `test_results_format.py`,
+  and the non-LLM portions of `test_run.py`): **188 passed**.
+- Eight `test_run.py` tests attempted to invoke the existing OpenAI-backed
+  user simulator and failed before simulation because this environment has no
+  `OPENAI_API_KEY`. These are environment/authentication failures, not
+  assertion failures from this hardening change.
+- Ruff: **clean**. Changed Python modules compile successfully.
 
-[filled at commit time]
+### One real DeepSeek/OpenRouter run
+
+Artifact: `artifacts/business_interview_real_llm/run_00_seed9001.json` and its
+private ledger. Configuration was the script default
+`openrouter/deepseek/deepseek-v4-flash-0731` for both Agent and stakeholder,
+temperature `0.0`, task `quotation_workflow_1`, seed `9001`.
+
+| Metric | Result |
+| --- | --- |
+| termination reason | `episode_complete` |
+| provider/runtime errors | `0` |
+| Agent tool errors | `1` (`invalid_argument`: `add_node` × 1) |
+| tool-error detail | `add_node writes: expected a list of concept refs, ...` |
+| Agent calls | `56` |
+| accepted Observations | `22` |
+| elapsed | `483.01 s` |
+| node recall / precision | `1.0 / 1.0` |
+| edge recall / precision | `1.0 / 1.0` |
+| concept recall / precision / correctness | `0.9048 / 0.9048 / 0.8186` |
+| activity / actor / system correctness | `0.8333 / 1.0 / 0.6667` |
+| read / write / rationale correctness | `0.3333 / 0.1667 / 0.1667` |
+| condition correctness | `1.0` |
+| fabricated nodes / edges | `0 / 0` |
+| reconstruction pass | `false` |
+| structural pass | `false` |
+| quality pass | `false` |
+| glossary complete | `false` |
+| evidence pass | `false` |
+| reward | `0.0` |
+| private-ID leakage | none |
+
+The run is **not benchmark success**: `episode_complete` only describes
+termination, while `quality_pass=false` and `reconstruction_pass=false`.
+The top-level `errors` list was empty, but the trajectory contained one
+failing `ToolMessage`; the artifact correctly reports it rather than claiming
+zero errors. The Agent called only available tools; the failure was a bad
+`add_node` argument, not an obsolete/nonexistent lifecycle tool.
+
+## Remaining evaluator weaknesses
+
+- The content matcher is deterministic and thresholded, but its lexical
+  signatures are not semantic understanding; language-specific paraphrases
+  outside the tested canonical/local-term vocabularies can still be missed.
+- The relevant shared `test_run.py` cases require an OpenAI credential in the
+  execution environment and were not green here.
+- The single live run is exploratory and non-deterministic; it demonstrates
+  accounting correctness, not model quality.
+
+## Final commit
+
+- Branch: `business-interview`
+- Message: `fix: harden truth reconstruction evaluation`
+- The final commit SHA is reported in the handoff and can be obtained with
+  `git log -1 --oneline`.
