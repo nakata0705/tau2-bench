@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import tau2.domains.business_interview.evaluation as evaluation_module
 from scripts.business_interview_evaluation_diagnostics import evaluate_artifact
 from tau2.domains.business_interview.evaluation import EvaluationSpec, evaluate
 from tau2.domains.business_interview.graph import (
@@ -516,7 +517,9 @@ def test_usage_assignment_is_deterministic_and_label_independent():
     } == {"agent_x": "truth_a", "agent_y": "truth_b"}
 
 
-def test_usage_diagnostics_do_not_change_score_fields_or_current_mapping():
+def test_usage_diagnostics_do_not_change_score_fields_or_current_mapping(
+    monkeypatch,
+):
     truth, agent = _single_data_graphs(
         truth_nodes={
             "n": TruthNode(
@@ -530,14 +533,23 @@ def test_usage_diagnostics_do_not_change_score_fields_or_current_mapping():
                 reads=[ConceptRef(concept_id="agent_data")],
             )
         },
-        truth_data={"truth_data": TruthConcept(id="truth_data", kind="data")},
+        truth_data={
+            "truth_data": TruthConcept(
+                id="truth_data", kind="data", canonical_terms=["data"]
+            )
+        },
         agent_data={
             "agent_data": AgentConcept(
-                id="agent_data", kind="data", display_label="unrelated label"
+                id="agent_data", kind="data", display_label="data"
             )
         },
     )
     first = evaluate(InterviewDB(graph=agent), None, EvaluationSpec(), truth=truth)
+    monkeypatch.setattr(
+        evaluation_module,
+        "build_usage_alignment_diagnostics",
+        lambda *args, **kwargs: UsageAlignmentDiagnostics(),
+    )
     second = evaluate(InterviewDB(graph=agent), None, EvaluationSpec(), truth=truth)
     assert first.model_dump(mode="json", exclude={"diagnostics"}) == second.model_dump(
         mode="json", exclude={"diagnostics"}
