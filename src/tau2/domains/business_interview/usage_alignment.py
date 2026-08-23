@@ -132,6 +132,14 @@ class UsageAlignmentDiagnostics(BaseModel):
 
     schema_version: str = "business_interview.usage_alignment.v1"
     method: str = "usage_alignment_conditioned_on_current_node_mapping"
+    interpretation: str = (
+        "Given the current node/edge correspondence, test whether graph usage "
+        "is a better concept-identity signal than labels"
+    )
+    circularity_limitation: str = (
+        "Node/edge correspondence is a scaffold that can itself depend partly "
+        "on concept alignment; this is not a fully label-independent evaluator"
+    )
     assignment_algorithm: str = (
         "per-kind one-to-one maximum-weight assignment; exact non-empty "
         "usage equality has priority, then usage F1"

@@ -5800,6 +5800,7 @@
             "usages_only_in_truth": []
           }
         ],
+        "circularity_limitation": "Node/edge correspondence is a scaffold that can itself depend partly on concept alignment; this is not a fully label-independent evaluator",
         "comparisons": [
           {
             "agent_concept_id": "act_check_customer_info",
@@ -6248,6 +6249,7 @@
         "disagreement_count": 2,
         "edge_mapping_scaffold_used": true,
         "exact_usage_match_count": 14,
+        "interpretation": "Given the current node/edge correspondence, test whether graph usage is a better concept-identity signal than labels",
         "kind_summaries": [
           {
             "agent_concepts_with_usage_count": 6,

@@ -471,6 +471,13 @@ def render_report(traces: list[dict], output_path: Path) -> None:
             "Jaccard, exact equality, set differences, and strict "
             "broader/narrower relations are retained in the JSON traces.",
             "",
+            "Interpretation: given the current node/edge correspondence, this asks "
+            "whether graph usage is a better concept-identity signal than labels. "
+            "Because that correspondence can itself depend partly on concept "
+            "alignment, this does not prove a fully label-independent evaluator; "
+            "the scaffold is a stated circularity limitation, not a production "
+            "matcher change.",
+            "",
             "The one-to-one assignment is per kind and uses only usage F1, with "
             "a deterministic priority bonus for non-empty exact usage equality. "
             "Labels, descriptions, canonical terms, translations, embeddings, "
