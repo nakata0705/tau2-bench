@@ -118,6 +118,11 @@ never evaluator semantics):
   (default 3). The semantic answer fingerprint is provided by the user
   implementation (e.g. the business_interview sidecar's sorted
   `(semantic_id, mode)` tuples) and is NEVER exposed to the Agent.
+- `stalled_tool_operation` — successful Agent write calls form a short
+  target-local repeated cycle (default suffix limit 6; period 1 fires at 4
+  repeats and period 2 at 3 repetitions). Read-only tools are excluded, and
+  target changes, structural graph changes, or a new public response reset the
+  candidate.
 
 Normalization is cosmetic only (whitespace / case / line breaks / trivial
 terminal punctuation) — no semantic similarity, no synonyms, no LLMs.
@@ -126,10 +131,11 @@ still count; two occurrences never terminate (legitimate clarification).
 These fire BEFORE `max_steps`; the existing `max_steps` / `max_errors` /
 `timeout` / `episode_complete` termination is unchanged. Configure via
 `TextRunConfig`/`VoiceRunConfig` fields (`max_repeated_questions`,
-`max_repeated_responses`, `max_repeated_interactions`; `0`/`None` disables a
-guard). When a guard fires, `SimulationRun.info["loop_guard"]` carries
-{type, threshold, count, fingerprint_hash, first_step, trigger_step} — the
-hash, never raw content or private ids.
+`max_repeated_responses`, `max_repeated_interactions`,
+`max_stalled_tool_operations`; `0`/`None` disables a guard). When a guard
+fires, `SimulationRun.info["loop_guard"]` carries safe structural fields such
+as {type, threshold, count, cycle_period, repetition_count, fingerprint_hash(es),
+first_step, trigger_step} — hashes, never raw content or private ids.
 
 ## Architecture
 

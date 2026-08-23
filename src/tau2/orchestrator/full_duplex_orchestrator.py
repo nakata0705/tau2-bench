@@ -77,6 +77,7 @@ class FullDuplexOrchestrator(BaseOrchestrator[StreamingAgentT, StreamingUserT, T
         max_repeated_questions: Optional[int] = 3,
         max_repeated_responses: Optional[int] = 3,
         max_repeated_interactions: Optional[int] = 3,
+        max_stalled_tool_operations: Optional[int] = 6,
     ):
         """
         Initialize FullDuplexOrchestrator.
@@ -99,6 +100,9 @@ class FullDuplexOrchestrator(BaseOrchestrator[StreamingAgentT, StreamingUserT, T
                 repeated stakeholder responses (default 3).
             max_repeated_interactions: Conversation-loop guard threshold for
                 repeated (question, semantic answer) interactions (default 3).
+            max_stalled_tool_operations: Maximum suffix length considered for
+                successful Agent write-operation cycles (default 6;
+                ``0``/``None`` disables the guard).
         """
         super().__init__(
             domain=domain,
@@ -114,6 +118,7 @@ class FullDuplexOrchestrator(BaseOrchestrator[StreamingAgentT, StreamingUserT, T
             max_repeated_questions=max_repeated_questions,
             max_repeated_responses=max_repeated_responses,
             max_repeated_interactions=max_repeated_interactions,
+            max_stalled_tool_operations=max_stalled_tool_operations,
         )
 
         # Set mode to FULL_DUPLEX
@@ -540,8 +545,12 @@ class FullDuplexOrchestrator(BaseOrchestrator[StreamingAgentT, StreamingUserT, T
         """
         Check for full-duplex specific termination conditions.
 
-        Checks max_steps, max_errors, and timeout after each tick.
+        Checks loop guards, max_steps, max_errors, and timeout after each tick.
         """
+        if self.termination_reason is not None:
+            return
+        if self._check_loop_guards():
+            return
         if self.step_count >= self.max_steps:
             self.done = True
             self.termination_reason = TerminationReason.MAX_STEPS

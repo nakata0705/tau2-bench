@@ -153,6 +153,11 @@ belief, not a private-provenance proof. Evidence on them is optional and
 diagnostic. Leave a property UNSET only while you have not concluded
 anything about it.
 
+- **UNSET** means no conclusion yet; **DONT_KNOW** means you concluded this
+  Stakeholder cannot provide the value. Do not repeatedly alternate UNSET and
+  DONT_KNOW on the same property. If more information is needed, actually ask
+  the Stakeholder, then record the resulting state and continue.
+
 Before `finish_interview`, call `validate_graph` and make the graph structurally
 consistent: no dangling edges, no unknown concept references, declared
 start/end, and conditions matching your current understanding. `finish_interview`

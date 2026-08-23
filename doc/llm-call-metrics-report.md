@@ -38,6 +38,7 @@ not a prompt, evaluator, or Truth-reconstruction redesign.
 | provider_refusal    | bounded provider refusal field, when present                         |
 | finish_reason       | provider finish reason                                                |
 | moderation_metadata | bounded moderation/content-filter metadata and key summary           |
+| preceding_public_prompt | bounded opposite-side public message, only for explicit refusals |
 
 - `latency_seconds` = wall-clock time around the provider `completion()` call,
   including the time spent before a failure.
@@ -71,6 +72,13 @@ only from the complete generation-attempt records. The optional
 `public_trajectory_refusal_count` is secondary and is never added to the
 call-level count, so an accepted public message cannot double-count its own
 underlying generation and internal failed/retried calls remain visible.
+
+For an explicit refusal only, `preceding_public_prompt` contains the latest
+public opposite-side participant message, bounded to 500 characters. It is
+selected by participant role rather than by taking the last raw prompt, because
+Stakeholder requests append private plan/realization contracts. System
+messages, hidden knowledge, contracts, sidecars, tool messages, and private
+IDs are never selected; ordinary non-refusal rows store `null`.
 
 ## Call-trigger classification (Agent side)
 
@@ -136,7 +144,10 @@ Exact token totals aggregate ONLY over calls with exact usage.
 - slowest-calls ordering; call/attempt indexes monotonic;
 - an internal Stakeholder refusal followed by a successful retry remains one
   call-level refusal while the accepted public uncertainty response has zero
-  public-trajectory refusals.
+  public-trajectory refusals;
+- explicit refusals retain only bounded public opposite-side context; private
+  system/contract text is absent, Agent context is captured, and normal
+  uncertainty calls retain a null context.
 
 `tests/test_business_interview_roundtrips.py` (deterministic, real
 business_interview env, no LLM):

@@ -451,6 +451,9 @@ def build_text_orchestrator(
         max_repeated_questions=getattr(config, "max_repeated_questions", None),
         max_repeated_responses=getattr(config, "max_repeated_responses", None),
         max_repeated_interactions=getattr(config, "max_repeated_interactions", None),
+        max_stalled_tool_operations=getattr(
+            config, "max_stalled_tool_operations", None
+        ),
     )
 
     logger.debug(
@@ -562,6 +565,9 @@ def build_voice_orchestrator(
         simulation_id=simulation_id,
         tick_duration_seconds=config.audio_native_config.tick_duration_seconds,
         timeout=config.timeout,
+        max_stalled_tool_operations=getattr(
+            config, "max_stalled_tool_operations", None
+        ),
     )
 
     logger.debug(

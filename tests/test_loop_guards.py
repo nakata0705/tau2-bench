@@ -14,7 +14,7 @@ from typing import Optional
 
 import pytest
 
-from tau2.data_model.message import AssistantMessage, UserMessage
+from tau2.data_model.message import AssistantMessage, ToolCall, ToolMessage, UserMessage
 from tau2.data_model.simulation import TerminationReason
 from tau2.orchestrator.orchestrator import Orchestrator
 from tau2.utils.normalization import normalize_text
@@ -107,6 +107,90 @@ class _SigUser(_StubUser):
 
     def __init__(self, contents: list[str], signatures: list[Optional[str]]):
         super().__init__(contents, signatures)
+
+
+class _ToolScriptAgent(_StubAgent):
+    """Emit deterministic tool calls or public text from a scripted sequence."""
+
+    def __init__(self, script):
+        super().__init__([])
+        self._script = list(script)
+        self._tool_index = 0
+
+    def generate_next_message(self, message, state):
+        if self._script:
+            item = self._script.pop(0)
+        else:
+            self._fill += 1
+            item = f"filler_agent_{self._fill}"
+        if isinstance(item, tuple):
+            name, arguments = item
+            self._tool_index += 1
+            return (
+                AssistantMessage(
+                    role="assistant",
+                    content="",
+                    tool_calls=[
+                        ToolCall(
+                            id=f"tool_{self._tool_index}",
+                            name=name,
+                            arguments=arguments,
+                            requestor="assistant",
+                        )
+                    ],
+                    cost=0.0,
+                ),
+                state,
+            )
+        return AssistantMessage(role="assistant", content=item, cost=0.0), state
+
+
+class _SuccessfulToolEnvironment:
+    """Minimal environment that accepts every scripted tool call."""
+
+    def get_response(self, tool_call):
+        return ToolMessage(
+            id=tool_call.id or "tool_result",
+            role="tool",
+            content="ok",
+            requestor="assistant",
+        )
+
+    def on_message(self, message):
+        pass
+
+    def sync_tools(self):
+        pass
+
+    def get_policy(self):
+        return ""
+
+    def get_domain_name(self):
+        return "mock"
+
+    def get_info(self, include_tool_info=False):
+        return {}
+
+    def set_state(self, **kwargs):
+        pass
+
+    def episode_complete(self):
+        return False
+
+
+def _tool_orchestrator(task, script, user_contents=None, max_stalled=6):
+    return Orchestrator(
+        domain="mock",
+        agent=_ToolScriptAgent(script),  # type: ignore[arg-type]
+        user=_StubUser(user_contents or ["observation"]),  # type: ignore[arg-type]
+        environment=_SuccessfulToolEnvironment(),  # type: ignore[arg-type]
+        task=task,
+        max_steps=40,
+        max_repeated_questions=0,
+        max_repeated_responses=0,
+        max_repeated_interactions=0,
+        max_stalled_tool_operations=max_stalled,
+    )
 
 
 def _run_until_done(orchestrator: Orchestrator, max_loop: int = 60) -> Orchestrator:
@@ -314,6 +398,116 @@ def test_third_identical_user_response_terminates(env_and_task):
 # ---------------------------------------------------------------------------
 # Tool-only messages do not count
 # ---------------------------------------------------------------------------
+
+
+def test_repeated_successful_write_fires_stalled_tool_operation(env_and_task):
+    _, task = env_and_task
+    write = ("update_node", {"node_id": "node_a", "actor": "actor_a"})
+    orch = _tool_orchestrator(task, [write] * 4)
+
+    _run_until_done(orch)
+
+    assert orch.termination_reason == TerminationReason.STALLED_TOOL_OPERATION
+    assert orch.loop_guard_diagnostics is not None
+    assert orch.loop_guard_diagnostics["type"] == "stalled_tool_operation"
+    assert orch.loop_guard_diagnostics["cycle_period"] == 1
+    assert orch.loop_guard_diagnostics["repetition_count"] == 4
+    assert len(orch.loop_guard_diagnostics["fingerprint_hashes"]) == 4
+
+
+def test_short_write_cycle_fires_stalled_tool_operation(env_and_task):
+    _, task = env_and_task
+    first = ("update_node", {"node_id": "node_a", "necessity_rationale": "unset"})
+    second = (
+        "update_node",
+        {"node_id": "node_a", "necessity_rationale": "dont_know"},
+    )
+    orch = _tool_orchestrator(task, [first, second] * 3)
+
+    _run_until_done(orch)
+
+    assert orch.termination_reason == TerminationReason.STALLED_TOOL_OPERATION
+    assert orch.loop_guard_diagnostics is not None
+    assert orch.loop_guard_diagnostics["cycle_period"] == 2
+    assert orch.loop_guard_diagnostics["repetition_count"] == 3
+
+
+def test_unset_dont_know_rationale_oscillation_is_detected(env_and_task):
+    _, task = env_and_task
+    unset = ("update_node", {"node_id": "node_a", "unset": ["necessity_rationale"]})
+    dont_know = (
+        "record_dont_know",
+        {"node_id": "node_a", "properties": ["necessity_rationale"]},
+    )
+    orch = _tool_orchestrator(task, [unset, dont_know] * 3)
+
+    _run_until_done(orch)
+
+    assert orch.termination_reason == TerminationReason.STALLED_TOOL_OPERATION
+    assert orch.loop_guard_diagnostics is not None
+    assert orch.loop_guard_diagnostics["cycle_period"] == 2
+
+
+def test_new_public_response_resets_tool_operation_candidate(env_and_task):
+    _, task = env_and_task
+    write = ("update_node", {"node_id": "node_a", "actor": "actor_a"})
+    orch = _tool_orchestrator(
+        task,
+        [write, write, write, "Please answer a new question.", write, write],
+        user_contents=["first observation", "new accepted observation"],
+    )
+
+    _run_until_done(orch, max_loop=16)
+
+    assert orch.termination_reason != TerminationReason.STALLED_TOOL_OPERATION
+    assert orch.loop_guard_diagnostics is None
+
+
+def test_different_write_targets_do_not_form_a_cycle(env_and_task):
+    _, task = env_and_task
+    script = [
+        ("update_node", {"node_id": "node_a", "actor": "actor_a"}),
+        ("update_node", {"node_id": "node_b", "actor": "actor_b"}),
+        ("update_node", {"node_id": "node_a", "system": "system_a"}),
+        ("update_node", {"node_id": "node_b", "system": "system_b"}),
+    ] * 2
+    orch = _tool_orchestrator(task, script)
+
+    _run_until_done(orch, max_loop=20)
+
+    assert orch.termination_reason != TerminationReason.STALLED_TOOL_OPERATION
+    assert orch.loop_guard_diagnostics is None
+
+
+def test_normal_graph_construction_does_not_stall(env_and_task):
+    _, task = env_and_task
+    script = [
+        ("add_node", {"node_id": "node_a", "activity": "activity_a"}),
+        ("add_node", {"node_id": "node_b", "activity": "activity_b"}),
+        (
+            "add_edge",
+            {"edge_id": "edge_ab", "from_node": "node_a", "to_node": "node_b"},
+        ),
+        ("update_node", {"node_id": "node_a", "actor": "actor_a"}),
+        ("update_node", {"node_id": "node_b", "actor": "actor_b"}),
+    ]
+    orch = _tool_orchestrator(task, script)
+
+    _run_until_done(orch, max_loop=16)
+
+    assert orch.termination_reason != TerminationReason.STALLED_TOOL_OPERATION
+    assert orch.loop_guard_diagnostics is None
+
+
+def test_read_only_tools_do_not_stall(env_and_task):
+    _, task = env_and_task
+    script = [("list_concepts", {}), ("validate_graph", {})] * 5
+    orch = _tool_orchestrator(task, script)
+
+    _run_until_done(orch, max_loop=24)
+
+    assert orch.termination_reason != TerminationReason.STALLED_TOOL_OPERATION
+    assert orch.loop_guard_diagnostics is None
 
 
 def test_tool_only_agent_messages_do_not_count(env_and_task):

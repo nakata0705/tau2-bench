@@ -5,7 +5,9 @@ attempt. Rows contain context-size / latency numbers plus the minimum bounded
 response diagnostics needed for benchmark analysis: call name, provider,
 status, finish reason, moderation markers, retry metadata, and explicit model
 refusal evidence. Raw prompts, request bodies, headers, secrets, private
-StakeholderKnowledge, and private semantic IDs are never persisted.
+StakeholderKnowledge, and private semantic IDs are never persisted. Explicit
+refusal rows may retain one bounded public opposite-side excerpt; private
+system/contract content is never selected.
 
 The refusal detector lives here so the call-level instrumentation and the
 legacy public-trajectory compatibility diagnostic use exactly the same narrow
@@ -33,6 +35,7 @@ __all__ = [
     "detect_model_refusal",
     "provider_refusal_text",
     "provider_metadata",
+    "preceding_public_prompt",
     "short_text",
 ]
 
@@ -76,6 +79,28 @@ def short_text(value: Any, limit: int = _REFUSAL_EXCERPT_LIMIT) -> Optional[str]
     if len(text) <= limit:
         return text
     return text[:limit] + "…"
+
+
+def preceding_public_prompt(messages: Any, side: Optional[str]) -> Optional[str]:
+    """Return only the latest public opposite-side message, bounded.
+
+    Stakeholder requests may contain appended private contracts, so this
+    helper deliberately selects by public participant role instead of taking
+    the last raw prompt message. It never returns system/tool messages.
+    """
+    expected_role = {
+        "agent": "user",
+        "stakeholder": "assistant",
+    }.get(str(side or "").lower())
+    if expected_role is None:
+        return None
+    for message in reversed(messages or []):
+        if str(getattr(message, "role", "")).lower() != expected_role:
+            continue
+        content = getattr(message, "content", None)
+        if content is not None and str(content).strip():
+            return short_text(content)
+    return None
 
 
 def _choice_and_message(raw_data: Any) -> tuple[dict, dict]:
@@ -249,6 +274,8 @@ class LLMCallRecord:
     provider_refusal: Optional[str] = None
     finish_reason: Optional[str] = None
     moderation_metadata: Optional[dict] = None
+    # Bounded public opposite-side context; populated only for refusals.
+    preceding_public_prompt: Optional[str] = None
 
 
 # Call-trigger classification for the Agent side (see requirement 3): which kind
@@ -435,6 +462,7 @@ def record_to_dict(record: LLMCallRecord) -> dict:
         "provider_refusal": record.provider_refusal,
         "finish_reason": record.finish_reason,
         "moderation_metadata": record.moderation_metadata,
+        "preceding_public_prompt": record.preceding_public_prompt,
     }
 
 

@@ -19,7 +19,7 @@ import json
 
 import pytest
 
-from tau2.data_model.message import SystemMessage, UserMessage
+from tau2.data_model.message import AssistantMessage, SystemMessage, UserMessage
 from tau2.environment.tool import Tool, as_tool
 from tau2.utils.llm_call_metrics import (
     LLMCallMetricsCollector,
@@ -227,6 +227,60 @@ def test_call_level_explicit_text_refusal_is_recorded(monkeypatch, collector):
     assert len(model_refusal_records(collector.records())) == 1
 
 
+def test_refusal_context_is_public_bounded_and_refusal_only(monkeypatch, collector):
+    public_question = "Which step should happen before the quotation?" * 30
+    private_system = "PRIVATE_STAKEHOLDER_KNOWLEDGE_DO_NOT_PERSIST"
+    private_contract = "PRIVATE_SEMANTIC_PLAN_CONTRACT_DO_NOT_PERSIST"
+    _monkeypatch_completion(
+        monkeypatch,
+        _FakeResponse(content="I can't assist with that request."),
+    )
+    generate(
+        "fake-model",
+        [
+            SystemMessage(role="system", content=private_system),
+            AssistantMessage(role="assistant", content=public_question),
+            UserMessage(role="user", content=private_contract),
+        ],
+        side="stakeholder",
+        call_name="stakeholder_semantic_plan",
+    )
+    stakeholder_record = collector.records()[0]
+    assert stakeholder_record.preceding_public_prompt is not None
+    assert len(stakeholder_record.preceding_public_prompt) <= 501
+    assert stakeholder_record.preceding_public_prompt.startswith(
+        "Which step should happen"
+    )
+    stakeholder_blob = json.dumps(record_to_dict(stakeholder_record))
+    assert private_system not in stakeholder_blob
+    assert private_contract not in stakeholder_blob
+
+    generate(
+        "fake-model",
+        [
+            SystemMessage(role="system", content=private_system),
+            UserMessage(role="user", content="Please explain the approval step."),
+        ],
+        side="agent",
+        call_name="agent_response",
+    )
+    agent_record = collector.records()[1]
+    assert agent_record.preceding_public_prompt == "Please explain the approval step."
+
+    _monkeypatch_completion(
+        monkeypatch,
+        _FakeResponse(content="I'm sorry, but I don't know."),
+    )
+    generate(
+        "fake-model",
+        [AssistantMessage(role="assistant", content="Public question")],
+        side="stakeholder",
+        call_name="stakeholder_realization",
+    )
+    assert collector.records()[2].explicit_refusal is False
+    assert collector.records()[2].preceding_public_prompt is None
+
+
 def test_provider_refusal_field_is_recorded_with_filter_metadata(
     monkeypatch, collector
 ):
@@ -280,7 +334,11 @@ def test_internal_stakeholder_refusal_retry_is_kept_once_and_public_uncertainty_
     monkeypatch.setattr(
         "tau2.utils.llm_utils.completion", lambda **kwargs: next(responses)
     )
-    message = [UserMessage(role="user", content="Tell me about the process.")]
+    message = [
+        AssistantMessage(
+            role="assistant", content="What happens after the quotation request?"
+        )
+    ]
     # These call names mirror the stakeholder's private plan -> realization
     # phases; the first plan response is rejected and retried before a public
     # uncertainty answer is accepted.
@@ -306,6 +364,10 @@ def test_internal_stakeholder_refusal_retry_is_kept_once_and_public_uncertainty_
     records = collector.records()
     assert len(records) == 3
     assert records[0].explicit_refusal is True
+    assert (
+        records[0].preceding_public_prompt
+        == "What happens after the quotation request?"
+    )
     assert records[1].explicit_refusal is False
     assert records[1].retry_attempt is True
     assert records[0].attempt_index == 0

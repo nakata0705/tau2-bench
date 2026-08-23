@@ -119,3 +119,30 @@ Pathological repeated-response sessions (simulator failures) are caught by
 the deterministic tests above at threshold 3; the third identical public
 response is recorded in the trajectory and the run terminates before the
 next agent generation, well before max_steps.
+
+## Follow-up: stalled successful write operations
+
+The runtime also guards against a different failure mode: successful Agent
+write calls that repeatedly toggle one logical target without asking the
+Stakeholder. `max_stalled_tool_operations` defaults to 6 and may be set to
+`0`/`None` to disable it. Read-oriented tools (`list_*`, `validate_*`, `get_*`,
+and unknown non-mutation helpers) are excluded.
+
+Each successful Agent mutation gets a transient canonical fingerprint from its
+public tool name and arguments plus a logical target key. A period-1 suffix
+fires after four identical writes; a period-2 suffix fires after three complete
+repetitions (six writes). Target/property changes reset the candidate, as do
+structural add/create/remove/merge/set operations and public Stakeholder
+responses. Diagnostics retain only hashes:
+`type`, `reason`, `threshold`, `count`, `cycle_period`, `repetition_count`,
+`first_step`, `trigger_step`, and `fingerprint_hashes`. No Truth, hidden
+knowledge, raw arguments, or private IDs are persisted.
+
+The new `stalled_tool_operation` reason is checked before `max_steps` and is
+stored in `SimulationRun.info["loop_guard"]`. The business-interview policy
+also states that UNSET is no conclusion, DONT_KNOW is an explicit inability to
+provide a value, and the Agent should ask for more information rather than
+oscillate between them. `tests/test_loop_guards.py` now contains 23
+fully deterministic tests, including repeated writes, period-2 rationale
+oscillation, response reset, target changes, normal graph construction, and
+read-only calls.

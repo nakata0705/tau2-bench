@@ -380,6 +380,16 @@ class BaseRunConfig(BaseModel):
             default=3,
         ),
     ]
+    max_stalled_tool_operations: Annotated[
+        Optional[int],
+        Field(
+            description="Tool-operation loop guard: maximum suffix length "
+            "considered for successful Agent write-operation cycles (default "
+            "6). Period-1 cycles fire after four identical writes; period-2 "
+            "cycles fire after three repetitions. 0 or None disables the guard.",
+            default=6,
+        ),
+    ]
     save_to: Annotated[
         Optional[str],
         Field(
@@ -1303,6 +1313,7 @@ class TerminationReason(str, Enum):
     REPEATED_QUESTION = "repeated_question"  # same normalized agent question 3x
     REPEATED_RESPONSE = "repeated_response"  # same normalized stakeholder response 3x
     STALLED_INTERACTION = "stalled_interaction"  # same (question, semantic answer) 3x
+    STALLED_TOOL_OPERATION = "stalled_tool_operation"  # repeated write cycle
 
 
 class SimulationRun(BaseModel):

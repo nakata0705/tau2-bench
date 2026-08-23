@@ -290,6 +290,7 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
         max_repeated_questions=3,
         max_repeated_responses=3,
         max_repeated_interactions=3,
+        max_stalled_tool_operations=6,
         save_to=None,
     )
 
@@ -599,6 +600,7 @@ def main() -> int:
                 "run_id": dump["run_id"],
                 "seed": seed,
                 "termination_reason": dump["termination_reason"],
+                "loop_guard": dump.get("loop_guard"),
                 "episode_complete": dump.get("episode_complete"),
                 "reward": (dump["reward_info"] or {}).get("reward"),
                 "quality_pass": metrics.get("quality_pass"),

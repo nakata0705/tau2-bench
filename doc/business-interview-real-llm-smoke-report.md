@@ -59,7 +59,7 @@ Nothing in the script is wired into tests, `Makefile` targets, or CI.
 inferred DAG.
 
 | run | seed | termination | reward | quality_pass | structural | necessity | evidence | node R/P | edge R/P | fab nodes/edges |
-|-----|------|-------------|--------|--------------|-----------|-----------|----------|----------|----------|-----------------|
+| ----- | ------ | ------------- | -------- | -------------- | ----------- | ----------- | ---------- | ---------- | ---------- | ----------------- |
 | 00 | 1000 | user_stop | 0.0 | ❌ | ❌ | ❌ | ✅ | 1.0 / 1.0 | 0.50 / 0.50 | 0 / 3 |
 | 01 | 1001 | too_many_errors | 0.0 | ❌ | ❌ | ❌ | ✅ | 1.0 / 1.0 | 0.50 / 0.43 | 0 / 4 |
 | 02 | 1002 | user_stop | 0.0 | ❌ | ❌ | ❌ | ✅ | 1.0 / 1.0 | 0.00 / 0.00 | 0 / 5 |
@@ -72,6 +72,7 @@ system_correctness 0.30, read_correctness 0.30, write_correctness 0.14,
 necessity_correctness 0.62, primitive_correctness 0.52.
 
 ### Note on the tau2 `reward` metric
+
 All runs report `reward = 0.0`. This is the **standard tau2 reward pipeline**
 (`reward_basis = ['ENV_ASSERTION']`, no env assertions for this domain), which
 is **not** a meaningful signal for `business_interview`. The meaningful signal
@@ -103,7 +104,7 @@ accounting** (me, **rationale unknown**). Edges: r→cc→cq; cq→ap (over 1M),
 Per-run discovery:
 
 | run | approval branch | approval rationale | month-end node | month-end rationale kept unknown | fabricated node(s) |
-|-----|-----------------|--------------------|----------------|-----------------------------------|--------------------|
+| ----- | ----------------- | -------------------- | ---------------- | ----------------------------------- | -------------------- |
 | 00 | ✅ discovered | ✅ credit-risk | ❌ missed | n/a | none (but see §7 mapping) |
 | 01 | ✅ discovered | ✅ credit-risk | ❌ missed | n/a | none |
 | 02 | ❌ missed | — | ❌ missed | n/a | `resolve_missing_info` |
@@ -111,6 +112,7 @@ Per-run discovery:
 | 04 | ❌ missed (stakeholder denied) | — | ❌ missed | n/a | `resolve_customer_info` |
 
 Key results:
+
 - **Approval branch** was discovered in 3/5 runs (00, 01, 03) and the credit-risk
   rationale was correct in all three. It was missed in runs 02 and 04. In run 04
   the agent explicitly asked "any other steps or branches between creating and
@@ -165,6 +167,7 @@ Key results:
 ## 8. Interview Agent question strategy
 
 Strengths (observed across runs):
+
 - Started with a broad "what triggers the process / intended outcome" question,
   then drilled into each step, actors, systems, and necessity.
 - Consistently probed for **conditions / exceptions** ("are there situations where
@@ -175,6 +178,7 @@ Strengths (observed across runs):
   the month-end node and correctly keeping its rationale unknown.
 
 Weaknesses:
+
 - **Over-asks necessity on every node**, flooding the DAG with necessity
   rationales the Ground Truth doesn't require (drives `fabricated_necessity`).
 - **Over-infers exception branches** from offhand stakeholder remarks (runs 02,
@@ -283,7 +287,7 @@ refusals without explicit refusal evidence.
 Artifact: `artifacts/business_interview_real_llm/run_00_seed9003.json`
 
 | metric | result |
-|---|---:|
+| --- | ---: |
 | termination_reason | `max_steps` |
 | provider_error_count / call-level provider errors | `0 / 0` |
 | tool_error_count / categories | `0 / []` |
@@ -303,3 +307,31 @@ this run; the final graph nevertheless had no fabricated edge (the refined
 edges were built without an obsolete shortcut). The run exhausted `max_steps`
 while repeatedly revisiting a rationale update, so the failed reconstruction
 is reported as-is.
+
+### Fresh quotation run (seed 9004)
+
+Artifact: `artifacts/business_interview_real_llm/run_00_seed9004.json`
+
+| metric | result |
+| --- | ---: |
+| termination_reason | `episode_complete` |
+| loop_guard | `null` |
+| provider_error_count / call-level provider errors | `0 / 0` |
+| tool_error_count / categories | `0 / []` |
+| Agent generation attempts | `34` |
+| Stakeholder generation attempts | `26` |
+| accepted Observations | `14` |
+| model_refusal_count (call-level) | `0` |
+| refusal public context | none |
+| node recall / precision | `1.0 / 1.0` |
+| edge recall / precision | `1.0 / 1.0` |
+| concept recall / precision / correctness | `0.9524 / 1.0 / 0.9524` |
+| activity / actor / system correctness | `1.0 / 1.0 / 0.5` |
+| reads / writes / rationale / condition correctness | `0.3333 / 0.3333 / 0.1667 / 1.0` |
+| fabricated nodes / edges | `0 / 0` |
+| reconstruction / structural / quality pass | `false / false / false` |
+| elapsed | `445.90s` |
+
+The guard did not fire because this run did not exhibit a repeated target-local
+write cycle. Tool calls included `record_dont_know` on six distinct nodes and
+no `remove_edge` call; the run completed normally via `finish_interview`.

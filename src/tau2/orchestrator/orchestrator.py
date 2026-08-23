@@ -40,6 +40,27 @@ from tau2.utils.normalization import normalize_text
 from tau2.utils.utils import format_time, get_now
 
 _OBSERVATION_MARKER_RE = re.compile(r"^\s*\[Observation\s+obs_\d+\]\s*(.*)$", re.S)
+_MUTATING_TOOL_PREFIXES = (
+    "add_",
+    "create_",
+    "delete_",
+    "finish_",
+    "mark_",
+    "merge_",
+    "record_",
+    "remove_",
+    "reset_",
+    "set_",
+    "update_",
+)
+_STRUCTURAL_TOOL_PREFIXES = (
+    "add_",
+    "create_",
+    "delete_",
+    "merge_",
+    "remove_",
+    "set_",
+)
 
 
 def _strip_observation_marker(text: Optional[str]) -> Optional[str]:
@@ -119,6 +140,7 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
         max_repeated_questions: Optional[int] = 3,
         max_repeated_responses: Optional[int] = 3,
         max_repeated_interactions: Optional[int] = 3,
+        max_stalled_tool_operations: Optional[int] = 6,
     ):
         """
         Initialize the base orchestrator.
@@ -150,6 +172,11 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
                 fingerprint is provided by the user implementation when
                 available (e.g. the business_interview sidecar) and is never
                 exposed to the Agent.
+            max_stalled_tool_operations: Maximum suffix length considered for
+                a successful Agent write-operation cycle (default 6;
+                ``0``/``None`` disables this guard). Period-1 cycles fire
+                after four identical writes; period-2 cycles fire after three
+                repetitions.
         """
         self.domain = domain
         self.agent: BaseAgentT = agent
@@ -180,6 +207,7 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
         self.max_repeated_questions = max_repeated_questions
         self.max_repeated_responses = max_repeated_responses
         self.max_repeated_interactions = max_repeated_interactions
+        self.max_stalled_tool_operations = max_stalled_tool_operations
         self._question_counts: dict[str, int] = {}
         self._response_counts: dict[str, int] = {}
         self._interaction_counts: dict[tuple[str, str], int] = {}
@@ -192,6 +220,9 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
         self._question_trigger_step: dict[str, int] = {}
         self._response_trigger_step: dict[str, int] = {}
         self._interaction_trigger_step: dict[tuple[str, str], int] = {}
+        # Successful Agent write operations are tracked only as transient
+        # structural fingerprints; raw arguments never enter diagnostics.
+        self._tool_operation_history: list[tuple[str, str, int]] = []
         # populated when a loop guard fires; attached to SimulationRun.info
         self.loop_guard_diagnostics: Optional[dict] = None
 
@@ -343,6 +374,7 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
         collapse to one counter.
         """
         text = _strip_observation_marker(text)
+        self._reset_tool_operation_history()
         norm = normalize_text(text or "")
         if not norm:
             return
@@ -371,6 +403,165 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
         import hashlib
 
         return hashlib.sha256(repr(key).encode("utf-8")).hexdigest()[:16]
+
+    @staticmethod
+    def _is_mutating_tool_operation(tool_name: str) -> bool:
+        """Return whether a tool name conventionally represents a write.
+
+        The guard intentionally uses only the public tool name. Read-oriented
+        tools such as ``list_*`` / ``validate_*`` and arbitrary test helpers do
+        not enter the state-oscillation history.
+        """
+        return str(tool_name).startswith(_MUTATING_TOOL_PREFIXES)
+
+    @staticmethod
+    def _tool_operation_fingerprint(tool_call: ToolCall) -> str:
+        """Canonical transient fingerprint for one tool call."""
+        arguments = tool_call.arguments if isinstance(tool_call.arguments, dict) else {}
+        return json.dumps(
+            {"name": tool_call.name, "arguments": arguments},
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+
+    @staticmethod
+    def _tool_operation_target(tool_call: ToolCall) -> str:
+        """Canonical logical target used to reset on real target changes.
+
+        Marker operations and ``update_node``/``update_edge`` share a target
+        family, so changing the same node/property from UNSET to DONT_KNOW is
+        recognized as an oscillation even when the tool-call spelling differs.
+        Values remain in the full operation fingerprint, not this target key.
+        """
+        name = str(tool_call.name)
+        arguments = tool_call.arguments if isinstance(tool_call.arguments, dict) else {}
+
+        if name in {"update_node", "record_dont_know", "record_absent"}:
+            properties = {
+                key
+                for key in (
+                    "activity",
+                    "actor",
+                    "system",
+                    "reads",
+                    "writes",
+                    "necessity_rationale",
+                )
+                if key in arguments
+            }
+            for key in ("properties", "unset"):
+                value = arguments.get(key)
+                if isinstance(value, list):
+                    properties.update(str(item) for item in value)
+            return json.dumps(
+                ["node_property", arguments.get("node_id"), sorted(properties)],
+                sort_keys=True,
+                default=str,
+            )
+
+        if name in {
+            "update_edge",
+            "record_edge_condition_dont_know",
+            "record_edge_condition_absent",
+        }:
+            return json.dumps(
+                ["edge_property", arguments.get("edge_id"), "condition"],
+                sort_keys=True,
+                default=str,
+            )
+
+        target_fields = {
+            key: arguments[key]
+            for key in (
+                "node_id",
+                "edge_id",
+                "concept_id",
+                "from_node",
+                "to_node",
+            )
+            if key in arguments
+        }
+        operation_fields = sorted(
+            key for key in arguments if key not in {"evidence", "summary"}
+        )
+        return json.dumps(
+            [name, target_fields, operation_fields],
+            sort_keys=True,
+            default=str,
+        )
+
+    def _reset_tool_operation_history(self) -> None:
+        """Forget a candidate cycle after a public response or real progress."""
+        self._tool_operation_history.clear()
+
+    def _record_tool_operation(self, tool_call: ToolCall, step_index: int) -> None:
+        """Record a successful Agent write and fire on a short target-local cycle."""
+        if not self._guard_enabled(self.max_stalled_tool_operations):
+            return
+        if getattr(tool_call, "requestor", "assistant") != "assistant":
+            return
+        if not self._is_mutating_tool_operation(tool_call.name):
+            return
+
+        if (
+            str(tool_call.name).startswith(_STRUCTURAL_TOOL_PREFIXES)
+            or str(tool_call.name) == "finish_interview"
+        ):
+            self._reset_tool_operation_history()
+            return
+
+        fingerprint = self._tool_operation_fingerprint(tool_call)
+        target = self._tool_operation_target(tool_call)
+        if (
+            self._tool_operation_history
+            and self._tool_operation_history[-1][1] != target
+        ):
+            self._reset_tool_operation_history()
+        self._tool_operation_history.append((fingerprint, target, step_index))
+
+        configured_limit = int(self.max_stalled_tool_operations or 0)
+        # Period 1 allows four identical writes; short period-2 cycles require
+        # three complete repetitions. A configured limit caps the suffix size.
+        for period in (1, 2, 3):
+            repetitions = 4 if period == 1 else 3
+            required = period * repetitions
+            if (
+                required > configured_limit
+                or len(self._tool_operation_history) < required
+            ):
+                continue
+            candidate = self._tool_operation_history[-required:]
+            pattern = candidate[:period]
+            if not all(
+                item[1] == pattern[0][1] and item[0] == pattern[index % period][0]
+                for index, item in enumerate(candidate)
+            ):
+                continue
+            self.done = True
+            self.termination_reason = TerminationReason.STALLED_TOOL_OPERATION
+            self.loop_guard_diagnostics = {
+                "type": "stalled_tool_operation",
+                "reason": TerminationReason.STALLED_TOOL_OPERATION.value,
+                "threshold": configured_limit,
+                "count": required,
+                "cycle_period": period,
+                "repetition_count": repetitions,
+                "first_step": candidate[0][2],
+                "trigger_step": candidate[-1][2],
+                "fingerprint_hashes": [
+                    self._fingerprint_hash(item[0]) for item in candidate
+                ],
+            }
+            logger.warning(
+                "Tool-operation guard fired after {} operations "
+                "(period={}, repetitions={}) at step {}; terminating early",
+                required,
+                period,
+                repetitions,
+                step_index,
+            )
+            return
 
     def _check_loop_guards(self) -> bool:
         """Check repetition counters; if any threshold is exceeded, terminate
@@ -543,6 +734,8 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
             tool_result = self.environment.get_response(tool_call)
             if tool_result.error:
                 self.num_errors += 1
+            else:
+                self._record_tool_operation(tool_call, self.step_count)
             tool_results.append(tool_result)
         return tool_results
 
@@ -626,6 +819,7 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
         max_repeated_questions: Optional[int] = 3,
         max_repeated_responses: Optional[int] = 3,
         max_repeated_interactions: Optional[int] = 3,
+        max_stalled_tool_operations: Optional[int] = 6,
     ):
         """
         Initialize the Orchestrator for managing simulation between Agent, User, and Environment.
@@ -662,6 +856,9 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
                 interaction may appear before termination with
                 ``TerminationReason.STALLED_INTERACTION`` (default 3;
                 ``0``/``None`` disables the guard).
+            max_stalled_tool_operations: Maximum suffix length considered for
+                successful Agent write-operation cycles (default 6;
+                ``0``/``None`` disables the guard).
         """
         # Initialize base class
         super().__init__(
@@ -678,6 +875,7 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             max_repeated_questions=max_repeated_questions,
             max_repeated_responses=max_repeated_responses,
             max_repeated_interactions=max_repeated_interactions,
+            max_stalled_tool_operations=max_stalled_tool_operations,
         )
 
         # Half-duplex specific attributes

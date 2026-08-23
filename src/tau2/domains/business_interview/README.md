@@ -74,6 +74,12 @@ metadata; when supplied, an Observation id must exist, but quote spans and
 exact stakeholder-slot binding never determine whether a marker is recorded
 or whether reconstruction is correct.
 
+Policy reminder: UNSET means no conclusion yet, while DONT_KNOW means the
+Stakeholder cannot provide the value. Do not oscillate between them on one
+property; ask the Stakeholder for more information, then record the resulting
+state and continue. The runtime tool-operation guard is a safeguard, not a
+replacement for this reasoning.
+
 ## StakeholderKnowledge (the stakeholder's world model)
 
 `project_knowledge(truth, stakeholder_filter)` builds the world model:

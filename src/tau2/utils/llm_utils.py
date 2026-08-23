@@ -166,8 +166,9 @@ def _record_llm_call_metrics(
     """Record one generation-attempt row into the active collector.
 
     Raw prompts / headers / private content are never persisted. Response
-    content is passed only to the shared refusal classifier; the record keeps
-    a bounded refusal excerpt and bounded provider moderation metadata.
+    content is passed only to the shared refusal classifier; explicit refusal
+    records may also retain one bounded public opposite-side excerpt. The
+    record keeps bounded refusal and provider moderation metadata.
     ``status``/``error_type`` record provider/runtime failures, including a
     row when the provider call raises.
     """
@@ -175,6 +176,7 @@ def _record_llm_call_metrics(
         LLMCallRecord,
         detect_model_refusal,
         get_llm_call_metrics_collector,
+        preceding_public_prompt,
     )
 
     collector = get_llm_call_metrics_collector()
@@ -204,6 +206,9 @@ def _record_llm_call_metrics(
         finish_reason=finish_reason,
     )
     provider_info = refusal["provider_metadata"]
+    public_prompt = (
+        preceding_public_prompt(messages, side) if refusal["explicit_refusal"] else None
+    )
     collector.record(
         LLMCallRecord(
             side=side or "unspecified",
@@ -231,6 +236,7 @@ def _record_llm_call_metrics(
             provider_refusal=refusal["provider_refusal"],
             finish_reason=provider_info["finish_reason"],
             moderation_metadata=provider_info,
+            preceding_public_prompt=public_prompt,
         )
     )
 
