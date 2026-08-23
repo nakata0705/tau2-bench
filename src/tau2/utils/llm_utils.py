@@ -162,6 +162,7 @@ def _record_llm_call_metrics(
     provider_refusal: Any = None,
     finish_reason: Any = None,
     retry_attempt: bool = False,
+    public_prompt_context: Optional[str] = None,
 ) -> None:
     """Record one generation-attempt row into the active collector.
 
@@ -207,7 +208,13 @@ def _record_llm_call_metrics(
     )
     provider_info = refusal["provider_metadata"]
     public_prompt = (
-        preceding_public_prompt(messages, side) if refusal["explicit_refusal"] else None
+        preceding_public_prompt(
+            messages,
+            side,
+            public_prompt_context=public_prompt_context,
+        )
+        if refusal["explicit_refusal"]
+        else None
     )
     collector.record(
         LLMCallRecord(
@@ -466,6 +473,7 @@ def generate(
     trigger: Optional[str] = None,
     output_contract_text: Optional[str] = None,
     retry_attempt: bool = False,
+    public_prompt_context: Optional[str] = None,
     **kwargs: Any,
 ) -> UserMessage | AssistantMessage:
     """
@@ -494,6 +502,9 @@ def generate(
         retry_attempt: Whether this generate invocation is a caller-visible
                    retry of the same logical request. Provider-internal retry
                    attempts are not exposed as separate generate rows.
+        public_prompt_context: Optional bounded public Agent utterance for a
+                   Stakeholder call. It is used only for explicit refusal
+                   diagnostics and is never sent to the provider or logged.
         **kwargs: Additional arguments to pass to the model.
 
     Returns: A tuple containing the message and the cost.
@@ -562,6 +573,7 @@ def generate(
             trigger=trigger,
             call_name=call_name,
             retry_attempt=retry_attempt,
+            public_prompt_context=public_prompt_context,
         )
         logger.error(e)
         raise e
@@ -688,6 +700,7 @@ def generate(
         provider_refusal=provider_refusal,
         finish_reason=finish_reason,
         retry_attempt=retry_attempt,
+        public_prompt_context=public_prompt_context,
     )
 
     return message

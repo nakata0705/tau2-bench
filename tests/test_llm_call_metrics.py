@@ -244,6 +244,7 @@ def test_refusal_context_is_public_bounded_and_refusal_only(monkeypatch, collect
         ],
         side="stakeholder",
         call_name="stakeholder_semantic_plan",
+        public_prompt_context=public_question,
     )
     stakeholder_record = collector.records()[0]
     assert stakeholder_record.preceding_public_prompt is not None
@@ -265,6 +266,7 @@ def test_refusal_context_is_public_bounded_and_refusal_only(monkeypatch, collect
         call_name="agent_response",
     )
     agent_record = collector.records()[1]
+    assert agent_record.explicit_refusal is True
     assert agent_record.preceding_public_prompt == "Please explain the approval step."
 
     _monkeypatch_completion(
@@ -342,11 +344,13 @@ def test_internal_stakeholder_refusal_retry_is_kept_once_and_public_uncertainty_
     # These call names mirror the stakeholder's private plan -> realization
     # phases; the first plan response is rejected and retried before a public
     # uncertainty answer is accepted.
+    public_prompt = "What happens after the quotation request?"
     generate(
         "openrouter/example-model",
         message,
         side="stakeholder",
         call_name="stakeholder_semantic_plan",
+        public_prompt_context=public_prompt,
     )
     generate(
         "openrouter/example-model",
@@ -354,12 +358,14 @@ def test_internal_stakeholder_refusal_retry_is_kept_once_and_public_uncertainty_
         side="stakeholder",
         call_name="stakeholder_semantic_plan",
         retry_attempt=True,
+        public_prompt_context=public_prompt,
     )
     generate(
         "openrouter/example-model",
         message,
         side="stakeholder",
         call_name="stakeholder_realization",
+        public_prompt_context=public_prompt,
     )
     records = collector.records()
     assert len(records) == 3

@@ -73,6 +73,7 @@ from tau2.domains.business_interview.facts import (
 from tau2.domains.business_interview.graph import is_dont_know
 from tau2.domains.business_interview.scenario import get_scenario
 from tau2.user.user_simulator import UserSimulator
+from tau2.utils.llm_call_metrics import short_text
 
 # The block appended to the stakeholder system prompt: the hidden semantic
 # world model (graph elements with their semantic IDs + the local concepts).
@@ -585,6 +586,17 @@ class StakeholderUserSimulator(UserSimulator):
 
     # -------------------------------------------- semantic response plan
 
+    @staticmethod
+    def _public_agent_prompt_context(messages: list) -> Optional[str]:
+        """Capture the latest public Agent utterance before private prompts."""
+        for message in reversed(messages):
+            if not isinstance(message, AssistantMessage) or message.is_tool_call():
+                continue
+            content = message.content
+            if content is not None and content.strip():
+                return short_text(content)
+        return None
+
     def _append_contract(self, messages: list, contract_text: str) -> list:
         """Append ``contract_text`` to the last user message (maximum-attention
         position), returning a copy of ``messages``."""
@@ -604,6 +616,7 @@ class StakeholderUserSimulator(UserSimulator):
         messages: list,
         contract: Optional[str] = None,
         retry_attempt: bool = False,
+        public_prompt_context: Optional[str] = None,
     ) -> list[PlannedResponseItem]:
         """Phase 1 — WHAT: the stakeholder decides its private Semantic
         Response Plan (intended semantic addresses + modes) from its own
@@ -617,6 +630,7 @@ class StakeholderUserSimulator(UserSimulator):
             output_contract_text=contract_text,
             call_name="stakeholder_semantic_plan",
             retry_attempt=retry_attempt,
+            public_prompt_context=public_prompt_context,
         )
         plan = parse_plan(assistant_message.content)
         if self._catalog is not None:
@@ -629,6 +643,7 @@ class StakeholderUserSimulator(UserSimulator):
         plan: list[PlannedResponseItem],
         contract: Optional[str] = None,
         retry_attempt: bool = False,
+        public_prompt_context: Optional[str] = None,
     ) -> dict:
         """Phase 2 — HOW: realize the validated plan into natural language and
         the private sidecar. The realized sidecar must account for EVERY
@@ -646,6 +661,7 @@ class StakeholderUserSimulator(UserSimulator):
             output_contract_text=contract_text,
             call_name="stakeholder_realization",
             retry_attempt=retry_attempt,
+            public_prompt_context=public_prompt_context,
         )
         sidecar = parse_sidecar(assistant_message.content)
         if self._catalog is not None:
@@ -660,7 +676,12 @@ class StakeholderUserSimulator(UserSimulator):
             )
         return sidecar
 
-    def _generate_sidecar(self, messages: list, contract: Optional[str] = None) -> dict:
+    def _generate_sidecar(
+        self,
+        messages: list,
+        contract: Optional[str] = None,
+        public_prompt_context: Optional[str] = None,
+    ) -> dict:
         """Legacy single-call path (no semantic plan): used only when the
         simulator is not wired with a task/catalog (no private knowledge
         available); the run then has no provenance."""
@@ -670,6 +691,7 @@ class StakeholderUserSimulator(UserSimulator):
             contract_messages,
             output_contract_text=contract_text,
             call_name="stakeholder_sidecar",
+            public_prompt_context=public_prompt_context,
         )
         sidecar = parse_sidecar(assistant_message.content)
         if self._catalog is not None:
@@ -687,6 +709,7 @@ class StakeholderUserSimulator(UserSimulator):
         output_contract_text: Optional[str] = None,
         call_name: str = "stakeholder_response",
         retry_attempt: bool = False,
+        public_prompt_context: Optional[str] = None,
     ):
         """One LLM completion (kept separate for testability).
 
@@ -710,6 +733,7 @@ class StakeholderUserSimulator(UserSimulator):
                 response_format={"type": "json_object"},
                 output_contract_text=output_contract_text,
                 retry_attempt=retry_attempt,
+                public_prompt_context=public_prompt_context,
                 **kwargs,
             )
         except Exception:
@@ -721,6 +745,7 @@ class StakeholderUserSimulator(UserSimulator):
                 side="stakeholder",
                 output_contract_text=output_contract_text,
                 retry_attempt=True,
+                public_prompt_context=public_prompt_context,
                 **kwargs,
             )
 
@@ -752,16 +777,23 @@ class StakeholderUserSimulator(UserSimulator):
             state.messages.append(message)
         elif message is not None and (message.has_content() or message.is_tool_call()):
             state.messages.append(message)
+        # Capture the public Agent utterance before role flipping and before
+        # private plan/sidecar contracts are appended to the provider prompt.
+        public_prompt_context = self._public_agent_prompt_context(state.messages)
         messages = state.system_messages + state.flip_roles()
 
         if self._catalog is None:
             # Not wired with a task (no private knowledge): plain response,
             # no plan, no provenance.
-            sidecar = self._generate_sidecar(messages)
+            sidecar = self._generate_sidecar(
+                messages, public_prompt_context=public_prompt_context
+            )
         else:
             # Phase 1: semantic response plan
             try:
-                plan = self._generate_plan(messages)
+                plan = self._generate_plan(
+                    messages, public_prompt_context=public_prompt_context
+                )
             except ValueError as plan_err:
                 logger.warning(
                     "Stakeholder response plan invalid; retrying once: {}",
@@ -775,6 +807,7 @@ class StakeholderUserSimulator(UserSimulator):
                         retry_plan,
                         contract=_PLAN_ERROR_HINT,
                         retry_attempt=True,
+                        public_prompt_context=public_prompt_context,
                     )
                 except ValueError as plan_err2:
                     raise ValueError(
@@ -784,7 +817,9 @@ class StakeholderUserSimulator(UserSimulator):
                     ) from plan_err2
             # Phase 2: realize the validated plan
             try:
-                sidecar = self._realize_sidecar(messages, plan)
+                sidecar = self._realize_sidecar(
+                    messages, plan, public_prompt_context=public_prompt_context
+                )
             except ValueError as first_err:
                 logger.warning(
                     "Stakeholder sidecar invalid; retrying once: {}", first_err
@@ -798,6 +833,7 @@ class StakeholderUserSimulator(UserSimulator):
                         plan,
                         contract=_SIDECAR_ERROR_HINT,
                         retry_attempt=True,
+                        public_prompt_context=public_prompt_context,
                     )
                 except ValueError as second_err:
                     raise ValueError(

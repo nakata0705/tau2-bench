@@ -11,16 +11,13 @@ The active follow-up objective was to extend the `business-interview` benchmark 
 
 The completed Truth-reconstruction evaluator, provenance rules, `remove_edge`, and two-phase Stakeholder architecture must remain unchanged.
 
-## Repository state before/after the rejection
+## Repository state around the rejection
 
 - Repository: `/home/nakata0705/Projects/tau2-bench`
 - Branch: `business-interview`
-- HEAD and origin before this follow-up: `da3eef4c76db1b15330e9a04f42e244c4eae1498`
-- Previous commit: `fix: support edge revision and call-level refusal diagnostics`
-- That previous commit was already pushed successfully.
-- Current worktree after the rejected operation:
-  - `M doc/business-interview-real-llm-smoke-report.md` (pre-existing Markdown autofix from the previous continuation: table separator alignment and blank lines)
-  - `M src/tau2/orchestrator/orchestrator.py` (the only code edit made during this follow-up so far)
+- HEAD at the time of the rejected operation: `da3eef4c76db1b15330e9a04f42e244c4eae1498`
+- The preceding commit was `fix: support edge revision and call-level refusal diagnostics`, and it had already been pushed.
+- The rejection was observed during a later coding-agent continuation; subsequent fixes were committed separately. This document records the evidence for the rejection cause, not a claim that the transient worktree state was itself the cause.
 
 ## What was inspected
 
@@ -53,41 +50,28 @@ Relevant existing code:
 - `tests/test_llm_call_metrics.py`
   - Existing deterministic fake-provider refusal and retry tests.
 
-## Code change made immediately before Luna rejected processing
+## Evidence for the Luna rejection cause
 
-An edit added only these module-level constants near the top of `src/tau2/orchestrator/orchestrator.py`:
-
-```python
-_MUTATING_TOOL_PREFIXES = (
-    "add_", "create_", "delete_", "finish_", "mark_", "merge_",
-    "record_", "remove_", "reset_", "set_", "update_",
-)
-_STRUCTURAL_TOOL_PREFIXES = (
-    "add_", "create_", "delete_", "merge_", "remove_", "set_",
-)
-```
-
-No other code for the new guard or refusal context was written yet.
-
-## Luna/tool rejection output
-
-The edit tool returned a STOP message claiming:
+The earlier session note attributed the stop to the coding harness/LSP message:
 
 > `128 issue(s) must be fixed`
 
-The displayed diagnostics were mostly type diagnostics in `orchestrator.py`, including:
+That was not the failure shown by the captured Pi screen. The direct screen evidence showed:
 
-- `L1113`: `Message | None` passed where `ValidUserInputMessage` is expected
-- `L1149`: `Message | None` passed where `ValidAgentInputMessage` is expected
-- `L1174`: possible missing `is_tool_call` on `SystemMessage`/`None`
-- `L489`/`L495`: `object*` may not have `.stop`
-- `L761`: `MultiToolMessage` may not have `turn_idx`
-- `L780`, `L790`, `L804`: inferred tuple/list types incompatible with message types
-- The output said `... and 118 more`
+> `Codex error: Invalid prompt:`
+> `your prompt was flagged as potentially violating our usage policy.`
 
-These diagnostics appeared after the tiny constants edit; the edit itself did not touch the reported lines. They may be pre-existing or a broad/stale LSP/pyright scan rather than errors caused by the constants, but this is the main failure to investigate. The exact warning was emitted by the coding harness, not by a provider API.
+The immediate rejection therefore came from the Codex/OpenAI input-policy layer. The diagnostic text about 128 issues was emitted in the coding workflow, but it is not evidence that the LSP diagnostics caused the request rejection.
 
-## Intended implementation plan (not yet completed)
+## Follow-up context-injection experiment
+
+Pi was using Codex through the Luna Max coding-agent workflow, with `pi-lens` context injection enabled when the rejection occurred. Running `/lens-context-toggle` disabled automatic lens context injection. The same `/goal` could then be completed and committed successfully.
+
+This strongly suggests a false positive involving the composed/injected context, but the experiment did not isolate exactly which injected text triggered the filter. It does not prove that any particular pi-lens finding or excerpt was individually responsible.
+
+This event is separate from benchmark `model_refusal_count`: it was a coding-agent Codex request rejection, not a DeepSeek Agent/Stakeholder refusal inside a `business_interview` real run.
+
+## Implementation notes captured by this record
 
 ### Tool-operation guard
 
@@ -102,11 +86,11 @@ These diagnostics appeared after the tiny constants edit; the edit itself did no
 
 ### Refusal public context
 
-- Add `preceding_public_prompt: Optional[str]` to `LLMCallRecord` and `record_to_dict()`.
-- In `_record_llm_call_metrics()`, derive context only from the opposite participant's public-role messages (`AssistantMessage` for Stakeholder calls, `UserMessage` for Agent calls), bounded to the existing ~500-character limit.
-- Attach the excerpt only when `explicit_refusal` is true; otherwise persist `null`.
-- Do not scan/persist system messages, private contracts, sidecars, raw prompts, hidden knowledge, or private semantic IDs.
-- Add deterministic tests for Stakeholder and Agent context, privacy, bounding, non-refusals, and existing internal retry behavior.
+- `preceding_public_prompt` is populated only for explicit refusals.
+- The Stakeholder path captures the bounded public Agent utterance before `UserState.flip_roles()` output is augmented with private plan/sidecar contracts, then passes it explicitly through `_generate_plan` / `_realize_sidecar` / `_call_llm` / `generate()` into call metrics.
+- The common Agent path may continue deriving context from the ordinary public `UserMessage` conversation.
+- System prompts, StakeholderKnowledge, contracts, sidecars, retry hints, raw provider prompts, hidden Truth, and private semantic IDs are never persisted.
+- Deterministic tests cover the real role-flip path, retries, privacy, bounding, non-refusals, and Agent-side context.
 
 ## Prior completed verification (before this follow-up)
 
@@ -121,11 +105,8 @@ The previous commit had already passed:
 
 Seed-9003 prior result: `max_steps`, 100 Agent calls, 9 accepted Observations, 17 Stakeholder generation attempts (one retry), provider/tool errors 0, call-level refusals 0, node and edge recall/precision 1.0/1.0, concept recall/precision 0.7619/0.9412, fabricated nodes/edges 0/0, reconstruction/structural/quality all false, elapsed 491.34 seconds. The observed issue was repeated rationale tool-state toggling without a new public question.
 
-## Next investigation steps
+## Follow-up status
 
-1. Re-read the current `orchestrator.py` and run targeted LSP diagnostics to determine whether the 128 diagnostics are pre-existing/stale and whether the small constants edit is syntactically safe.
-2. Implement the guard and refusal-context changes incrementally, preferably in separate edits.
-3. Extend deterministic tests and run the existing complete business-interview, loop-guard, roundtrip, and LLM-metrics suites.
-4. Run Ruff and compile/static checks.
-5. Run one fresh real quotation seed different from 9000-9003, inspect `loop_guard`, and report metrics accurately.
-6. Update documentation, commit, and push only after verification.
+- The stalled successful-tool-operation guard was implemented in a separate commit and is treated as accepted; its thresholds and algorithm are not part of the Luna rejection diagnosis.
+- The remaining refusal-diagnostic cleanup is deterministic: it must preserve only safe public context and does not require another live DeepSeek quotation run.
+- The corrected rejection evidence and the context-injection experiment are recorded above; neither should be conflated with benchmark `model_refusal_count`.

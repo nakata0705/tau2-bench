@@ -81,21 +81,30 @@ def short_text(value: Any, limit: int = _REFUSAL_EXCERPT_LIMIT) -> Optional[str]
     return text[:limit] + "…"
 
 
-def preceding_public_prompt(messages: Any, side: Optional[str]) -> Optional[str]:
-    """Return only the latest public opposite-side message, bounded.
+def preceding_public_prompt(
+    messages: Any,
+    side: Optional[str],
+    public_prompt_context: Optional[str] = None,
+) -> Optional[str]:
+    """Return a bounded public prompt excerpt for an explicit refusal.
 
-    Stakeholder requests may contain appended private contracts, so this
-    helper deliberately selects by public participant role instead of taking
-    the last raw prompt message. It never returns system/tool messages.
+    Stakeholder calls receive private contracts appended to the provider
+    messages after the public Agent question has been identified. Their
+    context therefore must be supplied explicitly by the caller; this helper
+    never reconstructs it from the final provider prompt. Agent calls retain
+    the safe role-based lookup because their public UserMessage is not
+    augmented with private contracts.
     """
-    expected_role = {
-        "agent": "user",
-        "stakeholder": "assistant",
-    }.get(str(side or "").lower())
-    if expected_role is None:
+    side_name = str(side or "").lower()
+    if side_name == "stakeholder":
+        if public_prompt_context is None or not public_prompt_context.strip():
+            return None
+        return short_text(public_prompt_context)
+    if side_name != "agent":
         return None
+
     for message in reversed(messages or []):
-        if str(getattr(message, "role", "")).lower() != expected_role:
+        if str(getattr(message, "role", "")).lower() != "user":
             continue
         content = getattr(message, "content", None)
         if content is not None and str(content).strip():

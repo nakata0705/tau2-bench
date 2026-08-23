@@ -739,7 +739,8 @@ def test_stakeholder_generation_plans_then_realizes_with_stubbed_llm():
         lambda messages,
         output_contract_text=None,
         call_name=None,
-        retry_attempt=False: _Reply(bad_sidecar),
+        retry_attempt=False,
+        public_prompt_context=None: _Reply(bad_sidecar),
     )
     try:
         sim._realize_sidecar(msgs, plan)
@@ -756,7 +757,7 @@ def test_internal_stakeholder_refusal_retry_is_recorded_at_generate_layer(
     yields a valid plan and the accepted public answer is ordinary uncertainty."""
     import json as _json
 
-    from tau2.data_model.message import AssistantMessage
+    from tau2.data_model.message import AssistantMessage, UserMessage
     from tau2.domains.business_interview.run_metrics import account_model_refusals
     from tau2.utils.llm_call_metrics import (
         LLMCallMetricsCollector,
@@ -822,6 +823,10 @@ def test_internal_stakeholder_refusal_retry_is_recorded_at_generate_layer(
 
     env = get_environment()
     from tau2.domains.business_interview.user_simulator import (
+        _OUTPUT_CONTRACT,
+        _PLAN_CONTRACT,
+        _PLAN_ERROR_HINT,
+        _SIDECAR_ERROR_HINT,
         StakeholderUserSimulator,
     )
 
@@ -831,14 +836,50 @@ def test_internal_stakeholder_refusal_retry_is_recorded_at_generate_layer(
         environment=env,
         instructions="x",
     )
+    public_question = "Why is manager approval required?"
+    previous_stakeholder_answer = "The previous stakeholder answer is public only."
+    state = sim.get_init_state(
+        [UserMessage(role="user", content=previous_stakeholder_answer)]
+    )
     collector = LLMCallMetricsCollector()
     set_llm_call_metrics_collector(collector)
     try:
         public = sim._generate_next_message(
-            AssistantMessage(role="assistant", content="Please explain the process."),
-            sim.get_init_state(),
+            AssistantMessage(role="assistant", content=public_question), state
         )
         env.on_message(public)
+
+        long_responses = iter(
+            [
+                _Response("I can't assist with that request."),
+                _Response(_json.dumps({"plan": []})),
+                _Response(
+                    _json.dumps(
+                        {
+                            "message": "I don't know.",
+                            "annotations": [],
+                            "alignments": [],
+                            "terminology": [],
+                        }
+                    )
+                ),
+            ]
+        )
+        monkeypatch.setattr(
+            "tau2.utils.llm_utils.completion",
+            lambda **kwargs: next(long_responses),
+        )
+        long_sim = StakeholderUserSimulator(
+            llm="openrouter/example-model",
+            task=_task(),
+            environment=env,
+            instructions="x",
+        )
+        long_question = "Why is manager approval required? " + ("public detail " * 60)
+        long_sim._generate_next_message(
+            AssistantMessage(role="assistant", content=long_question),
+            long_sim.get_init_state(),
+        )
         records = collector.records()
     finally:
         set_llm_call_metrics_collector(None)
@@ -847,10 +888,38 @@ def test_internal_stakeholder_refusal_retry_is_recorded_at_generate_layer(
         "stakeholder_semantic_plan",
         "stakeholder_semantic_plan",
         "stakeholder_realization",
+        "stakeholder_semantic_plan",
+        "stakeholder_semantic_plan",
+        "stakeholder_realization",
     ]
+    flipped = state.flip_roles()
+    assert isinstance(flipped[0], AssistantMessage)
+    assert flipped[0].content == previous_stakeholder_answer
+    assert isinstance(flipped[-1], UserMessage)
+    assert flipped[-1].content == public_question
     assert records[0].explicit_refusal is True
+    assert records[0].preceding_public_prompt == public_question
+    assert previous_stakeholder_answer not in (records[0].preceding_public_prompt or "")
+    for private_text in (
+        "StakeholderKnowledge",
+        _PLAN_CONTRACT,
+        _OUTPUT_CONTRACT,
+        _PLAN_ERROR_HINT,
+        _SIDECAR_ERROR_HINT,
+    ):
+        assert private_text not in (records[0].preceding_public_prompt or "")
     assert records[1].explicit_refusal is False
+    assert records[1].preceding_public_prompt is None
     assert records[1].retry_attempt is True
     assert records[1].attempt_index == 1
+    assert records[2].preceding_public_prompt is None
+    long_record = records[3]
+    assert long_record.explicit_refusal is True
+    assert long_record.preceding_public_prompt is not None
+    assert len(long_record.preceding_public_prompt) <= 501
+    assert long_record.preceding_public_prompt.startswith(
+        "Why is manager approval required?"
+    )
     assert account_model_refusals([public]) == []
-    assert len(model_refusal_records(records)) == 1
+    assert len(model_refusal_records(records[:3])) == 1
+    assert len(model_refusal_records(records)) == 2
