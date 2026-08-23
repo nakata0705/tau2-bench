@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import Any, Optional, Sequence
 
 import httpx
-import litellm
-from litellm import completion, completion_cost
-from litellm.caching.caching import Cache
-from litellm.main import ModelResponse, Usage
+import litellm  # pyright: ignore[reportMissingImports]
+from litellm import completion, completion_cost  # pyright: ignore[reportMissingImports]
+from litellm.caching.caching import Cache  # pyright: ignore[reportMissingImports]
+from litellm.main import ModelResponse, Usage  # pyright: ignore[reportMissingImports]
 from loguru import logger
 
 from tau2.config import (
@@ -108,8 +108,10 @@ def _parse_ft_model_name(model: str) -> str:
     Parse the ft model name from the litellm model name.
     e.g: "ft:gpt-4.1-mini-2025-04-14:sierra::BSQA2TFg" -> "gpt-4.1-mini-2025-04-14"
     """
-    pattern = r"ft:(?P<model>[^:]+):(?P<provider>\w+)::(?P<id>\w+)"
-    match = re.match(pattern, model)
+    match = re.match(
+        r"ft:(?P<model>[^:]+):(?P<provider>\w+)::(?P<id>\w+)",
+        model,
+    )
     if match:
         return match.group("model")
     else:
@@ -154,20 +156,24 @@ def _record_llm_call_metrics(
     error_type: Optional[str] = None,
     output_contract_text: Optional[str] = None,
     trigger: Optional[str] = None,
+    call_name: Optional[str] = None,
+    response_content: Any = None,
+    response_raw_data: Any = None,
+    provider_refusal: Any = None,
+    finish_reason: Any = None,
+    retry_attempt: bool = False,
 ) -> None:
-    """Record one numeric row into the active LLM call metrics collector (if
-    any). Never persists raw prompts / headers / private content — only
-    char/token/latency numbers plus safe identifiers.
+    """Record one generation-attempt row into the active collector.
 
-    ``status``/``error_type`` record the outcome (a row is written even when
-    the provider call raised); ``latency_seconds`` includes time spent before
-    a failure. ``output_contract_text`` (stakeholder side: the fixed
-    output-sidecar contract appended to every request) is measured as a
-    length, never stored. ``trigger`` is the Agent-side classification of
-    which input kind caused the generation.
+    Raw prompts / headers / private content are never persisted. Response
+    content is passed only to the shared refusal classifier; the record keeps
+    a bounded refusal excerpt and bounded provider moderation metadata.
+    ``status``/``error_type`` record provider/runtime failures, including a
+    row when the provider call raises.
     """
     from tau2.utils.llm_call_metrics import (
         LLMCallRecord,
+        detect_model_refusal,
         get_llm_call_metrics_collector,
     )
 
@@ -191,11 +197,19 @@ def _record_llm_call_metrics(
         if prompt_tokens is not None and completion_tokens is not None
         else None
     )
+    refusal = detect_model_refusal(
+        response_content,
+        raw_data=response_raw_data,
+        provider_refusal=provider_refusal,
+        finish_reason=finish_reason,
+    )
+    provider_info = refusal["provider_metadata"]
     collector.record(
         LLMCallRecord(
             side=side or "unspecified",
             call_index=0,  # assigned by the collector
             model=model,
+            provider=model.split("/", 1)[0] if model else None,
             message_count=len(messages),
             messages_chars=messages_chars,
             system_chars=system_chars,
@@ -210,6 +224,13 @@ def _record_llm_call_metrics(
             output_contract_chars=output_contract_chars,
             latency_seconds=latency_seconds,
             trigger=trigger,
+            call_name=call_name,
+            retry_attempt=retry_attempt,
+            explicit_refusal=refusal["explicit_refusal"],
+            refusal_excerpt=refusal["refusal_excerpt"],
+            provider_refusal=refusal["provider_refusal"],
+            finish_reason=provider_info["finish_reason"],
+            moderation_metadata=provider_info,
         )
     )
 
@@ -259,7 +280,7 @@ def to_litellm_messages(messages: Sequence[Message]) -> list[dict]:
                         },
                         "type": "function",
                     }
-                    for tc in message.tool_calls
+                    for tc in (message.tool_calls or [])
                 ]
             litellm_messages.append(
                 {
@@ -286,7 +307,7 @@ def validate_message(message: Message) -> None:
     Validate the message.
     """
 
-    def has_text_content(message: Message) -> bool:
+    def has_text_content(message: SystemMessage) -> bool:
         """
         Check if the message has text content.
         """
@@ -398,8 +419,8 @@ def _write_llm_log(
             try:
                 existing_file.unlink()
             except FileNotFoundError:
-                # File might have been removed by another thread, ignore
-                pass
+                # File might have been removed by another thread; continue
+                continue
 
     # Create a new file for this LLM call
     call_id = str(uuid.uuid4())[:8]  # Use short UUID for readability
@@ -420,9 +441,13 @@ def _write_llm_log(
         "response": response_data,
     }
 
-    # Write to file with indentation
-    with open(log_file, "w", encoding="utf-8") as f:
-        json.dump(call_data, f, indent=2)
+    # Write to file with indentation. Logging must never turn a successful
+    # provider generation into a failed simulation.
+    try:
+        with open(log_file, "w", encoding="utf-8") as f:
+            json.dump(call_data, f, indent=2)
+    except OSError as exc:
+        logger.warning("Unable to write LLM debug log: {}", exc)
 
 
 def generate(
@@ -434,6 +459,7 @@ def generate(
     side: Optional[str] = None,
     trigger: Optional[str] = None,
     output_contract_text: Optional[str] = None,
+    retry_attempt: bool = False,
     **kwargs: Any,
 ) -> UserMessage | AssistantMessage:
     """
@@ -459,6 +485,9 @@ def generate(
                    text (the fixed block appended to every stakeholder
                    request). Only its length is recorded as
                    ``output_contract_chars``; the text itself never persists.
+        retry_attempt: Whether this generate invocation is a caller-visible
+                   retry of the same logical request. Provider-internal retry
+                   attempts are not exposed as separate generate rows.
         **kwargs: Additional arguments to pass to the model.
 
     Returns: A tuple containing the message and the cost.
@@ -525,6 +554,8 @@ def generate(
             error_type=type(e).__name__,
             output_contract_text=output_contract_text,
             trigger=trigger,
+            call_name=call_name,
+            retry_attempt=retry_attempt,
         )
         logger.error(e)
         raise e
@@ -544,6 +575,8 @@ def generate(
         "The response should be an assistant message"
     )
     content = response_choice.message.content
+    provider_refusal = getattr(response_choice.message, "refusal", None)
+    raw_response_data = response.to_dict()
     raw_tool_calls = response_choice.message.tool_calls or []
     tool_calls = []
     for tool_call in raw_tool_calls:
@@ -614,7 +647,7 @@ def generate(
         tool_calls=tool_calls,
         cost=cost,
         usage=usage,
-        raw_data=response.to_dict(),
+        raw_data=raw_response_data,
         generation_time_seconds=generation_time_seconds,
     )
 
@@ -643,6 +676,12 @@ def generate(
         error_type=None,
         output_contract_text=output_contract_text,
         trigger=trigger,
+        call_name=call_name,
+        response_content=content,
+        response_raw_data=raw_response_data,
+        provider_refusal=provider_refusal,
+        finish_reason=finish_reason,
+        retry_attempt=retry_attempt,
     )
 
     return message
@@ -683,13 +722,17 @@ def get_token_usage(messages: list[Message]) -> dict:
     """
     usage = {"completion_tokens": 0, "prompt_tokens": 0}
     for message in messages:
-        if isinstance(message, ToolMessage):
+        if not isinstance(message, (AssistantMessage, UserMessage)):
             continue
-        if message.usage is None:
-            logger.warning(f"Message {message.role}: {message.content} has no usage")
+        message_usage = getattr(message, "usage", None)
+        if message_usage is None:
+            logger.warning(
+                f"Message {message.role}: {getattr(message, 'content', None)} "
+                "has no usage"
+            )
             continue
-        usage["completion_tokens"] += message.usage["completion_tokens"]
-        usage["prompt_tokens"] += message.usage["prompt_tokens"]
+        usage["completion_tokens"] += message_usage["completion_tokens"]
+        usage["prompt_tokens"] += message_usage["prompt_tokens"]
     return usage
 
 
@@ -699,8 +742,7 @@ def extract_json_from_llm_response(response: str) -> str:
     """
     # Try to extract JSON from markdown code blocks
     # Match ```json ... ``` or ``` ... ```
-    pattern = r"```(?:json)?\s*([\s\S]*?)```"
-    match = re.search(pattern, response)
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)```", response)
     if match:
         return match.group(1).strip()
 

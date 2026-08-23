@@ -136,6 +136,27 @@ Ordinary workflow mentions never create these events.
   quoted span is missing, ambiguous, or does not resolve to a private
   stakeholder slot.
 
+## Graph hypothesis editing
+
+The AgentGraph is a revisable working hypothesis. `add_edge` and `update_edge`
+record or refine relations; `remove_edge(edge_id)` deletes exactly one
+existing edge while preserving both endpoint nodes and every unrelated edge.
+Use it when a speculative shortcut becomes obsolete after discovering
+intermediate steps. Use `remove_node` only when the node itself is obsolete;
+it also removes that node's incident edges. The runtime never deletes edges
+using hidden Truth.
+
+## Model refusal diagnostics
+
+`generate()` instrumentation records every Agent/Stakeholder generation
+attempt, including private Stakeholder plan/realization calls and retries.
+`model_refusal_count` / `model_refusals` in real-run artifacts use only these
+call-level records. Explicit refusal text or a provider `message.refusal` field
+counts; `I don't know`, generic uncertainty/apologies, malformed JSON,
+sidecar/tool validation errors, and provider exceptions do not. The accepted
+public trajectory count is retained only as a separate compatibility diagnostic
+and is never added to the call-level count.
+
 ## No concept validation lifecycle
 
 There is no hypothesized/grounded/confirmed/unknown/disputed lifecycle: the

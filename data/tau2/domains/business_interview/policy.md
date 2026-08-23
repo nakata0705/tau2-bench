@@ -98,6 +98,8 @@ ontology):
 - `set_graph_endpoints` — declare the start node (where the process begins; it
   may still receive incoming edges when the process loops) and the end nodes.
   Declare both before finishing.
+- `remove_edge` — remove one obsolete relation while preserving both endpoint
+  nodes and all unrelated edges.
 - `remove_node` — remove a node and its incident edges (used to drop obsolete /
   superseded / coarse placeholder nodes).
 - `validate_graph` — review the graph's internal structural consistency before
@@ -114,10 +116,16 @@ information refines your understanding — update the graph to match it.
   a single coarse step replaced by two or three more specific sub-steps), do
   **not** keep both unless the stakeholder explicitly describes them as distinct
   activities.
+- When a previously inferred relation becomes obsolete, use `remove_edge`
+  to delete that edge while keeping its endpoint nodes.
 - When replacing a coarse node: preserve the relevant evidence on the refined
   nodes, reconnect incoming/outgoing edges, remove obsolete edges, and **remove
   the obsolete coarse node** with `remove_node`.
-- Do not finish with obsolete, duplicate, or superseded nodes.
+- Use `remove_node` when the node itself is obsolete; do not use it merely to
+  remove one wrong relation.
+- After discovering intermediate steps, do not retain speculative shortcut
+  edges alongside the refined path.
+- Do not finish with obsolete, duplicate, or superseded nodes or edges.
 
 ## Record epistemic states explicitly (UNSET / ABSENT / DONT_KNOW)
 

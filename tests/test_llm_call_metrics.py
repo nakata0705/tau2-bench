@@ -24,6 +24,7 @@ from tau2.environment.tool import Tool, as_tool
 from tau2.utils.llm_call_metrics import (
     LLMCallMetricsCollector,
     LLMCallRecord,
+    model_refusal_records,
     record_to_dict,
     set_llm_call_metrics_collector,
     slowest_calls,
@@ -44,23 +45,42 @@ class _FakeUsage:
 
 class _FakeMessage:
     role = "assistant"
-    content = "hello"
-    tool_calls = []
+
+    def __init__(self, content: str | None = "hello", refusal=None, tool_calls=None):
+        self.content = content
+        self.refusal = refusal
+        self.tool_calls = tool_calls or []
 
 
 class _FakeChoice:
-    finish_reason = "stop"
-
-    def __init__(self):
-        self.message = _FakeMessage()
+    def __init__(
+        self,
+        content: str | None = "hello",
+        refusal=None,
+        finish_reason="stop",
+    ):
+        self.finish_reason = finish_reason
+        self.message = _FakeMessage(content=content, refusal=refusal)
 
 
 class _FakeResponse:
     model = "fake-model"
 
-    def __init__(self, usage=None):
+    def __init__(
+        self,
+        usage=None,
+        content: str | None = "hello",
+        refusal=None,
+        finish_reason="stop",
+    ):
         self._usage = usage
-        self.choices = [_FakeChoice()]
+        self.choices = [
+            _FakeChoice(
+                content=content,
+                refusal=refusal,
+                finish_reason=finish_reason,
+            )
+        ]
 
     def get(self, key):
         if key == "usage":
@@ -68,7 +88,20 @@ class _FakeResponse:
         return None
 
     def to_dict(self):
-        return {}
+        message = {
+            "role": "assistant",
+            "content": self.choices[0].message.content,
+        }
+        if self.choices[0].message.refusal is not None:
+            message["refusal"] = self.choices[0].message.refusal
+        return {
+            "choices": [
+                {
+                    "finish_reason": self.choices[0].finish_reason,
+                    "message": message,
+                }
+            ]
+        }
 
 
 class _Boom:
@@ -154,6 +187,138 @@ def test_missing_usage_remains_null(monkeypatch, collector):
     assert rec.prompt_tokens is None
     assert rec.completion_tokens is None
     assert rec.total_tokens is None
+
+
+def test_call_level_uncertainty_and_apology_are_not_refusals(monkeypatch, collector):
+    responses = iter(
+        [
+            _FakeResponse(content="I don't know which system it uses."),
+            _FakeResponse(content="I'm sorry, but I don't know the answer."),
+        ]
+    )
+    monkeypatch.setattr(
+        "tau2.utils.llm_utils.completion", lambda **kwargs: next(responses)
+    )
+    message = [UserMessage(role="user", content="Which system?")]
+    generate("fake-model", message, side="stakeholder", call_name="stakeholder_plan")
+    generate("fake-model", message, side="stakeholder", call_name="stakeholder_plan")
+    assert [r.explicit_refusal for r in collector.records()] == [False, False]
+    assert model_refusal_records(collector.records()) == []
+
+
+def test_call_level_explicit_text_refusal_is_recorded(monkeypatch, collector):
+    _monkeypatch_completion(
+        monkeypatch,
+        _FakeResponse(content="I can't assist with that request."),
+    )
+    generate(
+        "openrouter/example-model",
+        [UserMessage(role="user", content="Please help.")],
+        side="stakeholder",
+        call_name="stakeholder_realization",
+    )
+    record = collector.records()[0]
+    assert record.explicit_refusal is True
+    assert record.refusal_excerpt == "I can't assist with that request."
+    assert record.call_name == "stakeholder_realization"
+    assert record.provider == "openrouter"
+    assert record.status == "success"
+    assert record.finish_reason == "stop"
+    assert len(model_refusal_records(collector.records())) == 1
+
+
+def test_provider_refusal_field_is_recorded_with_filter_metadata(
+    monkeypatch, collector
+):
+    _monkeypatch_completion(
+        monkeypatch,
+        _FakeResponse(
+            content=None,
+            refusal="safety policy",
+            finish_reason="content_filter",
+        ),
+    )
+    generate(
+        "openrouter/example-model",
+        [UserMessage(role="user", content="Please help.")],
+        side="agent",
+        call_name="agent_response",
+    )
+    record = collector.records()[0]
+    assert record.explicit_refusal is True
+    assert record.provider_refusal == "safety policy"
+    assert record.refusal_excerpt == "safety policy"
+    assert record.finish_reason == "content_filter"
+    assert record.moderation_metadata["moderation_or_content_filter"] is True
+    assert "refusal" in record.moderation_metadata["metadata_keys"]
+
+
+def test_malformed_json_without_refusal_text_is_not_a_refusal(monkeypatch, collector):
+    _monkeypatch_completion(monkeypatch, _FakeResponse(content='{"message": '))
+    generate(
+        "fake-model",
+        [UserMessage(role="user", content="Reply as JSON")],
+        side="stakeholder",
+        call_name="stakeholder_realization",
+    )
+    record = collector.records()[0]
+    assert record.status == "success"
+    assert record.explicit_refusal is False
+    assert model_refusal_records(collector.records()) == []
+
+
+def test_internal_stakeholder_refusal_retry_is_kept_once_and_public_uncertainty_is_clean(
+    monkeypatch, collector
+):
+    responses = iter(
+        [
+            _FakeResponse(content="I can't assist with that request."),
+            _FakeResponse(content='{"plan": []}'),
+            _FakeResponse(content='{"message": "I don\'t know.", "annotations": []}'),
+        ]
+    )
+    monkeypatch.setattr(
+        "tau2.utils.llm_utils.completion", lambda **kwargs: next(responses)
+    )
+    message = [UserMessage(role="user", content="Tell me about the process.")]
+    # These call names mirror the stakeholder's private plan -> realization
+    # phases; the first plan response is rejected and retried before a public
+    # uncertainty answer is accepted.
+    generate(
+        "openrouter/example-model",
+        message,
+        side="stakeholder",
+        call_name="stakeholder_semantic_plan",
+    )
+    generate(
+        "openrouter/example-model",
+        message,
+        side="stakeholder",
+        call_name="stakeholder_semantic_plan",
+        retry_attempt=True,
+    )
+    generate(
+        "openrouter/example-model",
+        message,
+        side="stakeholder",
+        call_name="stakeholder_realization",
+    )
+    records = collector.records()
+    assert len(records) == 3
+    assert records[0].explicit_refusal is True
+    assert records[1].explicit_refusal is False
+    assert records[1].retry_attempt is True
+    assert records[0].attempt_index == 0
+    assert records[1].attempt_index == 1
+    assert records[2].call_name == "stakeholder_realization"
+
+    from tau2.domains.business_interview.run_metrics import account_model_refusals
+
+    accepted_public_trajectory = [UserMessage(role="user", content="I don't know.")]
+    assert account_model_refusals(accepted_public_trajectory) == []
+    # The same internal event is not added again merely because an accepted
+    # public trajectory exists; final count is exactly the call-level rows.
+    assert len(model_refusal_records(records)) == 1
 
 
 def test_component_counts_deterministic_and_tool_schema_separate(
@@ -248,6 +413,8 @@ def test_failed_provider_call_records_error_row(monkeypatch, collector):
     rec = recs[0]
     assert rec.status == "error"
     assert rec.error_type == "RuntimeError"
+    assert rec.explicit_refusal is False
+    assert rec.refusal_excerpt is None
     assert rec.total_tokens is None
     # the exception MESSAGE (which may carry request/provider content) is never
     # persisted — only the safe class name

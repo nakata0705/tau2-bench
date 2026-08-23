@@ -600,7 +600,10 @@ class StakeholderUserSimulator(UserSimulator):
         return contract_messages
 
     def _generate_plan(
-        self, messages: list, contract: Optional[str] = None
+        self,
+        messages: list,
+        contract: Optional[str] = None,
+        retry_attempt: bool = False,
     ) -> list[PlannedResponseItem]:
         """Phase 1 — WHAT: the stakeholder decides its private Semantic
         Response Plan (intended semantic addresses + modes) from its own
@@ -610,7 +613,10 @@ class StakeholderUserSimulator(UserSimulator):
         contract_text = contract or _PLAN_CONTRACT
         contract_messages = self._append_contract(messages, contract_text)
         assistant_message = self._call_llm(
-            contract_messages, output_contract_text=contract_text
+            contract_messages,
+            output_contract_text=contract_text,
+            call_name="stakeholder_semantic_plan",
+            retry_attempt=retry_attempt,
         )
         plan = parse_plan(assistant_message.content)
         if self._catalog is not None:
@@ -622,6 +628,7 @@ class StakeholderUserSimulator(UserSimulator):
         messages: list,
         plan: list[PlannedResponseItem],
         contract: Optional[str] = None,
+        retry_attempt: bool = False,
     ) -> dict:
         """Phase 2 — HOW: realize the validated plan into natural language and
         the private sidecar. The realized sidecar must account for EVERY
@@ -635,7 +642,10 @@ class StakeholderUserSimulator(UserSimulator):
         contract_text = base + "\n\n" + _PLAN_REALIZE_BLOCK.format(plan=plan_block)
         contract_messages = self._append_contract(messages, contract_text)
         assistant_message = self._call_llm(
-            contract_messages, output_contract_text=contract_text
+            contract_messages,
+            output_contract_text=contract_text,
+            call_name="stakeholder_realization",
+            retry_attempt=retry_attempt,
         )
         sidecar = parse_sidecar(assistant_message.content)
         if self._catalog is not None:
@@ -657,7 +667,9 @@ class StakeholderUserSimulator(UserSimulator):
         contract_text = contract or _OUTPUT_CONTRACT
         contract_messages = self._append_contract(messages, contract_text)
         assistant_message = self._call_llm(
-            contract_messages, output_contract_text=contract_text
+            contract_messages,
+            output_contract_text=contract_text,
+            call_name="stakeholder_sidecar",
         )
         sidecar = parse_sidecar(assistant_message.content)
         if self._catalog is not None:
@@ -669,13 +681,21 @@ class StakeholderUserSimulator(UserSimulator):
             )
         return sidecar
 
-    def _call_llm(self, messages: list, output_contract_text: Optional[str] = None):
+    def _call_llm(
+        self,
+        messages: list,
+        output_contract_text: Optional[str] = None,
+        call_name: str = "stakeholder_response",
+        retry_attempt: bool = False,
+    ):
         """One LLM completion (kept separate for testability).
 
         ``output_contract_text`` (the fixed contract body appended to the last
         user message) is passed through to the metrics layer so its length is
         recorded separately from the conversation
-        (``output_contract_chars``); its body is never persisted.
+        (``output_contract_chars``); its body is never persisted. ``call_name``
+        distinguishes the plan, realization and legacy sidecar phases, while
+        ``retry_attempt`` marks a caller-visible retry.
         """
         from tau2.utils.llm_utils import generate
 
@@ -685,10 +705,11 @@ class StakeholderUserSimulator(UserSimulator):
                 model=self.llm,
                 messages=messages,
                 tools=self.tools,
-                call_name="user_simulator_response",
+                call_name=call_name,
                 side="stakeholder",
                 response_format={"type": "json_object"},
                 output_contract_text=output_contract_text,
+                retry_attempt=retry_attempt,
                 **kwargs,
             )
         except Exception:
@@ -696,9 +717,10 @@ class StakeholderUserSimulator(UserSimulator):
                 model=self.llm,
                 messages=messages,
                 tools=self.tools,
-                call_name="user_simulator_response",
+                call_name=call_name,
                 side="stakeholder",
                 output_contract_text=output_contract_text,
+                retry_attempt=True,
                 **kwargs,
             )
 
@@ -749,7 +771,11 @@ class StakeholderUserSimulator(UserSimulator):
                     SystemMessage(role="system", content=_PLAN_ERROR_HINT)
                 ]
                 try:
-                    plan = self._generate_plan(retry_plan, contract=_PLAN_ERROR_HINT)
+                    plan = self._generate_plan(
+                        retry_plan,
+                        contract=_PLAN_ERROR_HINT,
+                        retry_attempt=True,
+                    )
                 except ValueError as plan_err2:
                     raise ValueError(
                         "stakeholder response plan rejected twice; a plan that "
@@ -768,7 +794,10 @@ class StakeholderUserSimulator(UserSimulator):
                 ]
                 try:
                     sidecar = self._realize_sidecar(
-                        retry_messages, plan, contract=_SIDECAR_ERROR_HINT
+                        retry_messages,
+                        plan,
+                        contract=_SIDECAR_ERROR_HINT,
+                        retry_attempt=True,
                     )
                 except ValueError as second_err:
                     raise ValueError(

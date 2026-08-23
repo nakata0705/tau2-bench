@@ -959,6 +959,19 @@ class InterviewTools(ToolKitBase):
         return " ".join(parts)
 
     @is_tool(ToolType.WRITE)
+    def remove_edge(self, edge_id: str) -> str:
+        """Remove one edge while preserving both endpoint nodes.
+
+        This is an explicit hypothesis-revision operation: only the requested
+        edge is deleted; endpoint nodes and every unrelated edge remain
+        unchanged.
+        """
+        graph = self._graph()
+        self._edge(edge_id)  # require the edge to exist before mutating state
+        del graph.edges[edge_id]
+        return f"Removed edge {edge_id}."
+
+    @is_tool(ToolType.WRITE)
     def add_edge(
         self,
         edge_id: str,

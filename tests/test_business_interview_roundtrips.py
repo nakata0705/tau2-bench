@@ -719,13 +719,13 @@ def test_stakeholder_generation_plans_then_realizes_with_stubbed_llm():
         _PLAN_CONTRACT as PLAN_CONTRACT,
     )
 
-    def _stub(messages, output_contract_text=None):  # noqa: ANN001
+    def _stub(messages, output_contract_text=None, **kwargs):  # noqa: ANN001
         contract = output_contract_text or ""
         if contract.startswith(PLAN_CONTRACT[:80]):
             return _Reply(plan_payload)
         return _Reply(good_sidecar)
 
-    sim._call_llm = _stub  # noqa: SLF001
+    setattr(sim, "_call_llm", _stub)
     plan = sim._generate_plan(msgs)
     assert plan == [PlannedResponseItem(semantic_id=valueslot, mode="value")]
     sidecar = sim._realize_sidecar(msgs, plan)
@@ -733,8 +733,13 @@ def test_stakeholder_generation_plans_then_realizes_with_stubbed_llm():
     assert len(sidecar["annotations"]) == 1
 
     # deterministic completeness enforcement: an omission is rejected
-    sim._call_llm = lambda messages, output_contract_text=None: _Reply(  # noqa: SLF001
-        bad_sidecar
+    setattr(
+        sim,
+        "_call_llm",
+        lambda messages,
+        output_contract_text=None,
+        call_name=None,
+        retry_attempt=False: _Reply(bad_sidecar),
     )
     try:
         sim._realize_sidecar(msgs, plan)
@@ -742,3 +747,110 @@ def test_stakeholder_generation_plans_then_realizes_with_stubbed_llm():
     except ValueError:
         rejected = True
     assert rejected is True
+
+
+def test_internal_stakeholder_refusal_retry_is_recorded_at_generate_layer(
+    monkeypatch,
+):
+    """A failed private plan generation remains visible even when the retry
+    yields a valid plan and the accepted public answer is ordinary uncertainty."""
+    import json as _json
+
+    from tau2.data_model.message import AssistantMessage
+    from tau2.domains.business_interview.run_metrics import account_model_refusals
+    from tau2.utils.llm_call_metrics import (
+        LLMCallMetricsCollector,
+        model_refusal_records,
+        set_llm_call_metrics_collector,
+    )
+
+    class _Message:
+        role = "assistant"
+        tool_calls = []
+        refusal = None
+
+        def __init__(self, content):
+            self.content = content
+
+    class _Choice:
+        finish_reason = "stop"
+
+        def __init__(self, content):
+            self.message = _Message(content)
+
+    class _Response:
+        model = "fake-model"
+
+        def __init__(self, content):
+            self.choices = [_Choice(content)]
+
+        def get(self, key):
+            return None
+
+        def to_dict(self):
+            return {
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "role": "assistant",
+                            "content": self.choices[0].message.content,
+                        },
+                    }
+                ]
+            }
+
+    responses = iter(
+        [
+            _Response("I can't assist with that request."),
+            _Response(_json.dumps({"plan": []})),
+            _Response(
+                _json.dumps(
+                    {
+                        "message": "I don't know.",
+                        "annotations": [],
+                        "alignments": [],
+                        "terminology": [],
+                    }
+                )
+            ),
+        ]
+    )
+    monkeypatch.setattr(
+        "tau2.utils.llm_utils.completion", lambda **kwargs: next(responses)
+    )
+
+    env = get_environment()
+    from tau2.domains.business_interview.user_simulator import (
+        StakeholderUserSimulator,
+    )
+
+    sim = StakeholderUserSimulator(
+        llm="openrouter/example-model",
+        task=_task(),
+        environment=env,
+        instructions="x",
+    )
+    collector = LLMCallMetricsCollector()
+    set_llm_call_metrics_collector(collector)
+    try:
+        public = sim._generate_next_message(
+            AssistantMessage(role="assistant", content="Please explain the process."),
+            sim.get_init_state(),
+        )
+        env.on_message(public)
+        records = collector.records()
+    finally:
+        set_llm_call_metrics_collector(None)
+
+    assert [record.call_name for record in records] == [
+        "stakeholder_semantic_plan",
+        "stakeholder_semantic_plan",
+        "stakeholder_realization",
+    ]
+    assert records[0].explicit_refusal is True
+    assert records[1].explicit_refusal is False
+    assert records[1].retry_attempt is True
+    assert records[1].attempt_index == 1
+    assert account_model_refusals([public]) == []
+    assert len(model_refusal_records(records)) == 1

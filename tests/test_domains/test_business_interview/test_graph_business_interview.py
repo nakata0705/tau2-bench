@@ -1637,6 +1637,70 @@ def test_remove_node_after_decomposition_leaves_no_dangling_edge():
     assert tools.db.graph.is_valid
 
 
+def test_remove_edge_preserves_endpoints_and_unrelated_edges():
+    tools = _tools()
+    tools.start_inference("q")
+    tools.create_concept("act", "activity", "step")
+    for node_id in ("a", "b", "c"):
+        tools.add_node(node_id, activity="act")
+    tools.add_edge("obsolete", "a", "b", evidence=[])
+    tools.add_edge("unrelated", "b", "c", evidence=[])
+
+    confirmation = tools.remove_edge("obsolete")
+
+    assert confirmation == "Removed edge obsolete."
+    assert tools.db.graph is not None
+    assert set(tools.db.graph.nodes) == {"a", "b", "c"}
+    assert "obsolete" not in tools.db.graph.edges
+    assert set(tools.db.graph.edges) == {"unrelated"}
+    assert tools.db.graph.edges["unrelated"].from_node == "b"
+    assert tools.db.graph.edges["unrelated"].to_node == "c"
+    assert tools.db.graph.is_valid
+
+
+def test_remove_edge_unknown_id_fails_without_mutating_graph():
+    tools = _tools()
+    tools.start_inference("q")
+    tools.create_concept("act", "activity", "step")
+    tools.add_node("a", activity="act")
+    tools.add_node("b", activity="act")
+    tools.add_edge("e1", "a", "b", evidence=[])
+
+    with pytest.raises(ValueError, match=r"edge not found: missing"):
+        tools.remove_edge("missing")
+
+    assert tools.db.graph is not None
+    assert set(tools.db.graph.edges) == {"e1"}
+    assert set(tools.db.graph.nodes) == {"a", "b"}
+
+
+def test_remove_edge_revises_coarse_shortcut_after_refined_path():
+    tools = _tools()
+    tools.start_inference("q")
+    for concept_id, label in (
+        ("receive", "receive request"),
+        ("check", "check request"),
+        ("quote", "send quotation"),
+    ):
+        tools.create_concept(concept_id, "activity", label)
+    tools.add_node("receive", activity="receive")
+    tools.add_node("check", activity="check")
+    tools.add_node("quote", activity="quote")
+    tools.add_edge("shortcut", "receive", "quote", evidence=[])
+    tools.add_edge("refined_1", "receive", "check", evidence=[])
+    tools.add_edge("refined_2", "check", "quote", evidence=[])
+
+    tools.remove_edge("shortcut")
+
+    assert tools.db.graph is not None
+    assert set(tools.db.graph.nodes) == {"receive", "check", "quote"}
+    assert set(tools.db.graph.edges) == {"refined_1", "refined_2"}
+    assert not any(
+        e.from_node == "receive" and e.to_node == "quote"
+        for e in tools.db.graph.edges.values()
+    )
+
+
 def test_validate_graph_accepts_cycles():
     tools = _tools()
     tools.start_inference("q")
@@ -2985,8 +3049,15 @@ def test_policy_references_only_available_agent_tools():
 
     env = get_environment()
     assert isinstance(env.tools, InterviewTools)
-    available = {t.name for t in env.get_tools()}
+    available_tools = env.get_tools()
+    available = {t.name for t in available_tools}
     policy = BUSINESS_INTERVIEW_POLICY_PATH.read_text()
+    assert "remove_edge" in available
+    assert "remove_edge" in policy
+    remove_edge_tool = next(t for t in available_tools if t.name == "remove_edge")
+    remove_edge_schema = remove_edge_tool.openai_schema["function"]
+    assert remove_edge_schema["name"] == "remove_edge"
+    assert remove_edge_schema["parameters"]["required"] == ["edge_id"]
     # backticked snake_case identifiers that look like tool names
     refs = set(re.findall(r"`([a-z][a-z0-9_]+)\(?[`\)]", policy))
     non_tool_vocab = {
@@ -3781,7 +3852,11 @@ def test_generic_same_kind_labels_need_more_than_broad_word_overlap():
     # document concept, rather than being discarded with generic overlap.
     assert _concept_similarity(quotation, truth.concepts["tc_quote"]) == 1.0
 
-    for label, tid in (("CRM", "tc_system_crm"), ("SAP", None), ("Excel", "tc_system_excel")):
+    for label, tid in (
+        ("CRM", "tc_system_crm"),
+        ("SAP", None),
+        ("Excel", "tc_system_excel"),
+    ):
         identifier = FakeAgent()
         identifier.kind = "system"
         identifier.display_label = label
@@ -4005,9 +4080,7 @@ def test_model_refusal_accounting_is_explicit_and_narrow():
         AssistantMessage(
             role="assistant",
             content=None,
-            raw_data={
-                "choices": [{"message": {"refusal": "safety policy"}}]
-            },
+            raw_data={"choices": [{"message": {"refusal": "safety policy"}}]},
         ),
     ]
     refusals = account_model_refusals(

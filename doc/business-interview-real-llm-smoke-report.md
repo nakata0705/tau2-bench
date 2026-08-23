@@ -256,3 +256,50 @@ Weaknesses:
 - `make check-all` (ruff lint + format) — clean.
 - No secrets committed; the report and artifacts contain only model/provider/
   config metadata and no API keys.
+
+## 13. Follow-up cleanup: graph revision and call-level refusals
+
+The follow-up cleanup adds the Agent-facing `remove_edge(edge_id)` write tool.
+It requires an existing edge, deletes only that edge, preserves both endpoint
+nodes and unrelated edges, and never consults hidden Truth. The policy now
+requires removing obsolete shortcut relations after discovering intermediate
+steps; `remove_node` remains the operation for an obsolete node. Deterministic
+coverage includes endpoint/unrelated-edge preservation, unknown-edge failure,
+coarse-shortcut revision, and policy/schema presence.
+
+Refusal diagnostics now run in the shared `generate()` instrumentation path.
+Each attempt records side, call name, global/per-call attempt indexes, model,
+provider, status, retry flag, finish reason, bounded refusal/provider-refusal
+text, and bounded moderation metadata. `model_refusal_count` and
+`model_refusals` in real-run artifacts are call-level only, so private
+Stakeholder plan/realization refusals remain visible even if a retry produces a
+normal accepted public answer. Public trajectory refusal accounting remains a
+separate compatibility diagnostic and is not added to the call-level count.
+Uncertainty, malformed/validation/tool errors, and provider exceptions are not
+refusals without explicit refusal evidence.
+
+### Fresh quotation run (seed 9003)
+
+Artifact: `artifacts/business_interview_real_llm/run_00_seed9003.json`
+
+| metric | result |
+|---|---:|
+| termination_reason | `max_steps` |
+| provider_error_count / call-level provider errors | `0 / 0` |
+| tool_error_count / categories | `0 / []` |
+| Agent generation attempts | `100` |
+| accepted Observations | `9` |
+| Stakeholder generation attempts | `17` (1 retry) |
+| model_refusal_count (call-level) | `0` |
+| node recall / precision | `1.0 / 1.0` |
+| edge recall / precision | `1.0 / 1.0` |
+| concept recall / precision | `0.7619 / 0.9412` |
+| fabricated nodes / edges | `0 / 0` |
+| reconstruction / structural / quality pass | `false / false / false` |
+| elapsed | `491.34s` |
+
+No actual model refusal was observed. The Agent made no `remove_edge` call in
+this run; the final graph nevertheless had no fabricated edge (the refined
+edges were built without an obsolete shortcut). The run exhausted `max_steps`
+while repeatedly revisiting a rationale update, so the failed reconstruction
+is reported as-is.

@@ -20,9 +20,10 @@ Categories:
 - ``other_tool_error``   — anything else.
 """
 
-import json
 import re
 from typing import Optional
+
+from tau2.utils.llm_call_metrics import detect_model_refusal, short_text
 
 _KNOWN_CATEGORIES = (
     "tool_not_found",
@@ -120,17 +121,6 @@ def account_tool_errors(messages) -> dict:
     }
 
 
-_MODEL_REFUSAL_PATTERNS = tuple(
-    re.compile(pattern, re.IGNORECASE)
-    for pattern in (
-        r"\bi\s+(?:cannot|can't)\s+(?:assist|help|comply|fulfill)\b",
-        r"\bi\s+(?:am|'m)\s+unable\s+to\s+(?:assist|help|comply)\b",
-        r"\bi\s+must\s+refuse\b",
-        r"\b(?:unable|not able)\s+to\s+(?:assist|help)\s+with\s+(?:that|this)\b",
-    )
-)
-
-
 def _message_side(message) -> Optional[str]:
     role = getattr(message, "role", None)
     if role == "assistant":
@@ -138,70 +128,6 @@ def _message_side(message) -> Optional[str]:
     if role == "user":
         return "Stakeholder"
     return None
-
-
-def _provider_refusal_text(raw_data) -> Optional[str]:
-    """Return an explicit provider refusal field, if one was supplied."""
-    if not isinstance(raw_data, dict):
-        return None
-    choices = raw_data.get("choices")
-    choice = choices[0] if isinstance(choices, list) and choices else {}
-    if not isinstance(choice, dict):
-        return None
-    message = choice.get("message")
-    if not isinstance(message, dict):
-        return None
-    refusal = message.get("refusal")
-    return str(refusal) if refusal else None
-
-
-def _provider_metadata(raw_data) -> dict:
-    """Extract bounded refusal-related metadata from a provider response."""
-    if not isinstance(raw_data, dict):
-        return {
-            "finish_reason": None,
-            "moderation_or_content_filter": False,
-            "metadata_keys": [],
-        }
-    choices = raw_data.get("choices")
-    choice = choices[0] if isinstance(choices, list) and choices else {}
-    if not isinstance(choice, dict):
-        choice = {}
-    message = choice.get("message")
-    if not isinstance(message, dict):
-        message = {}
-    metadata_blob = json.dumps(raw_data, ensure_ascii=False).lower()
-    moderation = any(
-        marker in metadata_blob
-        for marker in (
-            "content_filter",
-            "content filtering",
-            "moderation",
-            '"safety":',
-        )
-    ) or bool(re.search(r'"blocked"\s*:\s*true', metadata_blob))
-    keys = sorted(
-        key
-        for key in set(raw_data) | set(choice) | set(message)
-        if any(
-            marker in key.lower()
-            for marker in ("moderation", "content_filter", "safety", "refusal")
-        )
-    )
-    return {
-        "finish_reason": choice.get("finish_reason"),
-        "moderation_or_content_filter": moderation,
-        "metadata_keys": keys,
-    }
-
-
-def _short_text(value, limit: int = 500) -> Optional[str]:
-    if value is None:
-        return None
-    text = str(value)
-    if len(text) <= limit:
-        return text
-    return text[:limit] + "…"
 
 
 def account_model_refusals(
@@ -235,28 +161,21 @@ def account_model_refusals(
         side_index = side_call_counts[side]
         side_call_counts[side] += 1
         content = getattr(message, "content", None)
-        response_text = str(content) if content and str(content).strip() else ""
-        matched = next(
-            (
-                pattern.pattern
-                for pattern in _MODEL_REFUSAL_PATTERNS
-                if pattern.search(response_text)
-            ),
-            None,
-        )
-        provider_refusal = _provider_refusal_text(getattr(message, "raw_data", None))
-        if matched is None and provider_refusal is None:
+        raw_data = getattr(message, "raw_data", None)
+        diagnostic = detect_model_refusal(content, raw_data=raw_data)
+        if not diagnostic["explicit_refusal"]:
             continue
-        if matched is None:
-            matched = "provider_refusal_field"
-            response_text = provider_refusal or ""
+        response_text = diagnostic["refusal_excerpt"] or ""
+        matched = diagnostic["matched_pattern"]
 
         preceding_prompt = None
         for previous in reversed((messages or [])[:index]):
-            if _message_side(previous) == ("Stakeholder" if side == "Agent" else "Agent"):
+            if _message_side(previous) == (
+                "Stakeholder" if side == "Agent" else "Agent"
+            ):
                 previous_content = getattr(previous, "content", None)
                 if previous_content and str(previous_content).strip():
-                    preceding_prompt = _short_text(previous_content)
+                    preceding_prompt = short_text(previous_content)
                     break
 
         recovered = False
@@ -266,7 +185,10 @@ def account_model_refusals(
             later_content = getattr(later, "content", None)
             if not later_content or not str(later_content).strip():
                 continue
-            if not any(pattern.search(str(later_content)) for pattern in _MODEL_REFUSAL_PATTERNS):
+            later_diagnostic = detect_model_refusal(
+                later_content, raw_data=getattr(later, "raw_data", None)
+            )
+            if not later_diagnostic["explicit_refusal"]:
                 recovered = True
                 break
 
@@ -279,11 +201,9 @@ def account_model_refusals(
                 "model": model,
                 "provider": provider_for(model),
                 "matched_pattern": matched,
-                "response_excerpt": _short_text(response_text),
+                "response_excerpt": short_text(response_text),
                 "preceding_public_prompt": preceding_prompt,
-                "provider_metadata": _provider_metadata(
-                    getattr(message, "raw_data", None)
-                ),
+                "provider_metadata": diagnostic["provider_metadata"],
                 "retry_recovered": recovered,
             }
         )

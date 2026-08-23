@@ -13,8 +13,10 @@ The script captures the natural language conversation, the tool calls, the
 final inferred graph + glossary, the private semantic ledger (in a separate
 ``*.private.json`` artifact), the domain evaluator metrics
 (structural/glossary/evidence/quality_pass), the standard tau2 reward, a
-private-ID leakage scan, provider/tool error accounting, and explicit model
-refusal diagnostics. ``episode_complete`` is recorded separately from
+private-ID leakage scan, provider/tool error accounting, and bounded explicit
+model-refusal diagnostics for every LLM generation attempt. A secondary public
+trajectory refusal count is retained for compatibility but is never added to
+that call-level count. ``episode_complete`` is recorded separately from
 benchmark reconstruction success.
 
 This is an EXPLORATORY, MANUAL experiment only:
@@ -60,6 +62,36 @@ USER_IMPLEMENTATION = "business_interview_user"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ARTIFACT_DIR = REPO_ROOT / "artifacts" / "business_interview_real_llm"
+
+_PROVIDER_EXCEPTION_MODULES = ("litellm", "httpx", "openai", "requests")
+_PROVIDER_EXCEPTION_NAMES = {
+    "apierror",
+    "apiconnectionerror",
+    "authenticationerror",
+    "badrequesterror",
+    "connectionerror",
+    "connecterror",
+    "ratelimiterror",
+    "serviceunavailableerror",
+    "timeouterror",
+    "timeout",
+}
+
+
+def _is_provider_exception(exc: BaseException) -> bool:
+    """Identify provider/runtime failures without labeling domain validation."""
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        name = type(current).__name__.lower()
+        module = type(current).__module__.lower()
+        if name in _PROVIDER_EXCEPTION_NAMES or module.startswith(
+            _PROVIDER_EXCEPTION_MODULES
+        ):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def _render_evidence(evs) -> list:
@@ -267,9 +299,10 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
     )
 
     # Install the LLM call metrics collector BEFORE running so every Agent /
-    # Stakeholder generation records one numeric row (context-size + latency).
+    # Stakeholder generation records metrics and bounded refusal diagnostics.
     from tau2.utils.llm_call_metrics import (
         LLMCallMetricsCollector,
+        model_refusal_records,
         record_to_dict,
         set_llm_call_metrics_collector,
         slowest_calls,
@@ -288,7 +321,8 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
     except Exception as exc:  # noqa: BLE001 - capture whatever happened
         error_text = "".join(traceback.format_exception_only(type(exc), exc))
         errors.append(error_text)
-        provider_errors.append(error_text)
+        if _is_provider_exception(exc):
+            provider_errors.append(error_text)
         logger.exception("simulation raised")
     elapsed = time.time() - started
 
@@ -339,9 +373,7 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
     )
 
     trajectory_messages = (
-        result.messages
-        if result is not None and result.messages is not None
-        else []
+        result.messages if result is not None and result.messages is not None else []
     )
     tool_error_accounting = account_tool_errors(trajectory_messages)
     messages = []
@@ -392,7 +424,7 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
         if user_info is not None and getattr(user_info, "llm", None):
             resolved_user_model = user_info.llm
 
-    model_refusals = account_model_refusals(
+    public_trajectory_refusals = account_model_refusals(
         trajectory_messages,
         agent_model=resolved_agent_model,
         stakeholder_model=resolved_user_model,
@@ -429,8 +461,12 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
         ],
         "agent_calls": agent_calls,
         "accepted_observations": accepted_observations,
-        "model_refusal_count": len(model_refusals),
-        "model_refusals": model_refusals,
+        # Filled from every generation attempt below, not only accepted
+        # public Agent/Stakeholder trajectory messages.
+        "model_refusal_count": 0,
+        "model_refusals": [],
+        "public_trajectory_refusal_count": len(public_trajectory_refusals),
+        "public_trajectory_refusals": public_trajectory_refusals,
         "episode_complete": termination_reason == "episode_complete",
         "conversation": messages,
         "observations": (
@@ -458,6 +494,17 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
     set_llm_call_metrics_collector(None)
     llm_records = metrics_collector.records()
     llm_by_side = metrics_collector.by_side()
+    llm_call_provider_error_count = sum(
+        1 for record in llm_records if record.status == "error"
+    )
+    dump_provider_error_count = (
+        llm_call_provider_error_count
+        if llm_call_provider_error_count
+        else len(provider_errors)
+    )
+    dump["provider_error_count"] = dump_provider_error_count
+    dump["llm_call_provider_error_count"] = llm_call_provider_error_count
+    dump["agent_calls"] = len(llm_by_side.get("agent", []))
     llm_call_metrics = {
         "records": [record_to_dict(r) for r in llm_records],
         "by_side_summary": {
@@ -467,6 +514,12 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
         "slowest_calls": slowest_calls(llm_records, n=5),
     }
     dump["llm_call_metrics"] = llm_call_metrics
+    model_refusals = model_refusal_records(llm_records)
+    dump["model_refusal_count"] = len(model_refusals)
+    dump["model_refusals"] = model_refusals
+    dump["llm_generation_attempts_by_side"] = {
+        side: len(records) for side, records in sorted(llm_by_side.items())
+    }
 
     # --- private-ID leakage scan ---------------------------------------------
     private_ids: set[str] = set()
@@ -553,6 +606,9 @@ def main() -> int:
                 "glossary_complete": metrics.get("glossary_complete"),
                 "evidence_pass": metrics.get("evidence_pass"),
                 "provider_error_count": dump.get("provider_error_count"),
+                "llm_call_provider_error_count": dump.get(
+                    "llm_call_provider_error_count"
+                ),
                 "provider_errors": dump.get("provider_errors"),
                 "tool_error_count": dump.get("tool_error_count"),
                 "tool_error_categories": dump.get("tool_error_categories"),
@@ -562,8 +618,14 @@ def main() -> int:
                 ),
                 "agent_calls": dump.get("agent_calls"),
                 "accepted_observations": dump.get("accepted_observations"),
+                "llm_generation_attempts_by_side": dump.get(
+                    "llm_generation_attempts_by_side"
+                ),
                 "model_refusal_count": dump.get("model_refusal_count"),
                 "model_refusals": dump.get("model_refusals"),
+                "public_trajectory_refusal_count": dump.get(
+                    "public_trajectory_refusal_count"
+                ),
                 "node_recall": metrics.get("node_recall"),
                 "node_precision": metrics.get("node_precision"),
                 "edge_recall": metrics.get("edge_recall"),
