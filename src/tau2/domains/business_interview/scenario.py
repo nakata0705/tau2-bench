@@ -26,7 +26,10 @@ from tau2.domains.business_interview.knowledge import (
     StakeholderKnowledge,
     project_knowledge,
 )  # noqa: E402 - see module docstring
-from tau2.domains.business_interview.stakeholder import StakeholderFilter
+from tau2.domains.business_interview.stakeholder import (
+    ConceptKnowledgeOverride,
+    StakeholderFilter,
+)
 
 JA_SCENARIO_SUFFIX = "_ja"
 
@@ -308,9 +311,53 @@ def quotation_finance_filter() -> StakeholderFilter:
     )
 
 
+# Japanese local terms for the quotation concepts (used by the JA locale
+# knowledge projection so the stakeholder/agent vocabulary can be Japanese).
+_JA_CONCEPT_TERMS: dict[str, list[str]] = {
+    "tc_activity_receive_request": ["受注依頼の受領"],
+    "tc_activity_check_customer": ["顧客情報の確認"],
+    "tc_activity_create_quotation": ["見積書の作成"],
+    "tc_activity_approve_quotation": ["見積書の承認"],
+    "tc_activity_send_quotation": ["見積書の送付"],
+    "tc_activity_send_month_end_summary": ["月末サマリーの送付"],
+    "tc_actor_sales": ["営業担当"],
+    "tc_actor_manager": ["管理者"],
+    "tc_system_crm": ["ＣＲＭ"],
+    "tc_system_quoting": ["見積システム"],
+    "tc_system_email": ["メール"],
+    "tc_system_excel": ["エクセル"],
+    "tc_request": ["受注依頼"],
+    "tc_customer": ["顧客情報"],
+    "tc_pricing": ["価格情報"],
+    "tc_quote": ["見積書"],
+    "tc_excel_summary": ["見積情報サマリー"],
+    "tc_cond_over_1m": ["100万円超"],
+    "tc_cond_at_or_below_1m": ["100万円以下"],
+    "tc_cond_month_end": ["月末"],
+    "tc_rationale_credit_risk": ["与信リスク管理"],
+}
+
+
+def _localized_filter() -> StakeholderFilter:
+    """The sales filter with per-concept Japanese local terms (used only by
+    the JA locale knowledge projection)."""
+    base = quotation_sales_filter()
+    overrides = {
+        cid: ConceptKnowledgeOverride(local_terms=terms)
+        for cid, terms in _JA_CONCEPT_TERMS.items()
+    }
+    return base.model_copy(update={"concept_overrides": overrides})
+
+
 def quotation_knowledge(locale: str = "en") -> StakeholderKnowledge:
-    """The sales stakeholder's world model (projection of the Truth)."""
-    return project_knowledge(quotation_truth(), quotation_sales_filter())
+    """The sales stakeholder's world model (projection of the Truth).
+
+    For ``locale="ja"`` the knowledge concepts carry Japanese local terms
+    (via per-concept overrides) so the stakeholder's vocabulary — and
+    therefore the agent's labels — can be Japanese.
+    """
+    filt = _localized_filter() if locale == "ja" else quotation_sales_filter()
+    return project_knowledge(quotation_truth(), filt)
 
 
 # ---------------------------------------------------------------------------

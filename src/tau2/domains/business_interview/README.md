@@ -136,17 +136,14 @@ Ordinary workflow mentions never create these events.
   quoted span is missing, ambiguous, or does not resolve to a private
   stakeholder slot.
 
-## Concept status (Agent belief records)
+## No concept validation lifecycle
 
-    hypothesized -> grounded -> confirmed
-
-These are **Agent belief records**, not provenance gates. `ground_concept`
-records that the Agent resolved the concept's identity (evidence is
-optional); `confirm_concept` / `mark_concept_unknown` /
-`mark_concept_disputed` record the Agent's belief without requiring a private
-dialogue event; `record_terminology_agreement` records a proposed term. The
-evaluator judges concept identity by content against Truth, never by
-grounding provenance.
+There is no hypothesized/grounded/confirmed/unknown/disputed lifecycle: the
+obsolete `ground_concept` / `confirm_concept` / `mark_concept_unknown` /
+`mark_concept_disputed` tools and the ``AgentConcept`` validation fields are
+removed. Concept identity is judged by content against Truth, and nothing
+gates the interview on a concept status. `record_terminology_agreement`
+independently records an agreed term.`
 
 ## Evaluation
 
@@ -161,10 +158,12 @@ Primary target: **AgentConcepts / AgentGraph vs TruthConcepts / TruthGraph**.
   referenced-concept content signature; edges by endpoint pair on the Truth
   graph); `node_recall` / `node_precision` / `edge_recall` / `edge_precision`
   / fabricated counts; `start_correct` / `end_recall` / `end_precision`;
-- property scoring per slot: a Truth `ConceptRef` slot needs a matching agent
-  ConceptRef; a Truth-absent (`None`) slot is correct for any no-value state
-  (UNSET / ABSENT / DONT_KNOW). `reads` / `writes` score recall x precision
-  over the element set; `condition_correctness` scores edge conditions;
+- property scoring per slot (epistemic, Truth-based): a Truth `ConceptRef`
+  slot needs a matching agent ConceptRef; a Truth-absent (`None`) slot needs
+  an explicit ABSENT marker (UNSET / DONT_KNOW / a concept are NOT correct —
+  no answer is not a lucky guess); the same rule applies to edge conditions;
+  `reads` / `writes` score recall x precision over the element set and
+  require an explicit ABSENT when Truth has none;
 - `knowledge_coverage` (Truth vs StakeholderKnowledge) is reported
   separately as informational and is never mixed into Agent performance.
 

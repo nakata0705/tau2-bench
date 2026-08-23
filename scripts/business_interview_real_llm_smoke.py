@@ -143,11 +143,7 @@ def graph_to_dict(graph) -> dict:
                 "display_label": getattr(concept, "display_label", None),
                 "description": concept.description,
                 "canonical_terms": getattr(concept, "canonical_terms", None),
-                "validation_status": getattr(concept, "validation_status", None),
                 "mentions": _render_evidence(getattr(concept, "mentions", []) or []),
-                "validation_evidence": _render_evidence(
-                    getattr(concept, "validation_evidence", []) or []
-                ),
             }
             for cid, concept in graph.concepts.items()
         },
@@ -331,9 +327,25 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
         errors.append(f"evaluate failed: {exc}")
 
     # --- conversation / messages ---------------------------------------------
+    from tau2.domains.business_interview.run_metrics import (
+        account_tool_errors,
+        provider_error_count,
+    )
+
+    tool_error_accounting = (
+        account_tool_errors(result.messages)
+        if result is not None and result.messages is not None
+        else account_tool_errors([])
+    )
+    provider_errors = list(errors)
     messages = []
+    agent_calls = 0
     if result is not None and result.messages is not None:
         for m in result.messages:
+            if getattr(m, "role", None) == "assistant" and (
+                getattr(m, "tool_calls", None) or getattr(m, "content", None)
+            ):
+                agent_calls += 1
             messages.append(
                 {
                     "role": getattr(m, "role", None),
@@ -394,6 +406,14 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
         "reward_info": reward_info,
         "elapsed_seconds": round(elapsed, 2),
         "errors": errors,
+        "provider_error_count": provider_error_count(provider_errors),
+        "tool_error_count": tool_error_accounting["tool_error_count"],
+        "tool_error_categories": tool_error_accounting["tool_error_categories"],
+        "tool_error_counts_by_tool": tool_error_accounting["tool_error_counts_by_tool"],
+        "tool_error_counts_by_category": tool_error_accounting[
+            "tool_error_counts_by_category"
+        ],
+        "agent_calls": agent_calls,
         "conversation": messages,
         "observations": (
             [
@@ -511,8 +531,14 @@ def main() -> int:
                 "reward": (dump["reward_info"] or {}).get("reward"),
                 "quality_pass": metrics.get("quality_pass"),
                 "structural_pass": metrics.get("structural_pass"),
-                "glossary_pass": metrics.get("glossary_pass"),
+                "glossary_complete": metrics.get("glossary_complete"),
                 "evidence_pass": metrics.get("evidence_pass"),
+                "provider_error_count": dump.get("provider_error_count"),
+                "tool_error_count": dump.get("tool_error_count"),
+                "tool_error_categories": dump.get("tool_error_categories"),
+                "tool_error_counts_by_tool": dump.get("tool_error_counts_by_tool"),
+                "agent_calls": dump.get("agent_calls"),
+                "accepted_observations": len(dump.get("observations") or []),
                 "node_recall": metrics.get("node_recall"),
                 "node_precision": metrics.get("node_precision"),
                 "edge_recall": metrics.get("edge_recall"),

@@ -19,10 +19,6 @@ Every Agent slot is one of the FOUR epistemic states: ``UNSET``
 - Graph/property references may carry optional evidence spans, but evidence
   is **diagnostic only**: evaluation scores reconstruction against Truth and
   never requires exact quote provenance.
-- Validation statuses (grounded / confirmed / partially_confirmed / unknown /
-  disputed) are Agent belief records; ``ground_concept`` no longer requires
-  (or rejects on) private provenance, and ``finish_interview`` does not gate
-  on grounding.
 
 **DONT_KNOW / ABSENT are beliefs, not provenance-gated.** ``record_dont_know`` /
 ``record_absent`` (and edge-condition variants) record explicit epistemic
@@ -314,106 +310,6 @@ class InterviewTools(ToolKitBase):
                 concept.mentions.append(ev)
         return f"Recorded {len(evs)} mention(s) on {concept_id}."
 
-    def ground_concept(self, concept_id: str, evidence: Optional[list] = None) -> str:
-        """Record the Agent's resolved (grounded) belief for a concept.
-
-        Grounding no longer requires private provenance: the Agent records
-        that it has resolved this concept's identity. The optional
-        ``evidence`` is a diagnostic hint only and is never a hard gate — a
-        valid call cannot fail merely because evidence is missing or
-        ambiguous.
-
-        Args:
-            concept_id: The concept to ground.
-            evidence: Optional diagnostic evidence spans.
-
-        Returns:
-            A confirmation message.
-        """
-        concept = self._concept(concept_id)
-        evs = self._require_evidence(evidence)
-        for ev in evs:
-            if ev not in concept.validation_evidence:
-                concept.validation_evidence.append(ev)
-        concept.validation_status = "grounded"  # type: ignore[assignment]
-        return f"Marked {concept_id} as grounded."
-
-    @is_tool(ToolType.WRITE)
-    def confirm_concept(
-        self,
-        concept_id: str,
-        evidence: list,
-        partial: bool = False,
-    ) -> str:
-        """Confirm a concept's identity with genuine stakeholder evidence.
-
-        Confirmation requires a private concept-alignment dialogue event
-        (act ``confirm``, or ``partial`` when ``partial=True``) at a
-        corresponding span — the stakeholder actually answered an identity
-        question. A mere mention in ordinary workflow speech is NOT
-        confirmation.
-
-        Args:
-            concept_id: The concept to confirm.
-            evidence: Evidence spans of the confirmation (required).
-            partial: If True, record partially_confirmed instead.
-
-        Returns:
-            A confirmation message.
-        """
-        concept = self._concept(concept_id)
-        evs = self._require_evidence(evidence)
-        for ev in evs:
-            if ev not in concept.validation_evidence:
-                concept.validation_evidence.append(ev)
-        concept.validation_status = "partially_confirmed" if partial else "confirmed"  # type: ignore[assignment]
-        return (
-            f"Marked {concept_id} as "
-            f"{'partially_confirmed' if partial else 'confirmed'}."
-        )
-
-    @is_tool(ToolType.WRITE)
-    def mark_concept_unknown(self, concept_id: str, evidence: list) -> str:
-        """Mark a concept as unknown with stakeholder evidence.
-
-        The evidence must correspond to a private concept-alignment event
-        with act ``unknown`` (the stakeholder explicitly said they do not
-        know / could not assert the concept's identity).
-
-        Args:
-            concept_id: The concept to mark unknown.
-            evidence: Evidence spans (required).
-
-        Returns:
-            A confirmation message.
-        """
-        concept = self._concept(concept_id)
-        evs = self._require_evidence(evidence)
-        concept.validation_evidence = list(evs)
-        concept.validation_status = "unknown"  # type: ignore[assignment]
-        return f"Marked {concept_id} as unknown."
-
-    @is_tool(ToolType.WRITE)
-    def mark_concept_disputed(self, concept_id: str, evidence: list) -> str:
-        """Mark a concept as disputed with stakeholder evidence.
-
-        The evidence must correspond to private concept-alignment events with
-        act ``dispute``, from at least two distinct Observations.
-
-        Args:
-            concept_id: The concept to mark disputed.
-            evidence: Evidence spans from >= 2 distinct Observations
-                (required).
-
-        Returns:
-            A confirmation message.
-        """
-        concept = self._concept(concept_id)
-        evs = self._require_evidence(evidence)
-        concept.validation_evidence = list(evs)
-        concept.validation_status = "disputed"  # type: ignore[assignment]
-        return f"Marked {concept_id} as disputed."
-
     @is_tool(ToolType.WRITE)
     def record_terminology_agreement(
         self,
@@ -471,8 +367,8 @@ class InterviewTools(ToolKitBase):
 
         Only concepts of the SAME kind can be merged. Every node/edge
         reference is re-pointed to ``target_concept_id`` and the source
-        concepts' mentions, validation evidence and terminology agreements
-        are folded into the target. The source concepts are removed.
+        concepts' mentions and terminology agreements are folded into the
+        target. The source concepts are removed.
 
         Args:
             target_concept_id: The concept to keep.
@@ -493,9 +389,6 @@ class InterviewTools(ToolKitBase):
             for ev in src.mentions:
                 if ev not in target.mentions:
                     target.mentions.append(ev)
-            for ev in src.validation_evidence:
-                if ev not in target.validation_evidence:
-                    target.validation_evidence.append(ev)
         for node in graph.nodes.values():
             for prop in (
                 "activity",
@@ -526,7 +419,7 @@ class InterviewTools(ToolKitBase):
 
     @is_tool(ToolType.READ)
     def list_concepts(self) -> str:
-        """List your glossary concepts (ids, kinds, labels, mentions, status)."""
+        """List your glossary concepts (ids, kinds, labels, mentions)."""
         graph = self._graph()
         if not graph.concepts:
             return "(no concepts yet — create one with create_concept)"
@@ -541,7 +434,6 @@ class InterviewTools(ToolKitBase):
                 extra = f" [agreed terms: {', '.join(agreements)}]"
             lines.append(
                 f"{cid}: [{concept.kind}] {concept.display_label!r} "
-                f"[{concept.validation_status}] "
                 f"[{mentions} mention(s)]{extra}"
             )
         return "\n".join(lines)
@@ -893,6 +785,7 @@ class InterviewTools(ToolKitBase):
             )
         return f"Updated node {node_id}."
 
+    @is_tool(ToolType.WRITE)
     def record_dont_know(
         self,
         node_id: str,
@@ -1190,11 +1083,10 @@ class InterviewTools(ToolKitBase):
     def finish_interview(self, summary: Optional[str] = None) -> str:
         """Mark the interview complete.
 
-        Refuses a structurally invalid graph, missing declared endpoints, or
-        any **referenced** concept still ``hypothesized`` (concepts should
-        normally be at least ``grounded`` — explicit confirmation is not
-        required for every concept). Completing the interview successfully
-        terminates the episode immediately.
+        Refuses a structurally invalid graph or missing declared endpoints.
+        It does NOT inspect any concept validation status: the concept
+        lifecycle is gone. Completing the interview successfully terminates
+        the episode immediately.
 
         Args:
             summary: Optional summary of what was captured.

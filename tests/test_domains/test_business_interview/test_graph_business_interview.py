@@ -55,6 +55,7 @@ from tau2.domains.business_interview.graph import (
     DONT_KNOW,
     UNSET,
     AbsentType,
+    AgentConcept,
     BusinessProcessGraph,
     ConceptRef,
     DontKnowType,
@@ -411,12 +412,14 @@ _EDGE_DONT_KNOW_OBS = {
 }
 
 
-def _record_node_dont_know(tools: InterviewTools, sid: str) -> None:
-    """Say and record the DONT_KNOW properties of node ``sid`` (truth id)."""
+def _record_node_absent(tools: InterviewTools, sid: str) -> None:
+    """Say and record ABSENT for the Truth-absent properties of node
+    ``sid`` (truth id). The Truth has no value there, so a correct
+    reconstruction records an explicit ABSENT marker."""
     text, anns = _NODE_DONT_KNOW_OBS[sid]
     oid = _say(tools, text, [_annotation(s, q) for s, q in anns])
     agent_node = {v: k for k, v in _NODE_MAP.items()}[sid]
-    tools.record_dont_know(
+    tools.record_absent(
         agent_node,
         properties=[
             "rationale" if s == "node:%s:rationale" % sid else s.split(":")[2]
@@ -426,11 +429,12 @@ def _record_node_dont_know(tools: InterviewTools, sid: str) -> None:
     )
 
 
-def _record_edge_dont_know(tools: InterviewTools, eid: str) -> None:
-    """Say and record the DONT_KNOW condition of edge ``eid`` (truth id)."""
+def _record_edge_absent(tools: InterviewTools, eid: str) -> None:
+    """Say and record ABSENT for the unconditional (Truth condition=None)
+    edge ``eid`` (truth id)."""
     text, anns = _EDGE_DONT_KNOW_OBS[eid]
     oid = _say(tools, text, [_annotation(s, q) for s, q in anns])
-    tools.record_edge_condition_dont_know(eid, evidence=[_ev(oid, q) for _, q in anns])
+    tools.record_edge_condition_absent(eid, evidence=[_ev(oid, q) for _, q in anns])
 
 
 def _tools(scenario_id: str = SCENARIO) -> InterviewTools:
@@ -554,7 +558,6 @@ def _make_concept(
     the given observation span, returning the agent concept id."""
     agent_cid, kind, _label = _AGENT_CONCEPTS[knowledge_cid]
     tools.create_concept(agent_cid, kind, _label, evidence=[_ev(oid, quote)])
-    tools.ground_concept(agent_cid, evidence=[_ev(oid, quote)])
     return agent_cid
 
 
@@ -662,7 +665,7 @@ def _build(tools: InterviewTools, ja: bool = False) -> None:
     # record explicit, evidenced DONT_KNOW on every such slot (an unasserted
     # slot does NOT count as DONT_KNOW)
     for sid in ("r", "cc", "cq", "ap", "sq", "me"):
-        _record_node_dont_know(tools, sid)
+        _record_node_absent(tools, sid)
 
     # edges
     for eid in ("e1", "e2", "e3", "e4", "e5", "e6"):
@@ -690,7 +693,7 @@ def _build(tools: InterviewTools, ja: bool = False) -> None:
             evidence=[_ev(oid, q) for sid_, q in anns if sid_ == f"edge:{eid}"],
         )
     for eid in ("e1", "e2", "e5"):
-        _record_edge_dont_know(tools, eid)
+        _record_edge_absent(tools, eid)
     tools.set_graph_endpoints(start_node_id="a", end_node_ids=["e", "f"])
     tools.finish_interview()
 
@@ -711,27 +714,42 @@ def _build_lab(tools: InterviewTools) -> None:
         acid = f"ag_{tcid}"
         tools.create_concept(acid, tconcept.kind, label)
         created[tcid] = acid
+
+    def _absent():
+        return {"absent": True, "evidence": []}
+
     for nid, tnode in truth.nodes.items():
         args: dict = {
             "node_id": nid,
             "activity": created[tnode.activity.concept_id],  # type: ignore[union-attr]
         }
-        if isinstance(tnode.actor, ConceptRef):
-            args["actor"] = created[tnode.actor.concept_id]
-        if isinstance(tnode.system, ConceptRef):
-            args["system"] = created[tnode.system.concept_id]
-        if tnode.reads:
-            args["reads"] = [created[r.concept_id] for r in tnode.reads]
-        if tnode.writes:
-            args["writes"] = [created[r.concept_id] for r in tnode.writes]
-        if isinstance(tnode.necessity_rationale, ConceptRef):
-            args["necessity_rationale"] = created[tnode.necessity_rationale.concept_id]
+        args["actor"] = (
+            created[tnode.actor.concept_id]
+            if isinstance(tnode.actor, ConceptRef)
+            else _absent()
+        )
+        args["system"] = (
+            created[tnode.system.concept_id]
+            if isinstance(tnode.system, ConceptRef)
+            else _absent()
+        )
+        args["reads"] = (
+            [created[r.concept_id] for r in tnode.reads] if tnode.reads else _absent()
+        )
+        args["writes"] = (
+            [created[r.concept_id] for r in tnode.writes] if tnode.writes else _absent()
+        )
+        args["necessity_rationale"] = (
+            created[tnode.necessity_rationale.concept_id]
+            if isinstance(tnode.necessity_rationale, ConceptRef)
+            else _absent()
+        )
         tools.add_node(**args)
     for eid, tedge in truth.edges.items():
         cond = (
-            created[tedge.condition.concept_id]
+            {"concept_id": created[tedge.condition.concept_id], "evidence": []}
             if isinstance(tedge.condition, ConceptRef)
-            else None
+            else _absent()
         )
         tools.add_edge(eid, tedge.from_node, tedge.to_node, condition=cond)
     tools.set_graph_endpoints(
@@ -1354,7 +1372,6 @@ def test_wrong_actor_drops_actor_correctness():
         [_annotation("node:cc:actor", "I")],
     )
     tools.create_concept("manager_wrong", "actor", "manager", evidence=[_ev(oid, "I")])
-    tools.ground_concept("manager_wrong", evidence=[_ev(oid, "I")])
     tools.db.graph.nodes["b"].actor = ConceptRef(
         concept_id="manager_wrong",
         confidence=1.0,
@@ -1406,7 +1423,6 @@ def test_hidden_truth_guesses_remain_wrong():
     tools.create_concept(
         "guess_data", "data", "something", evidence=[_ev(oid, "customer information")]
     )
-    tools.ground_concept("guess_data", evidence=[_ev(oid, "customer information")])
     tools.db.graph.nodes["e"].reads = [
         ConceptRef(
             concept_id="guess_data",
@@ -1437,8 +1453,7 @@ def test_known_absent_property_asserted_fails():
         "sometimes",
         evidence=[_ev(cond_oid, "over 1,000,000 yen")],
     )
-    tools.ground_concept("fake_cond", evidence=[_ev(cond_oid, "over 1,000,000 yen")])
-    # assert it on e1 whose condition the stakeholder knows to be ABSENT
+    # assert it on e1 whose condition the Truth marks absent
     oid = _say(
         tools,
         "After receiving the request, I check the customer information.",
@@ -1459,123 +1474,17 @@ def test_known_absent_property_asserted_fails():
 # ---------------------------------------------------------------------------
 
 
-def test_grounded_concepts_finish_without_confirmation():
-    """Concepts resolved via ground_concept (>= grounded) finish the
-    interview — explicit confirmation is not required for every concept."""
+def test_finish_interview_does_not_gate_on_concept_status():
+    """finish_interview must NOT inspect concept validation status: the
+    concept lifecycle is gone, so a full reconstruction completes and scores
+    structurally correct."""
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
-    assert all(
-        c.validation_status in ("grounded", "confirmed")
-        for c in tools.db.graph.concepts.values()
-    )
-    assert not any(
-        c.validation_status == "confirmed" for c in tools.db.graph.concepts.values()
-    )
-    res = _eval(tools)
-    assert res.glossary_pass is True
-    assert res.structural_pass is True
-
-
-def test_hypothesized_referenced_concept_does_not_block_completion():
-    """Concepts are Agent belief records: finish_interview no longer gates on
-    grounding status; a hypothesized referenced concept completes fine."""
-    tools = _tools()
-    _build(tools)
-    assert tools.db.graph is not None
-    tools.db.graph.concepts["customer"].validation_status = "hypothesized"
-    tools.finish_interview()  # no longer raises
-    res = _eval(tools)
-    assert res.glossary_pass is True
-    assert res.structural_pass is True
-
-
-def test_unreferenced_hypothesized_concept_does_not_block():
-    tools = _tools()
-    _build(tools)
-    tools.create_concept("unused", "data", "unused concept")
     tools.finish_interview()
     res = _eval(tools)
-    assert res.glossary_pass is True
-
-
-def test_ground_concept_is_belief_record_without_annotations():
-    """ground_concept records the Agent's belief; no private annotation
-    validation is required and evidence is optional."""
-    tools = _tools()
-    tools.start_inference("q")
-    tools.create_concept("c", "data", "thing")
-    pizza = _say(tools, "I like pizza on Fridays.")
-    # valid call: unrelated/missing spans never make grounding fail
-    tools.ground_concept("c", evidence=[_ev(pizza, "pizza")])
-    tools.ground_concept("c", evidence=[])
-    assert tools.db.graph is not None
-    assert tools.db.graph.concepts["c"].validation_status == "grounded"
-
-
-def test_confirm_concept_is_belief_record():
-    """confirm_concept records the Agent's belief; no private alignment event
-    is required."""
-    tools = _tools()
-    tools.start_inference("q")
-    tools.create_concept("quote_c", "data", "quotation")
-    oid = _say(
-        tools,
-        "I create the quotation using the customer information in the quoting system.",
-        [_annotation("node:cq:writes:tc_quote", "quotation")],
-    )
-    tools.confirm_concept("quote_c", evidence=[_ev(oid, "quotation")])
-    assert tools.db.graph is not None
-    assert tools.db.graph.concepts["quote_c"].validation_status == "confirmed"
-
-
-def test_unknown_and_disputed_backed_by_events():
-    """unknown/disputed need the appropriate private dialogue events and
-    resolve completion when referenced."""
-    tools = _tools()
-    _build(tools)
-    assert tools.db.graph is not None
-    dont_know = _say(
-        tools,
-        "I do not know the reason for that.",
-        alignments=[
-            {"semantic_id": "tc_pricing", "quote": "do not know", "act": "unknown"}
-        ],
-    )
-    tools.mark_concept_unknown("pricing", evidence=[_ev(dont_know, "do not know")])
-    tools.finish_interview()
-    res = _eval(tools)
-    assert res.glossary_pass is True
     assert res.structural_pass is True
-
-    tools2 = _tools()
-    _build(tools2)
-    assert tools2.db.graph is not None
-    o1 = _say(
-        tools2,
-        "Actually, they are not the same thing.",
-        alignments=[
-            {
-                "semantic_id": "tc_customer",
-                "quote": "not the same thing",
-                "act": "dispute",
-            }
-        ],
-    )
-    o2 = _say(
-        tools2,
-        "I keep telling you, those are different.",
-        alignments=[
-            {"semantic_id": "tc_customer", "quote": "different", "act": "dispute"}
-        ],
-    )
-    tools2.mark_concept_disputed(
-        "customer", evidence=[_ev(o1, "not the same thing"), _ev(o2, "different")]
-    )
-    tools2.finish_interview()
-    res2 = _eval(tools2)
-    assert res2.glossary_pass is True
-    assert res2.structural_pass is True
+    assert res.glossary_complete is True
 
 
 def test_terminology_agreement_records_without_event():
@@ -1606,25 +1515,6 @@ def test_terminology_agreement_accepts_empty_evidence():
     tools.record_terminology_agreement("c", "term", evidence=[])
     assert tools.db.graph is not None
     assert len(tools.db.graph.terminology_agreements) == 1
-
-
-def test_bulk_grounding_allowed():
-    """The same evidence span may back several concepts: grounding is a
-    belief record, not a private-provenance gate."""
-    tools = _tools()
-    tools.start_inference("q")
-    oid = _say(
-        tools,
-        "I check the customer information in the CRM.",
-        [_annotation("node:cc:system", "CRM")],
-    )
-    tools.create_concept("a", "system", "CRM", evidence=[_ev(oid, "CRM")])
-    tools.create_concept("b", "system", "CRM", evidence=[_ev(oid, "CRM")])
-    tools.ground_concept("a", evidence=[_ev(oid, "CRM")])
-    tools.ground_concept("b", evidence=[_ev(oid, "CRM")])  # no longer raises
-    assert tools.db.graph is not None
-    assert tools.db.graph.concepts["a"].validation_status == "grounded"
-    assert tools.db.graph.concepts["b"].validation_status == "grounded"
 
 
 def test_concept_kind_enforcement_in_tools():
@@ -1776,12 +1666,15 @@ def test_finish_requires_endpoints():
 
 
 def test_invalid_evidence_span_rejected():
+    """Evidence shape validation is retained even though provenance is
+    diagnostic: a reference to a nonexistent Observation is rejected."""
     tools = _tools()
     _build(tools)
     assert tools.db.graph is not None
-    tools.create_concept("bogus", "data", "quotation")
     with pytest.raises(ValueError):
-        tools.ground_concept("bogus", evidence=[_ev("obs_none", "x")])
+        tools.create_concept(
+            "bogus", "data", "quotation", evidence=[_ev("obs_none", "x")]
+        )
     res = _eval(tools)
     assert res.invalid_evidence_ref_count >= 0
 
@@ -1801,10 +1694,8 @@ def test_start_inference_preserves_observations_and_ledger():
         [_annotation("node:cc:system", "CRM")],
     )
     tools.create_concept("crm", "system", "CRM", evidence=[_ev(oid, "CRM")])
-    tools.ground_concept("crm", evidence=[_ev(oid, "CRM")])
     tools.create_concept("act", "activity", "check")
     assert tools.db.graph is not None
-    tools.db.graph.concepts["act"].validation_status = "grounded"
     tools.add_node(
         "n1",
         activity={"concept_id": "act", "evidence": [_ev(oid, "CRM")]},
@@ -1819,10 +1710,8 @@ def test_start_inference_preserves_observations_and_ledger():
     assert obs.text == "I check the customer information in the CRM."
     # the OLD observation is still valid as evidence after the restart
     tools.create_concept("crm2", "system", "CRM", evidence=[_ev(oid, "CRM")])
-    tools.ground_concept("crm2", evidence=[_ev(oid, "CRM")])
     tools.create_concept("act2", "activity", "check")
     assert tools.db.graph is not None
-    tools.db.graph.concepts["act2"].validation_status = "grounded"
     tools.add_node(
         "n1",
         activity={"concept_id": "act2", "evidence": [_ev(oid, "CRM")]},
@@ -2300,10 +2189,6 @@ def _reference_trajectory() -> list:
                         "evidence": [_ev(oid, q)],
                     },
                 )
-                mk(
-                    "ground_concept",
-                    {"concept_id": agent_cid, "evidence": [_ev(oid, q)]},
-                )
             else:
                 mk(
                     "add_concept_mention",
@@ -2346,13 +2231,13 @@ def _reference_trajectory() -> list:
                     "evidence": [_ev(oid, q)],
                 }
         mk("add_node", args)
-    # explicit DONT_KNOW recordings (an unasserted slot is NOT DONT_KNOW)
+    # explicit ABSENT recordings for Truth-absent slots
     for sid in ("r", "cc", "cq", "ap", "sq", "me"):
         text, anns = _NODE_DONT_KNOW_OBS[sid]
         oid = say(text, anns)
         agent_node = {v: k for k, v in _NODE_MAP.items()}[sid]
         mk(
-            "record_dont_know",
+            "record_absent",
             {
                 "node_id": agent_node,
                 "properties": [
@@ -2381,10 +2266,6 @@ def _reference_trajectory() -> list:
                             "evidence": [_ev(oid, q)],
                         },
                     )
-                    mk(
-                        "ground_concept",
-                        {"concept_id": agent_cid, "evidence": [_ev(oid, q)]},
-                    )
                 cond = {"concept_id": agent_cid, "evidence": [_ev(oid, q)]}
         frm, to = {
             "e1": ("a", "b"),
@@ -2407,7 +2288,7 @@ def _reference_trajectory() -> list:
         text, anns = _EDGE_DONT_KNOW_OBS[eid]
         oid = say(text, anns)
         mk(
-            "record_edge_condition_dont_know",
+            "record_edge_condition_absent",
             {"edge_id": eid, "evidence": [_ev(oid, q) for _, q in anns]},
         )
     mk("set_graph_endpoints", {"start_node_id": "a", "end_node_ids": ["e", "f"]})
@@ -2443,7 +2324,7 @@ def test_evaluator_rewards_full_reconstruction():
     diag = (reward_info.info or {})["diagnostics"]
     assert diag["structural_pass"] is True
     assert diag["quality_pass"] is True
-    assert diag["glossary_pass"] is True
+    assert diag["glossary_complete"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -2668,9 +2549,6 @@ def test_node_existence_is_not_activity_slot():
         "first step",
         evidence=[_ev(oid_act, "receive the quotation request")],
     )
-    tools.ground_concept(
-        "act1", evidence=[_ev(oid_act, "receive the quotation request")]
-    )
     tools.add_node(
         "n1",
         activity={"concept_id": "act1", "evidence": [_ev(oid, "first step")]},
@@ -2729,23 +2607,6 @@ def test_reads_writes_item_resolves_exactly():
     assert grounded2 == set() and amb2 == 1
 
 
-def test_ground_concept_never_rejects_on_evidence():
-    """ground_concept is a belief record: unrelated, ambiguous or
-    kind-wrong evidence never blocks grounding."""
-    tools = _tools()
-    tools.start_inference("q")
-    tools.create_concept("act1", "activity", "first step")
-    oid = _say(
-        tools,
-        "The first step happens first.",
-        [_annotation("node:r:activity", "first step")],
-    )
-    tools.ground_concept("act1", evidence=[_ev(oid, "first step")])
-    tools.ground_concept("act1", evidence=[])
-    assert tools.db.graph is not None
-    assert tools.db.graph.concepts["act1"].validation_status == "grounded"
-
-
 def test_concept_identity_alignment_is_content_based():
     """Concept identity is aligned by content (labels) against Truth; no
     private binding is required for the full reconstruction to pass."""
@@ -2757,53 +2618,116 @@ def test_concept_identity_alignment_is_content_based():
     assert res.concept_correctness == 1.0
 
 
-def test_dont_know_and_absent_are_no_value_states():
-    """UNSET / ABSENT / DONT_KNOW are all 'no value claimed' in Truth
-    scoring: a Truth-valued slot requires the matching concept; a
-    Truth-absent slot is correct for any no-value state."""
-    tools = _tools()
-    tools.start_inference("q")
-    _ingest(tools, "assistant", "Hello.")
-    # node 'a' maps to Truth cc whose reads IS a Truth value (customer)
-    tools.create_concept("act1", "activity", "check the customer information")
-    tools.add_node("a", activity="act1")
-    assert tools.db.graph is not None
-    tools.db.graph.nodes["a"].reads = DontKnowType(evidence=[])
-    res = _eval(tools)
-    # a DONT_KNOW marker does not fill a Truth-valued slot
-    assert res.read_correctness == 0.0
+def _one_act_node(tools_t, activity_label: str) -> str:
+    """Add a single-node graph whose activity matches ``activity_label`` and
+    return the agent node id. Also seeds the common reference concepts used
+    by the matrix tests."""
+    tools_t.start_inference("q")
+    _ingest(tools_t, "assistant", "Hello.")
+    tools_t.create_concept("act1", "activity", activity_label)
+    tools_t.create_concept("sales", "actor", "sales employee")
+    tools_t.create_concept("manager", "actor", "manager")
+    tools_t.create_concept("crm", "system", "CRM")
+    tools_t.add_node("a", activity="act1")
+    assert tools_t.db.graph is not None
+    return "a"
 
 
-def test_absent_marker_is_no_value_state():
-    """On a Truth-absent slot, an ABSENT marker is as correct as UNSET."""
-    tools = _tools()
-    tools.start_inference("q")
-    _ingest(tools, "assistant", "Hello.")
-    # node 'a' maps to Truth r whose system is Truth-absent
-    tools.create_concept("act1", "activity", "receive the quotation request")
-    tools.add_node("a", activity="act1")
-    assert tools.db.graph is not None
-    res = _eval(tools)
-    assert res.system_correctness == 1.0
+def test_truth_value_slot_scoring_matrix():
+    """A Truth-VALUED scalar slot: only a matching asserted Agent ConceptRef
+    is correct; ABSENT / DONT_KNOW / UNSET / a wrong concept are all
+    incorrect."""
+
+    def score_with(value):
+        tools = _tools()
+        _one_act_node(tools, "check the customer information")  # -> Truth cc
+        assert tools.db.graph is not None
+        tools.db.graph.nodes["a"].actor = value
+        return _eval(tools).actor_correctness
+
+    truth_actor = ConceptRef(concept_id="sales", confidence=1.0)
+    # matching concept: correct
+    assert score_with(truth_actor) == 1.0
+    # wrong concept
+    assert score_with(ConceptRef(concept_id="manager", confidence=1.0)) == 0.0
+    # ABSENT / DONT_KNOW / UNSET never fill a valued slot
+    assert score_with(AbsentType(evidence=[])) == 0.0
+    assert score_with(DontKnowType(evidence=[])) == 0.0
+    assert score_with(UNSET) == 0.0
 
 
-def test_dont_know_markers_do_not_gate_scoring():
-    """DONT_KNOW markers are 'no value' states in Truth scoring: on a
-    Truth-absent slot they are as correct as UNSET."""
-    tools = _tools()
-    _build(tools)
-    graph = tools.db.graph
-    assert graph is not None
-    res = _eval(tools)
-    assert res.read_correctness == 1.0
-    assert res.write_correctness == 1.0
-    # sq (node e) reads/writes are Truth-absent: UNSET is equally correct
-    graph.nodes["e"].reads = UNSET
-    graph.nodes["e"].writes = UNSET
-    res_missing = _eval(tools)
-    assert res_missing.read_correctness == 1.0
-    assert res_missing.write_correctness == 1.0
-    assert res_missing.quality_pass is True
+def test_truth_absent_scalar_slot_scoring_matrix():
+    """A Truth-ABSENT scalar slot: only an explicit Agent ABSENT marker is
+    correct; UNSET, DONT_KNOW and any ConceptRef are NOT correct (no answer
+    is never a lucky guess)."""
+
+    def score_with(value):
+        tools = _tools()
+        _one_act_node(tools, "receive the quotation request")  # -> Truth r
+        assert tools.db.graph is not None
+        tools.db.graph.nodes["a"].system = value
+        return _eval(tools).system_correctness
+
+    assert score_with(AbsentType(evidence=[])) == 1.0
+    assert score_with(UNSET) == 0.0
+    assert score_with(DontKnowType(evidence=[])) == 0.0
+    assert score_with(ConceptRef(concept_id="crm", confidence=1.0)) == 0.0
+
+
+def test_truth_absent_list_slot_requires_absent():
+    """Truth-absent reads/writes: only an explicit ABSENT marker is correct;
+    UNSET / DONT_KNOW are incomplete."""
+
+    def score_reads(value):
+        tools = _tools()
+        _one_act_node(tools, "receive the quotation request")  # -> Truth r
+        assert tools.db.graph is not None
+        tools.db.graph.nodes["a"].reads = value
+        return _eval(tools).read_correctness
+
+    assert score_reads(AbsentType(evidence=[])) == 1.0
+    assert score_reads(UNSET) == 0.0
+    assert score_reads(DontKnowType(evidence=[])) == 0.0
+
+
+def test_truth_absent_edge_condition_requires_absent():
+    """Truth condition=None (unconditional): explicit ABSENT required for
+    full correctness; UNSET / DONT_KNOW / a concept are incomplete."""
+    truth = BusinessProcessGraph(
+        id="edge_absent",
+        name="edge absent",
+        concepts={
+            "act1": TruthConcept(id="act1", kind="activity", canonical_terms=["check"]),
+            "act2": TruthConcept(id="act2", kind="activity", canonical_terms=["send"]),
+        },
+        nodes={
+            "A": TruthNode(id="A", activity=ConceptRef(concept_id="act1")),
+            "B": TruthNode(id="B", activity=ConceptRef(concept_id="act2")),
+        },
+        edges={"ab": TruthEdge(id="ab", from_node="A", to_node="B")},
+        start_node_id="A",
+        end_node_ids=["B"],
+    )
+
+    def score_cond(value):
+        tools = _tools()
+        tools.start_inference("q")
+        _ingest(tools, "assistant", "Hello.")
+        tools.create_concept("act1", "activity", "check")
+        tools.create_concept("act2", "activity", "send")
+        tools.create_concept("cond_x", "condition", "sometimes")
+        tools.add_node("a", activity="act1")
+        tools.add_node("b", activity="act2")
+        tools.add_edge("e1", "a", "b", condition=value, evidence=[])
+        assert tools.db.graph is not None
+        return evaluate(
+            tools.db, None, EvaluationSpec(), None, truth=truth
+        ).condition_correctness
+
+    assert score_cond({"absent": True, "evidence": []}) == 1.0
+    assert score_cond(None) == 0.0  # UNSET
+    assert score_cond({"dont_know": True, "evidence": []}) == 0.0
+    assert score_cond("cond_x") == 0.0  # a concept on an unconditional edge
 
 
 def test_knowledge_coverage_known_absent_unknown_removed():
@@ -2939,47 +2863,23 @@ def test_absent_marker_accepted_without_exact_slot_evidence():
     assert is_absent(tools.db.graph.nodes["a"].reads)
 
 
-def test_dont_know_marker_without_exact_evidence_scores_against_truth():
-    """A DONT_KNOW marker without exact-slot binding is recorded and scores
-    truth-structurally (ap.system is Truth-absent -> correct)."""
+def test_truth_absent_slots_score_absent_in_full_build():
+    """In the full reconstruction, every Truth-absent slot is explicitly
+    ABSENT and scores correct; a DONT_KNOW marker there is NOT correct."""
     tools = _tools()
     _build(tools)
-    assert tools.db.graph is not None
-    tools.db.graph.nodes["d"].system = DontKnowType(evidence=[])
+    graph = tools.db.graph
+    assert graph is not None
     res = _eval(tools)
     assert res.system_correctness == 1.0
-    assert res.marker_evidence_errors_surrogate == 0
-
-
-def test_edge_condition_marker_scores_against_truth():
-    """An edge-condition marker is a 'no value' state: on a Truth-unconditional
-    edge it is correct regardless of exact-slot provenance."""
-    tools = _tools()
-    _build(tools)
-    assert tools.db.graph is not None
-    tools.db.graph.edges["e2"].condition = DontKnowType(evidence=[])
-    res = _eval(tools)
-    assert res.condition_correctness == 1.0
-
-
-def test_slot_scoring_is_truth_based():
-    """Agent slots score against the Truth graph: a Truth-valued slot needs
-    a matching agent concept claim; a Truth-absent slot is satisfied by any
-    no-value state (UNSET / ABSENT / DONT_KNOW)."""
-    tools = _tools()
-    tools.start_inference("q")
-    _ingest(tools, "assistant", "Hello.")
-    # node 'a' maps to Truth r: r.system is Truth-absent, r.reads is absent
-    tools.create_concept("act1", "activity", "receive the quotation request")
-    tools.add_node("a", activity="act1")
-    assert tools.db.graph is not None
-    res = _eval(tools)
-    # Truth-absent slots are satisfied by UNSET (no-value state)
     assert res.read_correctness == 1.0
-    assert res.system_correctness == 1.0
-    # Truth-valued slot: r.writes is a Truth value (request); an UNSET agent
-    # slot misses it
-    assert res.write_correctness == 0.0
+    assert res.write_correctness == 1.0
+    assert res.condition_correctness == 1.0
+    # ap (node d) system is Truth-absent: DONT_KNOW is now WRONG
+    graph.nodes["d"].system = DontKnowType(evidence=[])
+    res_dk = _eval(tools)
+    assert res_dk.system_correctness < 1.0
+    assert res_dk.structural_pass is False
 
 
 def test_truth_valued_reads_requires_matching_concept():
@@ -3075,15 +2975,55 @@ def test_task_instructions_reference_knowledge_not_sentences():
         assert "record the quotation request" not in ti
 
 
-def test_agent_policy_requires_glossary_discipline():
-    p = " ".join(BUSINESS_INTERVIEW_POLICY_PATH.read_text().split()).lower()
-    assert "glossary" in p
-    assert "hypothesized" in p
-    assert "ground_concept" in p
-    assert "mention" in p
-    assert "terminology" in p
-    assert "exact substring" in p
-    assert "cycles" in p
+def test_policy_references_only_available_agent_tools():
+    """Regression: every tool name mentioned in the policy must exist in the
+    runtime tool schema. An unavailable name (e.g. ``ground_concept``) is a
+    policy/schema inconsistency that produced ``Tool '...' not found`` errors
+    in real runs."""
+    import re
+
+    from tau2.domains.business_interview.environment import get_environment
+    from tau2.domains.business_interview.tools import InterviewTools
+
+    env = get_environment()
+    assert isinstance(env.tools, InterviewTools)
+    available = {t.name for t in env.get_tools()}
+    policy = BUSINESS_INTERVIEW_POLICY_PATH.read_text()
+    # backticked snake_case identifiers that look like tool names
+    refs = set(re.findall(r"`([a-z][a-z0-9_]+)\(?[`\)]", policy))
+    non_tool_vocab = {
+        "evidence",
+        "occurrence",
+        "mentions",
+        "unset",
+        "absent",
+        "dont_know",
+        "conceptref",
+        "glossary",
+        "hypothesized",
+        "concept_id",
+        "node_id",
+        "description",
+        "label",
+        "kind",
+        "summary",
+        "properties",
+        "term",
+        "partial",
+    }
+    unavailable = sorted(
+        t for t in refs if t not in available and t not in non_tool_vocab
+    )
+    assert unavailable == [], f"policy references unavailable tools: {unavailable}"
+    # the removed lifecycle tools must never appear anywhere in the policy
+    for banned in (
+        "ground_concept",
+        "confirm_concept",
+        "mark_concept_unknown",
+        "mark_concept_disputed",
+        "hypothesized",
+    ):
+        assert banned not in policy, banned
 
 
 def test_policy_does_not_hardcode_domain_terms():
@@ -3612,3 +3552,322 @@ def test_add_edge_marker_accepted_without_unique_binding():
     )
     assert "e9" in tools.db.graph.edges
     assert is_dont_know(tools.db.graph.edges["e9"].condition)
+
+
+# ---------------------------------------------------------------------------
+# Hardening: removed concept lifecycle, robust matching (Area 1 + 2)
+# ---------------------------------------------------------------------------
+
+
+def test_obsolete_concept_lifecycle_tools_are_removed():
+    """ground_concept / confirm_concept / mark_concept_unknown /
+    mark_concept_disputed are gone from the runtime tool schema and from the
+    AgentConcept model (no validation_status / validation_evidence)."""
+    env = get_environment()
+    assert isinstance(env.tools, InterviewTools)
+    names = {t.name for t in env.get_tools()}
+    for banned in (
+        "ground_concept",
+        "confirm_concept",
+        "mark_concept_unknown",
+        "mark_concept_disputed",
+    ):
+        assert banned not in names, banned
+        assert not hasattr(env.tools, banned), banned
+    # AgentConcept has no validation lifecycle fields
+    concept = AgentConcept(id="c", kind="data", display_label="x")
+    assert not hasattr(concept, "validation_status")
+    assert not hasattr(concept, "validation_evidence")
+
+
+def test_score_invariant_to_agent_concept_ids():
+    """Renaming the Agent's local concept ids must not change any score: the
+    matcher is content based and the alignment is id-order independent."""
+    t1 = _tools()
+    _build(t1)
+    assert t1.db.graph is not None
+    r1 = _eval(t1)
+    # rebuild with every agent concept id renamed
+    t2 = _tools()
+    t2.start_inference("q")
+    _ingest(t2, "assistant", "Hello.")
+    rename = {cid: cid + "_x" for cid in t1.db.graph.concepts}
+    for cid, concept in t1.db.graph.concepts.items():
+        t2.create_concept(
+            rename[cid], concept.kind, concept.display_label, concept.description
+        )
+    for nid, node in t1.db.graph.nodes.items():
+        args: dict = {
+            "node_id": nid,
+            "activity": rename[node.activity.concept_id],  # type: ignore[union-attr]
+        }
+        for prop, attr in (
+            ("actor", "actor"),
+            ("system", "system"),
+            ("necessity_rationale", "necessity_rationale"),
+        ):
+            val = getattr(node, attr)
+            if isinstance(val, ConceptRef):
+                args[prop] = rename[val.concept_id]
+            elif isinstance(val, AbsentType):
+                args[prop] = {"absent": True, "evidence": []}
+        for axis in ("reads", "writes"):
+            slot = getattr(node, axis)
+            if isinstance(slot, list) and slot:
+                args[axis] = [rename[r.concept_id] for r in slot]
+            elif isinstance(slot, AbsentType):
+                args[axis] = {"absent": True, "evidence": []}
+        t2.add_node(**args)
+    for eid, edge in t1.db.graph.edges.items():
+        cond = None
+        if isinstance(edge.condition, ConceptRef):
+            cond = rename[edge.condition.concept_id]
+        elif isinstance(edge.condition, AbsentType):
+            cond = {"absent": True, "evidence": []}
+        t2.add_edge(eid, edge.from_node, edge.to_node, condition=cond)
+    assert t1.db.graph.start_node_id is not None
+    t2.set_graph_endpoints(
+        start_node_id=t1.db.graph.start_node_id,
+        end_node_ids=list(t1.db.graph.end_node_ids),
+    )
+    t2.finish_interview()
+    r2 = _eval(t2)
+    for f in (
+        "node_recall",
+        "node_precision",
+        "edge_recall",
+        "edge_precision",
+        "activity_correctness",
+        "actor_correctness",
+        "system_correctness",
+        "read_correctness",
+        "write_correctness",
+        "rationale_correctness",
+        "condition_correctness",
+        "concept_recall",
+        "concept_precision",
+        "concept_correctness",
+        "structural_pass",
+        "quality_pass",
+    ):
+        assert getattr(r1, f) == getattr(r2, f), f
+
+
+def test_generic_words_do_not_cause_false_concept_matches():
+    """A fabricated concept whose label shares ONLY generic/stop words with
+    a real Truth concept must not be aligned (below threshold), and an
+    unrelated fabricated concept lowers precision instead of scoring."""
+    from tau2.domains.business_interview.evaluation import _concept_similarity
+
+    sc = _sc(SCENARIO)
+    truth = sc.truth
+
+    class Fake:
+        kind: str = ""
+        display_label: str = ""
+        description: str = ""
+
+    unrelated = Fake()
+    unrelated.kind = "data"
+    unrelated.display_label = "a the and of it"  # only stop words -> empty sig
+    unrelated.description = ""
+    for tid, tc in truth.concepts.items():
+        assert _concept_similarity(unrelated, tc) < 0.4, tid
+    # a fabricated same-kind concept is attempted but unaligned -> precision drop
+    tools = _tools()
+    _build(tools)
+    assert tools.db.graph is not None
+    base = _eval(tools)
+    assert base.concept_precision == 1.0
+    tools.create_concept("fab_data", "data", "a the and of it")
+    # reference it so it counts as attempted
+    tools.db.graph.nodes["b"].reads = [
+        ConceptRef(concept_id="fab_data", confidence=1.0, evidence=[])
+    ]
+    res = _eval(tools)
+    assert res.concept_precision < 1.0
+    assert res.read_correctness < 1.0
+
+
+def test_japanese_concept_matching():
+    """Japanese labels are matched deterministically (character-bigram
+    signatures), and clearly different Japanese concepts do not match."""
+    from tau2.domains.business_interview.evaluation import _similarity, _tokens
+
+    # Japanese: no ASCII, but signatures are non-empty (bigrams)
+    ja_a = _tokens("顧客情報の確認")
+    ja_b = _tokens("顧客情報の照会")
+    assert ja_a and ja_b, "Japanese labels must produce non-empty signatures"
+    assert _similarity(ja_a, ja_a) == 1.0
+    # same meaning (shared bigrams) -> high similarity
+    assert _similarity(ja_a, ja_b) > 0.4
+    # clearly different -> below threshold
+    ja_c = _tokens("月次サマリーの送付")
+    assert _similarity(ja_a, ja_c) < 0.4
+    # full-width latin normalizes (NFKC) to the same tokens as ASCII
+    assert _tokens("ＣＲＭ") == _tokens("CRM")
+
+
+def test_ja_scenario_reconstruction_scores():
+    """End-to-end: a Japanese-labeled full reconstruction of the JA scenario
+    scores a full pass (language-tolerant matcher, not ASCII-restricted)."""
+    sc = get_scenario(JA_SCENARIO)
+    assert sc is not None
+    tools = _tools(JA_SCENARIO)
+    truth = sc.truth
+    tools.start_inference("ja")
+    _ingest(tools, "assistant", "こんにちは。")
+    created: dict[str, str] = {}
+    ja_labels = {
+        "tc_activity_receive_request": "受注依頼の受領",
+        "tc_activity_check_customer": "顧客情報の確認",
+        "tc_activity_create_quotation": "見積書の作成",
+        "tc_activity_approve_quotation": "見積書の承認",
+        "tc_activity_send_quotation": "見積書の送付",
+        "tc_activity_send_month_end_summary": "月末サマリーの送付",
+        "tc_actor_sales": "営業担当",
+        "tc_actor_manager": "管理者",
+        "tc_system_crm": "ＣＲＭ",
+        "tc_system_quoting": "見積システム",
+        "tc_system_email": "メール",
+        "tc_system_excel": "エクセル",
+        "tc_request": "受注依頼",
+        "tc_customer": "顧客情報",
+        "tc_pricing": "価格情報",
+        "tc_quote": "見積書",
+        "tc_excel_summary": "見積情報サマリー",
+        "tc_cond_over_1m": "100万円超",
+        "tc_cond_at_or_below_1m": "100万円以下",
+        "tc_cond_month_end": "月末",
+        "tc_rationale_credit_risk": "与信リスク管理",
+    }
+    for cid, concept in truth.concepts.items():
+        label = ja_labels.get(cid, concept.canonical_terms[0])
+        tools.create_concept(cid + "_ja", concept.kind, label)
+        created[cid] = cid + "_ja"
+    for nid, tnode in truth.nodes.items():
+        args: dict = {
+            "node_id": nid,
+            "activity": created[tnode.activity.concept_id],  # type: ignore[union-attr]
+        }
+        for prop, attr, kind_ in (
+            ("actor", "actor", "actor"),
+            ("system", "system", "system"),
+            ("necessity_rationale", "necessity_rationale", "rationale"),
+        ):
+            val = getattr(tnode, attr)
+            args[prop] = (
+                created[val.concept_id]
+                if isinstance(val, ConceptRef)
+                else {"absent": True, "evidence": []}
+            )
+        for axis in ("reads", "writes"):
+            val = getattr(tnode, axis)
+            args[axis] = (
+                [created[r.concept_id] for r in val]
+                if isinstance(val, list)
+                else {"absent": True, "evidence": []}
+            )
+        tools.add_node(**args)
+    for eid, tedge in truth.edges.items():
+        cond = (
+            {"concept_id": created[tedge.condition.concept_id], "evidence": []}
+            if isinstance(tedge.condition, ConceptRef)
+            else {"absent": True, "evidence": []}
+        )
+        tools.add_edge(eid, tedge.from_node, tedge.to_node, condition=cond)
+    tools.set_graph_endpoints(
+        start_node_id=truth.start_node_id,
+        end_node_ids=list(truth.end_node_ids),
+    )
+    tools.finish_interview()
+    res = _eval(tools, JA_SCENARIO)
+    assert res.concept_recall == 1.0, (res.concept_recall, res.concept_precision)
+    assert res.structural_pass is True
+    assert res.quality_pass is True
+
+
+# ---------------------------------------------------------------------------
+# Hardening: real-run tool-error accounting (Area 4)
+# ---------------------------------------------------------------------------
+
+
+def _trajectory_with_errors() -> list:
+    from tau2.data_model.message import AssistantMessage, ToolCall, ToolMessage
+
+    am1 = AssistantMessage(
+        role="assistant",
+        tool_calls=[
+            ToolCall(
+                id="c1", name="ground_concept", arguments={}, requestor="assistant"
+            ),
+        ],
+    )
+    tm1 = ToolMessage(
+        role="tool",
+        id="c1",
+        content="Error: Tool 'ground_concept' not found.",
+        requestor="assistant",
+        error=True,
+    )
+    am2 = AssistantMessage(
+        role="assistant",
+        tool_calls=[
+            ToolCall(id="c2", name="add_node", arguments={}, requestor="assistant"),
+        ],
+    )
+    tm2 = ToolMessage(
+        role="tool",
+        id="c2",
+        content="Error: node not found: n9",
+        requestor="assistant",
+        error=True,
+    )
+    am3 = AssistantMessage(
+        role="assistant",
+        tool_calls=[
+            ToolCall(id="c3", name="add_node", arguments={}, requestor="assistant"),
+        ],
+    )
+    tm3 = ToolMessage(
+        role="tool",
+        id="c3",
+        content="Error: node already exists: n1",
+        requestor="assistant",
+        error=True,
+    )
+    return [am1, tm1, am2, tm2, am3, tm3]
+
+
+def test_tool_error_accounting_classifies_and_groups():
+    """account_tool_errors walks the trajectory and produces normalized,
+    grouped error metrics (tool_error_count / categories / by_tool) even when
+    top-level errors == []."""
+    from tau2.domains.business_interview.run_metrics import (
+        account_tool_errors,
+        classify_tool_error,
+    )
+
+    traj = _trajectory_with_errors()
+    acc = account_tool_errors(traj)
+    assert acc["tool_error_count"] == 3
+    assert "tool_not_found" in acc["tool_error_categories"]
+    assert "missing_reference" in acc["tool_error_categories"]
+    assert "validation_error" in acc["tool_error_categories"]
+    assert acc["tool_error_counts_by_tool"] == {"add_node": 2, "ground_concept": 1}
+    assert acc["tool_error_counts_by_category"]["tool_not_found"] == 1
+    assert acc["tool_error_counts_by_category"]["missing_reference"] == 1
+    assert acc["tool_error_counts_by_category"]["validation_error"] == 1
+    # classifier normalization
+    assert classify_tool_error("Error: Tool 'x' not found.", "x") == "tool_not_found"
+    assert classify_tool_error("Error: node not found: n9") == "missing_reference"
+    assert classify_tool_error("Error: node already exists: n1") == "validation_error"
+
+
+def test_tool_error_accounting_empty_trajectory():
+    from tau2.domains.business_interview.run_metrics import account_tool_errors
+
+    acc = account_tool_errors([])
+    assert acc["tool_error_count"] == 0
+    assert acc["tool_error_categories"] == []
+    assert acc["tool_error_counts_by_tool"] == {}

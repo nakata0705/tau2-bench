@@ -188,23 +188,18 @@ what the thing is:
 `update_concept_description` records your working notes; `list_concepts` shows
 your current glossary at any time.
 
-## Validate the glossary
+## Keep the glossary tidy
 
-Concepts carry a status you may track (`hypothesized` / `grounded` /
-`confirmed`), but the status is an **Agent belief record**, not a hard gate:
-nothing requires private provenance, and `finish_interview` does not refuse
-hypothesized concepts.
+Concepts are your working glossary: `create_concept` defines one business
+thing (with its kind, label and optional `description`); `update_concept_description`
+records working notes; `merge_concepts` repairs concepts you split by
+mistake; `add_concept_mention` records Observation spans you believe refer to
+the concept (diagnostic only); `record_terminology_agreement` records a term
+you and the stakeholder agreed on (independent of reconstruction scoring).
 
-- `ground_concept(concept_id, evidence=None)` — mark a concept as resolved
-  (your belief); evidence is optional.
-- `confirm_concept(concept_id, evidence=None, partial=False)` — record a
-  confirmed (or partially confirmed) identity belief; evidence optional.
-- `mark_concept_unknown(concept_id, evidence=None)` /
-  `mark_concept_disputed(concept_id, evidence=None)` — record those beliefs;
-  evidence optional.
-
-Use these tools to keep your own working model tidy; they never gate the
-interview.
+There is no hypothesis/grounding/confirmation lifecycle: concept identity is
+judged by content against the hidden Truth, and nothing gates the interview
+on a concept status.
 
 ## Conducting the interview
 

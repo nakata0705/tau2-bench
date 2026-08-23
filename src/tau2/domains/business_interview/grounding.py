@@ -2,10 +2,10 @@
 
 The stakeholder's private annotations (``SemanticAnnotation``) attach exact
 character spans of its messages to stakeholder semantic IDs. Agent evidence
-spans resolve to semantic IDs through the GLOBAL span rule implemented here —
-the single implementation used by the tools (``ground_concept``, DONT_KNOW
-recording) and the evaluator (grounding, binding, hygiene). No other span
-resolution logic exists.
+spans resolve to semantic IDs through the GLOBAL span rule implemented here — the single implementation used by the tools
+(evidence-ref shape validation, ABSENT/DONT_KNOW recording) and the
+evaluator (evidence hygiene diagnostics). No other span resolution logic
+exists.
 
 Global span rule (deterministic, never semantic):
 

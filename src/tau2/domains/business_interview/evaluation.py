@@ -31,6 +31,7 @@ limits what the conversation can reveal, while the scored target is the Truth.
 """
 
 import re
+import unicodedata
 from typing import Optional
 
 from pydantic import BaseModel
@@ -98,11 +99,8 @@ class EvaluationResult(BaseModel):
     fabricated_node_count: int
     fabricated_edge_count: int
 
-    # glossary completion + genuine validation
-    glossary_pass: bool
+    # glossary completeness (concept reconstruction completeness)
     glossary_complete: bool
-    referenced_hypothesized_concepts: list[str]
-    glossary_validation_errors: list[str]
 
     # evidence hygiene (diagnostic only — never gates quality anymore)
     node_evidence_coverage: float
@@ -129,41 +127,320 @@ class EvaluationResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Content signatures (deterministic; never semantic NLP)
+# Content signatures (deterministic, language-tolerant; never semantic NLP)
 # ---------------------------------------------------------------------------
+
+_STOP_WORDS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "of",
+        "to",
+        "in",
+        "on",
+        "for",
+        "with",
+        "at",
+        "by",
+        "is",
+        "are",
+        "was",
+        "be",
+        "it",
+        "as",
+        "that",
+        "this",
+        "we",
+        "do",
+        "does",
+        "doesn",
+        "don",
+        "via",
+        "into",
+        "from",
+        "then",
+        "after",
+        "before",
+        "when",
+        "if",
+        "so",
+        "also",
+        "using",
+        "use",
+        "used",
+        "has",
+        "have",
+        "had",
+        "there",
+        "their",
+        "i",
+        "my",
+        "you",
+        "your",
+        "he",
+        "she",
+        "they",
+        "who",
+        "what",
+        "all",
+        "any",
+        "some",
+        "not",
+        "no",
+        "yes",
+        "but",
+        "or",
+        "same",
+        "other",
+        "about",
+        "would",
+        "will",
+        "can",
+        "could",
+        "should",
+        "just",
+        "very",
+        "much",
+        "more",
+        "most",
+        "than",
+        "up",
+        "down",
+        "out",
+        "over",
+        "again",
+        "once",
+        "day",
+        "time",
+        "things",
+        "thing",
+    }
+)
+
+# CJK / full-width ranges: Hiragana, Katakana, CJK ideographs, CJK ext.
+_CJK_RE = re.compile(
+    r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff"
+    r"\uf900-\ufaff\U00020000-\U0002a6df\U0002b740-\U0002b81f]"
+)
+
+
+def _normalize(text: Optional[str]) -> str:
+    """NFKC normalize + lowercase; language-neutral (keeps Japanese text)."""
+    if not text:
+        return ""
+    return unicodedata.normalize("NFKC", str(text)).lower()
+
+
+def _split_runs(text: str):
+    """Yield ``(is_cjk, chunk)`` runs over the normalized text."""
+    if not text:
+        return
+    cur_is_cjk = bool(_CJK_RE.match(text[0]))
+    start = 0
+    for i, ch in enumerate(text):
+        is_cjk = bool(_CJK_RE.match(ch))
+        if is_cjk != cur_is_cjk:
+            yield cur_is_cjk, text[start:i]
+            start = i
+            cur_is_cjk = is_cjk
+    yield cur_is_cjk, text[start:]
+
+
+def _char_bigrams(chunk: str) -> set[str]:
+    """Character bigrams of a CJK run (single char when len 1)."""
+    if len(chunk) == 1:
+        return {chunk}
+    return {chunk[i : i + 2] for i in range(len(chunk) - 1)}
 
 
 def _tokens(text: Optional[str]) -> set[str]:
-    """Lowercased alphanumeric tokens (deterministic)."""
-    if not text:
+    """Language-tolerant deterministic signature tokenization:
+
+    - NFKC normalize + lowercase (so Japanese/full-width text is preserved);
+    - Latin/alphanumeric runs: whole-word tokens with a small deterministic
+      stop-word set removed;
+    - CJK runs (Hiragana/Katakana/ideographs): character bigrams (no
+      language-specific word splitter needed).
+
+    A single generic token like "the"/"system" therefore cannot make two
+    unrelated concepts look equivalent.
+    """
+    norm = _normalize(text)
+    if not norm:
         return set()
-    return set(re.findall(r"[a-z0-9]+", str(text).lower()))
+    toks: set[str] = set()
+    for is_cjk, chunk in _split_runs(norm):
+        if is_cjk:
+            toks |= _char_bigrams(chunk)
+        else:
+            for w in re.findall(r"[a-z0-9]+", chunk):
+                if len(w) >= 2 and w not in _STOP_WORDS:
+                    toks.add(w)
+    return toks
 
 
-def _similarity(a: set[str], b: set[str]) -> float:
-    """Symmetric Jaccard similarity; 0 on empty/disjoint input."""
+def _similarity(a: "set", b: "set") -> float:
+    """Symmetric Dice coefficient over token sets; 0 on empty/disjoint input.
+    Dice (not Jaccard) is the standard score for n-gram signatures and is
+    far more lenient for short labels than token Jaccard."""
     if not a or not b:
         return 0.0
     inter = a & b
     if not inter:
         return 0.0
-    return len(inter) / len(a | b)
+    return 2.0 * len(inter) / (len(a) + len(b))
 
 
-def _truth_concept_tokens(concept) -> set[str]:
+# Minimum similarity for two concepts to be considered the same business
+# thing. A single shared generic token lands well below this.
+_CONCEPT_MATCH_THRESHOLD = 0.4
+
+
+def _truth_label_tokens(concept, extra_terms=None) -> set[str]:
+    """Signature of the Truth concept's canonical terms (plus any extra
+    local terms from the stakeholder's vocabulary, e.g. Japanese terms)
+    only — the optional description is excluded so a long description never
+    dilutes a strong label match."""
     toks: set[str] = set()
     for t in concept.canonical_terms:
         toks |= _tokens(t)
-    if concept.description:
-        toks |= _tokens(concept.description)
+    for t in extra_terms or ():
+        toks |= _tokens(t)
     return toks
+
+
+def _truth_concept_tokens(concept, extra_terms=None) -> set[str]:
+    """Signature of canonical terms + description (+ extra local terms),
+    used as a fallback when the labels do not overlap enough."""
+    return _truth_label_tokens(concept, extra_terms) | _tokens(concept.description)
+
+
+def _agent_label_tokens(concept) -> set[str]:
+    return _tokens(concept.display_label)
 
 
 def _agent_concept_tokens(concept) -> set[str]:
-    toks = _tokens(concept.display_label)
-    if concept.description:
-        toks |= _tokens(concept.description)
-    return toks
+    """Signature of the agent label + description (fallback signature)."""
+    return _agent_label_tokens(concept) | _tokens(concept.description)
+
+
+def _concept_similarity(agent, truth_concept, extra_terms=None) -> float:
+    """Best-of matching over label-only and label+description Dice scores.
+
+    Each side is computed twice: against the canonical Truth terms and
+    against the canonical + stakeholder-extra terms (e.g. Japanese). Taking
+    the max preserves English-vs-English matches (extra terms never dilute a
+    canonical match) while still allowing a JA agent label to match the JA
+    extra terms. The result is thresholded against
+    ``_CONCEPT_MATCH_THRESHOLD`` by the caller.
+    """
+    a_label = _agent_label_tokens(agent)
+    a_full = _agent_concept_tokens(agent)
+    t_label = _truth_label_tokens(truth_concept)
+    t_full = _truth_concept_tokens(truth_concept)
+    t_label_ext = _truth_label_tokens(truth_concept, extra_terms)
+    t_full_ext = _truth_concept_tokens(truth_concept, extra_terms)
+    return max(
+        _similarity(a_label, t_label),
+        _similarity(a_label, t_label_ext),
+        _similarity(a_full, t_full),
+        _similarity(a_full, t_full_ext),
+    )
+
+
+def _max_weight_assignment(
+    weights: dict[tuple[str, str], float],
+    left: list[str],
+    right: list[str],
+    threshold: float,
+) -> dict[str, str]:
+    """Deterministic maximum-weight bipartite matching (Hungarian / Kuhn-
+    Munkres) mapping rows (``left``) to distinct columns (``right``).
+
+    Only pairs with ``weight >= threshold`` are allowed; every other pair is
+    treated as forbidden. The matrix is padded with explicit dummy rows and
+    dummy columns at cost 0, so every real row always has a zero-cost
+    fallback: a real row matched to a real column is kept, anything matched
+    to a dummy (or a forbidden pair) is left unmatched. Ties are broken by
+    the sorted input order, so the optimum is independent of Agent-local
+    concept/node ids.
+
+    Returns ``{left_id: right_id}`` for the matched pairs.
+    """
+    n, m = len(left), len(right)
+    if n == 0 or m == 0:
+        return {}
+    size = n + m  # real rows + dummy rows, real cols + dummy cols
+    BIG = 1e15
+
+    # cost[col][row] for min-cost assignment; row/col 1..size (1-indexed).
+    # Real row i in 1..n, real col j in 1..m.
+    cost = [[0.0] * (size + 1) for _ in range(size + 1)]
+
+    row_idx = {cid: i for i, cid in enumerate(left, start=1)}
+    col_idx = {tid: j for j, tid in enumerate(right, start=1)}
+    allowed: set[tuple[int, int]] = set()
+    for (lft, rgt), w in weights.items():
+        if w >= threshold and lft in row_idx and rgt in col_idx:
+            i, j = row_idx[lft], col_idx[rgt]
+            cost[j][i] = -w
+            allowed.add((i, j))
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            if (i, j) not in allowed:
+                cost[j][i] = BIG
+
+    u = [0.0] * (size + 1)
+    v = [0.0] * (size + 1)
+    p = [0] * (size + 1)
+    way = [0] * (size + 1)
+
+    for i in range(1, size + 1):
+        p[0] = i
+        j0 = 0
+        minv = [1e18] * (size + 1)
+        used = [False] * (size + 1)
+        while True:
+            used[j0] = True
+            i0 = p[j0]
+            delta = 1e18
+            j1 = 0
+            for j in range(1, size + 1):
+                if used[j]:
+                    continue
+                cur = cost[j][i0] - u[i0] - v[j]
+                if cur < minv[j]:
+                    minv[j] = cur
+                    way[j] = j0
+                if minv[j] < delta:
+                    delta = minv[j]
+                    j1 = j
+            for j in range(size + 1):
+                if used[j]:
+                    u[p[j]] += delta
+                    v[j] -= delta
+                else:
+                    minv[j] -= delta
+            j0 = j1
+            if p[j0] == 0:
+                break
+        # augment along the found path
+        while True:
+            j1 = way[j0]
+            p[j0] = p[j1]
+            j0 = j1
+            if j0 == 0:
+                break
+
+    assignment: dict[str, str] = {}
+    for j in range(1, m + 1):
+        i = p[j]
+        if 1 <= i <= n and (i, j) in allowed:
+            assignment[left[i - 1]] = right[j - 1]
+    return assignment
 
 
 def _prop_from_node(node, prop):
@@ -184,136 +461,76 @@ def _node_concept_refs(node, agent_concepts) -> list[tuple[str, ConceptRef]]:
     return out
 
 
-def _node_signature(node, concepts, is_truth: bool) -> set[str]:
-    """Content signature of a node from its referenced concept contents."""
-    toks: set[str] = set()
+def _node_signature(
+    node, concepts, is_truth: bool, agent_to_truth: Optional[dict[str, str]] = None
+) -> set[tuple[str, str]]:
+    """Node signature from its (prop, truth_concept_id) references.
+
+    For a Truth node this is derived straight from its concept refs; for an
+    Agent node each ref's Agent-local concept is first mapped to its aligned
+    Truth concept (unmapped/fabricated refs contribute nothing, so they
+    cannot help a fabricated node get matched). This makes node identity
+    depend on the aligned concept content, never on Agent-local ids.
+    """
+    sig: set[tuple[str, str]] = set()
     for prop in _NODE_PROPS:
         for ref in node.refs(prop):
             cid = ref.concept_id
-            if cid not in concepts:
-                continue
-            concept = concepts[cid]
             if is_truth:
-                toks |= _truth_concept_tokens(concept)
-            else:
-                toks |= _agent_concept_tokens(concept)
-    return toks
-
-
-# ---------------------------------------------------------------------------
-# Concept identity (content-based)
-# ---------------------------------------------------------------------------
-
-
-def _truth_referenced_concept_ids(truth) -> set[str]:
-    """Truth concept ids referenced by the Truth graph."""
-    ids: set[str] = set()
-    for node in truth.nodes.values():
-        for prop in _NODE_PROPS:
-            for ref in node.refs(prop):
-                ids.add(ref.concept_id)
-    for edge in truth.edges.values():
-        if isinstance(edge.condition, ConceptRef):
-            ids.add(edge.condition.concept_id)
-    return ids
-
-
-def _agent_referenced_concept_ids(agent: AgentGraph) -> set[str]:
-    return agent.referenced_concepts()
-
-
-def _align_concepts(
-    agent: AgentGraph,
-    truth,
-) -> tuple[float, float, dict[str, str]]:
-    """Content-based bijective concept alignment.
-
-    Expected = Truth concepts the Truth graph references. Attempted = agent
-    concepts the Agent graph references. Each attempted concept aligns to the
-    best-compatible (same kind, content-overlapping) Truth concept,
-    bijectively. Returns ``(concept_recall, concept_precision,
-    agent_concept_id -> truth_concept_id)``; precision is over the attempted
-    set, recall over expected.
-    """
-    expected: set[str] = _truth_referenced_concept_ids(truth)
-    attempted: set[str] = _agent_referenced_concept_ids(agent)
-
-    candidates: dict[str, dict[str, float]] = {}
-    for acid in attempted:
-        ac = agent.concepts.get(acid)
-        if ac is None:
-            continue
-        a_toks = _agent_concept_tokens(ac)
-        scores: dict[str, float] = {}
-        for tid in expected:
-            tc = truth.concepts.get(tid)
-            if tc is None or tc.kind != ac.kind:
+                if cid in concepts:
+                    sig.add((prop, cid))
                 continue
-            s = _similarity(a_toks, _truth_concept_tokens(tc))
-            if s > 0.0:
-                scores[tid] = s
-        candidates[acid] = scores
-
-    claimed: set[str] = set()
-    recognized: dict[str, str] = {}
-    for acid in sorted(candidates):
-        pool = {tid: s for tid, s in candidates[acid].items() if tid not in claimed}
-        if not pool:
-            continue
-        best = max(pool, key=lambda tid: (pool[tid], tid))
-        recognized[acid] = best
-        claimed.add(best)
-
-    recalled = set(recognized.values()) & expected
-    concept_recall = len(recalled) / len(expected) if expected else 1.0
-    concept_precision = len(recognized) / len(attempted) if attempted else 1.0
-    agent_to_truth = {acid: tid for acid, tid in recognized.items() if tid in expected}
-    return concept_recall, concept_precision, agent_to_truth
-
-
-def expected_attempted(attempted: set[str], agent: AgentGraph) -> set[str]:
-    """Compat shim: the attempted referenced concept ids are the agent
-    referenced concept ids."""
-    return attempted
-
-
-# ---------------------------------------------------------------------------
-# Node / edge identity (content-based)
-# ---------------------------------------------------------------------------
+            mapped = agent_to_truth.get(cid) if agent_to_truth is not None else None
+            if mapped is not None:
+                sig.add((prop, mapped))
+    return sig
 
 
 def _map_nodes_and_edges(
     agent: AgentGraph,
     truth,
+    agent_to_truth: dict[str, str],
 ) -> tuple[dict[str, str], dict[str, str]]:
-    """Node mapping by content-signature similarity; edge mapping by matching
-    endpoint pair."""
+    """Stable global node mapping by aligned (prop, truth_concept_id) pairs;
+    edge mapping by matching endpoint pair on the Truth graph.
+
+    Node matching is a maximum-weight bipartite assignment (not greedy by
+    Agent-local id order), so the mapping is invariant to arbitrary
+    Agent-node-id reorderings.
+    """
     agent_sigs = {
-        anid: _node_signature(node, agent.concepts, is_truth=False)
+        anid: _node_signature(
+            node, agent.concepts, is_truth=False, agent_to_truth=agent_to_truth
+        )
         for anid, node in agent.nodes.items()
     }
     truth_sigs = {
         tnid: _node_signature(node, truth.concepts, is_truth=True)
         for tnid, node in truth.nodes.items()
     }
-    mapping: dict[str, str] = {}
-    used: set[str] = set()
-    for anid in sorted(agent_sigs):
+    weights: dict[tuple[str, str], float] = {}
+    for anid in agent_sigs:
         a = agent_sigs[anid]
         if not a:
             continue
-        pool = {
-            tnid: _similarity(a, t)
-            for tnid, t in truth_sigs.items()
-            if tnid not in used
-        }
-        if not pool:
-            continue
-        best = max(pool, key=lambda tnid: (pool[tnid], tnid))
-        if pool[best] <= 0.0:
-            continue
-        mapping[anid] = best
-        used.add(best)
+        for tnid in truth_sigs:
+            t = truth_sigs[tnid]
+            inter = a & t
+            if not inter:
+                continue
+            # A shared activity pair is the node's primary identity; sharing
+            # only a minor property (e.g. one actor) is NOT identity. This
+            # keeps the mapping stable and content-driven without accepting
+            # tiny incidental overlaps.
+            shares_activity = any(prop == "activity" for prop, _ in inter)
+            if not shares_activity and len(inter) < 2:
+                continue
+            s = _similarity(a, t)
+            if s > 0.0:
+                weights[(anid, tnid)] = s
+    mapping = _max_weight_assignment(
+        weights, sorted(agent_sigs), sorted(truth_sigs), threshold=0.0
+    )
 
     edge_map: dict[str, str] = {}
     for eid, edge in agent.edges.items():
@@ -346,21 +563,23 @@ def _score_scalar_slot(
     truth_value,
     agent_to_truth: dict[str, str],
 ) -> int:
-    """1 if the agent's scalar belief matches the Truth slot.
+    """Epistemic-aware scalar slot score (1 correct / 0 otherwise).
 
-    Truth ConceptRef -> the agent must claim a matching value concept.
-    Truth None -> the agent must claim NO value (UNSET/ABSENT/DONT_KNOW or
-    a fabricated value all score 0 is wrong).
+    Truth ConceptRef -> only a matching asserted Agent ConceptRef is correct.
+    Truth None (absent) -> only an explicit Agent ABSENT marker is correct;
+    UNSET / DONT_KNOW / any ConceptRef are all NOT correct ("no answer" must
+    not be rewarded as a lucky guess). Equivalent semantics apply to edge
+    conditions.
     """
     tcid = _truth_scalar_value(truth_value)
     if tcid is not None:
         if not isinstance(agent_value, ConceptRef) or not agent_value.asserted:
             return 0
         return 1 if agent_to_truth.get(agent_value.concept_id) == tcid else 0
-    # Truth has no value here: agent must claim none
-    if isinstance(agent_value, ConceptRef) and agent_value.asserted:
-        return 0
-    return 1
+    # Truth absent: explicit ABSENT is the only correct state
+    if isinstance(agent_value, AbsentType):
+        return 1
+    return 0
 
 
 def _score_list_slot(
@@ -368,21 +587,25 @@ def _score_list_slot(
     truth_value,
     agent_to_truth: dict[str, str],
 ) -> tuple[float, int]:
-    """Recall*precision over the read/write element set, plus unsupported."""
+    """Epistemic-aware reads/writes slot score, plus unsupported count.
+
+    Truth list -> recall*precision over the normal element set.
+    Truth None / known-empty -> only an explicit Agent ABSENT marker scores
+    1.0; UNSET and DONT_KNOW are incomplete; asserted list refs are
+    fabricated.
+    """
     expected: set[str] = (
         {ref.concept_id for ref in truth_value}
         if isinstance(truth_value, list)
         else set()
     )
     if not expected:
-        if isinstance(agent_value, list) and agent_value:
-            unsupported = sum(
-                1
-                for r in agent_value
-                if r.asserted and agent_to_truth.get(r.concept_id) is not None
-            )
+        if isinstance(agent_value, AbsentType):
+            return 1.0, 0
+        if isinstance(agent_value, list):
+            unsupported = sum(1 for r in agent_value if r.asserted)
             return 0.0, unsupported
-        return 1.0, 0
+        return 0.0, 0
     if not isinstance(agent_value, list):
         return 0.0, 0
     claimed = {
@@ -400,6 +623,90 @@ def _score_list_slot(
         if r.asserted and agent_to_truth.get(r.concept_id) is None
     )
     return recall * precision, unsupported
+
+
+# ---------------------------------------------------------------------------
+# Concept identity (content-based)
+# ---------------------------------------------------------------------------
+
+
+def _truth_referenced_concept_ids(truth) -> set[str]:
+    """Truth concept ids referenced by the Truth graph."""
+    ids: set[str] = set()
+    for node in truth.nodes.values():
+        for prop in _NODE_PROPS:
+            for ref in node.refs(prop):
+                ids.add(ref.concept_id)
+    for edge in truth.edges.values():
+        if isinstance(edge.condition, ConceptRef):
+            ids.add(edge.condition.concept_id)
+    return ids
+
+
+def _agent_referenced_concept_ids(agent: AgentGraph) -> set[str]:
+    return agent.referenced_concepts()
+
+
+def _align_concepts(
+    agent: AgentGraph,
+    truth,
+    term_extras: Optional[dict[str, list[str]]] = None,
+) -> tuple[float, float, dict[str, str]]:
+    """Content-based bijective concept alignment (per kind, global optimum).
+
+    Expected = Truth concepts the Truth graph references. Attempted = agent
+    concepts the Agent graph references. For each concept kind separately, a
+    maximum-weight bipartite matching maps attempted -> expected concepts
+    (``_CONCEPT_MATCH_THRESHOLD`` gates weak pairs). This is deterministic
+    and invariant to Agent-local concept ids.
+
+    Returns ``(concept_recall, concept_precision,
+    agent_concept_id -> truth_concept_id)``; precision is over the attempted
+    set, recall over expected.
+    """
+    expected: set[str] = _truth_referenced_concept_ids(truth)
+    attempted: set[str] = _agent_referenced_concept_ids(agent)
+
+    # per-kind bipartite assignment (maximum-weight, deterministic)
+    by_kind = sorted({ac.kind for ac in agent.concepts.values() if ac.id in attempted})
+    recognized: dict[str, str] = {}
+    for kind in by_kind:
+        left = sorted(
+            cid
+            for cid in attempted
+            if cid in agent.concepts and agent.concepts[cid].kind == kind
+        )
+        right = sorted(
+            tid
+            for tid in expected
+            if tid in truth.concepts and truth.concepts[tid].kind == kind
+        )
+        weights: dict[tuple[str, str], float] = {}
+        for acid in left:
+            for tid in right:
+                s = _concept_similarity(
+                    agent.concepts[acid],
+                    truth.concepts[tid],
+                    (term_extras or {}).get(tid),
+                )
+                if s >= _CONCEPT_MATCH_THRESHOLD:
+                    weights[(acid, tid)] = s
+        recognized.update(
+            _max_weight_assignment(
+                weights, left, right, threshold=_CONCEPT_MATCH_THRESHOLD
+            )
+        )
+
+    recalled = set(recognized.values()) & expected
+    concept_recall = len(recalled) / len(expected) if expected else 1.0
+    concept_precision = len(recognized) / len(attempted) if attempted else 1.0
+    agent_to_truth = {acid: tid for acid, tid in recognized.items() if tid in expected}
+    return concept_recall, concept_precision, agent_to_truth
+
+
+# ---------------------------------------------------------------------------
+# Node / edge identity (content-based)
+# ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
@@ -583,10 +890,23 @@ def evaluate(
     graph_created = len(agent.nodes) > 0
     graph_valid = agent.is_valid
 
-    # concept alignment first (property + concept scoring need the mapping)
-    concept_recall, concept_precision, agent_to_truth = _align_concepts(agent, target)
+    # Stakeholder-local concept terms (e.g. Japanese terms for the JA locale)
+    # enrich the Truth concept signatures so an agent vocabulary in the
+    # stakeholder's language still matches. Diagnostic vocabulary, never
+    # provenance.
+    term_extras: dict[str, list[str]] = {}
+    if knowledge is not None and getattr(knowledge, "concepts", None):
+        for c in knowledge.concepts.values():
+            t = getattr(c, "terms", None)
+            if isinstance(t, list) and t:
+                term_extras.setdefault(c.truth_concept_id, list(t))
 
-    mapping, edge_map = _map_nodes_and_edges(agent, target)
+    # concept alignment first (property + concept scoring need the mapping)
+    concept_recall, concept_precision, agent_to_truth = _align_concepts(
+        agent, target, term_extras
+    )
+
+    mapping, edge_map = _map_nodes_and_edges(agent, target, agent_to_truth)
 
     target_node_ids = list(target.nodes)
     agent_node_ids = list(agent.nodes)
@@ -654,11 +974,8 @@ def evaluate(
 
     concept_correctness = concept_recall * concept_precision
     glossary_complete = bool(concept_recall == 1.0 and concept_precision == 1.0)
-    # No provenance/grounding gate on the glossary: hypothesis states are Agent
-    # belief records only. glossary_pass = reconstruction completeness.
-    hypothesized: list[str] = []
-    glossary_pass = glossary_complete
-    glossary_claims = []
+    # No validation/grounding lifecycle: concept status is an Agent belief
+    # record that nothing gates on. glossary_complete = reconstruction.
 
     authentic_ids: set[str] = set()
     invalid_source = 0
@@ -708,7 +1025,6 @@ def evaluate(
         and concept_recall == 1.0
         and concept_precision == 1.0
         and concept_correctness == 1.0
-        and glossary_pass
         and glossary_complete
     )
     protocol_pass = protocol
@@ -740,10 +1056,7 @@ def evaluate(
         unsupported_ref_count=unsupported,
         fabricated_node_count=fabricated_node_count,
         fabricated_edge_count=fabricated_edge_count,
-        glossary_pass=glossary_pass,
         glossary_complete=glossary_complete,
-        referenced_hypothesized_concepts=hypothesized,
-        glossary_validation_errors=glossary_claims,
         node_evidence_coverage=node_cov,
         ref_evidence_coverage=ref_cov,
         edge_evidence_coverage=edge_cov,

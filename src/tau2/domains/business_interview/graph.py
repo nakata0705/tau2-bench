@@ -98,15 +98,6 @@ E = TypeVar("E", bound=_EdgeProto)
 
 ConceptKind = Literal["activity", "actor", "system", "data", "condition", "rationale"]
 
-ValidationStatus = Literal[
-    "hypothesized",
-    "grounded",
-    "confirmed",
-    "partially_confirmed",
-    "disputed",
-    "unknown",
-]
-
 # Property names scored on nodes / edges.
 NodeProperty = Literal["activity", "actor", "system", "reads", "writes", "rationale"]
 EdgeProperty = Literal["condition"]
@@ -608,13 +599,11 @@ class AgentConcept(BaseModel):
     """An Agent-local glossary concept (a business thing of one ConceptKind).
 
     Agent ids are local and arbitrary; ``display_label`` / ``description`` are
-    the Agent's own working text and are never compared to Truth.
-    ``mentions`` are Observation spans the Agent interprets as referring to
-    this concept — a mention is NOT evidence for a graph property and NOT a
-    terminology agreement. ``validation_status`` is one of hypothesized /
-    grounded / confirmed / partially_confirmed / disputed / unknown;
-    ``validation_evidence`` records the explicit dialogue/validation evidence
-    behind the status.
+    the Agent's own working text. ``mentions`` are Observation spans the Agent
+    interprets as referring to this concept (a diagnostic hint, not a
+    correctness gate). There is no validation/grounding lifecycle: concept
+    identity is judged by content against Truth, and concept status is an
+    Agent belief record that nothing gates on.
     """
 
     id: str
@@ -622,13 +611,6 @@ class AgentConcept(BaseModel):
     display_label: str
     description: str = Field(default="")
     mentions: list[EvidenceRef] = Field(default_factory=list)
-    validation_status: ValidationStatus = Field(default="hypothesized")
-    validation_evidence: list[EvidenceRef] = Field(default_factory=list)
-
-    @property
-    def resolved(self) -> bool:
-        """True when the concept is no longer merely hypothesized."""
-        return self.validation_status != "hypothesized"
 
 
 class TerminologyAgreement(BaseModel):
