@@ -5,6 +5,8 @@ The default invocation reads the existing quotation artifacts for seeds 9002,
 9003, and 9004, evaluates their saved final AgentGraph against the stored
 Truth/StakeholderKnowledge sidecars, writes one evaluator-private diagnostic
 trace per seed, and renders ``doc/business-interview-evaluation-diagnostics.md``.
+The trace also contains a diagnostic-only usage-based concept-alignment
+experiment conditioned on the evaluator's current node/edge mapping.
 """
 
 from __future__ import annotations
@@ -242,6 +244,146 @@ def _failure_reason(trace: dict, attribution: dict) -> str:
     return "unknown"
 
 
+def _md_value(value) -> str:
+    """Render a diagnostic value safely inside a Markdown table cell."""
+    if value is None or value == "":
+        return "—"
+    return str(value).replace("|", r"\|").replace("\n", " ")
+
+
+def _usage_pair_lookup(usage: dict) -> dict[tuple[str, str], dict]:
+    return {
+        (pair["agent_concept_id"], pair["truth_concept_id"]): pair
+        for pair in usage["candidate_pairs"]
+    }
+
+
+def _usage_detail_lines(trace: dict) -> list[str]:
+    """Render per-seed usage evidence and lexical/usage disagreements."""
+    usage = trace["evaluation"]["diagnostics"]["usage_alignment"]
+    pair_by_ids = _usage_pair_lookup(usage)
+    lines = [
+        "",
+        "### Usage alignment comparison",
+        "",
+        f"- referenced concepts: Truth `{usage['truth_referenced_concept_count']}`, "
+        f"Agent `{usage['agent_referenced_concept_count']}`",
+        f"- exact/partial assigned usage matches: `{usage['exact_usage_match_count']}` / "
+        f"`{usage['partial_usage_match_count']}`",
+        f"- structurally ambiguous concepts: `{usage['structurally_ambiguous_concept_count']}`",
+        f"- disagreements with current mapping: `{usage['disagreement_count']}` "
+        f"(substantially stronger usage evidence: "
+        f"`{usage['usage_substantially_stronger_disagreement_count']}`)",
+    ]
+    if usage["ambiguity_classes"]:
+        lines.extend(["", "#### Structural ambiguity classes", ""])
+        for ambiguity in usage["ambiguity_classes"]:
+            lines.append(
+                f"- `{ambiguity['class_id']}` ({ambiguity['kind']}): Truth "
+                f"`{ambiguity['truth_concept_ids']}` <-> Agent "
+                f"`{ambiguity['agent_concept_ids']}` at "
+                f"`{ambiguity['usage_addresses']}`; identity is unresolved."
+            )
+    else:
+        lines.extend(["", "- structural ambiguity classes: none", ""])
+
+    disagreements = [
+        item
+        for item in usage["comparisons"]
+        if item["classification"] != "same_mapping"
+    ]
+    lines.extend(
+        [
+            "",
+            "#### Concrete disagreements with the current lexical/content matcher",
+            "",
+            "| Agent concept | label | current Truth | usage Truth | classification | lexical score | usage F1 | exact usage |",
+            "| --- | --- | --- | --- | --- | ---: | ---: | --- |",
+        ]
+    )
+    if not disagreements:
+        lines.append("| none | — | — | — | — | — | — | — |")
+    else:
+        for item in disagreements:
+            lines.append(
+                "| `{agent_concept_id}` | `{agent_label}` | `{current_truth_concept_id}` | "
+                "`{usage_truth_concept_id}` | `{classification}` | "
+                "{current_lexical_similarity_score:.3f} | {usage_similarity_score:.3f} | "
+                "{usage_exact_usage_match} |".format(
+                    agent_concept_id=_md_value(item["agent_concept_id"]),
+                    agent_label=_md_value(item["agent_label"]),
+                    current_truth_concept_id=_md_value(
+                        item["current_truth_concept_id"]
+                    ),
+                    usage_truth_concept_id=_md_value(item["usage_truth_concept_id"]),
+                    classification=_md_value(item["classification"]),
+                    current_lexical_similarity_score=item[
+                        "current_lexical_similarity_score"
+                    ],
+                    usage_similarity_score=item["usage_similarity_score"],
+                    usage_exact_usage_match=item["usage_exact_usage_match"],
+                )
+            )
+
+    labels_differ = [
+        item
+        for item in usage["comparisons"]
+        if item["labels_differ"]
+        and item["usage_exact_usage_match"]
+        and item["current_truth_concept_id"] == item["usage_truth_concept_id"]
+    ]
+    labels_agree = [
+        item for item in usage["comparisons"] if item["labels_agree_but_usage_does_not"]
+    ]
+    lines.extend(["", "#### Examples where labels differ but usage agrees", ""])
+    if not labels_differ:
+        lines.append("- none")
+    else:
+        for item in labels_differ:
+            lines.append(
+                f"- Agent `{_md_value(item['agent_concept_id'])}` "
+                f"({_md_value(item['agent_label'])}) -> Truth "
+                f"`{_md_value(item['current_truth_concept_id'])}` with exact usage; "
+                "the current lexical path was not an exact label match."
+            )
+    lines.extend(["", "#### Examples where labels agree but usage does not", ""])
+    if not labels_agree:
+        lines.append("- none")
+    else:
+        for item in labels_agree:
+            lines.append(
+                f"- Agent `{_md_value(item['agent_concept_id'])}` -> Truth "
+                f"`{_md_value(item['current_truth_concept_id'])}`: exact label "
+                f"match, but usage exact=`{item['current_exact_usage_match']}`, "
+                f"usage F1=`{item['current_usage_f1']:.3f}`."
+            )
+
+    partial_pairs = []
+    for assignment in usage["assignments"]:
+        pair = pair_by_ids.get(
+            (assignment["agent_concept_id"], assignment["truth_concept_id"])
+        )
+        if pair is not None and (
+            pair["usages_only_in_truth"]
+            or pair["usages_only_in_agent"]
+            or pair["broader_narrower_relation"] != "none"
+        ):
+            partial_pairs.append((assignment, pair))
+    lines.extend(["", "#### Usage-only differences and broader/narrower evidence", ""])
+    if not partial_pairs:
+        lines.append("- none among assigned pairs")
+    else:
+        for assignment, pair in partial_pairs:
+            lines.append(
+                f"- Agent `{pair['agent_concept_id']}` -> Truth "
+                f"`{pair['truth_concept_id']}`: only Truth "
+                f"`{pair['usages_only_in_truth'] or 'none'}`, only Agent "
+                f"`{pair['usages_only_in_agent'] or 'none'}`; relation "
+                f"`{pair['broader_narrower_relation']}`."
+            )
+    return lines
+
+
 def render_report(traces: list[dict], output_path: Path) -> None:
     counts: dict[str, Counter] = {slot: Counter() for slot in SLOT_ORDER}
     for trace in traces:
@@ -283,7 +425,10 @@ def render_report(traces: list[dict], output_path: Path) -> None:
         "node with `slots` for `activity`, `actor`, `system`, `reads`, `writes`, "
         "and `necessity_rationale`), `edge_diagnostics` (endpoint structural "
         "match plus `condition`), and `concepts` (candidate pair scores, exact "
-        "label path, selected mapping, and unmatched concepts). Each slot has "
+        "label path, selected mapping, and unmatched concepts). The separate "
+        "`usage_alignment` section contains usage candidate sets, per-kind "
+        "assignments, ambiguity classes, and current-vs-usage comparisons. Each "
+        "slot has "
         "Truth/Agent state, concept ids/labels, matched flag, score contribution, "
         "and reason codes. The deterministic codes used here include: "
         "`correct_value`, `truth_value_agent_unset`, "
@@ -314,6 +459,112 @@ def render_report(traces: list[dict], output_path: Path) -> None:
 
     lines.extend(
         [
+            "",
+            "## Usage-based concept alignment (diagnostic only)",
+            "",
+            "The usage experiment is explicitly named `usage_alignment_conditioned_on_current_node_mapping`. "
+            "It translates Agent node/edge addresses through the existing production "
+            "node/edge correspondence, then compares deterministic sets of "
+            "`node:<id>:<property>` and `edge:<id>:condition` addresses. Empty "
+            "mapped signatures are insufficient evidence, not exact matches. "
+            "Concept kind is a hard constraint. Per-pair precision, recall, F1, "
+            "Jaccard, exact equality, set differences, and strict "
+            "broader/narrower relations are retained in the JSON traces.",
+            "",
+            "The one-to-one assignment is per kind and uses only usage F1, with "
+            "a deterministic priority bonus for non-empty exact usage equality. "
+            "Labels, descriptions, canonical terms, translations, embeddings, "
+            "and LLM judgment are not inputs to that assignment. Sorted opaque "
+            "ids are used only for reproducible serialization; identical usage "
+            "signatures and tied usage-candidate rows are reported as ambiguity "
+            "classes rather than resolved by labels. The report-only `substantially "
+            "stronger` flag means exact "
+            "usage or positive usage F1 where the current mapping has zero usage "
+            "support; it is not a production threshold. This is an exploratory "
+            "comparison and introduces no score change.",
+            "",
+            "| seed | Truth concepts | Agent concepts | exact usage | partial usage | ambiguous concepts | mapping disagreements | substantially stronger | labels differ + usage agrees | labels agree + usage differs |",
+            "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for trace in traces:
+        usage = trace["evaluation"]["diagnostics"]["usage_alignment"]
+        lines.append(
+            "| {seed} | {truth_referenced_concept_count} | "
+            "{agent_referenced_concept_count} | {exact_usage_match_count} | "
+            "{partial_usage_match_count} | {structurally_ambiguous_concept_count} | "
+            "{disagreement_count} | {usage_substantially_stronger_disagreement_count} | "
+            "{labels_differ_usage_agrees_count} | "
+            "{labels_agree_usage_does_not_count} |".format(seed=trace["seed"], **usage)
+        )
+    lines.extend(
+        [
+            "",
+            "### Compact per-kind summary",
+            "",
+            "| seed | kind | Truth | Agent | exact | partial | ambiguous | disagreements | stronger | insufficient |",
+            "| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for trace in traces:
+        usage = trace["evaluation"]["diagnostics"]["usage_alignment"]
+        for summary in usage["kind_summaries"]:
+            lines.append(
+                "| {seed} | {kind} | {truth_referenced_concept_count} | "
+                "{agent_referenced_concept_count} | {exact_usage_matches} | "
+                "{partial_usage_matches} | {structurally_ambiguous_concepts} | "
+                "{disagreements_with_current_mapping} | "
+                "{usage_substantially_stronger_disagreements} | "
+                "{insufficient_usage} |".format(seed=trace["seed"], **summary)
+            )
+
+    usage_totals = [
+        trace["evaluation"]["diagnostics"]["usage_alignment"] for trace in traces
+    ]
+    exact_total = sum(item["exact_usage_match_count"] for item in usage_totals)
+    partial_total = sum(item["partial_usage_match_count"] for item in usage_totals)
+    ambiguity_total = sum(
+        item["structurally_ambiguous_concept_count"] for item in usage_totals
+    )
+    disagreement_total = sum(item["disagreement_count"] for item in usage_totals)
+    stronger_total = sum(
+        item["usage_substantially_stronger_disagreement_count"] for item in usage_totals
+    )
+    lines.extend(
+        [
+            "",
+            "## Usage experiment conclusion",
+            "",
+            f"Across these stored seeds, the usage scaffold produced `{exact_total}` "
+            f"exact and `{partial_total}` partial assigned matches, with "
+            f"`{ambiguity_total}` structurally ambiguous concepts and "
+            f"`{disagreement_total}` comparison disagreements (`{stronger_total}` "
+            "where usage had exact or positive-vs-zero support substantially "
+            "stronger than the current mapping).",
+            "",
+            "**Does usage appear strong enough to replace lexical matching? No, not "
+            "as a production replacement from these artifacts.** Exact usage is a "
+            "strong and useful conditional signal, including cases where labels are "
+            "not exact, but partial/missing usage, unmapped Agent addresses, and "
+            "ambiguous equivalence classes prevent usage from resolving every "
+            "concept. A disagreement is evidence to inspect, not proof that the "
+            "usage assignment is correct.",
+            "",
+            "Usage is insufficient when the current node/edge scaffold leaves a "
+            "concept with no mapped addresses, when a concept is absent from some "
+            "of its Truth locations, or when multiple concepts share the same "
+            "translated address set. The JSON candidate records expose the exact "
+            "Truth-only and Agent-only usages and strict broader/narrower relations "
+            "for follow-up.",
+            "",
+            "A fully label-independent joint matcher would first need a validated "
+            "node/edge correspondence derived from label-independent topology, "
+            "start/end roles, degree, and slot/co-occurrence structure; then a "
+            "joint or confidence-aware iterative optimization over node, edge, and "
+            "concept assignments; explicit handling for missing/extra structure "
+            "and non-identifiability; and adversarial multilingual/duplicate-usage "
+            "fixtures. This experiment intentionally does not attempt that large "
+            "optimization.",
             "",
             "## Aggregate failed-slot attribution",
             "",
@@ -435,6 +686,7 @@ def render_report(traces: list[dict], output_path: Path) -> None:
         lines.append(f"- unmatched Agent concepts: `{unmatched_agent or 'none'}`")
         selected = concepts["selected_mappings"]
         lines.append(f"- selected mappings: `{len(selected)}`")
+        lines.extend(_usage_detail_lines(trace))
         lines.append("")
 
     safe_output_path = _safe_repo_path(output_path)

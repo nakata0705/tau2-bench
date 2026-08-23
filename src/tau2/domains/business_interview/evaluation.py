@@ -61,6 +61,11 @@ from tau2.domains.business_interview.grounding import (
     grounded_refs as resolve_grounding_refs,
 )
 
+from .usage_alignment import (  # pyright: ignore[reportMissingImports]
+    UsageAlignmentDiagnostics,
+    build_usage_alignment_diagnostics,
+)
+
 # Re-exported provenance helpers kept for diagnostic callers (tests/diagnostics).
 __all__ = [
     "EvaluationSpec",
@@ -222,13 +227,16 @@ class FailureAttribution(BaseModel):
 class EvaluationDiagnostics(BaseModel):
     """Evaluator-only Truth/Agent reconstruction trace."""
 
-    schema_version: str = "business_interview.evaluation_diagnostics.v1"
+    schema_version: str = "business_interview.evaluation_diagnostics.v2"
     score_fields_unchanged: bool = True
     node_diagnostics: list[NodeDiagnostic] = Field(default_factory=list)
     unmatched_agent_nodes: list[str] = Field(default_factory=list)
     edge_diagnostics: list[EdgeDiagnostic] = Field(default_factory=list)
     unmatched_agent_edges: list[str] = Field(default_factory=list)
     concepts: ConceptDiagnostics
+    usage_alignment: UsageAlignmentDiagnostics = Field(
+        default_factory=UsageAlignmentDiagnostics
+    )
 
 
 class EvaluationSpec(BaseModel):
@@ -1476,6 +1484,14 @@ def _build_evaluation_diagnostics(
     edge_mapping: dict[str, str],
 ) -> EvaluationDiagnostics:
     concept_trace = _concept_diagnostics(agent, target, term_extras, agent_to_truth)
+    usage_trace = build_usage_alignment_diagnostics(
+        agent,
+        target,
+        node_mapping=node_mapping,
+        edge_mapping=edge_mapping,
+        current_agent_to_truth=agent_to_truth,
+        lexical_pairs=concept_trace.candidate_pairs,
+    )
     truth_to_agent = {tid: aid for aid, tid in node_mapping.items()}
     nodes: list[NodeDiagnostic] = []
     for tid in sorted(target.nodes):
@@ -1574,6 +1590,7 @@ def _build_evaluation_diagnostics(
             eid for eid in agent.edges if eid not in edge_mapping
         ),
         concepts=concept_trace,
+        usage_alignment=usage_trace,
     )
 
 
