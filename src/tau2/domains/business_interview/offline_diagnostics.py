@@ -11,14 +11,351 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping
-from typing import Optional
+from typing import Optional, cast
 
 from .evaluation import ConceptDiagnostics, FailureAttribution, SlotDiagnostic
 from .graph import (
+    UNSET,
+    AbsentType,
+    AgentConcept,
+    AgentGraph,
+    AgentListSlot,
+    AgentSlot,
+    ConceptKind,
     ConceptRef,
+    DontKnowType,
+    Edge,
+    EvidenceRef,
     InterviewDB,
+    Node,
+    TerminologyAgreement,
     is_dont_know,
 )
+
+
+class ArtifactDecodeError(ValueError):
+    """Raised when a persisted smoke-artifact value is ambiguous or invalid."""
+
+
+_MARKER_NAMES = frozenset({"unset", "absent", "dont_know"})
+
+
+def _decode_mapping(value, path: str) -> Mapping:
+    if not isinstance(value, Mapping):
+        raise ArtifactDecodeError(
+            f"{path}: expected an object, got {type(value).__name__}"
+        )
+    return value
+
+
+def _required_string(value: Mapping, name: str, path: str) -> str:
+    item = value.get(name)
+    if not isinstance(item, str) or not item:
+        raise ArtifactDecodeError(f"{path}.{name}: expected a non-empty string")
+    return item
+
+
+def _decode_evidence(value, path: str) -> list[EvidenceRef]:
+    if not isinstance(value, list):
+        raise ArtifactDecodeError(f"{path}: expected an evidence list")
+    decoded: list[EvidenceRef] = []
+    for index, raw in enumerate(value):
+        item = _decode_mapping(raw, f"{path}[{index}]")
+        unknown = set(item) - {"observation_id", "quote", "occurrence"}
+        if unknown:
+            raise ArtifactDecodeError(
+                f"{path}[{index}]: unknown evidence fields {sorted(unknown)!r}"
+            )
+        try:
+            decoded.append(EvidenceRef.model_validate(item))
+        except ValueError as exc:
+            raise ArtifactDecodeError(
+                f"{path}[{index}]: invalid evidence: {exc}"
+            ) from exc
+    return decoded
+
+
+def _decode_concept_ref(value: Mapping, path: str) -> ConceptRef:
+    unknown = set(value) - {"concept_id", "confidence", "evidence"}
+    if unknown:
+        raise ArtifactDecodeError(
+            f"{path}: unknown ConceptRef fields {sorted(unknown)!r}"
+        )
+    concept_id = _required_string(value, "concept_id", path)
+    evidence = (
+        _decode_evidence(value["evidence"], f"{path}.evidence")
+        if "evidence" in value
+        else []
+    )
+    try:
+        return ConceptRef(
+            concept_id=concept_id,
+            confidence=value.get("confidence", 1.0),
+            evidence=evidence,
+        )
+    except ValueError as exc:
+        raise ArtifactDecodeError(f"{path}: invalid ConceptRef: {exc}") from exc
+
+
+def _decode_single_agent_slot(value, path: str) -> AgentSlot:
+    item = _decode_mapping(value, path)
+    marker_names = _MARKER_NAMES.intersection(item)
+    if marker_names:
+        if len(marker_names) != 1:
+            raise ArtifactDecodeError(
+                f"{path}: multiple epistemic markers {sorted(marker_names)!r}"
+            )
+        marker = next(iter(marker_names))
+        if not isinstance(item[marker], bool) or not item[marker]:
+            raise ArtifactDecodeError(f"{path}.{marker}: marker must be true")
+        if marker == "unset":
+            if set(item) != {"unset"}:
+                raise ArtifactDecodeError(
+                    f"{path}: UNSET marker cannot contain additional fields"
+                )
+            return UNSET
+        unknown = set(item) - {marker, "evidence"}
+        if unknown or "evidence" not in item:
+            if unknown:
+                detail = f"unknown fields {sorted(unknown)!r}"
+            else:
+                detail = "missing evidence list"
+            raise ArtifactDecodeError(f"{path}: malformed {marker} marker ({detail})")
+        evidence = _decode_evidence(item["evidence"], f"{path}.evidence")
+        return (
+            AbsentType(evidence=evidence)
+            if marker == "absent"
+            else DontKnowType(evidence=evidence)
+        )
+    if "concept_id" in item:
+        return _decode_concept_ref(item, path)
+    raise ArtifactDecodeError(
+        f"{path}: expected exactly one supported marker or concept_id"
+    )
+
+
+def decode_agent_slot(
+    value, *, path: str = "slot", list_slot: bool = False
+) -> AgentSlot | AgentListSlot:
+    """Decode one slot from the smoke script's explicit JSON representation.
+
+    The runtime AgentSlot union is intentionally not used here: its marker
+    models have no discriminator fields, so generic Pydantic validation can
+    turn ``{"dont_know": true, ...}`` into ``AbsentType``.  A list slot may
+    contain only ConceptRefs; whole-property markers are decoded explicitly.
+    """
+    if list_slot and isinstance(value, list):
+        decoded: list[ConceptRef] = []
+        for index, item in enumerate(value):
+            ref = _decode_single_agent_slot(item, f"{path}[{index}]")
+            if not isinstance(ref, ConceptRef):
+                raise ArtifactDecodeError(
+                    f"{path}[{index}]: list items must be ConceptRef objects"
+                )
+            decoded.append(ref)
+        return decoded
+    if list_slot and not isinstance(value, list):
+        return _decode_single_agent_slot(value, path)
+    if isinstance(value, list):
+        raise ArtifactDecodeError(f"{path}: scalar slot cannot be a list")
+    return _decode_single_agent_slot(value, path)
+
+
+def _decode_agent_concept(value, path: str) -> AgentConcept:
+    item = _decode_mapping(value, path)
+    mentions = _decode_evidence(item.get("mentions", []), f"{path}.mentions")
+    kind = item.get("kind")
+    description = item.get("description", "")
+    if not isinstance(kind, str):
+        raise ArtifactDecodeError(f"{path}.kind: expected a string")
+    if not isinstance(description, str):
+        raise ArtifactDecodeError(f"{path}.description: expected a string")
+    try:
+        return AgentConcept(
+            id=_required_string(item, "id", path),
+            kind=cast(ConceptKind, kind),
+            display_label=_required_string(item, "display_label", path),
+            description=description,
+            mentions=mentions,
+        )
+    except ValueError as exc:
+        raise ArtifactDecodeError(f"{path}: invalid AgentConcept: {exc}") from exc
+
+
+def _decode_agent_node(value, path: str) -> Node:
+    item = _decode_mapping(value, path)
+    required = ("activity", "actor", "system", "reads", "writes", "necessity_rationale")
+    missing = [name for name in required if name not in item]
+    if missing:
+        raise ArtifactDecodeError(f"{path}: missing slot fields {missing!r}")
+    try:
+        return Node(
+            id=_required_string(item, "id", path),
+            activity=cast(
+                AgentSlot,
+                decode_agent_slot(item["activity"], path=f"{path}.activity"),
+            ),
+            actor=cast(
+                AgentSlot,
+                decode_agent_slot(item["actor"], path=f"{path}.actor"),
+            ),
+            system=cast(
+                AgentSlot,
+                decode_agent_slot(item["system"], path=f"{path}.system"),
+            ),
+            reads=cast(
+                AgentListSlot,
+                decode_agent_slot(item["reads"], path=f"{path}.reads", list_slot=True),
+            ),
+            writes=cast(
+                AgentListSlot,
+                decode_agent_slot(
+                    item["writes"], path=f"{path}.writes", list_slot=True
+                ),
+            ),
+            necessity_rationale=cast(
+                AgentSlot,
+                decode_agent_slot(
+                    item["necessity_rationale"],
+                    path=f"{path}.necessity_rationale",
+                ),
+            ),
+        )
+    except (ArtifactDecodeError, ValueError) as exc:
+        if isinstance(exc, ArtifactDecodeError):
+            raise
+        raise ArtifactDecodeError(f"{path}: invalid Agent node: {exc}") from exc
+
+
+def _decode_agent_edge(value, path: str) -> Edge:
+    item = _decode_mapping(value, path)
+    try:
+        return Edge(
+            id=_required_string(item, "id", path),
+            from_node=_required_string(item, "from_node", path),
+            to_node=_required_string(item, "to_node", path),
+            condition=cast(
+                AgentSlot,
+                decode_agent_slot(item["condition"], path=f"{path}.condition"),
+            ),
+            evidence=_decode_evidence(item.get("evidence", []), f"{path}.evidence"),
+        )
+    except KeyError as exc:
+        raise ArtifactDecodeError(
+            f"{path}: missing edge field {exc.args[0]!r}"
+        ) from exc
+    except (ArtifactDecodeError, ValueError) as exc:
+        if isinstance(exc, ArtifactDecodeError):
+            raise
+        raise ArtifactDecodeError(f"{path}: invalid Agent edge: {exc}") from exc
+
+
+def _decode_terminology(value, path: str) -> list[TerminologyAgreement]:
+    if not isinstance(value, list):
+        raise ArtifactDecodeError(f"{path}: expected a terminology-agreement list")
+    decoded: list[TerminologyAgreement] = []
+    for index, raw in enumerate(value):
+        item = _decode_mapping(raw, f"{path}[{index}]")
+        term = item.get("term")
+        stakeholder_id = item.get("stakeholder_id", "stakeholder")
+        if not isinstance(term, str) or not term:
+            raise ArtifactDecodeError(
+                f"{path}[{index}].term: expected a non-empty string"
+            )
+        if not isinstance(stakeholder_id, str) or not stakeholder_id:
+            raise ArtifactDecodeError(
+                f"{path}[{index}].stakeholder_id: expected a non-empty string"
+            )
+        try:
+            decoded.append(
+                TerminologyAgreement(
+                    concept_id=_required_string(item, "concept_id", f"{path}[{index}]"),
+                    term=term,
+                    stakeholder_id=stakeholder_id,
+                    evidence=_decode_evidence(
+                        item.get("evidence", []), f"{path}[{index}].evidence"
+                    ),
+                )
+            )
+        except (ArtifactDecodeError, ValueError) as exc:
+            if isinstance(exc, ArtifactDecodeError):
+                raise
+            raise ArtifactDecodeError(
+                f"{path}[{index}]: invalid terminology agreement: {exc}"
+            ) from exc
+    return decoded
+
+
+def decode_agent_graph(value) -> AgentGraph:
+    """Restore an AgentGraph from a smoke artifact without union guessing.
+
+    The smoke serializer is a compatibility format, not a general Pydantic
+    serialization contract.  This decoder deliberately rejects ambiguous
+    markers and constructs every Agent slot before building the graph.  A
+    future discriminated AgentSlot schema would make generic round-tripping
+    safer, but changing that runtime schema is outside this offline fix.
+    """
+    item = _decode_mapping(value, "final_graph")
+    concepts_raw = _decode_mapping(item.get("concepts"), "final_graph.concepts")
+    nodes_raw = _decode_mapping(item.get("nodes"), "final_graph.nodes")
+    edges_raw = _decode_mapping(item.get("edges"), "final_graph.edges")
+    concepts: dict[str, AgentConcept] = {}
+    for concept_id, raw in concepts_raw.items():
+        if not isinstance(concept_id, str):
+            raise ArtifactDecodeError("final_graph.concepts: ids must be strings")
+        concept = _decode_agent_concept(raw, f"final_graph.concepts[{concept_id!r}]")
+        if concept.id != concept_id:
+            raise ArtifactDecodeError(
+                f"final_graph.concepts[{concept_id!r}].id does not match its map key"
+            )
+        concepts[concept_id] = concept
+    nodes: dict[str, Node] = {}
+    for node_id, raw in nodes_raw.items():
+        if not isinstance(node_id, str):
+            raise ArtifactDecodeError("final_graph.nodes: ids must be strings")
+        node = _decode_agent_node(raw, f"final_graph.nodes[{node_id!r}]")
+        if node.id != node_id:
+            raise ArtifactDecodeError(
+                f"final_graph.nodes[{node_id!r}].id does not match its map key"
+            )
+        nodes[node_id] = node
+    edges: dict[str, Edge] = {}
+    for edge_id, raw in edges_raw.items():
+        if not isinstance(edge_id, str):
+            raise ArtifactDecodeError("final_graph.edges: ids must be strings")
+        edge = _decode_agent_edge(raw, f"final_graph.edges[{edge_id!r}]")
+        if edge.id != edge_id:
+            raise ArtifactDecodeError(
+                f"final_graph.edges[{edge_id!r}].id does not match its map key"
+            )
+        edges[edge_id] = edge
+    end_node_ids = item.get("end_node_ids", [])
+    if not isinstance(end_node_ids, list) or not all(
+        isinstance(node_id, str) for node_id in end_node_ids
+    ):
+        raise ArtifactDecodeError("final_graph.end_node_ids: expected a string list")
+    start_node_id = item.get("start_node_id")
+    if start_node_id is not None and not isinstance(start_node_id, str):
+        raise ArtifactDecodeError("final_graph.start_node_id: expected string or null")
+    try:
+        return AgentGraph(
+            id=_required_string(item, "id", "final_graph"),
+            name=item.get("name", ""),
+            nodes=nodes,
+            edges=edges,
+            concepts=concepts,
+            start_node_id=start_node_id,
+            end_node_ids=end_node_ids,
+            terminology_agreements=_decode_terminology(
+                item.get("terminology_agreements", []),
+                "final_graph.terminology_agreements",
+            ),
+        )
+    except (ArtifactDecodeError, ValueError) as exc:
+        if isinstance(exc, ArtifactDecodeError):
+            raise
+        raise ArtifactDecodeError(f"final_graph: invalid graph: {exc}") from exc
+
 
 _WORD_RE = re.compile(r"[a-z0-9]+")
 

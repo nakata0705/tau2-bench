@@ -2307,18 +2307,18 @@
               "agent_concept_ids": [],
               "agent_label": null,
               "agent_labels": [],
-              "agent_state": "absent",
+              "agent_state": "dont_know",
               "extra_agent_concept_ids": [],
               "items": [],
               "mapped_truth_concept_ids": [],
-              "matched": true,
+              "matched": false,
               "missing_truth_concept_ids": [],
               "property": "necessity_rationale",
-              "reason": "truth_absent_agent_absent",
+              "reason": "truth_absent_agent_dont_know",
               "reason_codes": [
-                "truth_absent_agent_absent"
+                "truth_absent_agent_dont_know"
               ],
-              "score_contribution": 1.0,
+              "score_contribution": 0.0,
               "slot_kind": "scalar",
               "truth_concept_id": null,
               "truth_concept_ids": [],
@@ -2520,18 +2520,18 @@
               "agent_concept_ids": [],
               "agent_label": null,
               "agent_labels": [],
-              "agent_state": "absent",
+              "agent_state": "dont_know",
               "extra_agent_concept_ids": [],
               "items": [],
               "mapped_truth_concept_ids": [],
-              "matched": true,
+              "matched": false,
               "missing_truth_concept_ids": [],
               "property": "necessity_rationale",
-              "reason": "truth_absent_agent_absent",
+              "reason": "truth_absent_agent_dont_know",
               "reason_codes": [
-                "truth_absent_agent_absent"
+                "truth_absent_agent_dont_know"
               ],
-              "score_contribution": 1.0,
+              "score_contribution": 0.0,
               "slot_kind": "scalar",
               "truth_concept_id": null,
               "truth_concept_ids": [],
@@ -2789,18 +2789,18 @@
               "agent_concept_ids": [],
               "agent_label": null,
               "agent_labels": [],
-              "agent_state": "absent",
+              "agent_state": "dont_know",
               "extra_agent_concept_ids": [],
               "items": [],
               "mapped_truth_concept_ids": [],
-              "matched": true,
+              "matched": false,
               "missing_truth_concept_ids": [],
               "property": "necessity_rationale",
-              "reason": "truth_absent_agent_absent",
+              "reason": "truth_absent_agent_dont_know",
               "reason_codes": [
-                "truth_absent_agent_absent"
+                "truth_absent_agent_dont_know"
               ],
-              "score_contribution": 1.0,
+              "score_contribution": 0.0,
               "slot_kind": "scalar",
               "truth_concept_id": null,
               "truth_concept_ids": [],
@@ -2996,18 +2996,18 @@
               "agent_concept_ids": [],
               "agent_label": null,
               "agent_labels": [],
-              "agent_state": "absent",
+              "agent_state": "dont_know",
               "extra_agent_concept_ids": [],
               "items": [],
               "mapped_truth_concept_ids": [],
-              "matched": true,
+              "matched": false,
               "missing_truth_concept_ids": [],
               "property": "necessity_rationale",
-              "reason": "truth_absent_agent_absent",
+              "reason": "truth_absent_agent_dont_know",
               "reason_codes": [
-                "truth_absent_agent_absent"
+                "truth_absent_agent_dont_know"
               ],
-              "score_contribution": 1.0,
+              "score_contribution": 0.0,
               "slot_kind": "scalar",
               "truth_concept_id": null,
               "truth_concept_ids": [],
@@ -3205,18 +3205,18 @@
               "agent_concept_ids": [],
               "agent_label": null,
               "agent_labels": [],
-              "agent_state": "absent",
+              "agent_state": "dont_know",
               "extra_agent_concept_ids": [],
               "items": [],
               "mapped_truth_concept_ids": [],
-              "matched": true,
+              "matched": false,
               "missing_truth_concept_ids": [],
               "property": "necessity_rationale",
-              "reason": "truth_absent_agent_absent",
+              "reason": "truth_absent_agent_dont_know",
               "reason_codes": [
-                "truth_absent_agent_absent"
+                "truth_absent_agent_dont_know"
               ],
-              "score_contribution": 1.0,
+              "score_contribution": 0.0,
               "slot_kind": "scalar",
               "truth_concept_id": null,
               "truth_concept_ids": [],
@@ -3358,7 +3358,7 @@
     "protocol_pass": true,
     "provenance_authenticity_pass": true,
     "quality_pass": false,
-    "rationale_correctness": 1.0,
+    "rationale_correctness": 0.16666666666666666,
     "read_correctness": 0.3333333333333333,
     "reconstruction_pass": false,
     "ref_evidence_coverage": 0.375,
@@ -3368,27 +3368,93 @@
     "unsupported_ref_count": 3,
     "write_correctness": 0.3333333333333333
   },
+  "metric_parity": {
+    "checked_fields": [
+      "activity_correctness",
+      "actor_correctness",
+      "ambiguous_evidence_ref_count",
+      "authentic_observation_count",
+      "concept_correctness",
+      "concept_precision",
+      "concept_recall",
+      "condition_correctness",
+      "edge_evidence_coverage",
+      "edge_precision",
+      "edge_recall",
+      "end_precision",
+      "end_recall",
+      "evidence_pass",
+      "fabricated_edge_count",
+      "fabricated_node_count",
+      "glossary_complete",
+      "graph_created",
+      "graph_valid",
+      "invalid_evidence_ref_count",
+      "invalid_observation_reference_count",
+      "invalid_observation_source_count",
+      "knowledge_coverage",
+      "marker_evidence_errors_surrogate",
+      "node_evidence_coverage",
+      "node_precision",
+      "node_recall",
+      "orphan_observation_count",
+      "protocol_completed",
+      "protocol_pass",
+      "provenance_authenticity_pass",
+      "quality_pass",
+      "rationale_correctness",
+      "read_correctness",
+      "reconstruction_pass",
+      "ref_evidence_coverage",
+      "start_correct",
+      "structural_pass",
+      "system_correctness",
+      "unsupported_ref_count",
+      "write_correctness"
+    ],
+    "compatible": true,
+    "differences": [],
+    "status": "matched"
+  },
   "metrics": {
     "activity_correctness": 1.0,
     "actor_correctness": 1.0,
+    "ambiguous_evidence_ref_count": 0,
+    "authentic_observation_count": 14,
     "concept_correctness": 0.9523809523809523,
     "concept_precision": 1.0,
     "concept_recall": 0.9523809523809523,
     "condition_correctness": 1.0,
+    "edge_evidence_coverage": 0.0,
     "edge_precision": 1.0,
     "edge_recall": 1.0,
     "end_precision": 1.0,
     "end_recall": 1.0,
+    "evidence_pass": false,
     "fabricated_edge_count": 0,
     "fabricated_node_count": 0,
+    "glossary_complete": false,
+    "graph_created": true,
+    "graph_valid": true,
+    "invalid_evidence_ref_count": 0,
+    "invalid_observation_reference_count": 0,
+    "invalid_observation_source_count": 0,
     "knowledge_coverage": 0.7166666666666667,
+    "marker_evidence_errors_surrogate": 0,
+    "node_evidence_coverage": 1.0,
     "node_precision": 1.0,
     "node_recall": 1.0,
+    "orphan_observation_count": 5,
+    "protocol_completed": true,
+    "protocol_pass": true,
+    "provenance_authenticity_pass": true,
     "quality_pass": false,
-    "rationale_correctness": 1.0,
+    "rationale_correctness": 0.16666666666666666,
     "read_correctness": 0.3333333333333333,
     "reconstruction_pass": false,
+    "ref_evidence_coverage": 0.375,
     "start_correct": true,
+    "structural_pass": false,
     "system_correctness": 0.5,
     "unsupported_ref_count": 3,
     "write_correctness": 0.3333333333333333
@@ -3439,6 +3505,28 @@
       "target_id": "cc"
     },
     {
+      "category": "insufficient_evidence_to_classify",
+      "dimension": "node_slot",
+      "evidence": [
+        "score_reason:truth_absent_agent_dont_know",
+        "knowledge:dont_know"
+      ],
+      "property": "necessity_rationale",
+      "reason": "stored stakeholder knowledge cannot establish attainability",
+      "target_id": "cc"
+    },
+    {
+      "category": "insufficient_evidence_to_classify",
+      "dimension": "node_slot",
+      "evidence": [
+        "score_reason:truth_absent_agent_dont_know",
+        "knowledge:dont_know"
+      ],
+      "property": "necessity_rationale",
+      "reason": "stored stakeholder knowledge cannot establish attainability",
+      "target_id": "cq"
+    },
+    {
       "category": "stakeholder_disclosure",
       "dimension": "node_slot",
       "evidence": [
@@ -3458,6 +3546,17 @@
         "knowledge:dont_know"
       ],
       "property": "reads",
+      "reason": "stored stakeholder knowledge cannot establish attainability",
+      "target_id": "me"
+    },
+    {
+      "category": "insufficient_evidence_to_classify",
+      "dimension": "node_slot",
+      "evidence": [
+        "score_reason:truth_absent_agent_dont_know",
+        "knowledge:dont_know"
+      ],
+      "property": "necessity_rationale",
       "reason": "stored stakeholder knowledge cannot establish attainability",
       "target_id": "me"
     },
@@ -3500,6 +3599,17 @@
       "category": "insufficient_evidence_to_classify",
       "dimension": "node_slot",
       "evidence": [
+        "score_reason:truth_absent_agent_dont_know",
+        "knowledge:dont_know"
+      ],
+      "property": "necessity_rationale",
+      "reason": "stored stakeholder knowledge cannot establish attainability",
+      "target_id": "r"
+    },
+    {
+      "category": "insufficient_evidence_to_classify",
+      "dimension": "node_slot",
+      "evidence": [
         "score_reason:truth_absent_agent_unset",
         "knowledge:dont_know"
       ],
@@ -3515,6 +3625,17 @@
         "knowledge:dont_know"
       ],
       "property": "writes",
+      "reason": "stored stakeholder knowledge cannot establish attainability",
+      "target_id": "sq"
+    },
+    {
+      "category": "insufficient_evidence_to_classify",
+      "dimension": "node_slot",
+      "evidence": [
+        "score_reason:truth_absent_agent_dont_know",
+        "knowledge:dont_know"
+      ],
+      "property": "necessity_rationale",
       "reason": "stored stakeholder knowledge cannot establish attainability",
       "target_id": "sq"
     }

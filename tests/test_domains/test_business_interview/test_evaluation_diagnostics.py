@@ -2,9 +2,19 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Mapping
+from pathlib import Path
 from typing import cast
 
+import pytest
+
+from scripts.business_interview_evaluation_diagnostics import (
+    MetricParityError,
+    _check_metric_parity,
+    evaluate_artifact,
+    load_artifact,
+)
 from tau2.domains.business_interview.evaluation import EvaluationSpec, evaluate
 from tau2.domains.business_interview.graph import (
     DONT_KNOW,
@@ -23,6 +33,9 @@ from tau2.domains.business_interview.graph import (
     TruthConcept,
     TruthEdge,
     TruthNode,
+    is_absent,
+    is_dont_know,
+    is_unset,
 )
 from tau2.domains.business_interview.knowledge import (
     StakeholderKnowledge,
@@ -31,7 +44,10 @@ from tau2.domains.business_interview.knowledge import (
     StakeholderNode,
 )
 from tau2.domains.business_interview.offline_diagnostics import (
+    ArtifactDecodeError,
     classify_failed_slots,
+    decode_agent_graph,
+    decode_agent_slot,
 )
 from tau2.domains.business_interview.tools import InterviewTools
 from tau2.environment.toolkit import get_tool_signatures
@@ -455,3 +471,191 @@ def test_offline_classification_examples():
         },
     )
     assert evaluator[0].category == "evaluator_matching"
+
+
+def _smoke_graph_payload() -> dict:
+    evidence = {
+        "observation_id": "obs_1",
+        "quote": "CRM",
+        "occurrence": 0,
+    }
+    return {
+        "id": "artifact-graph",
+        "name": "quotation",
+        "start_node_id": "n1",
+        "end_node_ids": ["n1"],
+        "concepts": {
+            "a_activity": {
+                "id": "a_activity",
+                "kind": "activity",
+                "display_label": "Check customer",
+                "description": "",
+                "canonical_terms": None,
+                "mentions": [evidence],
+            },
+            "a_data": {
+                "id": "a_data",
+                "kind": "data",
+                "display_label": "CRM data",
+                "description": "",
+                "canonical_terms": None,
+                "mentions": [],
+            },
+        },
+        "nodes": {
+            "n1": {
+                "id": "n1",
+                "activity": {
+                    "concept_id": "a_activity",
+                    "confidence": 0.75,
+                    "evidence": [evidence],
+                },
+                "actor": {"unset": True},
+                "system": {"absent": True, "evidence": [evidence]},
+                "reads": [
+                    {
+                        "concept_id": "a_data",
+                        "confidence": 0.5,
+                        "evidence": [evidence],
+                    }
+                ],
+                "writes": {"dont_know": True, "evidence": [evidence]},
+                "necessity_rationale": {"dont_know": True, "evidence": []},
+            }
+        },
+        "edges": {
+            "e1": {
+                "id": "e1",
+                "from_node": "n1",
+                "to_node": "n1",
+                "condition": {"absent": True, "evidence": [evidence]},
+                "evidence": [evidence],
+            }
+        },
+        "terminology_agreements": [
+            {
+                "concept_id": "a_data",
+                "term": "CRM data",
+                "stakeholder_id": "stakeholder",
+                "evidence": [evidence],
+            }
+        ],
+        "validation_errors": [],
+        "is_valid": True,
+    }
+
+
+def test_smoke_marker_decoder_round_trips_all_slot_shapes():
+    graph = decode_agent_graph(_smoke_graph_payload())
+    assert graph.id == "artifact-graph"
+    assert graph.start_node_id == "n1"
+    assert graph.end_node_ids == ["n1"]
+    assert graph.concepts["a_activity"].id == "a_activity"
+    node = graph.nodes["n1"]
+    assert isinstance(node.activity, ConceptRef)
+    assert node.activity.concept_id == "a_activity"
+    assert node.activity.confidence == 0.75
+    assert node.activity.evidence == [
+        EvidenceRef.model_validate(
+            {"observation_id": "obs_1", "quote": "CRM", "occurrence": 0}
+        )
+    ]
+    assert is_unset(node.actor)
+    assert is_absent(node.system)
+    assert isinstance(node.system, AbsentType)
+    assert node.system.evidence[0].observation_id == "obs_1"
+    assert isinstance(node.reads, list)
+    assert node.reads[0].concept_id == "a_data"
+    assert node.reads[0].confidence == 0.5
+    assert is_dont_know(node.writes)
+    assert is_dont_know(node.necessity_rationale)
+    assert is_absent(graph.edges["e1"].condition)
+    assert graph.edges["e1"].id == "e1"
+    assert graph.edges["e1"].from_node == "n1"
+    assert graph.edges["e1"].to_node == "n1"
+    assert graph.edges["e1"].evidence[0].occurrence == 0
+    assert graph.terminology_agreements[0].evidence[0].quote == "CRM"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        {"absent": True, "dont_know": True},
+        {"unset": True, "evidence": []},
+        {"foo": True},
+    ],
+)
+def test_smoke_marker_decoder_rejects_ambiguous_or_malformed_json(raw):
+    with pytest.raises(ArtifactDecodeError):
+        decode_agent_slot(raw)
+
+
+@pytest.mark.parametrize("marker", ["unset", "absent", "dont_know"])
+def test_smoke_list_property_markers_decode_explicitly(marker):
+    raw: dict[str, object] = {marker: True}
+    if marker != "unset":
+        raw["evidence"] = []
+    decoded = decode_agent_slot(raw, list_slot=True)
+    checks = {
+        "unset": is_unset,
+        "absent": is_absent,
+        "dont_know": is_dont_know,
+    }
+    assert checks[marker](decoded)
+
+
+def _artifact_paths(seed: int) -> tuple[Path, Path]:
+    root = Path(__file__).resolve().parents[3]
+    stem = root / "artifacts" / "business_interview_real_llm" / f"run_00_seed{seed}"
+    return stem.with_suffix(".json"), stem.with_suffix(".private.json")
+
+
+@pytest.mark.parametrize("seed", [9002, 9003, 9004])
+def test_offline_artifact_metrics_match_stored_metrics(seed):
+    public_path, private_path = _artifact_paths(seed)
+    trace = evaluate_artifact(public_path, private_path)
+    stored = json.loads(public_path.read_text(encoding="utf-8"))["evaluator_metrics"]
+    assert trace["metric_parity"]["status"] == "matched"
+    assert trace["metric_parity"]["differences"] == []
+    for field in trace["metric_parity"]["checked_fields"]:
+        if isinstance(stored[field], float):
+            assert trace["metrics"][field] == pytest.approx(stored[field])
+        else:
+            assert trace["metrics"][field] == stored[field]
+    if seed == 9004:
+        assert trace["metrics"]["rationale_correctness"] == pytest.approx(1 / 6)
+
+
+def test_seed_9004_dont_know_rationale_is_not_restored_as_absent():
+    public_path, private_path = _artifact_paths(9004)
+    public, private, db, truth, knowledge = load_artifact(public_path, private_path)
+    agent_graph = db.graph
+    assert agent_graph is not None
+    rationale = agent_graph.nodes["node_receive_request"].necessity_rationale
+    assert is_dont_know(rationale)
+    assert not is_absent(rationale)
+    result = evaluate(
+        db,
+        knowledge,
+        EvaluationSpec(),
+        truth=truth,
+        annotations=private.get("annotations_by_turn", {}),
+    )
+    assert result.rationale_correctness == pytest.approx(1 / 6)
+    assert public["evaluator_metrics"]["rationale_correctness"] == pytest.approx(1 / 6)
+
+
+def test_metric_parity_fails_closed_on_semantic_drift():
+    public_path, private_path = _artifact_paths(9004)
+    public, private, db, truth, knowledge = load_artifact(public_path, private_path)
+    result = evaluate(
+        db,
+        knowledge,
+        EvaluationSpec(),
+        truth=truth,
+        annotations=private.get("annotations_by_turn", {}),
+    )
+    stored = dict(public["evaluator_metrics"])
+    stored["rationale_correctness"] = 1.0
+    with pytest.raises(MetricParityError, match="rationale_correctness"):
+        _check_metric_parity(result, stored)

@@ -11,14 +11,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import cast
 
-from tau2.domains.business_interview.evaluation import EvaluationSpec, evaluate
+from tau2.domains.business_interview.evaluation import (
+    EvaluationResult,
+    EvaluationSpec,
+    evaluate,
+)
 from tau2.domains.business_interview.graph import (
-    AgentGraph,
     BusinessProcessGraph,
     InterviewDB,
     Observation,
@@ -26,6 +30,7 @@ from tau2.domains.business_interview.graph import (
 from tau2.domains.business_interview.knowledge import StakeholderKnowledge
 from tau2.domains.business_interview.offline_diagnostics import (
     classify_failed_slots,
+    decode_agent_graph,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -53,6 +58,11 @@ CATEGORY_SHORT = {
     "evaluator_matching": "evaluator",
     "insufficient_evidence_to_classify": "unknown",
 }
+_FLOAT_TOLERANCE = 1e-12
+
+
+class MetricParityError(ValueError):
+    """Raised when an artifact's stored metrics disagree with re-evaluation."""
 
 
 def _safe_repo_path(path: Path) -> Path:
@@ -84,7 +94,7 @@ def load_artifact(
         raise ValueError(f"{public_path}: missing saved final_graph/truth_graph")
     if not private.get("knowledge"):
         raise ValueError(f"{private_path}: missing evaluator-private knowledge")
-    agent_graph = AgentGraph.model_validate(public["final_graph"])
+    agent_graph = decode_agent_graph(public["final_graph"])
     truth = BusinessProcessGraph.model_validate(public["truth_graph"])
     knowledge = StakeholderKnowledge.model_validate(private["knowledge"])
     observations = [
@@ -107,33 +117,66 @@ def _annotations(private: dict) -> dict[str, list[dict]]:
     }
 
 
-def _metric_snapshot(result) -> dict:
-    fields = (
-        "node_recall",
-        "node_precision",
-        "edge_recall",
-        "edge_precision",
-        "concept_recall",
-        "concept_precision",
-        "concept_correctness",
-        "activity_correctness",
-        "actor_correctness",
-        "system_correctness",
-        "read_correctness",
-        "write_correctness",
-        "rationale_correctness",
-        "condition_correctness",
-        "start_correct",
-        "end_recall",
-        "end_precision",
-        "fabricated_node_count",
-        "fabricated_edge_count",
-        "unsupported_ref_count",
-        "quality_pass",
-        "reconstruction_pass",
-        "knowledge_coverage",
-    )
-    return {field: getattr(result, field) for field in fields}
+def _metric_snapshot(result: EvaluationResult) -> dict:
+    return {
+        field: getattr(result, field)
+        for field in EvaluationResult.model_fields
+        if field != "diagnostics"
+    }
+
+
+def _metric_equal(expected, stored) -> bool:
+    if isinstance(expected, bool) or isinstance(stored, bool):
+        return type(expected) is type(stored) and expected == stored
+    if isinstance(expected, (int, float)) and isinstance(stored, (int, float)):
+        try:
+            expected_float = float(expected)
+            stored_float = float(stored)
+        except (OverflowError, TypeError, ValueError):
+            return False
+        return math.isclose(
+            expected_float,
+            stored_float,
+            rel_tol=_FLOAT_TOLERANCE,
+            abs_tol=_FLOAT_TOLERANCE,
+        )
+    return expected == stored
+
+
+def _check_metric_parity(result: EvaluationResult, stored_metrics) -> dict:
+    if not isinstance(stored_metrics, Mapping) or not stored_metrics:
+        raise MetricParityError(
+            "artifact has no compatible evaluator_metrics; refusing offline attribution"
+        )
+    expected = _metric_snapshot(result)
+    missing = sorted(set(expected) - set(stored_metrics))
+    if missing:
+        raise MetricParityError(
+            "artifact evaluator_metrics is missing required fields: "
+            + ", ".join(missing)
+        )
+    differences = [
+        {
+            "field": field,
+            "stored": stored_metrics[field],
+            "reevaluated": value,
+        }
+        for field, value in expected.items()
+        if not _metric_equal(value, stored_metrics[field])
+    ]
+    if differences:
+        details = "; ".join(
+            f"{item['field']}: stored={item['stored']!r}, "
+            f"reevaluated={item['reevaluated']!r}"
+            for item in differences
+        )
+        raise MetricParityError("stored metric drift detected: " + details)
+    return {
+        "status": "matched",
+        "compatible": True,
+        "checked_fields": sorted(expected),
+        "differences": [],
+    }
 
 
 def evaluate_artifact(public_path: Path, private_path: Path) -> dict:
@@ -150,6 +193,7 @@ def evaluate_artifact(public_path: Path, private_path: Path) -> dict:
         truth=truth,
         annotations=annotations,
     )
+    metric_parity = _check_metric_parity(result, public.get("evaluator_metrics"))
     attributions = classify_failed_slots(
         result,
         truth=truth,
@@ -164,6 +208,7 @@ def evaluate_artifact(public_path: Path, private_path: Path) -> dict:
         "source_private_artifact": str(private_path.relative_to(REPO_ROOT)),
         "evaluation": result.model_dump(mode="json"),
         "metrics": _metric_snapshot(result),
+        "metric_parity": metric_parity,
         "root_cause_attributions": [
             attribution.model_dump(mode="json") for attribution in attributions
         ],
@@ -218,13 +263,19 @@ def render_report(traces: list[dict], output_path: Path) -> None:
         "",
         "Each seed was loaded from its saved `final_graph`, `truth_graph`, "
         "accepted `observations`, and evaluator-private `.private.json` "
-        "knowledge/annotation sidecar. The current evaluator was run twice "
-        "per artifact during verification; a direct comparison with the "
-        "pre-change `business-interview` HEAD evaluator matched every scalar "
-        "score/pass field on full and partial deterministic graphs. Diagnostics "
-        "are metadata only and do not alter score fields, thresholds, or "
-        "matcher selection; the table below is the current-HEAD re-evaluation, "
-        "not a copy of the historical stored metrics.",
+        "knowledge/annotation sidecar. The smoke artifacts use a custom JSON "
+        "marker encoding, so offline restoration explicitly decodes UNSET, "
+        "ABSENT, DONT_KNOW, and ConceptRef values instead of passing the graph "
+        "through the undiscriminated Pydantic union. Stored scalar evaluator "
+        "metrics are compared with a floating-point representation tolerance "
+        "before any attribution; a mismatch fails closed and no report is "
+        "generated. The current evaluator was run twice per artifact during "
+        "verification; a direct comparison with the pre-change `business-interview` "
+        "HEAD evaluator matched every scalar score/pass field on full and partial "
+        "deterministic graphs. Diagnostics are metadata only and do not alter "
+        "score fields, thresholds, or matcher selection; the table below is the "
+        "current-HEAD re-evaluation after stored-metric parity, not a copy of "
+        "historical metrics. All diagnostic output remains evaluator-private/offline.",
         "",
         "## Diagnostic schema and reason codes",
         "",
@@ -345,6 +396,8 @@ def render_report(traces: list[dict], output_path: Path) -> None:
                 "",
                 f"- source: `{trace['source_artifact']}`",
                 f"- private sidecar: `{trace['source_private_artifact']}`",
+                f"- stored-metric parity: `{trace['metric_parity']['status']}` "
+                f"({len(trace['metric_parity']['checked_fields'])} fields)",
                 f"- quality/reconstruction pass: `{trace['metrics']['quality_pass']}` / "
                 f"`{trace['metrics']['reconstruction_pass']}`",
                 "",
@@ -413,19 +466,26 @@ def main() -> int:
     output_dir = _safe_repo_path(args.output_dir)
     report_path = _safe_repo_path(args.report)
     traces: list[dict] = []
+    output_paths: list[tuple[dict, Path]] = []
     for seed in args.seeds:
         public_path, private_path = _artifact_paths(artifact_dir, seed)
         trace = evaluate_artifact(public_path, private_path)
         traces.append(trace)
-        output_path = _safe_repo_path(
-            output_dir / f"run_00_seed{seed}.diagnostics.json"
+        output_paths.append(
+            (
+                trace,
+                _safe_repo_path(output_dir / f"run_00_seed{seed}.diagnostics.json"),
+            )
         )
+    # Do not leave a partial trace/report set behind if a later seed fails
+    # parity: all artifacts must pass before any derived output is written.
+    for trace, output_path in output_paths:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(
             json.dumps(trace, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        print(f"re-evaluated seed {seed}: {output_path}")
+        print(f"re-evaluated seed {trace['seed']}: {output_path}")
     render_report(traces, report_path)
     print(f"wrote report: {report_path.relative_to(REPO_ROOT)}")
     return 0
