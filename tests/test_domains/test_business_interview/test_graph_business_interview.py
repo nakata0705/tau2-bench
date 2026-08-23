@@ -3,12 +3,9 @@
 The graph is the semantic model: Truth = BusinessProcessGraph + TruthConcept[];
 the stakeholder's world model is a StakeholderKnowledge (masked graph with
 three-valued slots ConceptRef | None | DONT_KNOW + local concepts); the agent
-builds an AgentGraph + AgentConcept[]. Correctness is grounded ONLY through
-private provenance:
-
-    Agent EvidenceRef -> Observation span -> private annotation
-        (stakeholder semantic ID) -> StakeholderKnowledgeGraph element /
-        StakeholderKnowledgeConcept
+builds an AgentGraph + AgentConcept[]. Correctness is evaluated DIRECTLY
+against Truth by deterministic content matching; conversational provenance
+and the stakeholder sidecar are diagnostic only.
 
 Stakeholder semantic IDs are opaque and stakeholder-local (``skn_001`` /
 ``ske_001`` / ``skc_001`` style, assigned deterministically from sorted Truth
@@ -16,12 +13,11 @@ ids; never derived from Truth ids/labels/terms/positions) — the hand-authored
 tables below are keyed by Truth ids and translated via the private mappings
 (``_local_sid``) because the tests are evaluator-side.
 
-Property scoring uses property evidence ONLY and scores the three-valued
-epistemic states asymmetrically (ConceptRef -> correct grounded ref; None ->
-unasserted; DONT_KNOW -> explicit evidenced DONT_KNOW marker). Concept
-identity may use mentions + graph provenance (incl. grounding evidence);
-validation uses explicit validation/dialogue evidence ONLY. The single
-canonical semantic-id resolver is ``StakeholderKnowledgeGraph.resolve``.
+Property scoring uses Truth epistemic states asymmetrically: a Truth
+ConceptRef needs a matching Agent ConceptRef; Truth None needs explicit Agent
+ABSENT; UNSET, DONT_KNOW and wrong ConceptRefs are incorrect. The single
+canonical semantic-id resolver is ``StakeholderKnowledgeGraph.resolve`` for
+simulator-side annotation validation, not Agent reconstruction scoring.
 """
 
 from pathlib import Path
@@ -438,8 +434,10 @@ def _record_edge_absent(tools: InterviewTools, eid: str) -> None:
 
 
 def _tools(scenario_id: str = SCENARIO) -> InterviewTools:
-    """Tools with the scenario's StakeholderKnowledgeCatalog installed (the
-    binding-aware tools need it to resolve evidence)."""
+    """Tools with the scenario catalog installed for simulator diagnostics.
+
+    Agent belief recording itself does not require sidecar/provenance binding.
+    """
     tools = InterviewTools(InterviewDB())
     tools.assertion_ledger.install_catalog(
         StakeholderKnowledgeCatalog.from_scenario(_sc(scenario_id))
@@ -532,8 +530,8 @@ def _evr(obs_id: str, quote: str, occurrence: int = 0) -> EvidenceRef:
 
 
 def _eval(tools: InterviewTools, scenario: str = SCENARIO):
-    """Evaluate under the scenario's StakeholderKnowledge + private semantic
-    provenance (runtime behavior: the sidecar ledger of the tools)."""
+    """Evaluate AgentGraph reconstruction against Truth; pass sidecar data
+    only so diagnostic evidence metrics can still be reported."""
     sc = get_scenario(scenario)
     assert sc is not None
     return evaluate(
@@ -575,11 +573,11 @@ def _prop(kcid: str, oid: str, quote: str) -> dict:
 
 
 def _build(tools: InterviewTools, ja: bool = False) -> None:
-    """Build the correct quotation AgentGraph with full provenance: every
-    property reference carries its own evidence, every concept is grounded
-    with authentic annotation-corresponding spans, every stakeholder
-    DONT_KNOW slot is recorded explicitly — so completion succeeds and the
-    evaluator returns a full pass."""
+    """Build a correct quotation AgentGraph with explicit four-state slots.
+
+    Evidence is included here to exercise diagnostics, but Truth
+    reconstruction does not require authentic sidecar binding.
+    """
     from tau2.domains.business_interview.facts import StakeholderKnowledgeCatalog
 
     tools.assertion_ledger.install_catalog(
@@ -3554,6 +3552,39 @@ def test_add_edge_marker_accepted_without_unique_binding():
     assert is_dont_know(tools.db.graph.edges["e9"].condition)
 
 
+def test_optional_evidence_never_requires_private_slot_binding():
+    """Structurally valid beliefs are accepted with no EvidenceRef or with a
+    syntactically valid Observation whose quote/sidecar slot is unrelated.
+
+    This covers node creation/update, marker tools and both edge mutation
+    paths: provenance remains diagnostic rather than a reconstruction gate.
+    """
+    tools = _tools()
+    tools.start_inference("diagnostic-only")
+    _say(tools, "An unrelated observation.")
+    tools.create_concept("act", "activity", "do a thing")
+    tools.create_concept("cond", "condition", "under a condition")
+    tools.add_node(
+        "a",
+        activity="act",
+        system={"dont_know": True},
+    )
+    tools.add_node("b", activity="act")
+    unrelated = [_ev("obs_0", "quote absent from the observation")]
+    tools.update_node("a", reads={"absent": True, "evidence": unrelated})
+    tools.record_dont_know("a", ["actor"], evidence=unrelated)
+    tools.record_absent("a", ["rationale"], evidence=unrelated)
+    tools.add_edge("e", "a", "b", condition="cond", evidence=unrelated)
+    tools.update_edge("e", evidence=unrelated)
+    tools.record_edge_condition_dont_know("e", evidence=unrelated)
+    assert tools.db.graph is not None
+    assert is_dont_know(tools.db.graph.nodes["a"].system)
+    assert is_absent(tools.db.graph.nodes["a"].reads)
+    assert is_dont_know(tools.db.graph.nodes["a"].actor)
+    assert is_absent(tools.db.graph.nodes["a"].necessity_rationale)
+    assert is_dont_know(tools.db.graph.edges["e"].condition)
+
+
 # ---------------------------------------------------------------------------
 # Hardening: removed concept lifecycle, robust matching (Area 1 + 2)
 # ---------------------------------------------------------------------------
@@ -3687,6 +3718,83 @@ def test_generic_words_do_not_cause_false_concept_matches():
     res = _eval(tools)
     assert res.concept_precision < 1.0
     assert res.read_correctness < 1.0
+
+
+def test_generic_same_kind_labels_need_more_than_broad_word_overlap():
+    """A generic one-token label cannot match a longer same-kind label merely
+    because the longer label contains it, while exact labels and identifiers
+    remain valid matches.
+
+    The rule is general lexical filtering plus exact-label handling; it does
+    not encode quotation-scenario-specific aliases.
+    """
+    from tau2.domains.business_interview.evaluation import (
+        _CONCEPT_MATCH_THRESHOLD,
+        _concept_similarity,
+    )
+
+    sc = _sc(SCENARIO)
+    truth = sc.truth
+
+    class FakeAgent:
+        kind = ""
+        display_label = ""
+        description = ""
+
+    system = FakeAgent()
+    system.kind = "system"
+    system.display_label = "system"
+    assert _concept_similarity(system, truth.concepts["tc_system_quoting"]) < (
+        _CONCEPT_MATCH_THRESHOLD
+    )  # "system" != "quoting system"
+
+    class FakeTruth:
+        canonical_terms: list[str] = []
+        description: str = ""
+
+    # Exercise the whole deliberately small generic-token set against longer
+    # same-kind labels, not just the quotation scenario's real concepts.
+    for generic, longer in (
+        ("system", "quoting system"),
+        ("document", "quotation document"),
+        ("information", "customer information"),
+        ("quotation", "sent quotation"),
+        ("process", "business process"),
+        ("data", "customer data"),
+    ):
+        generic_agent = FakeAgent()
+        generic_agent.display_label = generic
+        longer_truth = FakeTruth()
+        longer_truth.canonical_terms = [longer]
+        assert _concept_similarity(generic_agent, longer_truth) < (
+            _CONCEPT_MATCH_THRESHOLD
+        ), (generic, longer)
+
+    quotation = FakeAgent()
+    quotation.kind = "data"
+    quotation.display_label = "quotation"
+    for tid in ("tc_request", "tc_sent_quote", "tc_excel_summary"):
+        assert _concept_similarity(quotation, truth.concepts[tid]) < (
+            _CONCEPT_MATCH_THRESHOLD
+        ), tid
+    # The exact canonical label remains a legitimate match for the quotation
+    # document concept, rather than being discarded with generic overlap.
+    assert _concept_similarity(quotation, truth.concepts["tc_quote"]) == 1.0
+
+    for label, tid in (("CRM", "tc_system_crm"), ("SAP", None), ("Excel", "tc_system_excel")):
+        identifier = FakeAgent()
+        identifier.kind = "system"
+        identifier.display_label = label
+        if tid is not None:
+            assert _concept_similarity(identifier, truth.concepts[tid]) >= (
+                _CONCEPT_MATCH_THRESHOLD
+            )
+        else:
+            # SAP is not a quotation Truth concept, so use a tiny synthetic
+            # Truth label to prove exact short identifiers remain matchable.
+            sap_truth = FakeTruth()
+            sap_truth.canonical_terms = [label]
+            assert _concept_similarity(identifier, sap_truth) == 1.0
 
 
 def test_japanese_concept_matching():
@@ -3871,3 +3979,49 @@ def test_tool_error_accounting_empty_trajectory():
     assert acc["tool_error_count"] == 0
     assert acc["tool_error_categories"] == []
     assert acc["tool_error_counts_by_tool"] == {}
+
+
+def test_model_refusal_accounting_is_explicit_and_narrow():
+    """Normal DONT_KNOW speech, empty/tool-error messages and provider errors
+    are not safety refusals; explicit refusal text is recorded with context
+    and moderation metadata, including whether a later retry recovered."""
+    from tau2.domains.business_interview.run_metrics import account_model_refusals
+
+    messages = [
+        UserMessage(role="user", content="I don't know which system it uses."),
+        AssistantMessage(
+            role="assistant",
+            content="I can't assist with that request.",
+            raw_data={
+                "choices": [
+                    {
+                        "finish_reason": "content_filter",
+                        "message": {"refusal": "safety policy"},
+                    }
+                ]
+            },
+        ),
+        AssistantMessage(role="assistant", content="I can continue with the workflow."),
+        AssistantMessage(
+            role="assistant",
+            content=None,
+            raw_data={
+                "choices": [{"message": {"refusal": "safety policy"}}]
+            },
+        ),
+    ]
+    refusals = account_model_refusals(
+        messages,
+        agent_model="openrouter/example-model",
+        stakeholder_model="openrouter/example-user",
+    )
+    assert len(refusals) == 2
+    refusal = refusals[0]
+    assert refusal["side"] == "Agent"
+    assert refusal["call_index"] == 0
+    assert refusal["provider"] == "openrouter"
+    assert refusal["retry_recovered"] is True
+    assert refusal["preceding_public_prompt"] == "I don't know which system it uses."
+    assert refusal["provider_metadata"]["moderation_or_content_filter"] is True
+    assert refusal["provider_metadata"]["finish_reason"] == "content_filter"
+    assert refusals[1]["matched_pattern"] == "provider_refusal_field"

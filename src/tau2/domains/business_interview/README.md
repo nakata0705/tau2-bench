@@ -68,11 +68,11 @@ epistemic states (never `None` for both UNSET and ABSENT):
 
 `UnsetType` / `AbsentType(evidence)` / `DontKnowType(evidence)` are the
 explicit marker types; new Agent properties default to UNSET and
-reset/unset means UNSET, never ABSENT. ABSENT/DONT_KNOW are valid ONLY when
-their evidence resolves to the EXACT mapped stakeholder slot
-(`node:<mapped>:<prop>` / `edge:<mapped>:condition`) whose value is None /
-DONT_KNOW — evidence about another node's or edge's slot never supports a
-marker.
+reset/unset means UNSET, never ABSENT. ABSENT/DONT_KNOW are Agent beliefs,
+not provenance-gated claims. Their EvidenceRef lists are optional diagnostic
+metadata; when supplied, an Observation id must exist, but quote spans and
+exact stakeholder-slot binding never determine whether a marker is recorded
+or whether reconstruction is correct.
 
 ## StakeholderKnowledge (the stakeholder's world model)
 
@@ -169,8 +169,14 @@ Primary target: **AgentConcepts / AgentGraph vs TruthConcepts / TruthGraph**.
 
 `quality_pass` / `structural_pass` require full reconstruction correctness:
 all structural/property/concept metrics == 1.0, valid endpoints, valid graph.
-Provenance (hypothesis / evidence hygiene) is reported as diagnostic only and
-never gates `quality_pass`.
+Provenance (evidence hygiene, sidecar annotations and dialogue events) is
+reported as diagnostic only and never gates `quality_pass`.
+
+The matcher is deterministic lexical matching, not semantic understanding: it
+uses normalized token/Dice overlap, a small low-information-token set, and
+scenario-provided locale terms. It can miss genuine paraphrases that share no
+canonical/local tokens; it does not claim language-independent semantic
+ equivalence and never calls an LLM, embedding model or web service.
 
 `start_inference` resets the AgentGraph/glossary/completion state but
 preserves Observations and the conversation ledger.
@@ -232,7 +238,7 @@ Observation id + public text.
 | `grounding.py` | shared global-span provenance (evidence refs -> semantic ids) |
 | `scenario.py` | Truth graphs + filters + knowledge (quotation / lab / JA) |
 | `evaluation.py` | content/Truth-reconstruction evaluator (AgentGraph + AgentConcepts vs TruthGraph + TruthConcepts); provenance reported as diagnostics |
-| `tools.py` | glossary + graph tools (optional diagnostic evidence; ground/confirm/unknown/disputed/terminology as Agent belief records; `record_dont_know` / `record_edge_condition_dont_know` / `record_absent` / `record_edge_condition_absent` as belief markers); NO observation tools |
+| `tools.py` | glossary + graph tools (optional diagnostic evidence; mentions and terminology bookkeeping plus belief markers; no concept-grounding lifecycle and NO observation tools) |
 | `user_simulator.py` | semantic stakeholder: chooses the Semantic Response Plan, validates it, realizes it (graph-native sidecar) |
 | `environment.py` | conversation ledger + private sidecar validation/binding + environment-owned Observation creation + `episode_complete` |
 

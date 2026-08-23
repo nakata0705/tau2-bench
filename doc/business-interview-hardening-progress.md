@@ -1,185 +1,89 @@
-# business_interview: Hardening Truth-reconstruction evaluation (progress report)
+# business_interview — Truth-reconstruction hardening final report
 
-## Status
+This is the final handoff for the Truth-reconstruction hardening work on the
+`business-interview` branch. The current contract is
+`AgentConcepts + AgentGraph` evaluated directly against
+`TruthConcepts + TruthGraph`; conversational provenance is diagnostic only.
 
-Completed hardening checkpoint. Primary benchmark goal:
+## Completed changes
 
-    AgentConcepts + AgentGraph -> compare directly with TruthConcepts + TruthGraph
-
-Conversational provenance remains diagnostic only; unsupported-but-correct
-reconstruction still counts as correct. The deterministic business-interview
-suite passes **113 tests** and ruff is clean.
-
-## 1. Removed the obsolete concept grounding lifecycle
-
-- `graph.py`: removed `ValidationStatus` literal and the
-  `validation_status` / `validation_evidence` fields + `.resolved` from
-  `AgentConcept` (concept = id, kind, label, description, optional mentions).
-- `tools.py`: removed the `ground_concept`, `confirm_concept`,
-  `mark_concept_unknown`, `mark_concept_disputed` tools and their
-  docstrings; `merge_concepts` / `list_concepts` no longer touch
-  validation fields; `finish_interview` docstring no longer mentions
-  hypothesized concepts.
-- `evaluation.py`: removed `glossary_pass`,
-  `referenced_hypothesized_concepts`, `glossary_validation_errors` from the
-  result; `glossary_complete` kept as concept reconstruction completeness.
-- `policy.md`: replaced the "Validate the glossary" section with "Keep the
-  glossary tidy" (create/update/merge/mention/terminology only); no
-  unavailable tool names remain (regression test enforces this).
-- `README.md`: replaced the "Concept status" section with "No concept
-  validation lifecycle"; epistemic scoring section updated.
-- Restored the missing `@is_tool` decorator on `record_dont_know` (it was
-  exposed by policy but missing from the runtime schema — a real
-  policy/schema inconsistency).
-- Tests: removed obsolete lifecycle tests, added
-  `test_obsolete_concept_lifecycle_tools_are_removed` and
-  `test_policy_references_only_available_agent_tools` (the regression test
-  proving the policy contains no unavailable Agent tool names).
-
-## 2. Robust Truth-reconstruction content matcher
-
-`evaluation.py` now uses a deterministic, language-tolerant matcher:
-
-- **Unicode / Japanese**: NFKC normalize + lowercase; Latin runs tokenize to
-  words with a small stop-word set removed; CJK runs (Hiragana/Katakana/
-  ideographs) tokenize to character bigrams — Japanese labels never produce
-  empty signatures.
-- **Similarity**: Dice coefficient (the standard n-gram score), with a
-  meaningful `_CONCEPT_MATCH_THRESHOLD = 0.4` so a single generic token does
-  not equate unrelated concepts.
-- **Concept label vs description**: `_concept_similarity` takes the max of
-  label-only and label+description scores (a short label such as "CRM" still
-  strongly matches the canonical term "CRM" even when the Truth description
-  is long), computed against canonical terms AND canonical + stakeholder
-  local terms (JA locale support).
-- **Stable global matching**: `_max_weight_assignment` is a deterministic
-  maximum-weight bipartite matching (Hungarian, rectangular-safe with dummy
-  rows/columns at cost 0) per concept kind, with the threshold gating weak
-  pairs — invariant to Agent-local concept/node ids.
-- **Node matching**: `_map_nodes_and_edges` uses aligned `(prop,
-  truth_concept_id)` signatures and max-weight assignment; a shared activity
-  pair is the node's primary identity (sharing only a minor property is not
-  identity). Edge mapping by matching endpoint pair on the Truth graph.
-- **JA locale scenario**: `scenario.py` now projects Japanese local terms for
-  the JA locale via `concept_overrides`; `evaluate` feeds those local terms
-  as `term_extras` so a Japanese agent vocabulary matches deterministically.
-- Tests added: id-invariance (`test_score_invariant_to_agent_concept_ids`),
-  generic-words rejection
-  (`test_generic_words_do_not_cause_false_concept_matches`),
-  Japanese matching (`test_japanese_concept_matching`,
-  `test_ja_scenario_reconstruction_scores`).
-
-## 3. Epistemic scoring for Truth absence
-
-`evaluation.py` slot scoring is now Truth-epistemic (no-answer is not a lucky
-guess):
-
-- scalar Truth `ConceptRef` -> only a matching asserted Agent ConceptRef;
-- scalar Truth `None` -> only an explicit Agent `ABSENT` is correct
-  (UNSET / DONT_KNOW / any concept are incorrect);
-- list Truth `list` -> recall*precision over elements;
-- list Truth `None`/known-empty -> explicit ABSENT required (UNSET /
-  DONT_KNOW incomplete);
-- edge condition `None` -> explicit ABSENT required (same rule).
-
-Tests added covering the full matrix
-(`test_truth_value_slot_scoring_matrix`,
-`test_truth_absent_scalar_slot_scoring_matrix`,
-`test_truth_absent_list_slot_requires_absent`,
-`test_truth_absent_edge_condition_requires_absent`,
-`test_truth_absent_slots_score_absent_in_full_build`).
-
-## 4. Real-run tool-error accounting
-
-New module `src/tau2/domains/business_interview/run_metrics.py`:
-
-- `account_tool_errors(messages)` walks the trajectory, finds every failing
-  `ToolMessage` (error=True), maps tool-call ids -> tool names, and reports
-  `tool_error_count`, `tool_error_categories`, `tool_error_counts_by_tool`,
-  `tool_error_counts_by_category`.
-- `classify_tool_error` normalizes failures into deterministic categories:
-  `tool_not_found` / `missing_reference` / `invalid_argument` /
-  `validation_error` / `other_tool_error`.
-- `provider_error_count(errors)` counts the top-level provider/runtime list.
-
-`scripts/business_interview_real_llm_smoke.py` now persists
-`provider_error_count`, `tool_error_count`, `tool_error_categories`,
-`tool_error_counts_by_tool`, `tool_error_counts_by_category`, `agent_calls`
-and `accepted_observations` in each run dump and in summary.json (no longer
-infers success from `errors == []`). The summary also includes concept
-recall/precision/correctness, every node-property correctness metric,
-`reconstruction_pass`, fabricated counts, and elapsed time. The graph dump
-drops the removed `validation_status`/`validation_evidence` and the old
-`glossary_pass` name is replaced by `glossary_complete`.
-
-Tests added: `test_tool_error_accounting_classifies_and_groups`,
-`test_tool_error_accounting_empty_trajectory`.
+- Agent-facing tool docs, policy and runtime now agree that `EvidenceRef` is
+  optional diagnostic metadata. Supplied Observation ids must exist, but exact
+  quotes, sidecar annotations and private semantic-slot binding never gate a
+  structurally valid Agent belief. This covers node/property/edge references,
+  `ABSENT` and `DONT_KNOW` markers, and terminology bookkeeping.
+- Evaluator documentation states the asymmetric Truth rule explicitly:
+  Truth `ConceptRef` requires a matching Agent `ConceptRef`; Truth `None`
+  requires explicit Agent `ABSENT`; `UNSET`, `DONT_KNOW` and `ConceptRef` are
+  wrong for Truth absence. Reads/writes known-empty slots and unconditional
+  edge conditions use the same rule.
+- The deterministic matcher retains Unicode/CJK tokenization, Dice scoring
+  and global Hungarian matching, but removes a small set of low-information
+  generic words from partial overlap. Exact canonical/local labels still
+  preserve `CRM`, `SAP`, `Excel` and exact generic labels. No LLM, embedding,
+  web service or hidden provenance is used.
+- Refusal diagnostics distinguish normal “I don't know” answers, provider or
+  runtime errors, formatting/validation failures and explicit model refusal
+  text. A refusal record includes side, call index, model/provider, bounded
+  response, preceding public prompt, moderation metadata and retry recovery.
+- The policy/runtime tool-name regression test and optional-evidence runtime
+  regression coverage are retained and expanded.
 
 ## Verification
 
-### Deterministic and shared tests
+- Domain deterministic tests: **101 passed**.
+- Shared business-interview roundtrip tests: **15 passed**.
+- Combined focused total: **116 passed**.
+- Relevant shared non-LLM tests (`test_environment.py`,
+  `test_evaluate_trajectories.py`, `test_tasks.py`, `test_results_format.py`):
+  **68 passed**.
+- Full attempted shared slice including `test_run.py`: **75 passed, 1
+  xfailed, 8 failed**; all eight failures are existing OpenAI-backed mock-user
+  tests blocked by missing `OPENAI_API_KEY`, not business-interview failures.
+- Ruff: clean on the complete repository.
+- Primary LSP diagnostics: clean on changed implementation/script files;
+  auxiliary project-lens warnings are pre-existing protocol ellipses and the
+  short variable name `anid`.
+- `compileall` passed; no `pyright`, `mypy` or `ty` executable is configured in
+  the repository environment.
 
-- Business-interview roundtrips + domain tests: **113 passed**.
-- Relevant shared tests (`test_environment.py`,
-  `test_evaluate_trajectories.py`, `test_tasks.py`, `test_results_format.py`,
-  and the non-LLM portions of `test_run.py`): **188 passed**.
-- Eight `test_run.py` tests attempted to invoke the existing OpenAI-backed
-  user simulator and failed before simulation because this environment has no
-  `OPENAI_API_KEY`. These are environment/authentication failures, not
-  assertion failures from this hardening change.
-- Ruff: **clean**. Changed Python modules compile successfully.
+## Fresh real quotation run
 
-### One real DeepSeek/OpenRouter run
+- seed: `9002` (fresh; not the old `9000` artifact);
+- artifact: `artifacts/business_interview_real_llm/run_00_seed9002.json`;
+- private ledger: `artifacts/business_interview_real_llm/run_00_seed9002.private.json`;
+- termination reason: `episode_complete`;
+- provider/runtime errors: `0`;
+- tool errors: `0` (no categories, by-tool counts or by-category counts);
+- Agent calls: `32`;
+- accepted Observations: `10`;
+- elapsed: `418.88` seconds;
+- model refusal count: `0`;
+- normal stakeholder “I don't know” answers: not refusals;
+- all 50 LLM generation attempts had status `success`.
 
-Artifact: `artifacts/business_interview_real_llm/run_00_seed9001.json` and its
-private ledger. Configuration was the script default
-`openrouter/deepseek/deepseek-v4-flash-0731` for both Agent and stakeholder,
-temperature `0.0`, task `quotation_workflow_1`, seed `9001`.
+| metric | value |
+| --- | ---: |
+| node recall / precision | 1.0 / 1.0 |
+| edge recall / precision | 0.833333 / 0.714286 |
+| concept recall / precision / correctness | 1.0 / 0.954545 / 0.954545 |
+| activity / actor / system correctness | 1.0 / 1.0 / 0.666667 |
+| read / write / rationale correctness | 0.25 / 0.166667 / 0.166667 |
+| condition correctness | 0.5 |
+| fabricated node / edge count | 0 / 2 |
+| reconstruction_pass | false |
+| structural_pass | false |
+| quality_pass | false |
 
-| Metric | Result |
-| --- | --- |
-| termination reason | `episode_complete` |
-| provider/runtime errors | `0` |
-| Agent tool errors | `1` (`invalid_argument`: `add_node` × 1) |
-| tool-error detail | `add_node writes: expected a list of concept refs, ...` |
-| Agent calls | `56` |
-| accepted Observations | `22` |
-| elapsed | `483.01 s` |
-| node recall / precision | `1.0 / 1.0` |
-| edge recall / precision | `1.0 / 1.0` |
-| concept recall / precision / correctness | `0.9048 / 0.9048 / 0.8186` |
-| activity / actor / system correctness | `0.8333 / 1.0 / 0.6667` |
-| read / write / rationale correctness | `0.3333 / 0.1667 / 0.1667` |
-| condition correctness | `1.0` |
-| fabricated nodes / edges | `0 / 0` |
-| reconstruction pass | `false` |
-| structural pass | `false` |
-| quality pass | `false` |
-| glossary complete | `false` |
-| evidence pass | `false` |
-| reward | `0.0` |
-| private-ID leakage | none |
+`episode_complete` is termination only, not benchmark success. The fresh
+trajectory is a non-success because edge, system, read, write, rationale and
+condition reconstruction was incomplete; the artifact records the complete
+metrics and diagnostics without hiding that result.
 
-The run is **not benchmark success**: `episode_complete` only describes
-termination, while `quality_pass=false` and `reconstruction_pass=false`.
-The top-level `errors` list was empty, but the trajectory contained one
-failing `ToolMessage`; the artifact correctly reports it rather than claiming
-zero errors. The Agent called only available tools; the failure was a bad
-`add_node` argument, not an obsolete/nonexistent lifecycle tool.
+## Known limitations
 
-## Remaining evaluator weaknesses
-
-- The content matcher is deterministic and thresholded, but its lexical
-  signatures are not semantic understanding; language-specific paraphrases
-  outside the tested canonical/local-term vocabularies can still be missed.
-- The relevant shared `test_run.py` cases require an OpenAI credential in the
-  execution environment and were not green here.
-- The single live run is exploratory and non-deterministic; it demonstrates
-  accounting correctness, not model quality.
-
-## Final commit
-
-- Branch: `business-interview`
-- Message: `fix: harden truth reconstruction evaluation`
-- The final commit SHA is reported in the handoff and can be obtained with
-  `git log -1 --oneline`.
+The matcher is lexical rather than semantic. It can miss paraphrases that
+share no canonical/local tokens, and Japanese/local-language equivalence is
+supported only through deterministic CJK signatures and scenario-provided
+locale terms. The fresh run remains an exploratory quality sample, not a
+claim that the LLM reconstructs every Truth graph successfully.

@@ -13,7 +13,9 @@ The script captures the natural language conversation, the tool calls, the
 final inferred graph + glossary, the private semantic ledger (in a separate
 ``*.private.json`` artifact), the domain evaluator metrics
 (structural/glossary/evidence/quality_pass), the standard tau2 reward, a
-private-ID leakage scan, and any errors.
+private-ID leakage scan, provider/tool error accounting, and explicit model
+refusal diagnostics. ``episode_complete`` is recorded separately from
+benchmark reconstruction success.
 
 This is an EXPLORATORY, MANUAL experiment only:
 - It is NOT part of the pytest suite.
@@ -279,11 +281,14 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
 
     started = time.time()
     errors: list[str] = []
+    provider_errors: list[str] = []
     result = None
     try:
         result = run_simulation(orchestrator, evaluation_type=EvaluationType.ALL)
     except Exception as exc:  # noqa: BLE001 - capture whatever happened
-        errors.append("".join(traceback.format_exception_only(type(exc), exc)))
+        error_text = "".join(traceback.format_exception_only(type(exc), exc))
+        errors.append(error_text)
+        provider_errors.append(error_text)
         logger.exception("simulation raised")
     elapsed = time.time() - started
 
@@ -328,16 +333,17 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
 
     # --- conversation / messages ---------------------------------------------
     from tau2.domains.business_interview.run_metrics import (
+        account_model_refusals,
         account_tool_errors,
         provider_error_count,
     )
 
-    tool_error_accounting = (
-        account_tool_errors(result.messages)
+    trajectory_messages = (
+        result.messages
         if result is not None and result.messages is not None
-        else account_tool_errors([])
+        else []
     )
-    provider_errors = list(errors)
+    tool_error_accounting = account_tool_errors(trajectory_messages)
     messages = []
     agent_calls = 0
     if result is not None and result.messages is not None:
@@ -386,6 +392,13 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
         if user_info is not None and getattr(user_info, "llm", None):
             resolved_user_model = user_info.llm
 
+    model_refusals = account_model_refusals(
+        trajectory_messages,
+        agent_model=resolved_agent_model,
+        stakeholder_model=resolved_user_model,
+    )
+    accepted_observations = len(db.observations) if db is not None else 0
+
     dump = {
         "run_index": run_index,
         "run_id": f"run_{run_index:02d}_{simulation_id}",
@@ -406,6 +419,7 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
         "reward_info": reward_info,
         "elapsed_seconds": round(elapsed, 2),
         "errors": errors,
+        "provider_errors": provider_errors,
         "provider_error_count": provider_error_count(provider_errors),
         "tool_error_count": tool_error_accounting["tool_error_count"],
         "tool_error_categories": tool_error_accounting["tool_error_categories"],
@@ -414,6 +428,10 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
             "tool_error_counts_by_category"
         ],
         "agent_calls": agent_calls,
+        "accepted_observations": accepted_observations,
+        "model_refusal_count": len(model_refusals),
+        "model_refusals": model_refusals,
+        "episode_complete": termination_reason == "episode_complete",
         "conversation": messages,
         "observations": (
             [
@@ -528,17 +546,24 @@ def main() -> int:
                 "run_id": dump["run_id"],
                 "seed": seed,
                 "termination_reason": dump["termination_reason"],
+                "episode_complete": dump.get("episode_complete"),
                 "reward": (dump["reward_info"] or {}).get("reward"),
                 "quality_pass": metrics.get("quality_pass"),
                 "structural_pass": metrics.get("structural_pass"),
                 "glossary_complete": metrics.get("glossary_complete"),
                 "evidence_pass": metrics.get("evidence_pass"),
                 "provider_error_count": dump.get("provider_error_count"),
+                "provider_errors": dump.get("provider_errors"),
                 "tool_error_count": dump.get("tool_error_count"),
                 "tool_error_categories": dump.get("tool_error_categories"),
                 "tool_error_counts_by_tool": dump.get("tool_error_counts_by_tool"),
+                "tool_error_counts_by_category": dump.get(
+                    "tool_error_counts_by_category"
+                ),
                 "agent_calls": dump.get("agent_calls"),
-                "accepted_observations": len(dump.get("observations") or []),
+                "accepted_observations": dump.get("accepted_observations"),
+                "model_refusal_count": dump.get("model_refusal_count"),
+                "model_refusals": dump.get("model_refusals"),
                 "node_recall": metrics.get("node_recall"),
                 "node_precision": metrics.get("node_precision"),
                 "edge_recall": metrics.get("edge_recall"),

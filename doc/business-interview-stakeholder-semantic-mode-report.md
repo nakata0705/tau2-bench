@@ -1,172 +1,67 @@
-# business_interview: stakeholder semantic fidelity — mode, Truth/Agent split, exact marker binding
+# business_interview — stakeholder semantic mode and Agent/Truth split
 
-Goal: harden stakeholder semantic fidelity and finish the graph-native
-epistemic model. No backward compatibility required. Architecture preserved:
-Truth = `BusinessProcessGraph` + `TruthConcept[]`; Stakeholder =
-`StakeholderKnowledgeGraph` + `StakeholderKnowledgeConcept[]`; Agent =
-`AgentGraph` + `AgentConcept[]`; observation provenance stays graph-native.
-No `TruthClaim`, no semantic NLP/aliases/embeddings.
+## Stakeholder-side semantic fidelity
 
-## 1. Semantic mode on stakeholder utterance annotations
+The stakeholder simulator has a private two-phase response contract:
 
-`SemanticAnnotation` now carries `mode` (`value | absent | dont_know |
-exists | mention`), validated deterministically against
-`StakeholderKnowledgeGraph.resolve()`:
+1. It plans semantic addresses and modes from its own
+   `StakeholderKnowledge`.
+2. The environment validates the plan and realized sidecar against that
+   knowledge, including exact public-text spans and mode compatibility, before
+   accepting the public message.
 
-| resolve() result                       | mode     |
-|----------------------------------------|----------|
-| `ConceptRef` (known value)             | `value`  |
-| `None` (known absent)                  | `absent` |
-| `DONT_KNOW` (element known, unknown)   | `dont_know` |
-| node/edge existence                    | `exists` |
-| `StakeholderKnowledgeConcept`          | `mention`|
+This strictness protects simulator integrity: a stakeholder cannot reveal
+Truth-only information or claim a known value as `dont_know`. It is not an
+Agent reconstruction gate. The accepted public utterance becomes one
+immutable environment-owned Observation.
 
-`mode_for_resolved()` (facts.py) derives the expected mode from the
-resolved semantic; `StakeholderKnowledgeCatalog.validate_annotations`
-rejects any annotation whose mode contradicts the stakeholder's own world
-model, and `SemanticLedger.bind` runs the same check at ingestion (a
-contradictory message never enters the ledger or the conversation). The
-parse level requires every annotation to declare `mode` (missing mode =
-`ValueError` -> retry). Subject/property/value are NOT duplicated — the
-semantic value still lives only in `StakeholderKnowledgeGraph`.
-Concept-alignment and terminology dialogue events stay separate.
+The canonical resolver maps:
 
-**Headline case fixed:** a stakeholder whose graph knows the approval
-rationale can no longer be accepted saying "I don't know the reason" with a
-`dont_know` annotation on the rationale slot — the message is rejected and
-retried instead of silently entering the conversation.
+| resolved stakeholder value | sidecar mode |
+| --- | --- |
+| `ConceptRef` | `value` |
+| `None` | `absent` |
+| `DONT_KNOW` | `dont_know` |
+| node/edge existence | `exists` |
+| local knowledge concept | `mention` |
 
-## 2. TruthNode/TruthEdge separated from Agent Node/Edge
+## Agent-side evidence semantics
 
-- `TruthNode` / `TruthEdge` (graph.py) are the complete canonical Truth:
-  slots are `ConceptRef | None` / `list[ConceptRef] | None` — **no UNSET /
-  ABSENT / DONT_KNOW states**, no evidence fields.
-- Agent `Node` / `Edge` keep the four-state model (`UNSET` / `ConceptRef` /
-  `ABSENT` / `DONT_KNOW`) with evidence on refs/markers.
-- `StakeholderKnowledge` remains three-valued (`ConceptRef | None |
-  DONT_KNOW`).
-- `_GraphMixin` stays generic over the concept only; subclasses redeclare
-  concrete `nodes`/`edges` dicts. Shared utilities (`structure_errors`,
-  `referenced_concepts`, `successors`) use the common slot/ref surface.
-- Compatibility logic removed: `project_knowledge` no longer interprets
-  Truth `UNSET` as `None` (Truth has no UNSET); the knowledge projection is
-  driven purely by the visible-property filter and canonical `None`.
+The Agent builds its own glossary and graph. `EvidenceRef` is optional
+metadata for diagnostics. When supplied to Agent-facing tools, its
+Observation id must exist and its shape must be valid; exact quote matching,
+sidecar semantic-slot binding, and private Agent-node/edge binding do not
+determine whether a structurally valid Agent belief is recorded.
 
-## 3. Policy/docstring synchronization
+This applies equally to concept/property references, edge evidence,
+`ABSENT` markers and `DONT_KNOW` markers. The private sidecar remains useful
+for simulator-integrity and evidence-hygiene metrics, but unsupported yet
+Truth-correct reconstruction is accepted by the evaluator.
 
-Audited `data/tau2/domains/business_interview/policy.md`, the tools module
-docstring, `README.md` and tool docstrings. The visible contract now
-consistently states:
+## Truth-based scoring
 
-    UNSET     = not investigated / no conclusion (the default)
-    ConceptRef= known value
-    ABSENT    = explicitly established absence (evidenced)
-    DONT_KNOW = explicitly established unknown (evidenced)
+Truth is complete canonical data (`ConceptRef | None`). The Agent has
+`UNSET`, `ConceptRef`, `ABSENT` and `DONT_KNOW` slots. Scoring is not based on
+stakeholder mode:
 
-Stale statements fixed: `condition=None means unconditional` (now: an
-unconditional edge needs explicit ABSENT with evidence), `unset means known
-absent` (now: omitted property -> UNSET, never a conclusion), `empty
-reads/writes means known empty` (now: known-empty needs `{"absent": true,
-"evidence": [...]}`; an empty list is ambiguous and rejected).
+- Truth `ConceptRef`: only a content-matching asserted Agent `ConceptRef` is
+  correct.
+- Truth `None`: only explicit Agent `ABSENT` is correct; `UNSET`,
+  `DONT_KNOW` and `ConceptRef` are incorrect.
 
-## 4. Marker tools are exact-node binding aware
+Reads/writes known-empty slots and unconditional edge conditions follow the
+same rule. `knowledge_coverage` and evidence-hygiene fields remain
+informational diagnostics.
 
-Before accepting `record_absent(agent_node, prop)` /
-`record_dont_know(agent_node, prop)` (and the dict-path markers through
-`add_node` / `update_node` / `add_edge` / `update_edge`), the tool derives
-the stakeholder element candidate from the Agent element's **authentic
-property provenance** (`_bound_stakeholder_node` / `_bound_stake_edge` /
-`_node_candidates_from_evidence`), requires exactly ONE unique binding, then
-requires the marker evidence to resolve EXACTLY to
-`node:<bound>:<prop>` / `edge:<bound>:condition` (via `_group_marker_evidence`
-and the `bound_node`/`bound_edge` checks in `_resolve_absent_slots` /
-`_resolve_dont_know_slots`). For edge markers the bound stakeholder edge's
-endpoints must also match the agent edge's bound endpoints
-(`_require_edge_endpoints_match`), matching the evaluator's edge-mapping
-rule. If the element is not uniquely bindable, the tool rejects with a
-concise error telling the Agent to add authentic graph/property evidence
-first. Tool-visible success and evaluator marker validity can no longer
-disagree.
+## Regression coverage
 
-## 5. concept_precision diagnostic fix
+The deterministic suite covers mode compatibility on the stakeholder side,
+Truth/Agent state separation, policy/runtime tool-name consistency, optional
+unbound Agent evidence, malformed tool-argument recovery, generic lexical
+matcher adversaries, Japanese matching, and Agent-local id invariance. The
+current focused total is **116 passed** (101 domain + 15 roundtrip tests).
 
-`_concept_bindings` now derives diagnostics from the Agent's **attempted
-referenced concepts** (`referenced`, including refs on unmapped nodes/edges).
-Precision = `|correct one-to-one Agent bindings| / |attempted|`. Attempted
-concepts that are extra, unbound (no candidate), ambiguously bound,
-conflicting, kind-incompatible, or duplicated/split against one stakeholder
-concept all reduce precision (previously they silently vanished from the
-denominator). Missing expected concepts reduce recall. An empty AgentGraph:
-recall 0 when expected concepts exist, documented neutral precision 1.0,
-`concept_correctness` 0. Glossary validation correctness stays separate from
-reconstruction completeness.
-
-## 6. Recover valid JSON with invalid tool argument shape
-
-`ToolCall.from_string` and the native-provider path (`generate`) now also
-treat JSON that parses but is not an object (`[]`, `null`, `"foo"`, `123`)
-as a RECOVERABLE error: the ToolCall carries a concise parse/validation
-error (`arguments must be a JSON object`), the environment answers an
-ordinary Error tool response, the agent consumes its error budget and may
-retry; the run never aborts and semantic content is never repaired.
-
-## 7. Deterministic tests + real-LLM runs
-
-New deterministic tests in `test_graph_business_interview.py`:
-
-- semantic mode / knowledge compatibility; known value + `dont_know`
-  annotation rejected; `DONT_KNOW` + `value` annotation rejected; `None` +
-  `absent` accepted; `exists`/`mention` modes;
-- Truth graph contains no UNSET/ABSENT/DONT_KNOW states; knowledge
-  projection independent of Truth UNSET;
-- policy/README/tools docs consistently describe the four Agent states;
-- marker tool rejects evidence from another node/edge (node, update_node,
-  add_edge paths); marker requires unique graph binding;
-- successful marker tool call also passes evaluator marker validation
-  (tool success == evaluator validity);
-- unbound/ambiguous/extra concepts reduce concept_precision; empty
-  AgentGraph neutral precision + zero correctness;
-- valid non-object JSON tool arguments recoverable; malformed JSON remains
-  recoverable.
-
-Real-LLM quotation runs (deepseek-v4-flash-0731 via OpenRouter, temperature 0,
-seeds 6600-6602; earlier runs used deepseek-chat-v3, seeds 6200-6202 and
-6400-6403 — the smoke script now defaults to deepseek-v4-flash-0731 and
-other providers are not used for this testing):
-
-| seed | termination | node_recall | node_prec | edge_recall | concept_correctness | marker_errors | leaks |
-| ------ | ------------- | ------------- | ----------- | ------------- | --------------------- | --------------- | ------- |
-| 6600 | internal error (empty AssistantMessage at end of run) | 0.5 | 0.5 | 0.0 | 0.251 | 0 | [] |
-| 6601 | hung provider response (aborted) | - | - | - | - | - | - |
-| 6602 | hung provider response (aborted) | - | - | - | - | - | - |
-
-Seed 6600 reconstructed the full quotation topology (all six nodes, all
-edges, the over/below/month-end condition concepts) with structurally valid
-graph, zero marker evidence errors and zero private-ID leakage; evaluator
-node correspondence scored 0.5 (three fabricated/unmappable nodes) and
-concept correctness 0.251.
-
-Live fidelity evidence (from run logs):
-
-- `annotation 'skc_011': mode 'value' contradicts the knowledge — the
-  stakeholder's own semantic model says 'mention'` -> retry once, then the
-  corrected message enters;
-- `annotation 'node:skn_003:reads:skc_014': mode 'dont_know' contradicts
-  the knowledge — the stakeholder's own semantic model says 'value'` ->
-  rejected (never accepted);
-- quote/occurrence mismatches rejected and retried;
-- `marker_evidence_errors == 0` on every run (no unsupported
-  ABSENT/DONT_KNOW marker ever reached the evaluator);
-- `private_id_leakage == []` on every run.
-
-Observed remaining issues (not regressions):
-
-- gpt-4o-mini frequently violates the exact-quote contract (quote not an
-  exact substring) — the strict contract rejects and retries, but the model
-  often fails twice, terminating the turn. deepseek-v4-flash-0731 is the
-  current default for business_interview live-LLM testing; other providers
-  (qwen, deepseek-v3 chat) are not used for this testing. No run reached
-  `finish_interview` with a full reconstruction yet; partial-progress runs
-  are structurally valid with zero marker errors and zero leakage.
-- context-length termination at 163k tokens for agent loops (repeated tool
-  errors inflate history) — agent-side, not a fidelity leak.
+The fresh quotation run (seed 9002) recorded `model_refusal_count: 0`,
+`provider_error_count: 0` and `tool_error_count: 0`. Its full metrics are in
+`artifacts/business_interview_real_llm/summary.json`; its termination was
+`episode_complete`, but `reconstruction_pass` and `quality_pass` were false.

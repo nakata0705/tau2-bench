@@ -1,11 +1,11 @@
 """Shared deterministic provenance machinery (tools + evaluator).
 
 The stakeholder's private annotations (``SemanticAnnotation``) attach exact
-character spans of its messages to stakeholder semantic IDs. Agent evidence
-spans resolve to semantic IDs through the GLOBAL span rule implemented here — the single implementation used by the tools
-(evidence-ref shape validation, ABSENT/DONT_KNOW recording) and the
-evaluator (evidence hygiene diagnostics). No other span resolution logic
-exists.
+character spans of its messages to stakeholder semantic IDs. Optional Agent
+evidence spans can be compared with those annotations through the GLOBAL span
+rule implemented here for evidence-hygiene diagnostics. Agent belief recording
+and Truth reconstruction do not require that comparison; no private span
+binding is a correctness gate.
 
 Global span rule (deterministic, never semantic):
 

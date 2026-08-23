@@ -31,9 +31,10 @@ StakeholderKnowledgeGraph, including DONT_KNOW slots); ``alignments`` /
 StakeholderKnowledgeConcept ids (a bare "Yes." does not encode the act).
 
 The environment stores all three privately against the exact message/turn
-(``SemanticLedger``). Provenance is never reconstructed from message text:
-the evaluator links an Agent ``EvidenceRef`` to an annotation by
-character-span correspondence (containment), never by meaning.
+(``SemanticLedger``). Provenance is never reconstructed from message text.
+The evaluator may use the ledger for simulator-integrity and evidence-hygiene
+diagnostics, but Truth reconstruction does not link an Agent ``EvidenceRef``
+to an annotation as a correctness gate.
 
 - ``StakeholderKnowledgeCatalog`` deterministically validates sidecar
   metadata: every semantic id exists in the stakeholder knowledge (graph

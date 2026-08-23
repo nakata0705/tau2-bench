@@ -1,4 +1,4 @@
-"""Evaluator for the graph-native business_interview benchmark (v12 — Truth
+"""Evaluator for the graph-native business_interview benchmark (v13 — Truth
 reconstruction is the primary score).
 
 The agent's inferred ``AgentGraph`` + ``AgentConcept[]`` is compared to the
@@ -16,15 +16,22 @@ same ``kind``. Node identity falls out of the activity/slot content
 signature; edge identity falls out of the node alignment plus existence of a
 matching Truth edge.
 
-Epistemic belief recording keeps conservative semantics on the *creation*
-side (see tools.py), but the *score* evaluates the final belief against Truth
-without requiring conversational proof. For scoring, UNSET / ABSENT /
-DONT_KNOW are all "no value claimed": a Truth value slot must be claimed as a
-content-matching ConceptRef, a Truth-absent slot must not assert a value.
+Epistemic belief recording keeps explicit four-state Agent slots (see
+``tools.py``), but the *score* evaluates the final belief against Truth
+without requiring conversational proof. The scoring rule is asymmetric and
+explicit:
 
-The private provenance ledger (annotations/alignments/terminology) and the
-evidence-hygiene metrics remain as **diagnostics** only. They are reported
-but never gate ``quality_pass``.
+* Truth ``ConceptRef``: only a content-matching asserted Agent ``ConceptRef``
+  is correct; ``UNSET``, ``ABSENT``, ``DONT_KNOW`` and a wrong concept are
+  incorrect.
+* Truth ``None`` (canonical absence): only an explicit Agent ``ABSENT``
+  marker is correct; ``UNSET``, ``DONT_KNOW`` and any ``ConceptRef`` are
+  incorrect.
+
+The same rule applies to reads/writes known-empty properties and unconditional
+edge conditions. The private provenance ledger
+(annotations/alignments/terminology) and evidence-hygiene metrics remain as
+**diagnostics** only. They are reported but never gate ``quality_pass``.
 
 StakeholderKnowledge stays a simulator constraint, not the scored target: it
 limits what the conversation can reveal, while the scored target is the Truth.
@@ -220,6 +227,26 @@ _STOP_WORDS = frozenset(
     }
 )
 
+# Broad nouns carry little identity information when they are the only token
+# in a label. They are removed from lexical overlap, but exact canonical/local
+# label equality is handled separately by ``_concept_similarity``. This keeps
+# an exact ``CRM``/``SAP``/``Excel`` (or exact generic label) match possible
+# without allowing ``system`` to match every ``... system`` concept.
+_GENERIC_TOKENS = frozenset(
+    {
+        "system",
+        "systems",
+        "document",
+        "documents",
+        "information",
+        "quotation",
+        "quotations",
+        "process",
+        "processes",
+        "data",
+    }
+)
+
 # CJK / full-width ranges: Hiragana, Katakana, CJK ideographs, CJK ext.
 _CJK_RE = re.compile(
     r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff"
@@ -260,8 +287,8 @@ def _tokens(text: Optional[str]) -> set[str]:
     """Language-tolerant deterministic signature tokenization:
 
     - NFKC normalize + lowercase (so Japanese/full-width text is preserved);
-    - Latin/alphanumeric runs: whole-word tokens with a small deterministic
-      stop-word set removed;
+    - Latin/alphanumeric runs: whole-word tokens with deterministic
+      stop-word and low-information generic-token sets removed;
     - CJK runs (Hiragana/Katakana/ideographs): character bigrams (no
       language-specific word splitter needed).
 
@@ -277,7 +304,11 @@ def _tokens(text: Optional[str]) -> set[str]:
             toks |= _char_bigrams(chunk)
         else:
             for w in re.findall(r"[a-z0-9]+", chunk):
-                if len(w) >= 2 and w not in _STOP_WORDS:
+                if (
+                    len(w) >= 2
+                    and w not in _STOP_WORDS
+                    and w not in _GENERIC_TOKENS
+                ):
                     toks.add(w)
     return toks
 
@@ -327,16 +358,48 @@ def _agent_concept_tokens(concept) -> set[str]:
     return _agent_label_tokens(concept) | _tokens(concept.description)
 
 
-def _concept_similarity(agent, truth_concept, extra_terms=None) -> float:
-    """Best-of matching over label-only and label+description Dice scores.
+def _label_key(text: Optional[str]) -> str:
+    """Return a compact normalized label key for exact/near-exact labels.
 
-    Each side is computed twice: against the canonical Truth terms and
-    against the canonical + stakeholder-extra terms (e.g. Japanese). Taking
-    the max preserves English-vs-English matches (extra terms never dilute a
-    canonical match) while still allowing a JA agent label to match the JA
-    extra terms. The result is thresholded against
-    ``_CONCEPT_MATCH_THRESHOLD`` by the caller.
+    Punctuation and spacing are ignored here (so ``month-end`` and
+    ``month end`` agree), while the lexical Dice path remains responsible for
+    partial/multi-token overlap. The key is Unicode-aware and deterministic.
     """
+    return "".join(ch for ch in _normalize(text) if ch.isalnum())
+
+
+def _has_exact_label_match(agent, truth_concept, extra_terms=None) -> bool:
+    """Whether the Agent label equals a canonical or local Truth label.
+
+    Exact label equality is intentionally checked before generic-token
+    filtering. It preserves legitimate short identifiers and exact generic
+    labels while preventing a one-token generic label from matching a longer
+    label that merely contains it.
+    """
+    agent_key = _label_key(agent.display_label)
+    if not agent_key:
+        return False
+    candidates = list(truth_concept.canonical_terms) + list(extra_terms or ())
+    return any(agent_key == _label_key(term) for term in candidates)
+
+
+def _concept_similarity(agent, truth_concept, extra_terms=None) -> float:
+    """Best-of exact-label and label/description Dice matching.
+
+    Exact canonical/local label equality is a full match. Otherwise the
+    lexical path compares label-only and label+description signatures after
+    removing stop and low-information generic tokens. Each side is computed
+    against canonical Truth terms and canonical + stakeholder-extra terms
+    (e.g. Japanese). Taking the max preserves English-vs-English matches
+    while allowing a JA agent label to match a JA extra term. The result is
+    thresholded against ``_CONCEPT_MATCH_THRESHOLD`` by the caller.
+
+    This is lexical reconstruction, not language-independent semantic
+    equivalence: paraphrases must share tokens or be supplied as a
+    scenario-local Truth/knowledge term.
+    """
+    if _has_exact_label_match(agent, truth_concept, extra_terms):
+        return 1.0
     a_label = _agent_label_tokens(agent)
     a_full = _agent_concept_tokens(agent)
     t_label = _truth_label_tokens(truth_concept)
@@ -565,11 +628,11 @@ def _score_scalar_slot(
 ) -> int:
     """Epistemic-aware scalar slot score (1 correct / 0 otherwise).
 
-    Truth ConceptRef -> only a matching asserted Agent ConceptRef is correct.
-    Truth None (absent) -> only an explicit Agent ABSENT marker is correct;
-    UNSET / DONT_KNOW / any ConceptRef are all NOT correct ("no answer" must
-    not be rewarded as a lucky guess). Equivalent semantics apply to edge
-    conditions.
+    Truth ``ConceptRef`` -> only a matching asserted Agent ``ConceptRef`` is
+    correct; every other Agent state is incorrect. Truth ``None`` -> only an
+    explicit Agent ``ABSENT`` marker is correct; ``UNSET``, ``DONT_KNOW`` and
+    any ``ConceptRef`` are incorrect. The same rule applies to edge
+    conditions; no-answer is never rewarded as a lucky guess.
     """
     tcid = _truth_scalar_value(truth_value)
     if tcid is not None:

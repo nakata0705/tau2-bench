@@ -43,7 +43,8 @@ Cycles are normal and valid: a process may revisit a step. You never need to
    steps where one result is required by the next:
 
 - create a concept before a node/edge references it;
-- ground/confirm before you rely on a concept being resolved.
+- make each tool call only after its required local ids and arguments are
+  already known. There is no concept-grounding or confirmation lifecycle.
    Every tool in a batch must be executable from the state BEFORE the batch:
    all required arguments (Observation ids, concept ids, node/edge ids) are
    already known when the batch starts. Never reference a result that only
@@ -79,10 +80,15 @@ ontology):
   refs — never guess or reuse an older id for a newer statement.
 - `add_node` / `update_node` — add a node, or update an existing node's
   activity / actor / system / reads / writes / necessity_rationale references.
+  Property EvidenceRefs are optional diagnostic metadata; supplied
+  Observation ids must exist, but quote and private semantic-slot binding do
+  not gate a structurally valid belief.
   Concept kinds are enforced: activity->activity, actor->actor, system->system,
   reads/writes->data, rationale->rationale.
 - `add_edge` / `update_edge` — connect nodes; put a condition concept
-  (kind=condition) on the edge. An UNCONDITIONAL edge is NOT expressed by
+  (kind=condition) on the edge. Edge existence needs only valid local
+  endpoints; optional EvidenceRefs are diagnostic metadata. An
+  UNCONDITIONAL edge is NOT expressed by
   omitting the condition (omitted = UNSET = not investigated): when you
   established there is no condition, record an explicit ABSENT with
   `record_edge_condition_absent(edge_id, evidence=[...])` (or pass

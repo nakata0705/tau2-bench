@@ -1,5 +1,12 @@
 # business_interview — Env-owned Observations + Semantic Response Plan
 
+> Historical report for the environment-owned Observation change. The
+> `ground_concept` references and old run metrics below describe the pre-v13
+> lifecycle; that lifecycle is removed. In the current contract, the
+> stakeholder sidecar remains strict for simulator integrity, while Agent
+> EvidenceRefs are optional diagnostics and Truth reconstruction is scored
+> directly against Truth.
+
 **Date:** 2026-08-22
 **Branch:** `business-interview`
 **Commit:** `refactor: make stakeholder observations environment owned`
@@ -72,8 +79,9 @@ The stakeholder simulator now answers in two deterministic phases:
   knowledge and realizes it.
 - Agent: receives Observation id + public text, interprets EvidenceRefs,
   builds AgentConcept / AgentGraph. Never creates or mutates Observations.
-- Evaluator: resolves EvidenceRefs against the immutable
-  Observation/private metadata.
+- Evaluator: reports EvidenceRef/sidecar hygiene diagnostically and scores
+  the Agent graph directly against Truth; private metadata is not a
+  reconstruction gate.
 
 ## Deterministic tests
 

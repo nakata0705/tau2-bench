@@ -1,5 +1,5 @@
-"""Agent tools for the graph-native business_interview benchmark (v12 —
-env-owned Observations).
+"""Agent tools for the graph-native business_interview benchmark (v13 —
+env-owned Observations and Truth reconstruction).
 
 The environment creates one immutable Observation per ACCEPTED Stakeholder
 message BEFORE the Agent sees it and delivers the Observation id inline with
@@ -7,7 +7,7 @@ the public text (``[Observation obs_N] <text>``). There is therefore NO
 observation-capture tool: the Agent never calls one and never creates or
 mutates an Observation. It builds a private glossary of typed
 ``AgentConcept``\\ s and constructs an inferred ``AgentGraph`` whose
-node/edge property references each carry their own ``EvidenceRef``\\ s.
+node/edge property references may carry optional ``EvidenceRef``\\ s.
 Every Agent slot is one of the FOUR epistemic states: ``UNSET``
 (not investigated / no conclusion) / ``ConceptRef`` (known value) /
 ``ABSENT`` (explicitly established absent, with evidence) /
@@ -128,28 +128,32 @@ class InterviewTools(ToolKitBase):
         return graph.concepts[concept_id]
 
     def _require_observation(self, observation_id: Optional[str]) -> None:
-        """Optionally reject a reference to an observation id that does not
-        exist. Because provenance is no longer a hard gate for reconstruction,
-        callers that only pass diagnostic evidence may pass None freely."""
+        """Validate an Observation id when diagnostic evidence supplies one.
+
+        Evidence is optional and never a reconstruction gate. A supplied id
+        must nevertheless be non-empty and refer to an existing Observation;
+        quote/occurrence and private semantic-slot binding are not checked
+        here as acceptance criteria.
+        """
         if observation_id is None:
             return
+        if not observation_id.strip():
+            raise ValueError("observation id must not be empty")
         if not any(o.id == observation_id for o in self.db.observations):
             raise ValueError(f"observation not found: {observation_id}")
 
     def _require_evidence(self, evidence: Optional[list]) -> list[EvidenceRef]:
-        """Coerce a list of EvidenceRef dicts (shape-only).
+        """Coerce optional EvidenceRef dicts using shape-only validation.
 
         Provenance is no longer a prerequisite for recording Agent beliefs:
-        we validate the *shape* of each ref (observation_id present and
-        resolvable to an existing Observation when given) but never reject a
-        tool call merely because a quoted span is missing, ambiguous, or does
-        not match an exact span. Evidence is retained as a diagnostic hint.
+        a supplied reference must point to an existing Observation, but a
+        missing/ambiguous/nonmatching quote and private semantic-slot binding
+        never reject the tool call. Evidence is retained as a diagnostic hint.
         """
         refs: list[EvidenceRef] = []
         for raw in evidence or []:
             ref = _ev(raw)
-            if ref.observation_id:
-                self._require_observation(ref.observation_id)
+            self._require_observation(ref.observation_id)
             refs.append(ref)
         return refs
 
@@ -193,10 +197,12 @@ class InterviewTools(ToolKitBase):
         bound_node: Optional[str] = None,
         bound_edge: Optional[str] = None,
     ) -> DontKnowType:
-        """Build a DONT_KNOW marker from ``{"dont_know": true, "evidence":
-        [...]}`` after validating the evidence against the corresponding
-        stakeholder DONT_KNOW slot (when a unique binding is available,
-        EXACTLY that bound element's slot)."""
+        """Build a DONT_KNOW marker from ``{"dont_know": true, ...}``.
+
+        Evidence is optional diagnostic metadata. When supplied, only its
+        shape and Observation ids are validated; private sidecar content,
+        quote spans and semantic-slot binding never gate recording the belief.
+        """
         evs = self._require_evidence(arg.get("evidence"))
         return DontKnowType(evidence=evs)
 
@@ -208,10 +214,12 @@ class InterviewTools(ToolKitBase):
         bound_node: Optional[str] = None,
         bound_edge: Optional[str] = None,
     ) -> AbsentType:
-        """Build an ABSENT marker from ``{"absent": true, "evidence":
-        [...]}`` after validating the evidence against the corresponding
-        stakeholder known-absent slot (when a unique binding is available,
-        EXACTLY that bound element's slot)."""
+        """Build an ABSENT marker from ``{"absent": true, ...}``.
+
+        Evidence is optional diagnostic metadata. When supplied, only its
+        shape and Observation ids are validated; private sidecar content,
+        quote spans and semantic-slot binding never gate recording the belief.
+        """
         evs = self._require_evidence(arg.get("evidence"))
         return AbsentType(evidence=evs)
 
@@ -289,7 +297,7 @@ class InterviewTools(ToolKitBase):
     def add_concept_mention(
         self,
         concept_id: str,
-        evidence: list,
+        evidence: Optional[list] = None,
     ) -> str:
         """Record Observation spans you interpret as mentions of a concept.
 
@@ -315,19 +323,22 @@ class InterviewTools(ToolKitBase):
         self,
         concept_id: str,
         term: str,
-        evidence: list,
+        evidence: Optional[list] = None,
     ) -> str:
         """Record an explicit terminology agreement: you proposed ``term`` for
         this concept and the stakeholder explicitly confirmed it.
 
-        The evidence must correspond to a private terminology-confirmation
-        event with the same proposed term. A mere authentic mention of the
-        term in ordinary workflow speech is NOT an agreement.
+        Evidence is optional diagnostic metadata. It may point to the
+        Observation where the agreement was discussed, but no private
+        terminology event or exact quote/semantic binding is required for the
+        record to be accepted. A mere mention is still not automatically
+        recorded as an agreement; this tool records the Agent's explicit
+        bookkeeping choice.
 
         Args:
             concept_id: The concept the term refers to.
             term: The agreed term.
-            evidence: Evidence spans of the confirmation (required).
+            evidence: Optional diagnostic Observation spans.
 
         Returns:
             A confirmation message.
@@ -509,10 +520,10 @@ class InterviewTools(ToolKitBase):
         {"dont_know": true, "evidence": [...]} | {"absent": true,
         "evidence": [...]} | None.
 
-        DONT_KNOW / ABSENT markers are validated against the corresponding
-        stakeholder slot; when ``bound_node`` / ``bound_edge`` is given
-        (the Agent element's unique binding) they must resolve EXACTLY to
-        that element's slot.
+        Evidence on a reference or marker is optional diagnostic metadata.
+        When supplied, only its shape and Observation ids are validated;
+        private sidecar/provenance never determines whether a structurally
+        valid Agent belief is recorded.
         """
         prop = self._normalize_prop(prop or where.rsplit(" ", 1)[-1])
         if arg is None:
@@ -612,16 +623,18 @@ class InterviewTools(ToolKitBase):
     ) -> str:
         """Add a node to the inferred process graph.
 
-        Every property reference carries its OWN evidence: pass a property
-        as ``concept_id`` or as ``{"concept_id": ..., "evidence": [...]}``.
+        Every property reference may carry its OWN diagnostic evidence: pass
+        a property as ``concept_id`` or as
+        ``{"concept_id": ..., "evidence": [...]}``.
         The call-level ``evidence`` list is the shorthand for the activity's
         evidence (when ``activity`` is a plain concept id). Concept kinds are
         enforced: activity->activity, actor->actor, system->system,
         reads/writes->data, necessity_rationale->rationale.
 
-        To record that you CANNOT determine a property (the stakeholder said
-        so), pass ``{"dont_know": true, "evidence": [...]}`` — the evidence
-        must resolve to the stakeholder's DONT_KNOW slot for that property.
+        To record that you CANNOT determine a property, pass
+        ``{"dont_know": true, "evidence": [...]}``. Evidence is optional
+        diagnostic metadata; if supplied, its Observation id must exist, but
+        its quote and private semantic-slot binding are not a recording gate.
 
         Args:
             node_id: Your own identifier for this node.
@@ -634,7 +647,7 @@ class InterviewTools(ToolKitBase):
                 {dont_know, evidence}.
             necessity_rationale: Concept id or {concept_id, evidence}
                 (kind=rationale).
-            evidence: Activity evidence shorthand (optional).
+            evidence: Optional diagnostic Activity evidence shorthand.
 
         Returns:
             A confirmation message.
@@ -722,14 +735,14 @@ class InterviewTools(ToolKitBase):
         """Update an existing node's property references (kinds enforced).
 
         Each property accepts a concept id or ``{"concept_id", "evidence"}``
-        so the reference carries its own evidence, or
-        ``{"dont_know": true, "evidence": [...]}`` to record that you
-        cannot determine it (evidence must resolve to the stakeholder's
-        DONT_KNOW slot for that property), or ``{"absent": true,
-        "evidence": [...]}`` to record that the stakeholder established the
-        property is ABSENT (known absent / known-empty — never an empty
-        list, which is ambiguous). ``unset`` returns a property to UNSET
-        (not investigated — never a conclusion).
+        so the reference may carry diagnostic evidence, or
+        ``{"dont_know": true, "evidence": [...]}`` / ``{"absent": true,
+        "evidence": [...]}`` for explicit epistemic markers. Evidence is
+        optional; if supplied, its Observation id must exist, but quote and
+        private semantic-slot binding never gate recording. ``unset`` returns
+        a property to UNSET (not investigated — never a conclusion). A known
+        empty reads/writes property still uses the ABSENT marker, not an empty
+        list.
         """
         node = self._node(node_id)
         if unset:
@@ -790,25 +803,24 @@ class InterviewTools(ToolKitBase):
         self,
         node_id: str,
         properties: list[str],
-        evidence: list,
+        evidence: Optional[list] = None,
     ) -> str:
-        """Record that you cannot determine property values of an existing
-        node.
+        """Record explicit DONT_KNOW beliefs for an existing node.
 
-        ``DONT_KNOW`` is an explicit, evidenced epistemic state — distinct
-        from UNSET (omitted / not investigated, never a conclusion) and from
-        ABSENT (explicitly established absent). Every cited span
-        must resolve to the stakeholder's DONT_KNOW slot of one of the given
-        properties (a slot the stakeholder knows or knows to be absent
-        rejects the recording), and every listed property must be covered by
-        at least one span.
+        ``DONT_KNOW`` is distinct from UNSET (omitted / not investigated) and
+        ABSENT (explicitly established absence). Evidence is optional
+        diagnostic metadata; when supplied, only its shape and Observation
+        ids are validated. It need not resolve to a stakeholder DONT_KNOW
+        slot, and every listed property is marked regardless of private
+        sidecar content.
 
         Args:
             node_id: The node whose properties are unknown.
             properties: Properties you cannot determine
                 (activity/actor/system/reads/writes/rationale).
-            evidence: Evidence spans resolving to the stakeholder's DONT_KNOW
-                slots for these properties (required).
+            evidence: Optional diagnostic Observation spans. If supplied,
+                their Observation ids must exist; exact quote and semantic-slot
+                binding are not required.
 
         Returns:
             A confirmation message.
@@ -834,18 +846,20 @@ class InterviewTools(ToolKitBase):
         return f"Recorded DONT_KNOW on {node_id} for: {', '.join(sorted(props))}."
 
     @is_tool(ToolType.WRITE)
-    def record_edge_condition_dont_know(self, edge_id: str, evidence: list) -> str:
-        """Record that you cannot determine an edge's condition.
+    def record_edge_condition_dont_know(
+        self, edge_id: str, evidence: Optional[list] = None
+    ) -> str:
+        """Record an explicit DONT_KNOW belief for an edge condition.
 
-        ``DONT_KNOW`` is an explicit, evidenced epistemic state — distinct
-        from a missing condition (known absent / unconditional). Every cited
-        span must resolve to the stakeholder's DONT_KNOW condition slot of
-        this kind of edge.
+        ``DONT_KNOW`` is distinct from UNSET (not investigated) and ABSENT
+        (explicitly unconditional). Evidence is optional diagnostic metadata;
+        when supplied, only its shape and Observation ids are validated and
+        it need not resolve to a private stakeholder condition slot.
 
         Args:
             edge_id: The edge whose condition is unknown.
-            evidence: Evidence spans resolving to a stakeholder DONT_KNOW
-                condition slot (required).
+            evidence: Optional diagnostic Observation spans. Exact quote and
+                private semantic-slot binding are not required.
 
         Returns:
             A confirmation message.
@@ -860,24 +874,22 @@ class InterviewTools(ToolKitBase):
         self,
         node_id: str,
         properties: list[str],
-        evidence: list,
+        evidence: Optional[list] = None,
     ) -> str:
-        """Record that you explicitly established a node property to be
-        ABSENT (e.g. the stakeholder said the step reads nothing).
+        """Record explicit ABSENT beliefs for an existing node property.
 
-        ``ABSENT`` is an explicit, evidenced epistemic state — distinct from
-        UNSET (not investigated; ``update_node(unset=...)`` returns a slot to
-        UNSET) and from DONT_KNOW. Every cited span must resolve to the
-        stakeholder's KNOWN-ABSENT slot of one of the given properties (a
-        slot with a known value or a DONT_KNOW slot rejects the recording),
-        and every listed property must be covered by at least one span.
+        ``ABSENT`` is distinct from UNSET (not investigated) and DONT_KNOW.
+        Evidence is optional diagnostic metadata; when supplied, only its
+        shape and Observation ids are validated. It need not resolve to a
+        stakeholder known-absent slot, and every listed property is marked
+        regardless of private sidecar content.
 
         Args:
             node_id: The node whose properties are absent.
             properties: Properties established absent
                 (activity/actor/system/reads/writes/rationale).
-            evidence: Evidence spans resolving to the stakeholder's
-                known-absent slots for these properties (required).
+            evidence: Optional diagnostic Observation spans. Exact quote and
+                semantic-slot binding are not required.
 
         Returns:
             A confirmation message.
@@ -903,19 +915,21 @@ class InterviewTools(ToolKitBase):
         return f"Recorded ABSENT on {node_id} for: {', '.join(sorted(props))}."
 
     @is_tool(ToolType.WRITE)
-    def record_edge_condition_absent(self, edge_id: str, evidence: list) -> str:
-        """Record that you explicitly established an edge to be
-        UNCONDITIONAL (its condition is ABSENT).
+    def record_edge_condition_absent(
+        self, edge_id: str, evidence: Optional[list] = None
+    ) -> str:
+        """Record an explicit ABSENT belief for an edge condition.
 
-        ``ABSENT`` is an explicit, evidenced epistemic state — distinct from
-        UNSET (not investigated) and from DONT_KNOW. Every cited span must
-        resolve to the stakeholder's KNOWN-ABSENT condition slot (value
-        None) of this kind of edge.
+        This represents an UNCONDITIONAL edge. ``ABSENT`` is distinct from
+        UNSET (not investigated) and DONT_KNOW. Evidence is optional
+        diagnostic metadata; when supplied, only its shape and Observation
+        ids are validated and it need not resolve to a private stakeholder
+        condition slot.
 
         Args:
             edge_id: The edge whose condition is absent.
-            evidence: Evidence spans resolving to a stakeholder known-absent
-                condition slot (required).
+            evidence: Optional diagnostic Observation spans. Exact quote and
+                semantic-slot binding are not required.
 
         Returns:
             A confirmation message.
@@ -953,18 +967,19 @@ class InterviewTools(ToolKitBase):
         condition=None,
         evidence: Optional[list] = None,
     ) -> str:
-        """Add a directed edge between two nodes.
+        """Add a directed edge between two existing nodes.
 
-        The edge's existence must be supported by stakeholder evidence.
-        ``condition`` accepts a condition concept id or
-        ``{"concept_id", "evidence"}`` so it carries its own evidence.
+        Structural endpoint validity is required; stakeholder evidence is
+        not. ``condition`` accepts a condition concept id or
+        ``{"concept_id", "evidence"}``; all evidence is optional diagnostic
+        metadata and never a private-provenance recording gate.
 
         Args:
             edge_id: Your own identifier for this edge.
             from_node: Source node id.
             to_node: Destination node id.
             condition: Condition concept id / {concept_id, evidence}.
-            evidence: Evidence refs supporting this relation.
+            evidence: Optional diagnostic EvidenceRefs for this relation.
 
         Returns:
             A confirmation message.
@@ -1008,7 +1023,12 @@ class InterviewTools(ToolKitBase):
         unset_condition: bool = False,
         evidence: Optional[list] = None,
     ) -> str:
-        """Update an edge's endpoints, condition or evidence."""
+        """Update an edge's endpoints, condition or diagnostic evidence.
+
+        Endpoints and referenced concept kinds are validated structurally.
+        Optional evidence is shape-checked (including supplied Observation
+        ids) but is never required to support the edge or its condition.
+        """
         edge = self._edge(edge_id)
         graph = self._graph()
         if from_node is not None:
@@ -1123,8 +1143,11 @@ class InterviewTools(ToolKitBase):
     # ------------------------------------------------------------- assertions
 
     def _evaluate(self, sc) -> EvaluationResult:
-        """Evaluate the AgentGraph against the scenario's StakeholderKnowledge
-        using the private semantic sidecar ledger (evaluator-only)."""
+        """Evaluate AgentGraph reconstruction against Truth.
+
+        The private sidecar ledger is passed only for diagnostic metrics and
+        simulator-integrity reporting; it never gates Truth reconstruction.
+        """
         return evaluate(
             self.db,
             sc.knowledge,

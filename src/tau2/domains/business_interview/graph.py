@@ -1,4 +1,4 @@
-"""Graph-native semantic model for business_interview (v11 — opaque stakeholder IDs).
+"""Graph-native semantic model for business_interview (v13).
 
 The semantic model is the **graph itself**. Truth is a
 ``BusinessProcessGraph`` plus ``TruthConcept``\\ s; the agent builds its own
@@ -36,20 +36,23 @@ positions); the private Truth mapping lives only in the evaluator-side
   absent), or ``DONT_KNOW`` (element known, value unknown).
 - The AgentGraph is **four-state**: ``UNSET`` (not investigated / no
   conclusion — the default), ``ConceptRef`` (known value), ``ABSENT``
-  (explicitly established absent, with evidence) or ``DONT_KNOW``
-  (explicitly established unknowable, with evidence). ``ABSENT`` /
-  ``DONT_KNOW`` markers carry the Observation evidence that the stakeholder
-  really said so for that exact slot.
+  (explicitly established absent) or ``DONT_KNOW`` (explicitly established
+  unknowable). Each state is an Agent belief; optional ``EvidenceRef`` lists
+  are diagnostic metadata only. If supplied, an EvidenceRef points to an
+  existing Observation, but quote spans and private semantic-slot binding
+  never decide whether the belief can be recorded or whether a Truth
+  reconstruction is correct.
 
 **Mention != evidence != validation.** ``AgentConcept.mentions`` are spans
-the Agent interprets as referring to the concept; property references carry
-their own ``EvidenceRef``\\ s (property scoring uses property evidence ONLY);
-validation statuses are backed by explicit validation/dialogue evidence.
+the Agent interprets as referring to the concept; property references and
+markers may carry optional ``EvidenceRef`` metadata. There is no validation
+/ grounding lifecycle and no status gate: concept identity is scored by
+content against Truth.
 
-The evaluator derives correctness **only** through private provenance:
-Agent EvidenceRef -> Observation span -> private annotation (stakeholder
-semantic ID) -> StakeholderKnowledgeGraph / StakeholderKnowledgeConcept.
-None of the text fields are ever interpreted semantically.
+The evaluator scores AgentConcepts + AgentGraph directly against
+TruthConcepts + TruthGraph. Private annotations, alignments and terminology
+remain simulator/evidence diagnostics; none of the text fields are
+interpreted as hidden provenance for reconstruction.
 """
 
 from typing import Any, Generic, Literal, Optional, Protocol, TypeVar, Union
@@ -189,11 +192,10 @@ class AbsentType(BaseModel):
     is ABSENT at this slot.
 
     ``ABSENT`` is distinct from ``UNSET`` (not investigated), from
-    ``DONT_KNOW`` (unknowable) and from ``ConceptRef`` (known value). On
-    the AgentGraph side a marker carries the Observation evidence that the
-    stakeholder really said the value is absent for that exact slot
-    (validated against the private stakeholder known-absent slots by the
-    tools/evaluator).
+    ``DONT_KNOW`` (unknowable) and from ``ConceptRef`` (known value). An
+    optional Observation evidence list may explain the Agent's belief, but
+    it is diagnostic only and is not validated against a private stakeholder
+    known-absent slot for reconstruction.
     """
 
     evidence: list[EvidenceRef] = Field(default_factory=list)
@@ -215,10 +217,10 @@ class DontKnowType(BaseModel):
 
     ``DONT_KNOW`` (module singleton) is distinct from ``UNSET`` (not
     investigated), from ``ABSENT`` (explicitly established absent) and
-    from ``ConceptRef`` (known value). On the AgentGraph side a marker
-    carries the Observation evidence that the stakeholder really said
-    "I don't know" for that exact slot (validated against the private
-    stakeholder DONT_KNOW slots by the tools/evaluator).
+    from ``ConceptRef`` (known value). An optional Observation evidence list
+    may explain the Agent's belief, but it is diagnostic only and is not
+    validated against a private stakeholder DONT_KNOW slot for
+    reconstruction.
     """
 
     evidence: list[EvidenceRef] = Field(default_factory=list)
@@ -291,8 +293,9 @@ class ConceptRef(BaseModel):
     """A reference from a node/edge to a concept (Truth, Agent or stakeholder
     knowledge — the id namespace depends on the graph).
 
-    ``evidence`` cites the Observation spans that support using this concept
-    at this slot. ``confidence`` in [0, 1]; 0 = unasserted.
+    ``evidence`` optionally cites Observation spans that explain using this
+    concept at this slot; it is diagnostic metadata. ``confidence`` in [0, 1];
+    0 = unasserted.
     """
 
     concept_id: str
@@ -322,11 +325,12 @@ class Node(BaseModel):
 
     Every property slot is one of the FOUR epistemic states:
     ``UNSET`` (not investigated — the default), ``ConceptRef`` (known
-    value), ``ABSENT`` (explicitly established absent, with evidence) or
-    ``DONT_KNOW`` (explicitly established unknowable, with evidence).
+    value), ``ABSENT`` (explicitly established absent) or ``DONT_KNOW``
+    (explicitly established unknowable). Optional evidence on refs/markers is
+    diagnostic metadata only.
     ``reads`` / ``writes`` are lists of data-concept references, or the
-    whole-property markers UNSET / ABSENT / DONT_KNOW (v1). Every ref and
-    every ABSENT/DONT_KNOW marker carries its own evidence.
+    whole-property markers UNSET / ABSENT / DONT_KNOW. Every ref and marker
+    may carry optional diagnostic evidence.
     ``from``/``to`` structural identity is expressed only through edges;
     node ids are local to the graph.
     """
@@ -382,9 +386,9 @@ class Edge(BaseModel):
     ``from_node`` / ``to_node`` are structural identities (node ids), not
     concepts. ``condition`` is one of the four epistemic states: ``UNSET``
     (default), ``ConceptRef`` (a condition concept, kind=condition),
-    ``ABSENT`` (explicitly established unconditional, with evidence) or
-    ``DONT_KNOW`` (unknowable, with evidence). ``evidence`` cites the
-    Observation spans supporting the relation.
+    ``ABSENT`` (explicitly established unconditional) or ``DONT_KNOW``
+    (unknowable). ``evidence`` optionally cites Observation spans for
+    diagnostics; it is not required to support the relation.
     """
 
     id: str
@@ -602,8 +606,8 @@ class AgentConcept(BaseModel):
     the Agent's own working text. ``mentions`` are Observation spans the Agent
     interprets as referring to this concept (a diagnostic hint, not a
     correctness gate). There is no validation/grounding lifecycle: concept
-    identity is judged by content against Truth, and concept status is an
-    Agent belief record that nothing gates on.
+    identity is judged by content against Truth, and no private provenance
+    status gates recording or scoring.
     """
 
     id: str
@@ -614,9 +618,11 @@ class AgentConcept(BaseModel):
 
 
 class TerminologyAgreement(BaseModel):
-    """A recorded explicit terminology agreement: the Agent proposed ``term``
-    for ``concept_id`` and the stakeholder confirmed it (evidenced by an
-    Observation span). Recorded separately from mere mentions."""
+    """A recorded explicit terminology agreement chosen by the Agent.
+
+    Optional Observation evidence is diagnostic metadata; this record is
+    separate from ordinary mentions and is never a Truth-reconstruction gate.
+    """
 
     concept_id: str
     term: str
@@ -627,9 +633,9 @@ class TerminologyAgreement(BaseModel):
 class AgentGraph(_GraphMixin[AgentConcept]):
     """The Agent's inferred business process graph + AgentConcept glossary.
 
-    Every property reference carries its own EvidenceRef; cycles are valid;
-    ``start_node_id`` / ``end_node_ids`` restore explicit start/end
-    semantics. Slots are four-state (``UNSET`` / ``ConceptRef`` / ``ABSENT``
+    Every property reference may carry optional diagnostic EvidenceRefs;
+    cycles are valid; ``start_node_id`` / ``end_node_ids`` restore explicit
+    start/end semantics. Slots are four-state (``UNSET`` / ``ConceptRef`` / ``ABSENT``
     / ``DONT_KNOW``).
     """
 
