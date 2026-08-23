@@ -39,9 +39,9 @@ limits what the conversation can reveal, while the scored target is the Truth.
 
 import re
 import unicodedata
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from tau2.domains.business_interview.graph import (
     AbsentType,
@@ -50,7 +50,9 @@ from tau2.domains.business_interview.graph import (
     DontKnowType,
     EvidenceRef,
     InterviewDB,
+    is_absent,
     is_dont_know,
+    is_unset,
 )
 from tau2.domains.business_interview.grounding import (
     grounded_ids as grounded_semantic_ids,
@@ -63,12 +65,170 @@ from tau2.domains.business_interview.grounding import (
 __all__ = [
     "EvaluationSpec",
     "EvaluationResult",
+    "EvaluationDiagnostics",
+    "FailureAttribution",
     "evaluate",
     "grounded_semantic_ids",
     "resolve_grounding_refs",
 ]
 
 _NODE_PROPS = ("activity", "actor", "system", "reads", "writes", "rationale")
+
+
+class ConceptSummary(BaseModel):
+    """A Truth or Agent concept identity rendered for offline inspection."""
+
+    concept_id: str
+    kind: str
+    label: Optional[str] = None
+    labels: list[str] = Field(default_factory=list)
+
+
+class ConceptPairDiagnostic(BaseModel):
+    """One deterministic candidate considered by the concept matcher."""
+
+    truth_concept_id: str
+    truth_kind: str
+    truth_label: Optional[str] = None
+    truth_labels: list[str] = Field(default_factory=list)
+    agent_concept_id: str
+    agent_kind: str
+    agent_label: Optional[str] = None
+    exact_label_match: bool = False
+    exact_label_match_path: Optional[str] = None
+    lexical_similarity_score: float = 0.0
+    threshold: float
+    eligible: bool = False
+    selected_mapping: bool = False
+
+
+class ConceptMappingDiagnostic(BaseModel):
+    """A selected Agent-local -> Truth concept mapping."""
+
+    agent_concept_id: str
+    truth_concept_id: str
+    agent_kind: str
+    truth_kind: str
+    agent_label: Optional[str] = None
+    truth_label: Optional[str] = None
+    exact_label_match_path: Optional[str] = None
+    lexical_similarity_score: float = 0.0
+
+
+class ConceptDiagnostics(BaseModel):
+    """Complete trace of the concept alignment inputs and selected mapping."""
+
+    threshold: float
+    expected_truth_concept_ids: list[str] = Field(default_factory=list)
+    attempted_agent_concept_ids: list[str] = Field(default_factory=list)
+    agent_to_truth: dict[str, str] = Field(default_factory=dict)
+    candidate_pairs: list[ConceptPairDiagnostic] = Field(default_factory=list)
+    selected_mappings: list[ConceptMappingDiagnostic] = Field(default_factory=list)
+    unmatched_truth_concepts: list[ConceptSummary] = Field(default_factory=list)
+    unmatched_agent_concepts: list[ConceptSummary] = Field(default_factory=list)
+
+
+class SlotItemDiagnostic(BaseModel):
+    """Trace for one expected or asserted reads/writes list element."""
+
+    item_type: str
+    truth_concept_id: Optional[str] = None
+    agent_concept_id: Optional[str] = None
+    mapped_truth_concept_id: Optional[str] = None
+    truth_label: Optional[str] = None
+    agent_label: Optional[str] = None
+    matched: bool = False
+    reason: str
+
+
+class SlotDiagnostic(BaseModel):
+    """Per-property scoring explanation for one Truth node/edge slot."""
+
+    property: str
+    slot_kind: str
+    truth_state: str
+    agent_state: str
+    truth_concept_id: Optional[str] = None
+    agent_concept_id: Optional[str] = None
+    truth_concept_ids: list[str] = Field(default_factory=list)
+    agent_concept_ids: list[str] = Field(default_factory=list)
+    mapped_truth_concept_ids: list[str] = Field(default_factory=list)
+    truth_label: Optional[str] = None
+    agent_label: Optional[str] = None
+    truth_labels: list[str] = Field(default_factory=list)
+    agent_labels: list[str] = Field(default_factory=list)
+    matched: bool = False
+    score_contribution: float = 0.0
+    reason: str
+    reason_codes: list[str] = Field(default_factory=list)
+    missing_truth_concept_ids: list[str] = Field(default_factory=list)
+    extra_agent_concept_ids: list[str] = Field(default_factory=list)
+    items: list[SlotItemDiagnostic] = Field(default_factory=list)
+
+
+class NodeDiagnostic(BaseModel):
+    """Node alignment plus all six Truth property-slot diagnostics."""
+
+    truth_node_id: str
+    agent_node_id: Optional[str] = None
+    matched: bool = False
+    reason: str
+    slots: dict[str, SlotDiagnostic] = Field(default_factory=dict)
+
+
+class EdgeDiagnostic(BaseModel):
+    """Edge alignment, endpoint structural checks, and condition diagnostic."""
+
+    truth_edge_id: str
+    agent_edge_id: Optional[str] = None
+    matched: bool = False
+    reason: str
+    truth_from_node: str
+    truth_to_node: str
+    agent_from_node: Optional[str] = None
+    agent_to_node: Optional[str] = None
+    from_node_match: bool = False
+    to_node_match: bool = False
+    structural_match: bool = False
+    condition: SlotDiagnostic
+
+
+ROOT_CAUSE_CATEGORIES = (
+    "stakeholder_disclosure",
+    "agent_elicitation",
+    "agent_recording",
+    "evaluator_matching",
+    "insufficient_evidence_to_classify",
+)
+
+
+class FailureAttribution(BaseModel):
+    """Conservative offline attribution for one failed scored slot."""
+
+    target_id: str
+    dimension: str
+    property: str
+    category: Literal[
+        "stakeholder_disclosure",
+        "agent_elicitation",
+        "agent_recording",
+        "evaluator_matching",
+        "insufficient_evidence_to_classify",
+    ]
+    reason: str
+    evidence: list[str] = Field(default_factory=list)
+
+
+class EvaluationDiagnostics(BaseModel):
+    """Evaluator-only Truth/Agent reconstruction trace."""
+
+    schema_version: str = "business_interview.evaluation_diagnostics.v1"
+    score_fields_unchanged: bool = True
+    node_diagnostics: list[NodeDiagnostic] = Field(default_factory=list)
+    unmatched_agent_nodes: list[str] = Field(default_factory=list)
+    edge_diagnostics: list[EdgeDiagnostic] = Field(default_factory=list)
+    unmatched_agent_edges: list[str] = Field(default_factory=list)
+    concepts: ConceptDiagnostics
 
 
 class EvaluationSpec(BaseModel):
@@ -131,6 +291,10 @@ class EvaluationResult(BaseModel):
     # informational: what share of the Truth the conversation's stakeholder
     # could actually expose (never part of Agent performance scoring)
     knowledge_coverage: float
+
+    # evaluator-only Truth/Agent reconstruction trace. This is deliberately
+    # not part of InterviewDB or any Agent/Stakeholder-visible surface.
+    diagnostics: EvaluationDiagnostics
 
 
 # ---------------------------------------------------------------------------
@@ -304,11 +468,7 @@ def _tokens(text: Optional[str]) -> set[str]:
             toks |= _char_bigrams(chunk)
         else:
             for w in re.findall(r"[a-z0-9]+", chunk):
-                if (
-                    len(w) >= 2
-                    and w not in _STOP_WORDS
-                    and w not in _GENERIC_TOKENS
-                ):
+                if len(w) >= 2 and w not in _STOP_WORDS and w not in _GENERIC_TOKENS:
                     toks.add(w)
     return toks
 
@@ -925,6 +1085,499 @@ def _prop_value(node, prop):
 
 
 # ---------------------------------------------------------------------------
+# Offline reconstruction diagnostics
+# ---------------------------------------------------------------------------
+
+
+_DIAGNOSTIC_NODE_PROPS = (
+    ("activity", "activity"),
+    ("actor", "actor"),
+    ("system", "system"),
+    ("reads", "reads"),
+    ("writes", "writes"),
+    ("necessity_rationale", "rationale"),
+)
+
+
+def _concept_labels(concept, is_truth: bool) -> list[str]:
+    if concept is None:
+        return []
+    if is_truth:
+        return [str(label) for label in (concept.canonical_terms or [])]
+    label = getattr(concept, "display_label", None)
+    return [str(label)] if label else []
+
+
+def _concept_label(concept, is_truth: bool) -> Optional[str]:
+    labels = _concept_labels(concept, is_truth)
+    return labels[0] if labels else None
+
+
+def _exact_label_match_path(agent, truth_concept, extra_terms=None) -> Optional[str]:
+    """Return which existing exact-label branch selected, without matching."""
+    agent_key = _label_key(getattr(agent, "display_label", None))
+    if not agent_key:
+        return None
+    for term in truth_concept.canonical_terms or []:
+        if agent_key == _label_key(term):
+            return "canonical_term"
+    for term in extra_terms or ():
+        if agent_key == _label_key(term):
+            return "stakeholder_extra_term"
+    return None
+
+
+def _concept_diagnostics(
+    agent: AgentGraph,
+    truth,
+    term_extras: dict[str, list[str]],
+    agent_to_truth: dict[str, str],
+) -> ConceptDiagnostics:
+    """Trace the already-selected concept mapping without changing it."""
+    expected = sorted(_truth_referenced_concept_ids(truth))
+    attempted = sorted(_agent_referenced_concept_ids(agent))
+    pairs: list[ConceptPairDiagnostic] = []
+    for acid in attempted:
+        aconcept = agent.concepts.get(acid)
+        if aconcept is None:
+            continue
+        for tid in expected:
+            tconcept = truth.concepts.get(tid)
+            if tconcept is None or aconcept.kind != tconcept.kind:
+                continue
+            path = _exact_label_match_path(aconcept, tconcept, term_extras.get(tid))
+            similarity = _concept_similarity(aconcept, tconcept, term_extras.get(tid))
+            pairs.append(
+                ConceptPairDiagnostic(
+                    truth_concept_id=tid,
+                    truth_kind=tconcept.kind,
+                    truth_label=_concept_label(tconcept, True),
+                    truth_labels=_concept_labels(tconcept, True),
+                    agent_concept_id=acid,
+                    agent_kind=aconcept.kind,
+                    agent_label=_concept_label(aconcept, False),
+                    exact_label_match=path is not None,
+                    exact_label_match_path=path,
+                    lexical_similarity_score=similarity,
+                    threshold=_CONCEPT_MATCH_THRESHOLD,
+                    eligible=similarity >= _CONCEPT_MATCH_THRESHOLD,
+                    selected_mapping=agent_to_truth.get(acid) == tid,
+                )
+            )
+
+    selected: list[ConceptMappingDiagnostic] = []
+    for acid, tid in sorted(agent_to_truth.items()):
+        aconcept = agent.concepts.get(acid)
+        tconcept = truth.concepts.get(tid)
+        if aconcept is None or tconcept is None:
+            continue
+        selected.append(
+            ConceptMappingDiagnostic(
+                agent_concept_id=acid,
+                truth_concept_id=tid,
+                agent_kind=aconcept.kind,
+                truth_kind=tconcept.kind,
+                agent_label=_concept_label(aconcept, False),
+                truth_label=_concept_label(tconcept, True),
+                exact_label_match_path=_exact_label_match_path(
+                    aconcept, tconcept, term_extras.get(tid)
+                ),
+                lexical_similarity_score=_concept_similarity(
+                    aconcept, tconcept, term_extras.get(tid)
+                ),
+            )
+        )
+
+    unmatched_truth = [
+        ConceptSummary(
+            concept_id=tid,
+            kind=truth.concepts[tid].kind,
+            label=_concept_label(truth.concepts[tid], True),
+            labels=_concept_labels(truth.concepts[tid], True),
+        )
+        for tid in expected
+        if tid not in set(agent_to_truth.values()) and tid in truth.concepts
+    ]
+    unmatched_agent = [
+        ConceptSummary(
+            concept_id=acid,
+            kind=agent.concepts[acid].kind,
+            label=_concept_label(agent.concepts[acid], False),
+            labels=_concept_labels(agent.concepts[acid], False),
+        )
+        for acid in attempted
+        if acid not in agent_to_truth and acid in agent.concepts
+    ]
+    return ConceptDiagnostics(
+        threshold=_CONCEPT_MATCH_THRESHOLD,
+        expected_truth_concept_ids=expected,
+        attempted_agent_concept_ids=attempted,
+        agent_to_truth={acid: agent_to_truth[acid] for acid in sorted(agent_to_truth)},
+        candidate_pairs=pairs,
+        selected_mappings=selected,
+        unmatched_truth_concepts=unmatched_truth,
+        unmatched_agent_concepts=unmatched_agent,
+    )
+
+
+def _agent_state(value) -> str:
+    if value is _NO_VALUE:
+        return "missing"
+    if value is None or is_unset(value):
+        return "unset"
+    if is_absent(value):
+        return "absent"
+    if is_dont_know(value):
+        return "dont_know"
+    if isinstance(value, ConceptRef):
+        return "value" if value.asserted else "value_unasserted"
+    if isinstance(value, list):
+        return "value" if value else "value_empty"
+    return type(value).__name__
+
+
+def _truth_state(value) -> str:
+    if isinstance(value, ConceptRef):
+        return "value"
+    if isinstance(value, list) and value:
+        return "value"
+    return "absent"
+
+
+def _concept_for_ref(ref, concepts):
+    if isinstance(ref, ConceptRef):
+        return concepts.get(ref.concept_id)
+    return None
+
+
+def _reason_for_epistemic_states(truth_state: str, agent_state: str) -> str:
+    if truth_state == "value":
+        return {
+            "unset": "truth_value_agent_unset",
+            "absent": "truth_value_agent_absent",
+            "dont_know": "truth_value_agent_dont_know",
+            "missing": "unmatched_node",
+            "value_unasserted": "truth_value_agent_unasserted",
+        }.get(agent_state, "wrong_concept")
+    return {
+        "absent": "truth_absent_agent_absent",
+        "unset": "truth_absent_agent_unset",
+        "dont_know": "truth_absent_agent_dont_know",
+        "missing": "unmatched_node",
+    }.get(agent_state, "truth_absent_agent_value")
+
+
+def _slot_diagnostic(
+    property_name: str,
+    agent_value,
+    truth_value,
+    agent_to_truth: dict[str, str],
+    agent_concepts,
+    truth_concepts,
+    *,
+    unmatched_reason: Optional[str] = None,
+) -> SlotDiagnostic:
+    """Explain one scalar/list score using the unchanged scoring helpers."""
+    slot_kind = "list" if property_name in ("reads", "writes") else "scalar"
+    truth_refs = list(truth_value) if isinstance(truth_value, list) else [truth_value]
+    truth_refs = [ref for ref in truth_refs if isinstance(ref, ConceptRef)]
+    agent_refs = list(agent_value) if isinstance(agent_value, list) else [agent_value]
+    agent_refs = [ref for ref in agent_refs if isinstance(ref, ConceptRef)]
+    truth_ids = sorted({ref.concept_id for ref in truth_refs})
+    agent_ids = sorted({ref.concept_id for ref in agent_refs})
+    mapped_ids = sorted(
+        {
+            agent_to_truth[ref.concept_id]
+            for ref in agent_refs
+            if ref.asserted and ref.concept_id in agent_to_truth
+        }
+    )
+    truth_state = _truth_state(truth_value)
+    agent_state = _agent_state(agent_value)
+    truth_ref = truth_refs[0] if slot_kind == "scalar" and truth_refs else None
+    agent_ref = agent_refs[0] if slot_kind == "scalar" and agent_refs else None
+    truth_concept = _concept_for_ref(truth_ref, truth_concepts)
+    agent_concept = _concept_for_ref(agent_ref, agent_concepts)
+
+    if unmatched_reason is not None:
+        return SlotDiagnostic(
+            property=property_name,
+            slot_kind=slot_kind,
+            truth_state=truth_state,
+            agent_state="missing",
+            truth_concept_id=truth_ref.concept_id if truth_ref else None,
+            truth_concept_ids=truth_ids,
+            truth_label=_concept_label(truth_concept, True),
+            truth_labels=_concept_labels(truth_concept, True),
+            matched=False,
+            score_contribution=0.0,
+            reason=unmatched_reason,
+            reason_codes=[unmatched_reason],
+            missing_truth_concept_ids=truth_ids,
+        )
+
+    if slot_kind == "list":
+        score, _unsupported = _score_list_slot(agent_value, truth_value, agent_to_truth)
+        expected = set(truth_ids)
+        claimed = {
+            agent_to_truth[ref.concept_id]
+            for ref in agent_refs
+            if ref.asserted and ref.concept_id in agent_to_truth
+        }
+        missing = sorted(expected - claimed)
+        extra_refs = [
+            ref
+            for ref in agent_refs
+            if ref.asserted and agent_to_truth.get(ref.concept_id) not in expected
+        ]
+        extra_ids = sorted({ref.concept_id for ref in extra_refs})
+        items: list[SlotItemDiagnostic] = []
+        for tid in sorted(expected):
+            tconcept = truth_concepts.get(tid)
+            items.append(
+                SlotItemDiagnostic(
+                    item_type="truth",
+                    truth_concept_id=tid,
+                    truth_label=_concept_label(tconcept, True),
+                    matched=tid in claimed,
+                    reason="correct_value" if tid in claimed else "missing_list_item",
+                )
+            )
+        for index, ref in sorted(
+            enumerate(agent_refs), key=lambda pair: (pair[1].concept_id, pair[0])
+        ):
+            mapped = agent_to_truth.get(ref.concept_id)
+            aconcept = agent_concepts.get(ref.concept_id)
+            matched = bool(ref.asserted and mapped in expected)
+            item_reason = "correct_value" if matched else "extra_list_item"
+            if not ref.asserted:
+                item_reason = "truth_value_agent_unasserted"
+            items.append(
+                SlotItemDiagnostic(
+                    item_type="agent",
+                    agent_concept_id=ref.concept_id,
+                    mapped_truth_concept_id=mapped,
+                    agent_label=_concept_label(aconcept, False),
+                    truth_label=(
+                        _concept_label(truth_concepts.get(mapped), True)
+                        if mapped is not None
+                        else None
+                    ),
+                    matched=matched,
+                    reason=item_reason,
+                )
+            )
+
+        if not truth_ids:
+            if score == 1.0:
+                reason = "truth_absent_agent_absent"
+                codes = [reason]
+            elif extra_ids:
+                reason = "extra_list_item"
+                codes = [reason]
+            else:
+                reason = _reason_for_epistemic_states(truth_state, agent_state)
+                codes = [reason]
+        elif not isinstance(agent_value, list):
+            reason = _reason_for_epistemic_states(truth_state, agent_state)
+            codes = [reason, "missing_list_item"]
+        elif score == 1.0 and not missing and not extra_ids:
+            reason = "correct_value"
+            codes = [reason]
+        else:
+            codes = []
+            if missing:
+                codes.append("missing_list_item")
+            if extra_ids:
+                codes.append("extra_list_item")
+            if not codes:
+                codes.append(_reason_for_epistemic_states(truth_state, agent_state))
+            if len(codes) > 1 and set(codes) == {
+                "missing_list_item",
+                "extra_list_item",
+            }:
+                reason = "missing_and_extra_list_items"
+            else:
+                reason = codes[0]
+        if extra_ids and any(
+            agent_to_truth.get(ref.concept_id) is None for ref in extra_refs
+        ):
+            codes.append("wrong_concept")
+        return SlotDiagnostic(
+            property=property_name,
+            slot_kind=slot_kind,
+            truth_state=truth_state,
+            agent_state=agent_state,
+            truth_concept_ids=truth_ids,
+            agent_concept_ids=agent_ids,
+            mapped_truth_concept_ids=mapped_ids,
+            truth_labels=[
+                label
+                for tid in truth_ids
+                for label in _concept_labels(truth_concepts.get(tid), True)
+            ],
+            agent_labels=[
+                label
+                for aid in agent_ids
+                for label in _concept_labels(agent_concepts.get(aid), False)
+            ],
+            matched=score == 1.0,
+            score_contribution=score,
+            reason=reason,
+            reason_codes=list(dict.fromkeys(codes)),
+            missing_truth_concept_ids=missing,
+            extra_agent_concept_ids=extra_ids,
+            items=items,
+        )
+
+    score = _score_scalar_slot(agent_value, truth_value, agent_to_truth)
+    if score == 1:
+        reason = (
+            "truth_absent_agent_absent"
+            if truth_state == "absent" and agent_state == "absent"
+            else "correct_value"
+        )
+        codes = [reason]
+    elif isinstance(truth_value, ConceptRef) and isinstance(agent_value, ConceptRef):
+        reason = "wrong_concept"
+        codes = [reason]
+    else:
+        reason = _reason_for_epistemic_states(truth_state, agent_state)
+        codes = [reason]
+        if isinstance(agent_value, ConceptRef) and truth_state == "absent":
+            codes.append("wrong_concept")
+    return SlotDiagnostic(
+        property=property_name,
+        slot_kind=slot_kind,
+        truth_state=truth_state,
+        agent_state=agent_state,
+        truth_concept_id=truth_ref.concept_id if truth_ref else None,
+        agent_concept_id=agent_ref.concept_id if agent_ref else None,
+        truth_concept_ids=truth_ids,
+        agent_concept_ids=agent_ids,
+        mapped_truth_concept_ids=mapped_ids,
+        truth_label=_concept_label(truth_concept, True),
+        agent_label=_concept_label(agent_concept, False),
+        truth_labels=_concept_labels(truth_concept, True),
+        agent_labels=_concept_labels(agent_concept, False),
+        matched=score == 1,
+        score_contribution=score,
+        reason=reason,
+        reason_codes=list(dict.fromkeys(codes)),
+    )
+
+
+def _build_evaluation_diagnostics(
+    agent: AgentGraph,
+    target,
+    term_extras: dict[str, list[str]],
+    agent_to_truth: dict[str, str],
+    node_mapping: dict[str, str],
+    edge_mapping: dict[str, str],
+) -> EvaluationDiagnostics:
+    concept_trace = _concept_diagnostics(agent, target, term_extras, agent_to_truth)
+    truth_to_agent = {tid: aid for aid, tid in node_mapping.items()}
+    nodes: list[NodeDiagnostic] = []
+    for tid in sorted(target.nodes):
+        aid = truth_to_agent.get(tid)
+        truth_node = target.nodes[tid]
+        slots: dict[str, SlotDiagnostic] = {}
+        for output_prop, score_prop in _DIAGNOSTIC_NODE_PROPS:
+            truth_value = _prop_value(truth_node, score_prop)
+            if aid is None:
+                slots[output_prop] = _slot_diagnostic(
+                    output_prop,
+                    _NO_VALUE,
+                    truth_value,
+                    agent_to_truth,
+                    agent.concepts,
+                    target.concepts,
+                    unmatched_reason="unmatched_node",
+                )
+            else:
+                slots[output_prop] = _slot_diagnostic(
+                    output_prop,
+                    agent.nodes[aid].slot_value(score_prop),
+                    truth_value,
+                    agent_to_truth,
+                    agent.concepts,
+                    target.concepts,
+                )
+        nodes.append(
+            NodeDiagnostic(
+                truth_node_id=tid,
+                agent_node_id=aid,
+                matched=aid is not None,
+                reason="matched_node" if aid is not None else "unmatched_node",
+                slots=slots,
+            )
+        )
+
+    edges: list[EdgeDiagnostic] = []
+    for tid in sorted(target.edges):
+        truth_edge = target.edges[tid]
+        # Match the same first Agent edge that the existing condition score
+        # uses.  This is explanatory only, but keeps the trace auditable.
+        aid = next(
+            (eid for eid in agent.edges if edge_mapping.get(eid) == tid),
+            None,
+        )
+        if aid is not None:
+            agent_edge = agent.edges[aid]
+            from_match = node_mapping.get(agent_edge.from_node) == truth_edge.from_node
+            to_match = node_mapping.get(agent_edge.to_node) == truth_edge.to_node
+            condition = _slot_diagnostic(
+                "condition",
+                agent_edge.condition,
+                truth_edge.condition,
+                agent_to_truth,
+                agent.concepts,
+                target.concepts,
+            )
+            structural_match = from_match and to_match
+        else:
+            agent_edge = None
+            from_match = to_match = structural_match = False
+            condition = _slot_diagnostic(
+                "condition",
+                _NO_VALUE,
+                truth_edge.condition,
+                agent_to_truth,
+                agent.concepts,
+                target.concepts,
+                unmatched_reason="unmatched_edge",
+            )
+        edges.append(
+            EdgeDiagnostic(
+                truth_edge_id=tid,
+                agent_edge_id=aid,
+                matched=structural_match,
+                reason="matched_edge" if structural_match else "unmatched_edge",
+                truth_from_node=truth_edge.from_node,
+                truth_to_node=truth_edge.to_node,
+                agent_from_node=(agent_edge.from_node if agent_edge else None),
+                agent_to_node=(agent_edge.to_node if agent_edge else None),
+                from_node_match=from_match,
+                to_node_match=to_match,
+                structural_match=structural_match,
+                condition=condition,
+            )
+        )
+
+    return EvaluationDiagnostics(
+        node_diagnostics=nodes,
+        unmatched_agent_nodes=sorted(
+            aid for aid in agent.nodes if aid not in node_mapping
+        ),
+        edge_diagnostics=edges,
+        unmatched_agent_edges=sorted(
+            eid for eid in agent.edges if eid not in edge_mapping
+        ),
+        concepts=concept_trace,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Main evaluator
 # ---------------------------------------------------------------------------
 
@@ -1095,6 +1748,18 @@ def evaluate(
     # quality = reconstruction ONLY; provenance is never a hard gate
     quality_pass = reconstruction_pass
 
+    # Build private explanatory metadata only after all existing score fields
+    # have been computed. The trace calls the same score helpers but does not
+    # feed any value back into the score or pass/fail calculations.
+    diagnostics = _build_evaluation_diagnostics(
+        agent,
+        target,
+        term_extras,
+        agent_to_truth,
+        mapping,
+        edge_map,
+    )
+
     return EvaluationResult(
         protocol_completed=protocol,
         graph_created=graph_created,
@@ -1137,4 +1802,5 @@ def evaluate(
         protocol_pass=protocol_pass,
         quality_pass=quality_pass,
         knowledge_coverage=_knowledge_coverage(truth, knowledge),
+        diagnostics=diagnostics,
     )

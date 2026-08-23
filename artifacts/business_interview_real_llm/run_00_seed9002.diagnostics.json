@@ -1,0 +1,3726 @@
+{
+  "evaluation": {
+    "activity_correctness": 1.0,
+    "actor_correctness": 1.0,
+    "ambiguous_evidence_ref_count": 0,
+    "authentic_observation_count": 10,
+    "concept_correctness": 0.9545454545454546,
+    "concept_precision": 0.9545454545454546,
+    "concept_recall": 1.0,
+    "condition_correctness": 0.5,
+    "diagnostics": {
+      "concepts": {
+        "agent_to_truth": {
+          "act_approve_high_value": "tc_activity_approve_quotation",
+          "act_check_customer_info": "tc_activity_check_customer",
+          "act_create_quotation_doc": "tc_activity_create_quotation",
+          "act_receive_request": "tc_activity_receive_request",
+          "act_send_month_end_summary": "tc_activity_send_month_end_summary",
+          "act_send_quotation": "tc_activity_send_quotation",
+          "actor_manager": "tc_actor_manager",
+          "actor_sales_employee": "tc_actor_sales",
+          "cond_amount_at_or_below_1m": "tc_cond_at_or_below_1m",
+          "cond_amount_over_1m": "tc_cond_over_1m",
+          "cond_end_of_month": "tc_cond_month_end",
+          "data_customer_information": "tc_customer",
+          "data_month_end_summary": "tc_excel_summary",
+          "data_pricing_information": "tc_pricing",
+          "data_quotation": "tc_quote",
+          "data_quotation_request": "tc_request",
+          "rationale_credit_risk": "tc_rationale_credit_risk",
+          "sys_crm": "tc_system_crm",
+          "sys_email": "tc_system_email",
+          "sys_excel": "tc_system_excel",
+          "sys_quoting_system": "tc_system_quoting"
+        },
+        "attempted_agent_concept_ids": [
+          "act_approve_high_value",
+          "act_check_customer_info",
+          "act_create_quotation_doc",
+          "act_receive_request",
+          "act_send_month_end_summary",
+          "act_send_quotation",
+          "actor_manager",
+          "actor_sales_employee",
+          "cond_amount_at_or_below_1m",
+          "cond_amount_over_1m",
+          "cond_end_of_month",
+          "data_customer_information",
+          "data_month_end_summary",
+          "data_pricing_information",
+          "data_quotation",
+          "data_quotation_document",
+          "data_quotation_request",
+          "rationale_credit_risk",
+          "sys_crm",
+          "sys_email",
+          "sys_excel",
+          "sys_quoting_system"
+        ],
+        "candidate_pairs": [
+          {
+            "agent_concept_id": "act_approve_high_value",
+            "agent_kind": "activity",
+            "agent_label": "approve the high-value quotation",
+            "eligible": true,
+            "exact_label_match": true,
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_approve_quotation",
+            "truth_kind": "activity",
+            "truth_label": "approve the high-value quotation",
+            "truth_labels": [
+              "approve the high-value quotation"
+            ]
+          },
+          {
+            "agent_concept_id": "act_approve_high_value",
+            "agent_kind": "activity",
+            "agent_label": "approve the high-value quotation",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_check_customer",
+            "truth_kind": "activity",
+            "truth_label": "check the customer information",
+            "truth_labels": [
+              "check the customer information"
+            ]
+          },
+          {
+            "agent_concept_id": "act_approve_high_value",
+            "agent_kind": "activity",
+            "agent_label": "approve the high-value quotation",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_create_quotation",
+            "truth_kind": "activity",
+            "truth_label": "create the quotation",
+            "truth_labels": [
+              "create the quotation"
+            ]
+          },
+          {
+            "agent_concept_id": "act_approve_high_value",
+            "agent_kind": "activity",
+            "agent_label": "approve the high-value quotation",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_receive_request",
+            "truth_kind": "activity",
+            "truth_label": "receive the quotation request",
+            "truth_labels": [
+              "receive the quotation request"
+            ]
+          },
+          {
+            "agent_concept_id": "act_approve_high_value",
+            "agent_kind": "activity",
+            "agent_label": "approve the high-value quotation",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_send_month_end_summary",
+            "truth_kind": "activity",
+            "truth_label": "send the month-end summary to Accounting",
+            "truth_labels": [
+              "send the month-end summary to Accounting"
+            ]
+          },
+          {
+            "agent_concept_id": "act_approve_high_value",
+            "agent_kind": "activity",
+            "agent_label": "approve the high-value quotation",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_send_quotation",
+            "truth_kind": "activity",
+            "truth_label": "send the quotation to the customer",
+            "truth_labels": [
+              "send the quotation to the customer"
+            ]
+          },
+          {
+            "agent_concept_id": "act_check_customer_info",
+            "agent_kind": "activity",
+            "agent_label": "check the customer information in the CRM",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_approve_quotation",
+            "truth_kind": "activity",
+            "truth_label": "approve the high-value quotation",
+            "truth_labels": [
+              "approve the high-value quotation"
+            ]
+          },
+          {
+            "agent_concept_id": "act_check_customer_info",
+            "agent_kind": "activity",
+            "agent_label": "check the customer information in the CRM",
+            "eligible": true,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.8,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_check_customer",
+            "truth_kind": "activity",
+            "truth_label": "check the customer information",
+            "truth_labels": [
+              "check the customer information"
+            ]
+          },
+          {
+            "agent_concept_id": "act_check_customer_info",
+            "agent_kind": "activity",
+            "agent_label": "check the customer information in the CRM",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_create_quotation",
+            "truth_kind": "activity",
+            "truth_label": "create the quotation",
+            "truth_labels": [
+              "create the quotation"
+            ]
+          },
+          {
+            "agent_concept_id": "act_check_customer_info",
+            "agent_kind": "activity",
+            "agent_label": "check the customer information in the CRM",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.3333333333333333,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_receive_request",
+            "truth_kind": "activity",
+            "truth_label": "receive the quotation request",
+            "truth_labels": [
+              "receive the quotation request"
+            ]
+          },
+          {
+            "agent_concept_id": "act_check_customer_info",
+            "agent_kind": "activity",
+            "agent_label": "check the customer information in the CRM",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_send_month_end_summary",
+            "truth_kind": "activity",
+            "truth_label": "send the month-end summary to Accounting",
+            "truth_labels": [
+              "send the month-end summary to Accounting"
+            ]
+          },
+          {
+            "agent_concept_id": "act_check_customer_info",
+            "agent_kind": "activity",
+            "agent_label": "check the customer information in the CRM",
+            "eligible": true,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.4,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_send_quotation",
+            "truth_kind": "activity",
+            "truth_label": "send the quotation to the customer",
+            "truth_labels": [
+              "send the quotation to the customer"
+            ]
+          },
+          {
+            "agent_concept_id": "act_create_quotation_doc",
+            "agent_kind": "activity",
+            "agent_label": "create the quotation document in the quoting system using the pricing information",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_approve_quotation",
+            "truth_kind": "activity",
+            "truth_label": "approve the high-value quotation",
+            "truth_labels": [
+              "approve the high-value quotation"
+            ]
+          },
+          {
+            "agent_concept_id": "act_create_quotation_doc",
+            "agent_kind": "activity",
+            "agent_label": "create the quotation document in the quoting system using the pricing information",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_check_customer",
+            "truth_kind": "activity",
+            "truth_label": "check the customer information",
+            "truth_labels": [
+              "check the customer information"
+            ]
+          },
+          {
+            "agent_concept_id": "act_create_quotation_doc",
+            "agent_kind": "activity",
+            "agent_label": "create the quotation document in the quoting system using the pricing information",
+            "eligible": true,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.5,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_create_quotation",
+            "truth_kind": "activity",
+            "truth_label": "create the quotation",
+            "truth_labels": [
+              "create the quotation"
+            ]
+          },
+          {
+            "agent_concept_id": "act_create_quotation_doc",
+            "agent_kind": "activity",
+            "agent_label": "create the quotation document in the quoting system using the pricing information",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_receive_request",
+            "truth_kind": "activity",
+            "truth_label": "receive the quotation request",
+            "truth_labels": [
+              "receive the quotation request"
+            ]
+          },
+          {
+            "agent_concept_id": "act_create_quotation_doc",
+            "agent_kind": "activity",
+            "agent_label": "create the quotation document in the quoting system using the pricing information",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_send_month_end_summary",
+            "truth_kind": "activity",
+            "truth_label": "send the month-end summary to Accounting",
+            "truth_labels": [
+              "send the month-end summary to Accounting"
+            ]
+          },
+          {
+            "agent_concept_id": "act_create_quotation_doc",
+            "agent_kind": "activity",
+            "agent_label": "create the quotation document in the quoting system using the pricing information",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_send_quotation",
+            "truth_kind": "activity",
+            "truth_label": "send the quotation to the customer",
+            "truth_labels": [
+              "send the quotation to the customer"
+            ]
+          },
+          {
+            "agent_concept_id": "act_receive_request",
+            "agent_kind": "activity",
+            "agent_label": "receive the customer's quotation request",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_approve_quotation",
+            "truth_kind": "activity",
+            "truth_label": "approve the high-value quotation",
+            "truth_labels": [
+              "approve the high-value quotation"
+            ]
+          },
+          {
+            "agent_concept_id": "act_receive_request",
+            "agent_kind": "activity",
+            "agent_label": "receive the customer's quotation request",
+            "eligible": true,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.4,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_check_customer",
+            "truth_kind": "activity",
+            "truth_label": "check the customer information",
+            "truth_labels": [
+              "check the customer information"
+            ]
+          },
+          {
+            "agent_concept_id": "act_receive_request",
+            "agent_kind": "activity",
+            "agent_label": "receive the customer's quotation request",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_create_quotation",
+            "truth_kind": "activity",
+            "truth_label": "create the quotation",
+            "truth_labels": [
+              "create the quotation"
+            ]
+          },
+          {
+            "agent_concept_id": "act_receive_request",
+            "agent_kind": "activity",
+            "agent_label": "receive the customer's quotation request",
+            "eligible": true,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 1.0,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_receive_request",
+            "truth_kind": "activity",
+            "truth_label": "receive the quotation request",
+            "truth_labels": [
+              "receive the quotation request"
+            ]
+          },
+          {
+            "agent_concept_id": "act_receive_request",
+            "agent_kind": "activity",
+            "agent_label": "receive the customer's quotation request",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_send_month_end_summary",
+            "truth_kind": "activity",
+            "truth_label": "send the month-end summary to Accounting",
+            "truth_labels": [
+              "send the month-end summary to Accounting"
+            ]
+          },
+          {
+            "agent_concept_id": "act_receive_request",
+            "agent_kind": "activity",
+            "agent_label": "receive the customer's quotation request",
+            "eligible": true,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.4,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_send_quotation",
+            "truth_kind": "activity",
+            "truth_label": "send the quotation to the customer",
+            "truth_labels": [
+              "send the quotation to the customer"
+            ]
+          },
+          {
+            "agent_concept_id": "act_send_month_end_summary",
+            "agent_kind": "activity",
+            "agent_label": "send the month-end summary of quotation information to Accounting",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_approve_quotation",
+            "truth_kind": "activity",
+            "truth_label": "approve the high-value quotation",
+            "truth_labels": [
+              "approve the high-value quotation"
+            ]
+          },
+          {
+            "agent_concept_id": "act_send_month_end_summary",
+            "agent_kind": "activity",
+            "agent_label": "send the month-end summary of quotation information to Accounting",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_check_customer",
+            "truth_kind": "activity",
+            "truth_label": "check the customer information",
+            "truth_labels": [
+              "check the customer information"
+            ]
+          },
+          {
+            "agent_concept_id": "act_send_month_end_summary",
+            "agent_kind": "activity",
+            "agent_label": "send the month-end summary of quotation information to Accounting",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_create_quotation",
+            "truth_kind": "activity",
+            "truth_label": "create the quotation",
+            "truth_labels": [
+              "create the quotation"
+            ]
+          },
+          {
+            "agent_concept_id": "act_send_month_end_summary",
+            "agent_kind": "activity",
+            "agent_label": "send the month-end summary of quotation information to Accounting",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_receive_request",
+            "truth_kind": "activity",
+            "truth_label": "receive the quotation request",
+            "truth_labels": [
+              "receive the quotation request"
+            ]
+          },
+          {
+            "agent_concept_id": "act_send_month_end_summary",
+            "agent_kind": "activity",
+            "agent_label": "send the month-end summary of quotation information to Accounting",
+            "eligible": true,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 1.0,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_send_month_end_summary",
+            "truth_kind": "activity",
+            "truth_label": "send the month-end summary to Accounting",
+            "truth_labels": [
+              "send the month-end summary to Accounting"
+            ]
+          },
+          {
+            "agent_concept_id": "act_send_month_end_summary",
+            "agent_kind": "activity",
+            "agent_label": "send the month-end summary of quotation information to Accounting",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.2857142857142857,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_send_quotation",
+            "truth_kind": "activity",
+            "truth_label": "send the quotation to the customer",
+            "truth_labels": [
+              "send the quotation to the customer"
+            ]
+          },
+          {
+            "agent_concept_id": "act_send_quotation",
+            "agent_kind": "activity",
+            "agent_label": "send the quotation to the customer",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_approve_quotation",
+            "truth_kind": "activity",
+            "truth_label": "approve the high-value quotation",
+            "truth_labels": [
+              "approve the high-value quotation"
+            ]
+          },
+          {
+            "agent_concept_id": "act_send_quotation",
+            "agent_kind": "activity",
+            "agent_label": "send the quotation to the customer",
+            "eligible": true,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.5,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_check_customer",
+            "truth_kind": "activity",
+            "truth_label": "check the customer information",
+            "truth_labels": [
+              "check the customer information"
+            ]
+          },
+          {
+            "agent_concept_id": "act_send_quotation",
+            "agent_kind": "activity",
+            "agent_label": "send the quotation to the customer",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_create_quotation",
+            "truth_kind": "activity",
+            "truth_label": "create the quotation",
+            "truth_labels": [
+              "create the quotation"
+            ]
+          },
+          {
+            "agent_concept_id": "act_send_quotation",
+            "agent_kind": "activity",
+            "agent_label": "send the quotation to the customer",
+            "eligible": true,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.4,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_receive_request",
+            "truth_kind": "activity",
+            "truth_label": "receive the quotation request",
+            "truth_labels": [
+              "receive the quotation request"
+            ]
+          },
+          {
+            "agent_concept_id": "act_send_quotation",
+            "agent_kind": "activity",
+            "agent_label": "send the quotation to the customer",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.2857142857142857,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_send_month_end_summary",
+            "truth_kind": "activity",
+            "truth_label": "send the month-end summary to Accounting",
+            "truth_labels": [
+              "send the month-end summary to Accounting"
+            ]
+          },
+          {
+            "agent_concept_id": "act_send_quotation",
+            "agent_kind": "activity",
+            "agent_label": "send the quotation to the customer",
+            "eligible": true,
+            "exact_label_match": true,
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_activity_send_quotation",
+            "truth_kind": "activity",
+            "truth_label": "send the quotation to the customer",
+            "truth_labels": [
+              "send the quotation to the customer"
+            ]
+          },
+          {
+            "agent_concept_id": "actor_manager",
+            "agent_kind": "actor",
+            "agent_label": "manager",
+            "eligible": true,
+            "exact_label_match": true,
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_actor_manager",
+            "truth_kind": "actor",
+            "truth_label": "manager",
+            "truth_labels": [
+              "manager"
+            ]
+          },
+          {
+            "agent_concept_id": "actor_manager",
+            "agent_kind": "actor",
+            "agent_label": "manager",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_actor_sales",
+            "truth_kind": "actor",
+            "truth_label": "sales employee",
+            "truth_labels": [
+              "sales employee"
+            ]
+          },
+          {
+            "agent_concept_id": "actor_sales_employee",
+            "agent_kind": "actor",
+            "agent_label": "sales employee",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_actor_manager",
+            "truth_kind": "actor",
+            "truth_label": "manager",
+            "truth_labels": [
+              "manager"
+            ]
+          },
+          {
+            "agent_concept_id": "actor_sales_employee",
+            "agent_kind": "actor",
+            "agent_label": "sales employee",
+            "eligible": true,
+            "exact_label_match": true,
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_actor_sales",
+            "truth_kind": "actor",
+            "truth_label": "sales employee",
+            "truth_labels": [
+              "sales employee"
+            ]
+          },
+          {
+            "agent_concept_id": "cond_amount_at_or_below_1m",
+            "agent_kind": "condition",
+            "agent_label": "quotation amount is at or below 1,000,000 yen",
+            "eligible": true,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 1.0,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_cond_at_or_below_1m",
+            "truth_kind": "condition",
+            "truth_label": "at or below 1,000,000 yen",
+            "truth_labels": [
+              "at or below 1,000,000 yen"
+            ]
+          },
+          {
+            "agent_concept_id": "cond_amount_at_or_below_1m",
+            "agent_kind": "condition",
+            "agent_label": "quotation amount is at or below 1,000,000 yen",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_cond_month_end",
+            "truth_kind": "condition",
+            "truth_label": "month-end",
+            "truth_labels": [
+              "month-end"
+            ]
+          },
+          {
+            "agent_concept_id": "cond_amount_at_or_below_1m",
+            "agent_kind": "condition",
+            "agent_label": "quotation amount is at or below 1,000,000 yen",
+            "eligible": true,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.8571428571428571,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_cond_over_1m",
+            "truth_kind": "condition",
+            "truth_label": "over 1,000,000 yen",
+            "truth_labels": [
+              "over 1,000,000 yen"
+            ]
+          },
+          {
+            "agent_concept_id": "cond_amount_over_1m",
+            "agent_kind": "condition",
+            "agent_label": "quotation amount is over 1,000,000 yen",
+            "eligible": true,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.8571428571428571,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_cond_at_or_below_1m",
+            "truth_kind": "condition",
+            "truth_label": "at or below 1,000,000 yen",
+            "truth_labels": [
+              "at or below 1,000,000 yen"
+            ]
+          },
+          {
+            "agent_concept_id": "cond_amount_over_1m",
+            "agent_kind": "condition",
+            "agent_label": "quotation amount is over 1,000,000 yen",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_cond_month_end",
+            "truth_kind": "condition",
+            "truth_label": "month-end",
+            "truth_labels": [
+              "month-end"
+            ]
+          },
+          {
+            "agent_concept_id": "cond_amount_over_1m",
+            "agent_kind": "condition",
+            "agent_label": "quotation amount is over 1,000,000 yen",
+            "eligible": true,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 1.0,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_cond_over_1m",
+            "truth_kind": "condition",
+            "truth_label": "over 1,000,000 yen",
+            "truth_labels": [
+              "over 1,000,000 yen"
+            ]
+          },
+          {
+            "agent_concept_id": "cond_end_of_month",
+            "agent_kind": "condition",
+            "agent_label": "at the end of the month",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_cond_at_or_below_1m",
+            "truth_kind": "condition",
+            "truth_label": "at or below 1,000,000 yen",
+            "truth_labels": [
+              "at or below 1,000,000 yen"
+            ]
+          },
+          {
+            "agent_concept_id": "cond_end_of_month",
+            "agent_kind": "condition",
+            "agent_label": "at the end of the month",
+            "eligible": true,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 1.0,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_cond_month_end",
+            "truth_kind": "condition",
+            "truth_label": "month-end",
+            "truth_labels": [
+              "month-end"
+            ]
+          },
+          {
+            "agent_concept_id": "cond_end_of_month",
+            "agent_kind": "condition",
+            "agent_label": "at the end of the month",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_cond_over_1m",
+            "truth_kind": "condition",
+            "truth_label": "over 1,000,000 yen",
+            "truth_labels": [
+              "over 1,000,000 yen"
+            ]
+          },
+          {
+            "agent_concept_id": "data_customer_information",
+            "agent_kind": "data",
+            "agent_label": "customer information",
+            "eligible": true,
+            "exact_label_match": true,
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_customer",
+            "truth_kind": "data",
+            "truth_label": "customer information",
+            "truth_labels": [
+              "customer information"
+            ]
+          },
+          {
+            "agent_concept_id": "data_customer_information",
+            "agent_kind": "data",
+            "agent_label": "customer information",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_excel_summary",
+            "truth_kind": "data",
+            "truth_label": "summary of the quotation information",
+            "truth_labels": [
+              "summary of the quotation information"
+            ]
+          },
+          {
+            "agent_concept_id": "data_customer_information",
+            "agent_kind": "data",
+            "agent_label": "customer information",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_pricing",
+            "truth_kind": "data",
+            "truth_label": "pricing information",
+            "truth_labels": [
+              "pricing information"
+            ]
+          },
+          {
+            "agent_concept_id": "data_customer_information",
+            "agent_kind": "data",
+            "agent_label": "customer information",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_quote",
+            "truth_kind": "data",
+            "truth_label": "quotation",
+            "truth_labels": [
+              "quotation"
+            ]
+          },
+          {
+            "agent_concept_id": "data_customer_information",
+            "agent_kind": "data",
+            "agent_label": "customer information",
+            "eligible": true,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.6666666666666666,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_request",
+            "truth_kind": "data",
+            "truth_label": "quotation request",
+            "truth_labels": [
+              "quotation request"
+            ]
+          },
+          {
+            "agent_concept_id": "data_month_end_summary",
+            "agent_kind": "data",
+            "agent_label": "month-end summary of quotation information",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_customer",
+            "truth_kind": "data",
+            "truth_label": "customer information",
+            "truth_labels": [
+              "customer information"
+            ]
+          },
+          {
+            "agent_concept_id": "data_month_end_summary",
+            "agent_kind": "data",
+            "agent_label": "month-end summary of quotation information",
+            "eligible": true,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.5,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_excel_summary",
+            "truth_kind": "data",
+            "truth_label": "summary of the quotation information",
+            "truth_labels": [
+              "summary of the quotation information"
+            ]
+          },
+          {
+            "agent_concept_id": "data_month_end_summary",
+            "agent_kind": "data",
+            "agent_label": "month-end summary of quotation information",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_pricing",
+            "truth_kind": "data",
+            "truth_label": "pricing information",
+            "truth_labels": [
+              "pricing information"
+            ]
+          },
+          {
+            "agent_concept_id": "data_month_end_summary",
+            "agent_kind": "data",
+            "agent_label": "month-end summary of quotation information",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_quote",
+            "truth_kind": "data",
+            "truth_label": "quotation",
+            "truth_labels": [
+              "quotation"
+            ]
+          },
+          {
+            "agent_concept_id": "data_month_end_summary",
+            "agent_kind": "data",
+            "agent_label": "month-end summary of quotation information",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_request",
+            "truth_kind": "data",
+            "truth_label": "quotation request",
+            "truth_labels": [
+              "quotation request"
+            ]
+          },
+          {
+            "agent_concept_id": "data_pricing_information",
+            "agent_kind": "data",
+            "agent_label": "pricing information",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_customer",
+            "truth_kind": "data",
+            "truth_label": "customer information",
+            "truth_labels": [
+              "customer information"
+            ]
+          },
+          {
+            "agent_concept_id": "data_pricing_information",
+            "agent_kind": "data",
+            "agent_label": "pricing information",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_excel_summary",
+            "truth_kind": "data",
+            "truth_label": "summary of the quotation information",
+            "truth_labels": [
+              "summary of the quotation information"
+            ]
+          },
+          {
+            "agent_concept_id": "data_pricing_information",
+            "agent_kind": "data",
+            "agent_label": "pricing information",
+            "eligible": true,
+            "exact_label_match": true,
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_pricing",
+            "truth_kind": "data",
+            "truth_label": "pricing information",
+            "truth_labels": [
+              "pricing information"
+            ]
+          },
+          {
+            "agent_concept_id": "data_pricing_information",
+            "agent_kind": "data",
+            "agent_label": "pricing information",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_quote",
+            "truth_kind": "data",
+            "truth_label": "quotation",
+            "truth_labels": [
+              "quotation"
+            ]
+          },
+          {
+            "agent_concept_id": "data_pricing_information",
+            "agent_kind": "data",
+            "agent_label": "pricing information",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_request",
+            "truth_kind": "data",
+            "truth_label": "quotation request",
+            "truth_labels": [
+              "quotation request"
+            ]
+          },
+          {
+            "agent_concept_id": "data_quotation",
+            "agent_kind": "data",
+            "agent_label": "quotation",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_customer",
+            "truth_kind": "data",
+            "truth_label": "customer information",
+            "truth_labels": [
+              "customer information"
+            ]
+          },
+          {
+            "agent_concept_id": "data_quotation",
+            "agent_kind": "data",
+            "agent_label": "quotation",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_excel_summary",
+            "truth_kind": "data",
+            "truth_label": "summary of the quotation information",
+            "truth_labels": [
+              "summary of the quotation information"
+            ]
+          },
+          {
+            "agent_concept_id": "data_quotation",
+            "agent_kind": "data",
+            "agent_label": "quotation",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_pricing",
+            "truth_kind": "data",
+            "truth_label": "pricing information",
+            "truth_labels": [
+              "pricing information"
+            ]
+          },
+          {
+            "agent_concept_id": "data_quotation",
+            "agent_kind": "data",
+            "agent_label": "quotation",
+            "eligible": true,
+            "exact_label_match": true,
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_quote",
+            "truth_kind": "data",
+            "truth_label": "quotation",
+            "truth_labels": [
+              "quotation"
+            ]
+          },
+          {
+            "agent_concept_id": "data_quotation",
+            "agent_kind": "data",
+            "agent_label": "quotation",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_request",
+            "truth_kind": "data",
+            "truth_label": "quotation request",
+            "truth_labels": [
+              "quotation request"
+            ]
+          },
+          {
+            "agent_concept_id": "data_quotation_document",
+            "agent_kind": "data",
+            "agent_label": "quotation document",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_customer",
+            "truth_kind": "data",
+            "truth_label": "customer information",
+            "truth_labels": [
+              "customer information"
+            ]
+          },
+          {
+            "agent_concept_id": "data_quotation_document",
+            "agent_kind": "data",
+            "agent_label": "quotation document",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_excel_summary",
+            "truth_kind": "data",
+            "truth_label": "summary of the quotation information",
+            "truth_labels": [
+              "summary of the quotation information"
+            ]
+          },
+          {
+            "agent_concept_id": "data_quotation_document",
+            "agent_kind": "data",
+            "agent_label": "quotation document",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_pricing",
+            "truth_kind": "data",
+            "truth_label": "pricing information",
+            "truth_labels": [
+              "pricing information"
+            ]
+          },
+          {
+            "agent_concept_id": "data_quotation_document",
+            "agent_kind": "data",
+            "agent_label": "quotation document",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_quote",
+            "truth_kind": "data",
+            "truth_label": "quotation",
+            "truth_labels": [
+              "quotation"
+            ]
+          },
+          {
+            "agent_concept_id": "data_quotation_document",
+            "agent_kind": "data",
+            "agent_label": "quotation document",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_request",
+            "truth_kind": "data",
+            "truth_label": "quotation request",
+            "truth_labels": [
+              "quotation request"
+            ]
+          },
+          {
+            "agent_concept_id": "data_quotation_request",
+            "agent_kind": "data",
+            "agent_label": "customer's quotation request",
+            "eligible": true,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.6666666666666666,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_customer",
+            "truth_kind": "data",
+            "truth_label": "customer information",
+            "truth_labels": [
+              "customer information"
+            ]
+          },
+          {
+            "agent_concept_id": "data_quotation_request",
+            "agent_kind": "data",
+            "agent_label": "customer's quotation request",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_excel_summary",
+            "truth_kind": "data",
+            "truth_label": "summary of the quotation information",
+            "truth_labels": [
+              "summary of the quotation information"
+            ]
+          },
+          {
+            "agent_concept_id": "data_quotation_request",
+            "agent_kind": "data",
+            "agent_label": "customer's quotation request",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_pricing",
+            "truth_kind": "data",
+            "truth_label": "pricing information",
+            "truth_labels": [
+              "pricing information"
+            ]
+          },
+          {
+            "agent_concept_id": "data_quotation_request",
+            "agent_kind": "data",
+            "agent_label": "customer's quotation request",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_quote",
+            "truth_kind": "data",
+            "truth_label": "quotation",
+            "truth_labels": [
+              "quotation"
+            ]
+          },
+          {
+            "agent_concept_id": "data_quotation_request",
+            "agent_kind": "data",
+            "agent_label": "customer's quotation request",
+            "eligible": true,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 1.0,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_request",
+            "truth_kind": "data",
+            "truth_label": "quotation request",
+            "truth_labels": [
+              "quotation request"
+            ]
+          },
+          {
+            "agent_concept_id": "rationale_credit_risk",
+            "agent_kind": "rationale",
+            "agent_label": "credit risk management",
+            "eligible": true,
+            "exact_label_match": true,
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_rationale_credit_risk",
+            "truth_kind": "rationale",
+            "truth_label": "credit risk management",
+            "truth_labels": [
+              "credit risk management"
+            ]
+          },
+          {
+            "agent_concept_id": "sys_crm",
+            "agent_kind": "system",
+            "agent_label": "CRM",
+            "eligible": true,
+            "exact_label_match": true,
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_system_crm",
+            "truth_kind": "system",
+            "truth_label": "CRM",
+            "truth_labels": [
+              "CRM"
+            ]
+          },
+          {
+            "agent_concept_id": "sys_crm",
+            "agent_kind": "system",
+            "agent_label": "CRM",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_system_email",
+            "truth_kind": "system",
+            "truth_label": "email",
+            "truth_labels": [
+              "email"
+            ]
+          },
+          {
+            "agent_concept_id": "sys_crm",
+            "agent_kind": "system",
+            "agent_label": "CRM",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_system_excel",
+            "truth_kind": "system",
+            "truth_label": "Excel",
+            "truth_labels": [
+              "Excel"
+            ]
+          },
+          {
+            "agent_concept_id": "sys_crm",
+            "agent_kind": "system",
+            "agent_label": "CRM",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_system_quoting",
+            "truth_kind": "system",
+            "truth_label": "quoting system",
+            "truth_labels": [
+              "quoting system"
+            ]
+          },
+          {
+            "agent_concept_id": "sys_email",
+            "agent_kind": "system",
+            "agent_label": "email",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_system_crm",
+            "truth_kind": "system",
+            "truth_label": "CRM",
+            "truth_labels": [
+              "CRM"
+            ]
+          },
+          {
+            "agent_concept_id": "sys_email",
+            "agent_kind": "system",
+            "agent_label": "email",
+            "eligible": true,
+            "exact_label_match": true,
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_system_email",
+            "truth_kind": "system",
+            "truth_label": "email",
+            "truth_labels": [
+              "email"
+            ]
+          },
+          {
+            "agent_concept_id": "sys_email",
+            "agent_kind": "system",
+            "agent_label": "email",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_system_excel",
+            "truth_kind": "system",
+            "truth_label": "Excel",
+            "truth_labels": [
+              "Excel"
+            ]
+          },
+          {
+            "agent_concept_id": "sys_email",
+            "agent_kind": "system",
+            "agent_label": "email",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_system_quoting",
+            "truth_kind": "system",
+            "truth_label": "quoting system",
+            "truth_labels": [
+              "quoting system"
+            ]
+          },
+          {
+            "agent_concept_id": "sys_excel",
+            "agent_kind": "system",
+            "agent_label": "Excel",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_system_crm",
+            "truth_kind": "system",
+            "truth_label": "CRM",
+            "truth_labels": [
+              "CRM"
+            ]
+          },
+          {
+            "agent_concept_id": "sys_excel",
+            "agent_kind": "system",
+            "agent_label": "Excel",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_system_email",
+            "truth_kind": "system",
+            "truth_label": "email",
+            "truth_labels": [
+              "email"
+            ]
+          },
+          {
+            "agent_concept_id": "sys_excel",
+            "agent_kind": "system",
+            "agent_label": "Excel",
+            "eligible": true,
+            "exact_label_match": true,
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_system_excel",
+            "truth_kind": "system",
+            "truth_label": "Excel",
+            "truth_labels": [
+              "Excel"
+            ]
+          },
+          {
+            "agent_concept_id": "sys_excel",
+            "agent_kind": "system",
+            "agent_label": "Excel",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_system_quoting",
+            "truth_kind": "system",
+            "truth_label": "quoting system",
+            "truth_labels": [
+              "quoting system"
+            ]
+          },
+          {
+            "agent_concept_id": "sys_quoting_system",
+            "agent_kind": "system",
+            "agent_label": "quoting system",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_system_crm",
+            "truth_kind": "system",
+            "truth_label": "CRM",
+            "truth_labels": [
+              "CRM"
+            ]
+          },
+          {
+            "agent_concept_id": "sys_quoting_system",
+            "agent_kind": "system",
+            "agent_label": "quoting system",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_system_email",
+            "truth_kind": "system",
+            "truth_label": "email",
+            "truth_labels": [
+              "email"
+            ]
+          },
+          {
+            "agent_concept_id": "sys_quoting_system",
+            "agent_kind": "system",
+            "agent_label": "quoting system",
+            "eligible": false,
+            "exact_label_match": false,
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.0,
+            "selected_mapping": false,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_system_excel",
+            "truth_kind": "system",
+            "truth_label": "Excel",
+            "truth_labels": [
+              "Excel"
+            ]
+          },
+          {
+            "agent_concept_id": "sys_quoting_system",
+            "agent_kind": "system",
+            "agent_label": "quoting system",
+            "eligible": true,
+            "exact_label_match": true,
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "selected_mapping": true,
+            "threshold": 0.4,
+            "truth_concept_id": "tc_system_quoting",
+            "truth_kind": "system",
+            "truth_label": "quoting system",
+            "truth_labels": [
+              "quoting system"
+            ]
+          }
+        ],
+        "expected_truth_concept_ids": [
+          "tc_activity_approve_quotation",
+          "tc_activity_check_customer",
+          "tc_activity_create_quotation",
+          "tc_activity_receive_request",
+          "tc_activity_send_month_end_summary",
+          "tc_activity_send_quotation",
+          "tc_actor_manager",
+          "tc_actor_sales",
+          "tc_cond_at_or_below_1m",
+          "tc_cond_month_end",
+          "tc_cond_over_1m",
+          "tc_customer",
+          "tc_excel_summary",
+          "tc_pricing",
+          "tc_quote",
+          "tc_rationale_credit_risk",
+          "tc_request",
+          "tc_system_crm",
+          "tc_system_email",
+          "tc_system_excel",
+          "tc_system_quoting"
+        ],
+        "selected_mappings": [
+          {
+            "agent_concept_id": "act_approve_high_value",
+            "agent_kind": "activity",
+            "agent_label": "approve the high-value quotation",
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "truth_concept_id": "tc_activity_approve_quotation",
+            "truth_kind": "activity",
+            "truth_label": "approve the high-value quotation"
+          },
+          {
+            "agent_concept_id": "act_check_customer_info",
+            "agent_kind": "activity",
+            "agent_label": "check the customer information in the CRM",
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.8,
+            "truth_concept_id": "tc_activity_check_customer",
+            "truth_kind": "activity",
+            "truth_label": "check the customer information"
+          },
+          {
+            "agent_concept_id": "act_create_quotation_doc",
+            "agent_kind": "activity",
+            "agent_label": "create the quotation document in the quoting system using the pricing information",
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.5,
+            "truth_concept_id": "tc_activity_create_quotation",
+            "truth_kind": "activity",
+            "truth_label": "create the quotation"
+          },
+          {
+            "agent_concept_id": "act_receive_request",
+            "agent_kind": "activity",
+            "agent_label": "receive the customer's quotation request",
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 1.0,
+            "truth_concept_id": "tc_activity_receive_request",
+            "truth_kind": "activity",
+            "truth_label": "receive the quotation request"
+          },
+          {
+            "agent_concept_id": "act_send_month_end_summary",
+            "agent_kind": "activity",
+            "agent_label": "send the month-end summary of quotation information to Accounting",
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 1.0,
+            "truth_concept_id": "tc_activity_send_month_end_summary",
+            "truth_kind": "activity",
+            "truth_label": "send the month-end summary to Accounting"
+          },
+          {
+            "agent_concept_id": "act_send_quotation",
+            "agent_kind": "activity",
+            "agent_label": "send the quotation to the customer",
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "truth_concept_id": "tc_activity_send_quotation",
+            "truth_kind": "activity",
+            "truth_label": "send the quotation to the customer"
+          },
+          {
+            "agent_concept_id": "actor_manager",
+            "agent_kind": "actor",
+            "agent_label": "manager",
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "truth_concept_id": "tc_actor_manager",
+            "truth_kind": "actor",
+            "truth_label": "manager"
+          },
+          {
+            "agent_concept_id": "actor_sales_employee",
+            "agent_kind": "actor",
+            "agent_label": "sales employee",
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "truth_concept_id": "tc_actor_sales",
+            "truth_kind": "actor",
+            "truth_label": "sales employee"
+          },
+          {
+            "agent_concept_id": "cond_amount_at_or_below_1m",
+            "agent_kind": "condition",
+            "agent_label": "quotation amount is at or below 1,000,000 yen",
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 1.0,
+            "truth_concept_id": "tc_cond_at_or_below_1m",
+            "truth_kind": "condition",
+            "truth_label": "at or below 1,000,000 yen"
+          },
+          {
+            "agent_concept_id": "cond_amount_over_1m",
+            "agent_kind": "condition",
+            "agent_label": "quotation amount is over 1,000,000 yen",
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 1.0,
+            "truth_concept_id": "tc_cond_over_1m",
+            "truth_kind": "condition",
+            "truth_label": "over 1,000,000 yen"
+          },
+          {
+            "agent_concept_id": "cond_end_of_month",
+            "agent_kind": "condition",
+            "agent_label": "at the end of the month",
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 1.0,
+            "truth_concept_id": "tc_cond_month_end",
+            "truth_kind": "condition",
+            "truth_label": "month-end"
+          },
+          {
+            "agent_concept_id": "data_customer_information",
+            "agent_kind": "data",
+            "agent_label": "customer information",
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "truth_concept_id": "tc_customer",
+            "truth_kind": "data",
+            "truth_label": "customer information"
+          },
+          {
+            "agent_concept_id": "data_month_end_summary",
+            "agent_kind": "data",
+            "agent_label": "month-end summary of quotation information",
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 0.5,
+            "truth_concept_id": "tc_excel_summary",
+            "truth_kind": "data",
+            "truth_label": "summary of the quotation information"
+          },
+          {
+            "agent_concept_id": "data_pricing_information",
+            "agent_kind": "data",
+            "agent_label": "pricing information",
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "truth_concept_id": "tc_pricing",
+            "truth_kind": "data",
+            "truth_label": "pricing information"
+          },
+          {
+            "agent_concept_id": "data_quotation",
+            "agent_kind": "data",
+            "agent_label": "quotation",
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "truth_concept_id": "tc_quote",
+            "truth_kind": "data",
+            "truth_label": "quotation"
+          },
+          {
+            "agent_concept_id": "data_quotation_request",
+            "agent_kind": "data",
+            "agent_label": "customer's quotation request",
+            "exact_label_match_path": null,
+            "lexical_similarity_score": 1.0,
+            "truth_concept_id": "tc_request",
+            "truth_kind": "data",
+            "truth_label": "quotation request"
+          },
+          {
+            "agent_concept_id": "rationale_credit_risk",
+            "agent_kind": "rationale",
+            "agent_label": "credit risk management",
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "truth_concept_id": "tc_rationale_credit_risk",
+            "truth_kind": "rationale",
+            "truth_label": "credit risk management"
+          },
+          {
+            "agent_concept_id": "sys_crm",
+            "agent_kind": "system",
+            "agent_label": "CRM",
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "truth_concept_id": "tc_system_crm",
+            "truth_kind": "system",
+            "truth_label": "CRM"
+          },
+          {
+            "agent_concept_id": "sys_email",
+            "agent_kind": "system",
+            "agent_label": "email",
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "truth_concept_id": "tc_system_email",
+            "truth_kind": "system",
+            "truth_label": "email"
+          },
+          {
+            "agent_concept_id": "sys_excel",
+            "agent_kind": "system",
+            "agent_label": "Excel",
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "truth_concept_id": "tc_system_excel",
+            "truth_kind": "system",
+            "truth_label": "Excel"
+          },
+          {
+            "agent_concept_id": "sys_quoting_system",
+            "agent_kind": "system",
+            "agent_label": "quoting system",
+            "exact_label_match_path": "canonical_term",
+            "lexical_similarity_score": 1.0,
+            "truth_concept_id": "tc_system_quoting",
+            "truth_kind": "system",
+            "truth_label": "quoting system"
+          }
+        ],
+        "threshold": 0.4,
+        "unmatched_agent_concepts": [
+          {
+            "concept_id": "data_quotation_document",
+            "kind": "data",
+            "label": "quotation document",
+            "labels": [
+              "quotation document"
+            ]
+          }
+        ],
+        "unmatched_truth_concepts": []
+      },
+      "edge_diagnostics": [
+        {
+          "agent_edge_id": "edge_receive_to_check",
+          "agent_from_node": "node_receive_request",
+          "agent_to_node": "node_check_customer_info",
+          "condition": {
+            "agent_concept_id": null,
+            "agent_concept_ids": [],
+            "agent_label": null,
+            "agent_labels": [],
+            "agent_state": "unset",
+            "extra_agent_concept_ids": [],
+            "items": [],
+            "mapped_truth_concept_ids": [],
+            "matched": false,
+            "missing_truth_concept_ids": [],
+            "property": "condition",
+            "reason": "truth_absent_agent_unset",
+            "reason_codes": [
+              "truth_absent_agent_unset"
+            ],
+            "score_contribution": 0.0,
+            "slot_kind": "scalar",
+            "truth_concept_id": null,
+            "truth_concept_ids": [],
+            "truth_label": null,
+            "truth_labels": [],
+            "truth_state": "absent"
+          },
+          "from_node_match": true,
+          "matched": true,
+          "reason": "matched_edge",
+          "structural_match": true,
+          "to_node_match": true,
+          "truth_edge_id": "e1",
+          "truth_from_node": "r",
+          "truth_to_node": "cc"
+        },
+        {
+          "agent_edge_id": "edge_check_to_create",
+          "agent_from_node": "node_check_customer_info",
+          "agent_to_node": "node_create_quotation_doc",
+          "condition": {
+            "agent_concept_id": null,
+            "agent_concept_ids": [],
+            "agent_label": null,
+            "agent_labels": [],
+            "agent_state": "unset",
+            "extra_agent_concept_ids": [],
+            "items": [],
+            "mapped_truth_concept_ids": [],
+            "matched": false,
+            "missing_truth_concept_ids": [],
+            "property": "condition",
+            "reason": "truth_absent_agent_unset",
+            "reason_codes": [
+              "truth_absent_agent_unset"
+            ],
+            "score_contribution": 0.0,
+            "slot_kind": "scalar",
+            "truth_concept_id": null,
+            "truth_concept_ids": [],
+            "truth_label": null,
+            "truth_labels": [],
+            "truth_state": "absent"
+          },
+          "from_node_match": true,
+          "matched": true,
+          "reason": "matched_edge",
+          "structural_match": true,
+          "to_node_match": true,
+          "truth_edge_id": "e2",
+          "truth_from_node": "cc",
+          "truth_to_node": "cq"
+        },
+        {
+          "agent_edge_id": "edge_create_to_approve",
+          "agent_from_node": "node_create_quotation_doc",
+          "agent_to_node": "node_approve_high_value",
+          "condition": {
+            "agent_concept_id": "cond_amount_over_1m",
+            "agent_concept_ids": [
+              "cond_amount_over_1m"
+            ],
+            "agent_label": "quotation amount is over 1,000,000 yen",
+            "agent_labels": [
+              "quotation amount is over 1,000,000 yen"
+            ],
+            "agent_state": "value",
+            "extra_agent_concept_ids": [],
+            "items": [],
+            "mapped_truth_concept_ids": [
+              "tc_cond_over_1m"
+            ],
+            "matched": true,
+            "missing_truth_concept_ids": [],
+            "property": "condition",
+            "reason": "correct_value",
+            "reason_codes": [
+              "correct_value"
+            ],
+            "score_contribution": 1.0,
+            "slot_kind": "scalar",
+            "truth_concept_id": "tc_cond_over_1m",
+            "truth_concept_ids": [
+              "tc_cond_over_1m"
+            ],
+            "truth_label": "over 1,000,000 yen",
+            "truth_labels": [
+              "over 1,000,000 yen"
+            ],
+            "truth_state": "value"
+          },
+          "from_node_match": true,
+          "matched": true,
+          "reason": "matched_edge",
+          "structural_match": true,
+          "to_node_match": true,
+          "truth_edge_id": "e3",
+          "truth_from_node": "cq",
+          "truth_to_node": "ap"
+        },
+        {
+          "agent_edge_id": "edge_create_to_send",
+          "agent_from_node": "node_create_quotation_doc",
+          "agent_to_node": "node_send_quotation",
+          "condition": {
+            "agent_concept_id": "cond_amount_at_or_below_1m",
+            "agent_concept_ids": [
+              "cond_amount_at_or_below_1m"
+            ],
+            "agent_label": "quotation amount is at or below 1,000,000 yen",
+            "agent_labels": [
+              "quotation amount is at or below 1,000,000 yen"
+            ],
+            "agent_state": "value",
+            "extra_agent_concept_ids": [],
+            "items": [],
+            "mapped_truth_concept_ids": [
+              "tc_cond_at_or_below_1m"
+            ],
+            "matched": true,
+            "missing_truth_concept_ids": [],
+            "property": "condition",
+            "reason": "correct_value",
+            "reason_codes": [
+              "correct_value"
+            ],
+            "score_contribution": 1.0,
+            "slot_kind": "scalar",
+            "truth_concept_id": "tc_cond_at_or_below_1m",
+            "truth_concept_ids": [
+              "tc_cond_at_or_below_1m"
+            ],
+            "truth_label": "at or below 1,000,000 yen",
+            "truth_labels": [
+              "at or below 1,000,000 yen"
+            ],
+            "truth_state": "value"
+          },
+          "from_node_match": true,
+          "matched": true,
+          "reason": "matched_edge",
+          "structural_match": true,
+          "to_node_match": true,
+          "truth_edge_id": "e4",
+          "truth_from_node": "cq",
+          "truth_to_node": "sq"
+        },
+        {
+          "agent_edge_id": "edge_approve_to_send",
+          "agent_from_node": "node_approve_high_value",
+          "agent_to_node": "node_send_quotation",
+          "condition": {
+            "agent_concept_id": null,
+            "agent_concept_ids": [],
+            "agent_label": null,
+            "agent_labels": [],
+            "agent_state": "absent",
+            "extra_agent_concept_ids": [],
+            "items": [],
+            "mapped_truth_concept_ids": [],
+            "matched": true,
+            "missing_truth_concept_ids": [],
+            "property": "condition",
+            "reason": "truth_absent_agent_absent",
+            "reason_codes": [
+              "truth_absent_agent_absent"
+            ],
+            "score_contribution": 1.0,
+            "slot_kind": "scalar",
+            "truth_concept_id": null,
+            "truth_concept_ids": [],
+            "truth_label": null,
+            "truth_labels": [],
+            "truth_state": "absent"
+          },
+          "from_node_match": true,
+          "matched": true,
+          "reason": "matched_edge",
+          "structural_match": true,
+          "to_node_match": true,
+          "truth_edge_id": "e5",
+          "truth_from_node": "ap",
+          "truth_to_node": "sq"
+        },
+        {
+          "agent_edge_id": null,
+          "agent_from_node": null,
+          "agent_to_node": null,
+          "condition": {
+            "agent_concept_id": null,
+            "agent_concept_ids": [],
+            "agent_label": null,
+            "agent_labels": [],
+            "agent_state": "missing",
+            "extra_agent_concept_ids": [],
+            "items": [],
+            "mapped_truth_concept_ids": [],
+            "matched": false,
+            "missing_truth_concept_ids": [
+              "tc_cond_month_end"
+            ],
+            "property": "condition",
+            "reason": "unmatched_edge",
+            "reason_codes": [
+              "unmatched_edge"
+            ],
+            "score_contribution": 0.0,
+            "slot_kind": "scalar",
+            "truth_concept_id": "tc_cond_month_end",
+            "truth_concept_ids": [
+              "tc_cond_month_end"
+            ],
+            "truth_label": "month-end",
+            "truth_labels": [
+              "month-end"
+            ],
+            "truth_state": "value"
+          },
+          "from_node_match": false,
+          "matched": false,
+          "reason": "unmatched_edge",
+          "structural_match": false,
+          "to_node_match": false,
+          "truth_edge_id": "e6",
+          "truth_from_node": "cq",
+          "truth_to_node": "me"
+        }
+      ],
+      "node_diagnostics": [
+        {
+          "agent_node_id": "node_approve_high_value",
+          "matched": true,
+          "reason": "matched_node",
+          "slots": {
+            "activity": {
+              "agent_concept_id": "act_approve_high_value",
+              "agent_concept_ids": [
+                "act_approve_high_value"
+              ],
+              "agent_label": "approve the high-value quotation",
+              "agent_labels": [
+                "approve the high-value quotation"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [
+                "tc_activity_approve_quotation"
+              ],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "activity",
+              "reason": "correct_value",
+              "reason_codes": [
+                "correct_value"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": "tc_activity_approve_quotation",
+              "truth_concept_ids": [
+                "tc_activity_approve_quotation"
+              ],
+              "truth_label": "approve the high-value quotation",
+              "truth_labels": [
+                "approve the high-value quotation"
+              ],
+              "truth_state": "value"
+            },
+            "actor": {
+              "agent_concept_id": "actor_manager",
+              "agent_concept_ids": [
+                "actor_manager"
+              ],
+              "agent_label": "manager",
+              "agent_labels": [
+                "manager"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [
+                "tc_actor_manager"
+              ],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "actor",
+              "reason": "correct_value",
+              "reason_codes": [
+                "correct_value"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": "tc_actor_manager",
+              "truth_concept_ids": [
+                "tc_actor_manager"
+              ],
+              "truth_label": "manager",
+              "truth_labels": [
+                "manager"
+              ],
+              "truth_state": "value"
+            },
+            "necessity_rationale": {
+              "agent_concept_id": "rationale_credit_risk",
+              "agent_concept_ids": [
+                "rationale_credit_risk"
+              ],
+              "agent_label": "credit risk management",
+              "agent_labels": [
+                "credit risk management"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [
+                "tc_rationale_credit_risk"
+              ],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "necessity_rationale",
+              "reason": "correct_value",
+              "reason_codes": [
+                "correct_value"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": "tc_rationale_credit_risk",
+              "truth_concept_ids": [
+                "tc_rationale_credit_risk"
+              ],
+              "truth_label": "credit risk management",
+              "truth_labels": [
+                "credit risk management"
+              ],
+              "truth_state": "value"
+            },
+            "reads": {
+              "agent_concept_id": null,
+              "agent_concept_ids": [
+                "data_quotation_document"
+              ],
+              "agent_label": null,
+              "agent_labels": [
+                "quotation document"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [
+                "data_quotation_document"
+              ],
+              "items": [
+                {
+                  "agent_concept_id": "data_quotation_document",
+                  "agent_label": "quotation document",
+                  "item_type": "agent",
+                  "mapped_truth_concept_id": null,
+                  "matched": false,
+                  "reason": "extra_list_item",
+                  "truth_concept_id": null,
+                  "truth_label": null
+                }
+              ],
+              "mapped_truth_concept_ids": [],
+              "matched": false,
+              "missing_truth_concept_ids": [],
+              "property": "reads",
+              "reason": "extra_list_item",
+              "reason_codes": [
+                "extra_list_item",
+                "wrong_concept"
+              ],
+              "score_contribution": 0.0,
+              "slot_kind": "list",
+              "truth_concept_id": null,
+              "truth_concept_ids": [],
+              "truth_label": null,
+              "truth_labels": [],
+              "truth_state": "absent"
+            },
+            "system": {
+              "agent_concept_id": null,
+              "agent_concept_ids": [],
+              "agent_label": null,
+              "agent_labels": [],
+              "agent_state": "unset",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [],
+              "matched": false,
+              "missing_truth_concept_ids": [],
+              "property": "system",
+              "reason": "truth_absent_agent_unset",
+              "reason_codes": [
+                "truth_absent_agent_unset"
+              ],
+              "score_contribution": 0.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": null,
+              "truth_concept_ids": [],
+              "truth_label": null,
+              "truth_labels": [],
+              "truth_state": "absent"
+            },
+            "writes": {
+              "agent_concept_id": null,
+              "agent_concept_ids": [],
+              "agent_label": null,
+              "agent_labels": [],
+              "agent_state": "unset",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [],
+              "matched": false,
+              "missing_truth_concept_ids": [],
+              "property": "writes",
+              "reason": "truth_absent_agent_unset",
+              "reason_codes": [
+                "truth_absent_agent_unset"
+              ],
+              "score_contribution": 0.0,
+              "slot_kind": "list",
+              "truth_concept_id": null,
+              "truth_concept_ids": [],
+              "truth_label": null,
+              "truth_labels": [],
+              "truth_state": "absent"
+            }
+          },
+          "truth_node_id": "ap"
+        },
+        {
+          "agent_node_id": "node_check_customer_info",
+          "matched": true,
+          "reason": "matched_node",
+          "slots": {
+            "activity": {
+              "agent_concept_id": "act_check_customer_info",
+              "agent_concept_ids": [
+                "act_check_customer_info"
+              ],
+              "agent_label": "check the customer information in the CRM",
+              "agent_labels": [
+                "check the customer information in the CRM"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [
+                "tc_activity_check_customer"
+              ],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "activity",
+              "reason": "correct_value",
+              "reason_codes": [
+                "correct_value"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": "tc_activity_check_customer",
+              "truth_concept_ids": [
+                "tc_activity_check_customer"
+              ],
+              "truth_label": "check the customer information",
+              "truth_labels": [
+                "check the customer information"
+              ],
+              "truth_state": "value"
+            },
+            "actor": {
+              "agent_concept_id": "actor_sales_employee",
+              "agent_concept_ids": [
+                "actor_sales_employee"
+              ],
+              "agent_label": "sales employee",
+              "agent_labels": [
+                "sales employee"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [
+                "tc_actor_sales"
+              ],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "actor",
+              "reason": "correct_value",
+              "reason_codes": [
+                "correct_value"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": "tc_actor_sales",
+              "truth_concept_ids": [
+                "tc_actor_sales"
+              ],
+              "truth_label": "sales employee",
+              "truth_labels": [
+                "sales employee"
+              ],
+              "truth_state": "value"
+            },
+            "necessity_rationale": {
+              "agent_concept_id": null,
+              "agent_concept_ids": [],
+              "agent_label": null,
+              "agent_labels": [],
+              "agent_state": "absent",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "necessity_rationale",
+              "reason": "truth_absent_agent_absent",
+              "reason_codes": [
+                "truth_absent_agent_absent"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": null,
+              "truth_concept_ids": [],
+              "truth_label": null,
+              "truth_labels": [],
+              "truth_state": "absent"
+            },
+            "reads": {
+              "agent_concept_id": null,
+              "agent_concept_ids": [
+                "data_customer_information"
+              ],
+              "agent_label": null,
+              "agent_labels": [
+                "customer information"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [],
+              "items": [
+                {
+                  "agent_concept_id": null,
+                  "agent_label": null,
+                  "item_type": "truth",
+                  "mapped_truth_concept_id": null,
+                  "matched": true,
+                  "reason": "correct_value",
+                  "truth_concept_id": "tc_customer",
+                  "truth_label": "customer information"
+                },
+                {
+                  "agent_concept_id": "data_customer_information",
+                  "agent_label": "customer information",
+                  "item_type": "agent",
+                  "mapped_truth_concept_id": "tc_customer",
+                  "matched": true,
+                  "reason": "correct_value",
+                  "truth_concept_id": null,
+                  "truth_label": "customer information"
+                }
+              ],
+              "mapped_truth_concept_ids": [
+                "tc_customer"
+              ],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "reads",
+              "reason": "correct_value",
+              "reason_codes": [
+                "correct_value"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "list",
+              "truth_concept_id": null,
+              "truth_concept_ids": [
+                "tc_customer"
+              ],
+              "truth_label": null,
+              "truth_labels": [
+                "customer information"
+              ],
+              "truth_state": "value"
+            },
+            "system": {
+              "agent_concept_id": "sys_crm",
+              "agent_concept_ids": [
+                "sys_crm"
+              ],
+              "agent_label": "CRM",
+              "agent_labels": [
+                "CRM"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [
+                "tc_system_crm"
+              ],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "system",
+              "reason": "correct_value",
+              "reason_codes": [
+                "correct_value"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": "tc_system_crm",
+              "truth_concept_ids": [
+                "tc_system_crm"
+              ],
+              "truth_label": "CRM",
+              "truth_labels": [
+                "CRM"
+              ],
+              "truth_state": "value"
+            },
+            "writes": {
+              "agent_concept_id": null,
+              "agent_concept_ids": [],
+              "agent_label": null,
+              "agent_labels": [],
+              "agent_state": "unset",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [],
+              "matched": false,
+              "missing_truth_concept_ids": [],
+              "property": "writes",
+              "reason": "truth_absent_agent_unset",
+              "reason_codes": [
+                "truth_absent_agent_unset"
+              ],
+              "score_contribution": 0.0,
+              "slot_kind": "list",
+              "truth_concept_id": null,
+              "truth_concept_ids": [],
+              "truth_label": null,
+              "truth_labels": [],
+              "truth_state": "absent"
+            }
+          },
+          "truth_node_id": "cc"
+        },
+        {
+          "agent_node_id": "node_create_quotation_doc",
+          "matched": true,
+          "reason": "matched_node",
+          "slots": {
+            "activity": {
+              "agent_concept_id": "act_create_quotation_doc",
+              "agent_concept_ids": [
+                "act_create_quotation_doc"
+              ],
+              "agent_label": "create the quotation document in the quoting system using the pricing information",
+              "agent_labels": [
+                "create the quotation document in the quoting system using the pricing information"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [
+                "tc_activity_create_quotation"
+              ],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "activity",
+              "reason": "correct_value",
+              "reason_codes": [
+                "correct_value"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": "tc_activity_create_quotation",
+              "truth_concept_ids": [
+                "tc_activity_create_quotation"
+              ],
+              "truth_label": "create the quotation",
+              "truth_labels": [
+                "create the quotation"
+              ],
+              "truth_state": "value"
+            },
+            "actor": {
+              "agent_concept_id": "actor_sales_employee",
+              "agent_concept_ids": [
+                "actor_sales_employee"
+              ],
+              "agent_label": "sales employee",
+              "agent_labels": [
+                "sales employee"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [
+                "tc_actor_sales"
+              ],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "actor",
+              "reason": "correct_value",
+              "reason_codes": [
+                "correct_value"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": "tc_actor_sales",
+              "truth_concept_ids": [
+                "tc_actor_sales"
+              ],
+              "truth_label": "sales employee",
+              "truth_labels": [
+                "sales employee"
+              ],
+              "truth_state": "value"
+            },
+            "necessity_rationale": {
+              "agent_concept_id": null,
+              "agent_concept_ids": [],
+              "agent_label": null,
+              "agent_labels": [],
+              "agent_state": "absent",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "necessity_rationale",
+              "reason": "truth_absent_agent_absent",
+              "reason_codes": [
+                "truth_absent_agent_absent"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": null,
+              "truth_concept_ids": [],
+              "truth_label": null,
+              "truth_labels": [],
+              "truth_state": "absent"
+            },
+            "reads": {
+              "agent_concept_id": null,
+              "agent_concept_ids": [
+                "data_pricing_information"
+              ],
+              "agent_label": null,
+              "agent_labels": [
+                "pricing information"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [],
+              "items": [
+                {
+                  "agent_concept_id": null,
+                  "agent_label": null,
+                  "item_type": "truth",
+                  "mapped_truth_concept_id": null,
+                  "matched": false,
+                  "reason": "missing_list_item",
+                  "truth_concept_id": "tc_customer",
+                  "truth_label": "customer information"
+                },
+                {
+                  "agent_concept_id": null,
+                  "agent_label": null,
+                  "item_type": "truth",
+                  "mapped_truth_concept_id": null,
+                  "matched": true,
+                  "reason": "correct_value",
+                  "truth_concept_id": "tc_pricing",
+                  "truth_label": "pricing information"
+                },
+                {
+                  "agent_concept_id": "data_pricing_information",
+                  "agent_label": "pricing information",
+                  "item_type": "agent",
+                  "mapped_truth_concept_id": "tc_pricing",
+                  "matched": true,
+                  "reason": "correct_value",
+                  "truth_concept_id": null,
+                  "truth_label": "pricing information"
+                }
+              ],
+              "mapped_truth_concept_ids": [
+                "tc_pricing"
+              ],
+              "matched": false,
+              "missing_truth_concept_ids": [
+                "tc_customer"
+              ],
+              "property": "reads",
+              "reason": "missing_list_item",
+              "reason_codes": [
+                "missing_list_item"
+              ],
+              "score_contribution": 0.5,
+              "slot_kind": "list",
+              "truth_concept_id": null,
+              "truth_concept_ids": [
+                "tc_customer",
+                "tc_pricing"
+              ],
+              "truth_label": null,
+              "truth_labels": [
+                "customer information",
+                "pricing information"
+              ],
+              "truth_state": "value"
+            },
+            "system": {
+              "agent_concept_id": "sys_quoting_system",
+              "agent_concept_ids": [
+                "sys_quoting_system"
+              ],
+              "agent_label": "quoting system",
+              "agent_labels": [
+                "quoting system"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [
+                "tc_system_quoting"
+              ],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "system",
+              "reason": "correct_value",
+              "reason_codes": [
+                "correct_value"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": "tc_system_quoting",
+              "truth_concept_ids": [
+                "tc_system_quoting"
+              ],
+              "truth_label": "quoting system",
+              "truth_labels": [
+                "quoting system"
+              ],
+              "truth_state": "value"
+            },
+            "writes": {
+              "agent_concept_id": null,
+              "agent_concept_ids": [
+                "data_quotation_document"
+              ],
+              "agent_label": null,
+              "agent_labels": [
+                "quotation document"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [
+                "data_quotation_document"
+              ],
+              "items": [
+                {
+                  "agent_concept_id": null,
+                  "agent_label": null,
+                  "item_type": "truth",
+                  "mapped_truth_concept_id": null,
+                  "matched": false,
+                  "reason": "missing_list_item",
+                  "truth_concept_id": "tc_quote",
+                  "truth_label": "quotation"
+                },
+                {
+                  "agent_concept_id": "data_quotation_document",
+                  "agent_label": "quotation document",
+                  "item_type": "agent",
+                  "mapped_truth_concept_id": null,
+                  "matched": false,
+                  "reason": "extra_list_item",
+                  "truth_concept_id": null,
+                  "truth_label": null
+                }
+              ],
+              "mapped_truth_concept_ids": [],
+              "matched": false,
+              "missing_truth_concept_ids": [
+                "tc_quote"
+              ],
+              "property": "writes",
+              "reason": "missing_and_extra_list_items",
+              "reason_codes": [
+                "missing_list_item",
+                "extra_list_item",
+                "wrong_concept"
+              ],
+              "score_contribution": 0.0,
+              "slot_kind": "list",
+              "truth_concept_id": null,
+              "truth_concept_ids": [
+                "tc_quote"
+              ],
+              "truth_label": null,
+              "truth_labels": [
+                "quotation"
+              ],
+              "truth_state": "value"
+            }
+          },
+          "truth_node_id": "cq"
+        },
+        {
+          "agent_node_id": "node_send_month_end_summary",
+          "matched": true,
+          "reason": "matched_node",
+          "slots": {
+            "activity": {
+              "agent_concept_id": "act_send_month_end_summary",
+              "agent_concept_ids": [
+                "act_send_month_end_summary"
+              ],
+              "agent_label": "send the month-end summary of quotation information to Accounting",
+              "agent_labels": [
+                "send the month-end summary of quotation information to Accounting"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [
+                "tc_activity_send_month_end_summary"
+              ],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "activity",
+              "reason": "correct_value",
+              "reason_codes": [
+                "correct_value"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": "tc_activity_send_month_end_summary",
+              "truth_concept_ids": [
+                "tc_activity_send_month_end_summary"
+              ],
+              "truth_label": "send the month-end summary to Accounting",
+              "truth_labels": [
+                "send the month-end summary to Accounting"
+              ],
+              "truth_state": "value"
+            },
+            "actor": {
+              "agent_concept_id": "actor_sales_employee",
+              "agent_concept_ids": [
+                "actor_sales_employee"
+              ],
+              "agent_label": "sales employee",
+              "agent_labels": [
+                "sales employee"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [
+                "tc_actor_sales"
+              ],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "actor",
+              "reason": "correct_value",
+              "reason_codes": [
+                "correct_value"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": "tc_actor_sales",
+              "truth_concept_ids": [
+                "tc_actor_sales"
+              ],
+              "truth_label": "sales employee",
+              "truth_labels": [
+                "sales employee"
+              ],
+              "truth_state": "value"
+            },
+            "necessity_rationale": {
+              "agent_concept_id": null,
+              "agent_concept_ids": [],
+              "agent_label": null,
+              "agent_labels": [],
+              "agent_state": "absent",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "necessity_rationale",
+              "reason": "truth_absent_agent_absent",
+              "reason_codes": [
+                "truth_absent_agent_absent"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": null,
+              "truth_concept_ids": [],
+              "truth_label": null,
+              "truth_labels": [],
+              "truth_state": "absent"
+            },
+            "reads": {
+              "agent_concept_id": null,
+              "agent_concept_ids": [],
+              "agent_label": null,
+              "agent_labels": [],
+              "agent_state": "absent",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "reads",
+              "reason": "truth_absent_agent_absent",
+              "reason_codes": [
+                "truth_absent_agent_absent"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "list",
+              "truth_concept_id": null,
+              "truth_concept_ids": [],
+              "truth_label": null,
+              "truth_labels": [],
+              "truth_state": "absent"
+            },
+            "system": {
+              "agent_concept_id": "sys_excel",
+              "agent_concept_ids": [
+                "sys_excel"
+              ],
+              "agent_label": "Excel",
+              "agent_labels": [
+                "Excel"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [
+                "tc_system_excel"
+              ],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "system",
+              "reason": "correct_value",
+              "reason_codes": [
+                "correct_value"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": "tc_system_excel",
+              "truth_concept_ids": [
+                "tc_system_excel"
+              ],
+              "truth_label": "Excel",
+              "truth_labels": [
+                "Excel"
+              ],
+              "truth_state": "value"
+            },
+            "writes": {
+              "agent_concept_id": null,
+              "agent_concept_ids": [
+                "data_month_end_summary"
+              ],
+              "agent_label": null,
+              "agent_labels": [
+                "month-end summary of quotation information"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [],
+              "items": [
+                {
+                  "agent_concept_id": null,
+                  "agent_label": null,
+                  "item_type": "truth",
+                  "mapped_truth_concept_id": null,
+                  "matched": true,
+                  "reason": "correct_value",
+                  "truth_concept_id": "tc_excel_summary",
+                  "truth_label": "summary of the quotation information"
+                },
+                {
+                  "agent_concept_id": "data_month_end_summary",
+                  "agent_label": "month-end summary of quotation information",
+                  "item_type": "agent",
+                  "mapped_truth_concept_id": "tc_excel_summary",
+                  "matched": true,
+                  "reason": "correct_value",
+                  "truth_concept_id": null,
+                  "truth_label": "summary of the quotation information"
+                }
+              ],
+              "mapped_truth_concept_ids": [
+                "tc_excel_summary"
+              ],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "writes",
+              "reason": "correct_value",
+              "reason_codes": [
+                "correct_value"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "list",
+              "truth_concept_id": null,
+              "truth_concept_ids": [
+                "tc_excel_summary"
+              ],
+              "truth_label": null,
+              "truth_labels": [
+                "summary of the quotation information"
+              ],
+              "truth_state": "value"
+            }
+          },
+          "truth_node_id": "me"
+        },
+        {
+          "agent_node_id": "node_receive_request",
+          "matched": true,
+          "reason": "matched_node",
+          "slots": {
+            "activity": {
+              "agent_concept_id": "act_receive_request",
+              "agent_concept_ids": [
+                "act_receive_request"
+              ],
+              "agent_label": "receive the customer's quotation request",
+              "agent_labels": [
+                "receive the customer's quotation request"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [
+                "tc_activity_receive_request"
+              ],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "activity",
+              "reason": "correct_value",
+              "reason_codes": [
+                "correct_value"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": "tc_activity_receive_request",
+              "truth_concept_ids": [
+                "tc_activity_receive_request"
+              ],
+              "truth_label": "receive the quotation request",
+              "truth_labels": [
+                "receive the quotation request"
+              ],
+              "truth_state": "value"
+            },
+            "actor": {
+              "agent_concept_id": "actor_sales_employee",
+              "agent_concept_ids": [
+                "actor_sales_employee"
+              ],
+              "agent_label": "sales employee",
+              "agent_labels": [
+                "sales employee"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [
+                "tc_actor_sales"
+              ],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "actor",
+              "reason": "correct_value",
+              "reason_codes": [
+                "correct_value"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": "tc_actor_sales",
+              "truth_concept_ids": [
+                "tc_actor_sales"
+              ],
+              "truth_label": "sales employee",
+              "truth_labels": [
+                "sales employee"
+              ],
+              "truth_state": "value"
+            },
+            "necessity_rationale": {
+              "agent_concept_id": null,
+              "agent_concept_ids": [],
+              "agent_label": null,
+              "agent_labels": [],
+              "agent_state": "absent",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "necessity_rationale",
+              "reason": "truth_absent_agent_absent",
+              "reason_codes": [
+                "truth_absent_agent_absent"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": null,
+              "truth_concept_ids": [],
+              "truth_label": null,
+              "truth_labels": [],
+              "truth_state": "absent"
+            },
+            "reads": {
+              "agent_concept_id": null,
+              "agent_concept_ids": [
+                "data_quotation_request"
+              ],
+              "agent_label": null,
+              "agent_labels": [
+                "customer's quotation request"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [
+                "data_quotation_request"
+              ],
+              "items": [
+                {
+                  "agent_concept_id": "data_quotation_request",
+                  "agent_label": "customer's quotation request",
+                  "item_type": "agent",
+                  "mapped_truth_concept_id": "tc_request",
+                  "matched": false,
+                  "reason": "extra_list_item",
+                  "truth_concept_id": null,
+                  "truth_label": "quotation request"
+                }
+              ],
+              "mapped_truth_concept_ids": [
+                "tc_request"
+              ],
+              "matched": false,
+              "missing_truth_concept_ids": [],
+              "property": "reads",
+              "reason": "extra_list_item",
+              "reason_codes": [
+                "extra_list_item"
+              ],
+              "score_contribution": 0.0,
+              "slot_kind": "list",
+              "truth_concept_id": null,
+              "truth_concept_ids": [],
+              "truth_label": null,
+              "truth_labels": [],
+              "truth_state": "absent"
+            },
+            "system": {
+              "agent_concept_id": null,
+              "agent_concept_ids": [],
+              "agent_label": null,
+              "agent_labels": [],
+              "agent_state": "unset",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [],
+              "matched": false,
+              "missing_truth_concept_ids": [],
+              "property": "system",
+              "reason": "truth_absent_agent_unset",
+              "reason_codes": [
+                "truth_absent_agent_unset"
+              ],
+              "score_contribution": 0.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": null,
+              "truth_concept_ids": [],
+              "truth_label": null,
+              "truth_labels": [],
+              "truth_state": "absent"
+            },
+            "writes": {
+              "agent_concept_id": null,
+              "agent_concept_ids": [],
+              "agent_label": null,
+              "agent_labels": [],
+              "agent_state": "unset",
+              "extra_agent_concept_ids": [],
+              "items": [
+                {
+                  "agent_concept_id": null,
+                  "agent_label": null,
+                  "item_type": "truth",
+                  "mapped_truth_concept_id": null,
+                  "matched": false,
+                  "reason": "missing_list_item",
+                  "truth_concept_id": "tc_request",
+                  "truth_label": "quotation request"
+                }
+              ],
+              "mapped_truth_concept_ids": [],
+              "matched": false,
+              "missing_truth_concept_ids": [
+                "tc_request"
+              ],
+              "property": "writes",
+              "reason": "truth_value_agent_unset",
+              "reason_codes": [
+                "truth_value_agent_unset",
+                "missing_list_item"
+              ],
+              "score_contribution": 0.0,
+              "slot_kind": "list",
+              "truth_concept_id": null,
+              "truth_concept_ids": [
+                "tc_request"
+              ],
+              "truth_label": null,
+              "truth_labels": [
+                "quotation request"
+              ],
+              "truth_state": "value"
+            }
+          },
+          "truth_node_id": "r"
+        },
+        {
+          "agent_node_id": "node_send_quotation",
+          "matched": true,
+          "reason": "matched_node",
+          "slots": {
+            "activity": {
+              "agent_concept_id": "act_send_quotation",
+              "agent_concept_ids": [
+                "act_send_quotation"
+              ],
+              "agent_label": "send the quotation to the customer",
+              "agent_labels": [
+                "send the quotation to the customer"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [
+                "tc_activity_send_quotation"
+              ],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "activity",
+              "reason": "correct_value",
+              "reason_codes": [
+                "correct_value"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": "tc_activity_send_quotation",
+              "truth_concept_ids": [
+                "tc_activity_send_quotation"
+              ],
+              "truth_label": "send the quotation to the customer",
+              "truth_labels": [
+                "send the quotation to the customer"
+              ],
+              "truth_state": "value"
+            },
+            "actor": {
+              "agent_concept_id": "actor_sales_employee",
+              "agent_concept_ids": [
+                "actor_sales_employee"
+              ],
+              "agent_label": "sales employee",
+              "agent_labels": [
+                "sales employee"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [
+                "tc_actor_sales"
+              ],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "actor",
+              "reason": "correct_value",
+              "reason_codes": [
+                "correct_value"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": "tc_actor_sales",
+              "truth_concept_ids": [
+                "tc_actor_sales"
+              ],
+              "truth_label": "sales employee",
+              "truth_labels": [
+                "sales employee"
+              ],
+              "truth_state": "value"
+            },
+            "necessity_rationale": {
+              "agent_concept_id": null,
+              "agent_concept_ids": [],
+              "agent_label": null,
+              "agent_labels": [],
+              "agent_state": "absent",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "necessity_rationale",
+              "reason": "truth_absent_agent_absent",
+              "reason_codes": [
+                "truth_absent_agent_absent"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": null,
+              "truth_concept_ids": [],
+              "truth_label": null,
+              "truth_labels": [],
+              "truth_state": "absent"
+            },
+            "reads": {
+              "agent_concept_id": null,
+              "agent_concept_ids": [],
+              "agent_label": null,
+              "agent_labels": [],
+              "agent_state": "unset",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [],
+              "matched": false,
+              "missing_truth_concept_ids": [],
+              "property": "reads",
+              "reason": "truth_absent_agent_unset",
+              "reason_codes": [
+                "truth_absent_agent_unset"
+              ],
+              "score_contribution": 0.0,
+              "slot_kind": "list",
+              "truth_concept_id": null,
+              "truth_concept_ids": [],
+              "truth_label": null,
+              "truth_labels": [],
+              "truth_state": "absent"
+            },
+            "system": {
+              "agent_concept_id": "sys_email",
+              "agent_concept_ids": [
+                "sys_email"
+              ],
+              "agent_label": "email",
+              "agent_labels": [
+                "email"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [],
+              "items": [],
+              "mapped_truth_concept_ids": [
+                "tc_system_email"
+              ],
+              "matched": true,
+              "missing_truth_concept_ids": [],
+              "property": "system",
+              "reason": "correct_value",
+              "reason_codes": [
+                "correct_value"
+              ],
+              "score_contribution": 1.0,
+              "slot_kind": "scalar",
+              "truth_concept_id": "tc_system_email",
+              "truth_concept_ids": [
+                "tc_system_email"
+              ],
+              "truth_label": "email",
+              "truth_labels": [
+                "email"
+              ],
+              "truth_state": "value"
+            },
+            "writes": {
+              "agent_concept_id": null,
+              "agent_concept_ids": [
+                "data_quotation"
+              ],
+              "agent_label": null,
+              "agent_labels": [
+                "quotation"
+              ],
+              "agent_state": "value",
+              "extra_agent_concept_ids": [
+                "data_quotation"
+              ],
+              "items": [
+                {
+                  "agent_concept_id": "data_quotation",
+                  "agent_label": "quotation",
+                  "item_type": "agent",
+                  "mapped_truth_concept_id": "tc_quote",
+                  "matched": false,
+                  "reason": "extra_list_item",
+                  "truth_concept_id": null,
+                  "truth_label": "quotation"
+                }
+              ],
+              "mapped_truth_concept_ids": [
+                "tc_quote"
+              ],
+              "matched": false,
+              "missing_truth_concept_ids": [],
+              "property": "writes",
+              "reason": "extra_list_item",
+              "reason_codes": [
+                "extra_list_item"
+              ],
+              "score_contribution": 0.0,
+              "slot_kind": "list",
+              "truth_concept_id": null,
+              "truth_concept_ids": [],
+              "truth_label": null,
+              "truth_labels": [],
+              "truth_state": "absent"
+            }
+          },
+          "truth_node_id": "sq"
+        }
+      ],
+      "schema_version": "business_interview.evaluation_diagnostics.v1",
+      "score_fields_unchanged": true,
+      "unmatched_agent_edges": [
+        "edge_receive_to_send",
+        "edge_send_to_month_end"
+      ],
+      "unmatched_agent_nodes": []
+    },
+    "edge_evidence_coverage": 0.0,
+    "edge_precision": 0.7142857142857143,
+    "edge_recall": 0.8333333333333334,
+    "end_precision": 1.0,
+    "end_recall": 1.0,
+    "evidence_pass": false,
+    "fabricated_edge_count": 2,
+    "fabricated_node_count": 0,
+    "glossary_complete": false,
+    "graph_created": true,
+    "graph_valid": true,
+    "invalid_evidence_ref_count": 0,
+    "invalid_observation_reference_count": 0,
+    "invalid_observation_source_count": 0,
+    "knowledge_coverage": 0.7166666666666667,
+    "marker_evidence_errors_surrogate": 0,
+    "node_evidence_coverage": 1.0,
+    "node_precision": 1.0,
+    "node_recall": 1.0,
+    "orphan_observation_count": 3,
+    "protocol_completed": true,
+    "protocol_pass": true,
+    "provenance_authenticity_pass": true,
+    "quality_pass": false,
+    "rationale_correctness": 1.0,
+    "read_correctness": 0.4166666666666667,
+    "reconstruction_pass": false,
+    "ref_evidence_coverage": 0.2916666666666667,
+    "start_correct": true,
+    "structural_pass": false,
+    "system_correctness": 0.6666666666666666,
+    "unsupported_ref_count": 3,
+    "write_correctness": 0.16666666666666666
+  },
+  "metrics": {
+    "activity_correctness": 1.0,
+    "actor_correctness": 1.0,
+    "concept_correctness": 0.9545454545454546,
+    "concept_precision": 0.9545454545454546,
+    "concept_recall": 1.0,
+    "condition_correctness": 0.5,
+    "edge_precision": 0.7142857142857143,
+    "edge_recall": 0.8333333333333334,
+    "end_precision": 1.0,
+    "end_recall": 1.0,
+    "fabricated_edge_count": 2,
+    "fabricated_node_count": 0,
+    "knowledge_coverage": 0.7166666666666667,
+    "node_precision": 1.0,
+    "node_recall": 1.0,
+    "quality_pass": false,
+    "rationale_correctness": 1.0,
+    "read_correctness": 0.4166666666666667,
+    "reconstruction_pass": false,
+    "start_correct": true,
+    "system_correctness": 0.6666666666666666,
+    "unsupported_ref_count": 3,
+    "write_correctness": 0.16666666666666666
+  },
+  "root_cause_attributions": [
+    {
+      "category": "insufficient_evidence_to_classify",
+      "dimension": "node_slot",
+      "evidence": [
+        "score_reason:truth_absent_agent_unset",
+        "knowledge:dont_know"
+      ],
+      "property": "system",
+      "reason": "stored stakeholder knowledge cannot establish attainability",
+      "target_id": "ap"
+    },
+    {
+      "category": "insufficient_evidence_to_classify",
+      "dimension": "node_slot",
+      "evidence": [
+        "score_reason:extra_list_item",
+        "knowledge:dont_know"
+      ],
+      "property": "reads",
+      "reason": "stored stakeholder knowledge cannot establish attainability",
+      "target_id": "ap"
+    },
+    {
+      "category": "insufficient_evidence_to_classify",
+      "dimension": "node_slot",
+      "evidence": [
+        "score_reason:truth_absent_agent_unset",
+        "knowledge:dont_know"
+      ],
+      "property": "writes",
+      "reason": "stored stakeholder knowledge cannot establish attainability",
+      "target_id": "ap"
+    },
+    {
+      "category": "insufficient_evidence_to_classify",
+      "dimension": "node_slot",
+      "evidence": [
+        "score_reason:truth_absent_agent_unset",
+        "knowledge:dont_know"
+      ],
+      "property": "writes",
+      "reason": "stored stakeholder knowledge cannot establish attainability",
+      "target_id": "cc"
+    },
+    {
+      "category": "stakeholder_disclosure",
+      "dimension": "node_slot",
+      "evidence": [
+        "score_reason:missing_list_item",
+        "knowledge:known",
+        "missing_truth_concepts:tc_customer",
+        "clear_agent_question:True"
+      ],
+      "property": "reads",
+      "reason": "knowledge was available, but no accepted public annotation disclosed the needed value",
+      "target_id": "cq"
+    },
+    {
+      "category": "stakeholder_disclosure",
+      "dimension": "node_slot",
+      "evidence": [
+        "score_reason:missing_and_extra_list_items",
+        "knowledge:known",
+        "missing_truth_concepts:tc_quote",
+        "clear_agent_question:True"
+      ],
+      "property": "writes",
+      "reason": "knowledge was available, but no accepted public annotation disclosed the needed value",
+      "target_id": "cq"
+    },
+    {
+      "category": "insufficient_evidence_to_classify",
+      "dimension": "node_slot",
+      "evidence": [
+        "score_reason:truth_absent_agent_unset",
+        "knowledge:dont_know"
+      ],
+      "property": "system",
+      "reason": "stored stakeholder knowledge cannot establish attainability",
+      "target_id": "r"
+    },
+    {
+      "category": "insufficient_evidence_to_classify",
+      "dimension": "node_slot",
+      "evidence": [
+        "score_reason:extra_list_item",
+        "knowledge:dont_know"
+      ],
+      "property": "reads",
+      "reason": "stored stakeholder knowledge cannot establish attainability",
+      "target_id": "r"
+    },
+    {
+      "category": "agent_recording",
+      "dimension": "node_slot",
+      "evidence": [
+        "score_reason:truth_value_agent_unset",
+        "knowledge:known",
+        "missing_truth_concepts:tc_request",
+        "accepted_observations:obs_3"
+      ],
+      "property": "writes",
+      "reason": "accepted public semantic evidence exists but final Agent state does not score it",
+      "target_id": "r"
+    },
+    {
+      "category": "insufficient_evidence_to_classify",
+      "dimension": "node_slot",
+      "evidence": [
+        "score_reason:truth_absent_agent_unset",
+        "knowledge:dont_know"
+      ],
+      "property": "reads",
+      "reason": "stored stakeholder knowledge cannot establish attainability",
+      "target_id": "sq"
+    },
+    {
+      "category": "insufficient_evidence_to_classify",
+      "dimension": "node_slot",
+      "evidence": [
+        "score_reason:extra_list_item",
+        "knowledge:dont_know"
+      ],
+      "property": "writes",
+      "reason": "stored stakeholder knowledge cannot establish attainability",
+      "target_id": "sq"
+    },
+    {
+      "category": "insufficient_evidence_to_classify",
+      "dimension": "edge_condition",
+      "evidence": [
+        "score_reason:truth_absent_agent_unset",
+        "knowledge:dont_know"
+      ],
+      "property": "condition",
+      "reason": "stored stakeholder knowledge cannot establish attainability",
+      "target_id": "edge:e1:condition"
+    },
+    {
+      "category": "insufficient_evidence_to_classify",
+      "dimension": "edge_condition",
+      "evidence": [
+        "score_reason:truth_absent_agent_unset",
+        "knowledge:dont_know"
+      ],
+      "property": "condition",
+      "reason": "stored stakeholder knowledge cannot establish attainability",
+      "target_id": "edge:e2:condition"
+    },
+    {
+      "category": "insufficient_evidence_to_classify",
+      "dimension": "edge_condition",
+      "evidence": [
+        "score_reason:unmatched_edge",
+        "knowledge:known",
+        "missing_truth_concepts:tc_cond_month_end"
+      ],
+      "property": "condition",
+      "reason": "structural target was not aligned",
+      "target_id": "edge:e6:condition"
+    }
+  ],
+  "schema_version": "business_interview.evaluation_diagnostics.v1",
+  "seed": 9002,
+  "source_artifact": "artifacts/business_interview_real_llm/run_00_seed9002.json",
+  "source_private_artifact": "artifacts/business_interview_real_llm/run_00_seed9002.private.json"
+}
