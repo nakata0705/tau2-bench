@@ -61,6 +61,10 @@ from tau2.domains.business_interview.grounding import (
     grounded_refs as resolve_grounding_refs,
 )
 
+from .joint_structural_alignment import (  # pyright: ignore[reportMissingImports]
+    JointStructuralAlignmentDiagnostics,
+    build_joint_structural_alignment_diagnostics,
+)
 from .usage_alignment import (  # pyright: ignore[reportMissingImports]
     UsageAlignmentDiagnostics,
     build_usage_alignment_diagnostics,
@@ -227,7 +231,7 @@ class FailureAttribution(BaseModel):
 class EvaluationDiagnostics(BaseModel):
     """Evaluator-only Truth/Agent reconstruction trace."""
 
-    schema_version: str = "business_interview.evaluation_diagnostics.v2"
+    schema_version: str = "business_interview.evaluation_diagnostics.v3"
     score_fields_unchanged: bool = True
     node_diagnostics: list[NodeDiagnostic] = Field(default_factory=list)
     unmatched_agent_nodes: list[str] = Field(default_factory=list)
@@ -236,6 +240,9 @@ class EvaluationDiagnostics(BaseModel):
     concepts: ConceptDiagnostics
     usage_alignment: UsageAlignmentDiagnostics = Field(
         default_factory=UsageAlignmentDiagnostics
+    )
+    joint_structural_alignment: JointStructuralAlignmentDiagnostics = Field(
+        default_factory=JointStructuralAlignmentDiagnostics
     )
 
 
@@ -1492,6 +1499,24 @@ def _build_evaluation_diagnostics(
         current_agent_to_truth=agent_to_truth,
         lexical_pairs=concept_trace.candidate_pairs,
     )
+    try:
+        # The production and usage mappings are comparison-only inputs.  The
+        # joint builder performs its structural search before copying them into
+        # the private diagnostic section and never uses them as constraints.
+        joint_trace = build_joint_structural_alignment_diagnostics(
+            agent,
+            target,
+            production_node_to_truth=node_mapping,
+            production_concept_to_truth=agent_to_truth,
+            usage_concept_to_truth=usage_trace.usage_agent_to_truth,
+        )
+    except Exception as exc:
+        # Diagnostics must never turn a matcher experiment failure into a
+        # production evaluation failure or alter any score/pass field.
+        joint_trace = JointStructuralAlignmentDiagnostics(
+            status="error",
+            error_type=type(exc).__name__,
+        )
     truth_to_agent = {tid: aid for aid, tid in node_mapping.items()}
     nodes: list[NodeDiagnostic] = []
     for tid in sorted(target.nodes):
@@ -1591,6 +1616,7 @@ def _build_evaluation_diagnostics(
         ),
         concepts=concept_trace,
         usage_alignment=usage_trace,
+        joint_structural_alignment=joint_trace,
     )
 
 

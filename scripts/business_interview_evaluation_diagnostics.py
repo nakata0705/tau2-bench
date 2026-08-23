@@ -6,7 +6,8 @@ The default invocation reads the existing quotation artifacts for seeds 9002,
 Truth/StakeholderKnowledge sidecars, writes one evaluator-private diagnostic
 trace per seed, and renders ``doc/business-interview-evaluation-diagnostics.md``.
 The trace also contains a diagnostic-only usage-based concept-alignment
-experiment conditioned on the evaluator's current node/edge mapping.
+experiment conditioned on the evaluator's current node/edge mapping and a
+label-independent joint structural Node/Concept alignment experiment.
 """
 
 from __future__ import annotations
@@ -384,6 +385,161 @@ def _usage_detail_lines(trace: dict) -> list[str]:
     return lines
 
 
+def _joint_detail_lines(trace: dict) -> list[str]:
+    """Render the label-independent joint alignment for one stored seed."""
+    joint = trace["evaluation"]["diagnostics"]["joint_structural_alignment"]
+    lines = [
+        "",
+        "### Joint structural alignment",
+        "",
+        f"- status: `{joint['status']}`; method: `{joint['method']}`; "
+        f"assignment uses labels: `{joint['assignment_uses_labels']}`",
+        f"- objective: `{joint['objective']['total_score']:.6f}` / "
+        f"`{joint['objective']['max_score']:.6f}` "
+        f"(normalized `{joint['objective']['normalized_score']:.6f}`)",
+        f"- search: exact=`{joint['search']['exact_search']}`, "
+        f"bound_hit=`{joint['search']['bound_hit']}`, "
+        f"node states=`{joint['search']['node_search_states']}`, "
+        f"concept states=`{joint['search']['concept_search_states']}`, "
+        f"edge states=`{joint['search']['edge_assignment_states']}`, "
+        f"leaves=`{joint['search']['node_leaves_evaluated']}`, "
+        f"optimal alternatives observed=`{joint['search']['optimal_solution_count']}`, "
+        f"count exact=`{joint['search']['optimal_solution_count_is_exact']}`, "
+        f"optimum unique=`{joint['search']['optimum_is_unique']}`",
+        f"- objective bounds: lower=`{joint['search']['objective_lower_bound']:.6f}`, "
+        f"upper=`{joint['search']['objective_upper_bound']:.6f}`",
+        f"- deterministic search-runtime estimate: "
+        f"`{joint['search']['runtime_estimate_ms']} ms` "
+        "(work-unit estimate, not wall-clock time, so regenerated artifacts "
+        "remain deterministic)",
+    ]
+    if joint.get("error_type"):
+        lines.append(f"- diagnostic error type: `{_md_value(joint['error_type'])}`")
+
+    lines.extend(
+        [
+            "",
+            "#### Objective components",
+            "",
+            "| component | matched | Agent total | Truth total | agreement |",
+            "| --- | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    component_order = (
+        "nodes",
+        "concepts",
+        "activity",
+        "actor",
+        "system",
+        "reads",
+        "writes",
+        "rationale",
+        "condition",
+        "process_edges",
+        "start_node",
+        "end_nodes",
+    )
+    components = joint["objective"].get("components", {})
+    for name in component_order:
+        component = components.get(name)
+        if component is None:
+            continue
+        lines.append(
+            f"| `{name}` | {component['matched_count']} | "
+            f"{component['agent_count']} | {component['truth_count']} | "
+            f"{component['agreement']:.6f} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "#### Resolved versus ambiguous entities",
+            "",
+            f"- invariant Node mappings proven: "
+            f"`{joint['invariant_agent_node_to_truth_node'] or 'none'}`",
+            f"- invariant Concept mappings proven: "
+            f"`{joint['invariant_agent_concept_to_truth_concept'] or 'none'}`",
+            f"- representative unmatched Agent Nodes: "
+            f"`{joint['unmatched_representative_agent_nodes'] or 'none'}`",
+            f"- representative unmatched Truth Nodes: "
+            f"`{joint['unmatched_representative_truth_nodes'] or 'none'}`",
+            f"- representative unmatched Agent Concepts: "
+            f"`{joint['unmatched_representative_agent_concepts'] or 'none'}`",
+            f"- representative unmatched Truth Concepts: "
+            f"`{joint['unmatched_representative_truth_concepts'] or 'none'}`",
+        ]
+    )
+    for title, classes in (
+        ("Node ambiguity classes", joint["node_ambiguity_classes"]),
+        ("Concept ambiguity classes", joint["concept_ambiguity_classes"]),
+    ):
+        lines.extend(["", f"##### {title}", ""])
+        if not classes:
+            lines.append("- none")
+        else:
+            for ambiguity in classes:
+                lines.append(
+                    f"- `{ambiguity['class_id']}`: Agent "
+                    f"`{ambiguity['agent_ids']}` <-> Truth "
+                    f"`{ambiguity['truth_ids']}`; unmatched Agent "
+                    f"`{ambiguity['unmatched_agent_ids'] or 'none'}`, "
+                    f"unmatched Truth `{ambiguity['unmatched_truth_ids'] or 'none'}`; "
+                    f"`{ambiguity['reason']}`."
+                )
+
+    lines.extend(
+        [
+            "",
+            "#### Representative structural mappings",
+            "",
+            f"- Agent Node -> Truth Node: "
+            f"`{joint['representative_agent_node_to_truth_node'] or 'none'}`",
+            f"- Agent Concept -> Truth Concept: "
+            f"`{joint['representative_agent_concept_to_truth_concept'] or 'none'}`",
+            f"- Agent Edge -> Truth Edge: "
+            f"`{joint['representative_agent_edge_to_truth_edge'] or 'none'}`",
+            "",
+            "#### Production versus joint mapping differences",
+            "",
+            "| Agent entity | production Truth | joint Truth |",
+            "| --- | --- | --- |",
+        ]
+    )
+    differences = joint["production_vs_joint_node_differences"] + joint[
+        "production_vs_joint_concept_differences"
+    ]
+    if not differences:
+        lines.append("| none | — | — |")
+    else:
+        for item in differences:
+            lines.append(
+                f"| `{_md_value(item['agent_id'])}` | "
+                f"`{_md_value(item['left_truth_id'])}` | "
+                f"`{_md_value(item['right_truth_id'])}` |"
+            )
+
+    lines.extend(
+        [
+            "",
+            "#### Conditioned usage versus joint differences",
+            "",
+            "| Agent Concept | usage Truth | joint Truth |",
+            "| --- | --- | --- |",
+        ]
+    )
+    usage_differences = joint["usage_vs_joint_concept_differences"]
+    if not usage_differences:
+        lines.append("| none | — | — |")
+    else:
+        for item in usage_differences:
+            lines.append(
+                f"| `{_md_value(item['agent_id'])}` | "
+                f"`{_md_value(item['left_truth_id'])}` | "
+                f"`{_md_value(item['right_truth_id'])}` |"
+            )
+    return lines
+
+
 def render_report(traces: list[dict], output_path: Path) -> None:
     counts: dict[str, Counter] = {slot: Counter() for slot in SLOT_ORDER}
     for trace in traces:
@@ -427,7 +583,10 @@ def render_report(traces: list[dict], output_path: Path) -> None:
         "match plus `condition`), and `concepts` (candidate pair scores, exact "
         "label path, selected mapping, and unmatched concepts). The separate "
         "`usage_alignment` section contains usage candidate sets, per-kind "
-        "assignments, ambiguity classes, and current-vs-usage comparisons. Each "
+        "assignments, ambiguity classes, and current-vs-usage comparisons. The "
+        "`joint_structural_alignment` section is a separate label-independent "
+        "joint Node/Concept search with typed incidence, process-edge, start, "
+        "and end objective components; it is not a production matcher. Each "
         "slot has "
         "Truth/Agent state, concept ids/labels, matched flag, score contribution, "
         "and reason codes. The deterministic codes used here include: "
@@ -564,14 +723,119 @@ def render_report(traces: list[dict], output_path: Path) -> None:
             "Truth-only and Agent-only usages and strict broader/narrower relations "
             "for follow-up.",
             "",
-            "A fully label-independent joint matcher would first need a validated "
-            "node/edge correspondence derived from label-independent topology, "
-            "start/end roles, degree, and slot/co-occurrence structure; then a "
-            "joint or confidence-aware iterative optimization over node, edge, and "
-            "concept assignments; explicit handling for missing/extra structure "
-            "and non-identifiability; and adversarial multilingual/duplicate-usage "
-            "fixtures. This experiment intentionally does not attempt that large "
-            "optimization.",
+            "Usage alone is not a fully label-independent matcher because its "
+            "address translation is conditioned on the production node/edge "
+            "scaffold. The separate `joint_structural_alignment` section below "
+            "tests a bounded joint search instead; it remains diagnostic-only and "
+            "does not replace either production or usage mappings.",
+            "",
+            "## Joint structural alignment (diagnostic only)",
+            "",
+            "The joint experiment searches Node and asserted Concept mappings "
+            "together. It uses only typed incidence, directed process topology, "
+            "start/end roles, and one-to-one constraints; Concept kind is hard. "
+            "A representative mapping is serialized for audit only; opaque IDs "
+            "are used only for deterministic ordering/serialization. Equal "
+            "optima are retained as ambiguity classes, and a bounded search never "
+            "claims uniqueness. Same-kind pairs with no positive typed support "
+            "remain unmatched rather than being assigned arbitrarily. Each "
+            "component is F1-style `2*matched/(Agent+Truth)` (empty/empty is "
+            "exact), and the total is "
+            "the unweighted sum of the auditable components. `runtime estimate` "
+            "is a deterministic work-unit estimate rather than wall-clock timing, "
+            "allowing this report to be "
+            "regenerated byte-for-byte.",
+            "",
+            "| seed | objective | normalized | Nodes | Concepts | process edges | start | end | exact | unique | optimal alternatives | ambiguous Nodes | ambiguous Concepts | states | runtime estimate |",
+            "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for trace in traces:
+        joint = trace["evaluation"]["diagnostics"]["joint_structural_alignment"]
+        components = joint["objective"].get("components", {})
+        node_component = components.get("nodes", {})
+        concept_component = components.get("concepts", {})
+        edge_component = components.get("process_edges", {})
+        start_component = components.get("start_node", {})
+        end_component = components.get("end_nodes", {})
+        lines.append(
+            "| {seed} | {score:.3f}/{max_score:.3f} | {normalized:.3f} | "
+            "{nodes:.3f} | {concepts:.3f} | {edges:.3f} | {start:.3f} | "
+            "{end:.3f} | {exact} | {unique} | {alternatives} | "
+            "{node_ambiguity} | {concept_ambiguity} | {states} | "
+            "{runtime} ms |".format(
+                seed=trace["seed"],
+                score=joint["objective"]["total_score"],
+                max_score=joint["objective"]["max_score"],
+                normalized=joint["objective"]["normalized_score"],
+                nodes=node_component.get("agreement", 0.0),
+                concepts=concept_component.get("agreement", 0.0),
+                edges=edge_component.get("agreement", 0.0),
+                start=start_component.get("agreement", 0.0),
+                end=end_component.get("agreement", 0.0),
+                exact=joint["search"]["exact_search"],
+                unique=joint["search"]["optimum_is_unique"],
+                alternatives=joint["search"]["optimal_solution_count"],
+                node_ambiguity=len(joint["node_ambiguity_classes"]),
+                concept_ambiguity=len(joint["concept_ambiguity_classes"]),
+                states=(
+                    joint["search"]["node_search_states"]
+                    + joint["search"]["concept_search_states"]
+                    + joint["search"]["edge_assignment_states"]
+                ),
+                runtime=joint["search"]["runtime_estimate_ms"],
+            )
+        )
+    joint_scores = [
+        trace["evaluation"]["diagnostics"]["joint_structural_alignment"]
+        for trace in traces
+    ]
+    joint_exact_count = sum(item["search"]["exact_search"] for item in joint_scores)
+    joint_node_ambiguity_count = sum(
+        bool(item["node_ambiguity_classes"]) for item in joint_scores
+    )
+    joint_concept_ambiguity_count = sum(
+        bool(item["concept_ambiguity_classes"]) for item in joint_scores
+    )
+    joint_difference_count = sum(
+        len(item["production_vs_joint_node_differences"])
+        + len(item["production_vs_joint_concept_differences"])
+        for item in joint_scores
+    )
+    lines.extend(
+        [
+            "",
+            "### Joint experiment conclusion",
+            "",
+            f"The three stored seeds completed an exact bounded-space search in "
+            f"`{joint_exact_count}/{len(joint_scores)}` reports; production-vs-joint "
+            f"mapping differences numbered `{joint_difference_count}`. Node ambiguity "
+            f"classes appeared in `{joint_node_ambiguity_count}` report(s), and "
+            f"concept ambiguity classes appeared in `{joint_concept_ambiguity_count}` "
+            "report(s).",
+            "",
+            "**Exact fixtures:** the deterministic synthetic suite shows that "
+            "identical graphs align perfectly, arbitrary Agent labels/IDs and "
+            "insertion order do not affect structural scores, reads and writes "
+            "remain distinct, kind mismatches never map, topology can disambiguate "
+            "similar nodes, repeated usage strengthens concept alignment, and "
+            "symmetric structures are reported ambiguous. A deliberately "
+            "misleading-label fixture is resolved by structure rather than text.",
+            "",
+            "**Identifiability:** directed topology plus start/end roles makes the "
+            "small seed Node skeletons identifiable. Concepts with repeated or "
+            "slot-specific usage are usually identifiable; concepts whose usage is "
+            "missing, extra, or structurally unsupported remain unmatched rather "
+            "than being guessed. Symmetric duplicate subgraphs/concept usages "
+            "remain valid ambiguity classes.",
+            "",
+            "**Viability:** this is viable as an evaluator-private diagnostic and "
+            "as a candidate for further experiments, not a production migration. "
+            "Before production use, validate objective weighting and edge cases on "
+            "larger adversarial graphs, retain explicit optimality bounds, and "
+            "measure whether the structural mapping is stable under realistic "
+            "missing/extra structure. Existing production scoring and mappings are "
+            "unchanged.",
             "",
             "## Aggregate failed-slot attribution",
             "",
@@ -694,6 +958,7 @@ def render_report(traces: list[dict], output_path: Path) -> None:
         selected = concepts["selected_mappings"]
         lines.append(f"- selected mappings: `{len(selected)}`")
         lines.extend(_usage_detail_lines(trace))
+        lines.extend(_joint_detail_lines(trace))
         lines.append("")
 
     safe_output_path = _safe_repo_path(output_path)

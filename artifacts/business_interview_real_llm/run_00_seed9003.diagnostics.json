@@ -1800,6 +1800,290 @@
           "truth_to_node": "me"
         }
       ],
+      "joint_structural_alignment": {
+        "asserted_concepts_only": true,
+        "assignment_uses_labels": false,
+        "candidate_policy": "Only same-kind pairs with positive typed structural support are admissible; unsupported entities remain unmatched rather than being assigned by opaque-id order.",
+        "concept_ambiguity_classes": [],
+        "concept_kind_is_hard_constraint": true,
+        "conditioned_usage_agent_concept_to_truth_concept": {
+          "act_check_customer_info": "tc_activity_check_customer",
+          "act_create_quotation": "tc_activity_create_quotation",
+          "act_manager_approve": "tc_activity_approve_quotation",
+          "act_receive_request": "tc_activity_receive_request",
+          "act_send_quotation": "tc_activity_send_quotation",
+          "act_send_summary": "tc_activity_send_month_end_summary",
+          "actor_manager": "tc_actor_manager",
+          "actor_sales_employee": "tc_actor_sales",
+          "cond_at_or_below_1m": "tc_cond_at_or_below_1m",
+          "cond_month_end": "tc_cond_month_end",
+          "cond_over_1m": "tc_cond_over_1m",
+          "data_customer_information": "tc_customer",
+          "data_quotation": "tc_quote",
+          "data_summary": "tc_excel_summary",
+          "rat_credit_risk": "tc_rationale_credit_risk",
+          "system_quoting_system": "tc_system_quoting"
+        },
+        "epistemic_markers_are_not_concepts": true,
+        "error_type": null,
+        "forbidden_signals": [
+          "labels_or_canonical_terms",
+          "descriptions",
+          "lexical_similarity",
+          "translations_or_embeddings",
+          "StakeholderKnowledge_mappings",
+          "sidecar_semantic_ids",
+          "EvidenceRef_text",
+          "LLM_judgment"
+        ],
+        "interpretation": "Jointly choose partial one-to-one Node and asserted Concept mappings to maximize typed graph agreement; this is diagnostic only.",
+        "invariant_agent_concept_to_truth_concept": {
+          "act_check_customer_info": "tc_activity_check_customer",
+          "act_create_quotation": "tc_activity_create_quotation",
+          "act_manager_approve": "tc_activity_approve_quotation",
+          "act_receive_request": "tc_activity_receive_request",
+          "act_send_quotation": "tc_activity_send_quotation",
+          "act_send_summary": "tc_activity_send_month_end_summary",
+          "actor_manager": "tc_actor_manager",
+          "actor_sales_employee": "tc_actor_sales",
+          "cond_at_or_below_1m": "tc_cond_at_or_below_1m",
+          "cond_month_end": "tc_cond_month_end",
+          "cond_over_1m": "tc_cond_over_1m",
+          "data_customer_information": "tc_customer",
+          "data_quotation": "tc_quote",
+          "data_summary": "tc_excel_summary",
+          "rat_credit_risk": "tc_rationale_credit_risk",
+          "system_quoting_system": "tc_system_quoting"
+        },
+        "invariant_agent_node_to_truth_node": {
+          "node_check_customer_info": "cc",
+          "node_create_quotation": "cq",
+          "node_manager_approve": "ap",
+          "node_receive_request": "r",
+          "node_send_quotation": "sq",
+          "node_send_summary": "me"
+        },
+        "invariants_proven": true,
+        "method": "joint_structural_branch_and_bound",
+        "node_ambiguity_classes": [],
+        "objective": {
+          "components": {
+            "activity": {
+              "agent_count": 6,
+              "agreement": 1.0,
+              "contribution": 1.0,
+              "matched_count": 6,
+              "truth_count": 6,
+              "weight": 1.0
+            },
+            "actor": {
+              "agent_count": 6,
+              "agreement": 1.0,
+              "contribution": 1.0,
+              "matched_count": 6,
+              "truth_count": 6,
+              "weight": 1.0
+            },
+            "concepts": {
+              "agent_count": 17,
+              "agreement": 0.8421052631578947,
+              "contribution": 0.8421052631578947,
+              "matched_count": 16,
+              "truth_count": 21,
+              "weight": 1.0
+            },
+            "condition": {
+              "agent_count": 3,
+              "agreement": 1.0,
+              "contribution": 1.0,
+              "matched_count": 3,
+              "truth_count": 3,
+              "weight": 1.0
+            },
+            "end_nodes": {
+              "agent_count": 0,
+              "agreement": 0.0,
+              "contribution": 0.0,
+              "matched_count": 0,
+              "truth_count": 2,
+              "weight": 1.0
+            },
+            "nodes": {
+              "agent_count": 6,
+              "agreement": 1.0,
+              "contribution": 1.0,
+              "matched_count": 6,
+              "truth_count": 6,
+              "weight": 1.0
+            },
+            "process_edges": {
+              "agent_count": 6,
+              "agreement": 1.0,
+              "contribution": 1.0,
+              "matched_count": 6,
+              "truth_count": 6,
+              "weight": 1.0
+            },
+            "rationale": {
+              "agent_count": 1,
+              "agreement": 1.0,
+              "contribution": 1.0,
+              "matched_count": 1,
+              "truth_count": 1,
+              "weight": 1.0
+            },
+            "reads": {
+              "agent_count": 3,
+              "agreement": 0.3333333333333333,
+              "contribution": 0.3333333333333333,
+              "matched_count": 1,
+              "truth_count": 3,
+              "weight": 1.0
+            },
+            "start_node": {
+              "agent_count": 0,
+              "agreement": 0.0,
+              "contribution": 0.0,
+              "matched_count": 0,
+              "truth_count": 1,
+              "weight": 1.0
+            },
+            "system": {
+              "agent_count": 1,
+              "agreement": 0.4,
+              "contribution": 0.4,
+              "matched_count": 1,
+              "truth_count": 4,
+              "weight": 1.0
+            },
+            "writes": {
+              "agent_count": 3,
+              "agreement": 0.6666666666666666,
+              "contribution": 0.6666666666666666,
+              "matched_count": 2,
+              "truth_count": 3,
+              "weight": 1.0
+            }
+          },
+          "max_score": 12.0,
+          "normalized_score": 0.6868421052631579,
+          "total_score": 8.242105263157894
+        },
+        "production_agent_concept_to_truth_concept": {
+          "act_check_customer_info": "tc_activity_check_customer",
+          "act_create_quotation": "tc_activity_create_quotation",
+          "act_receive_request": "tc_activity_receive_request",
+          "act_send_quotation": "tc_activity_send_quotation",
+          "act_send_summary": "tc_activity_send_month_end_summary",
+          "actor_manager": "tc_actor_manager",
+          "actor_sales_employee": "tc_actor_sales",
+          "cond_at_or_below_1m": "tc_cond_at_or_below_1m",
+          "cond_month_end": "tc_cond_month_end",
+          "cond_over_1m": "tc_cond_over_1m",
+          "data_customer_information": "tc_customer",
+          "data_quotation": "tc_quote",
+          "data_quotation_request": "tc_request",
+          "data_summary": "tc_excel_summary",
+          "rat_credit_risk": "tc_rationale_credit_risk",
+          "system_quoting_system": "tc_system_quoting"
+        },
+        "production_agent_node_to_truth_node": {
+          "node_check_customer_info": "cc",
+          "node_create_quotation": "cq",
+          "node_manager_approve": "ap",
+          "node_receive_request": "r",
+          "node_send_quotation": "sq",
+          "node_send_summary": "me"
+        },
+        "production_vs_joint_concept_differences": [
+          {
+            "agent_id": "act_manager_approve",
+            "left_truth_id": null,
+            "right_truth_id": "tc_activity_approve_quotation"
+          },
+          {
+            "agent_id": "data_quotation_request",
+            "left_truth_id": "tc_request",
+            "right_truth_id": null
+          }
+        ],
+        "production_vs_joint_node_differences": [],
+        "representative_agent_concept_to_truth_concept": {
+          "act_check_customer_info": "tc_activity_check_customer",
+          "act_create_quotation": "tc_activity_create_quotation",
+          "act_manager_approve": "tc_activity_approve_quotation",
+          "act_receive_request": "tc_activity_receive_request",
+          "act_send_quotation": "tc_activity_send_quotation",
+          "act_send_summary": "tc_activity_send_month_end_summary",
+          "actor_manager": "tc_actor_manager",
+          "actor_sales_employee": "tc_actor_sales",
+          "cond_at_or_below_1m": "tc_cond_at_or_below_1m",
+          "cond_month_end": "tc_cond_month_end",
+          "cond_over_1m": "tc_cond_over_1m",
+          "data_customer_information": "tc_customer",
+          "data_quotation": "tc_quote",
+          "data_summary": "tc_excel_summary",
+          "rat_credit_risk": "tc_rationale_credit_risk",
+          "system_quoting_system": "tc_system_quoting"
+        },
+        "representative_agent_edge_to_truth_edge": {
+          "edge_approve_to_send": "e5",
+          "edge_check_to_create": "e2",
+          "edge_create_to_approve": "e3",
+          "edge_create_to_send_direct": "e4",
+          "edge_create_to_summary": "e6",
+          "edge_receive_to_check": "e1"
+        },
+        "representative_agent_node_to_truth_node": {
+          "node_check_customer_info": "cc",
+          "node_create_quotation": "cq",
+          "node_manager_approve": "ap",
+          "node_receive_request": "r",
+          "node_send_quotation": "sq",
+          "node_send_summary": "me"
+        },
+        "representative_mapping_is_not_identity_resolution": true,
+        "schema_version": "business_interview.joint_structural_alignment.v1",
+        "search": {
+          "algorithm": "bounded_node_backtracking_with_exact_per_kind_concept_search",
+          "bound_hit": false,
+          "bound_reason": null,
+          "concept_assignments_evaluated": 94905,
+          "concept_search_states": 437294,
+          "concept_states_pruned": 109338,
+          "edge_assignment_states": 39406,
+          "exact_search": true,
+          "max_concept_search_states": 1000000,
+          "max_node_search_states": 250000,
+          "max_optimal_alternatives": 2048,
+          "node_candidate_pair_count": 36,
+          "node_leaves_evaluated": 13327,
+          "node_search_states": 18703,
+          "node_states_pruned": 0,
+          "objective_lower_bound": 8.242105263157894,
+          "objective_upper_bound": 8.242105263157894,
+          "optimal_solution_count": 1,
+          "optimal_solution_count_is_exact": true,
+          "optimal_solution_count_is_lower_bound": false,
+          "optimum_is_unique": true,
+          "runtime_estimate_ms": 495
+        },
+        "status": "ok",
+        "unmatched_representative_agent_concepts": [
+          "data_quotation_request"
+        ],
+        "unmatched_representative_agent_nodes": [],
+        "unmatched_representative_truth_concepts": [
+          "tc_pricing",
+          "tc_request",
+          "tc_system_crm",
+          "tc_system_email",
+          "tc_system_excel"
+        ],
+        "unmatched_representative_truth_nodes": [],
+        "unsupported_pairs_are_not_matches": true,
+        "usage_vs_joint_concept_differences": []
+      },
       "node_diagnostics": [
         {
           "agent_node_id": "node_manager_approve",
@@ -3063,7 +3347,7 @@
           "truth_node_id": "sq"
         }
       ],
-      "schema_version": "business_interview.evaluation_diagnostics.v2",
+      "schema_version": "business_interview.evaluation_diagnostics.v3",
       "score_fields_unchanged": true,
       "unmatched_agent_edges": [],
       "unmatched_agent_nodes": [],
@@ -6758,7 +7042,7 @@
       "target_id": "edge:e5:condition"
     }
   ],
-  "schema_version": "business_interview.evaluation_diagnostics.v2",
+  "schema_version": "business_interview.evaluation_diagnostics.v3",
   "seed": 9003,
   "source_artifact": "artifacts/business_interview_real_llm/run_00_seed9003.json",
   "source_private_artifact": "artifacts/business_interview_real_llm/run_00_seed9003.private.json"
