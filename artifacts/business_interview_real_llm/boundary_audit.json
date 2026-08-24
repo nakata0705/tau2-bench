@@ -1,0 +1,4958 @@
+{
+  "deterministic_fixtures": {
+    "boundary_cases": [
+      {
+        "boundary_audit": {
+          "agent": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_3",
+                  "from_node": "renamed_agent_join",
+                  "to_node": "renamed_agent_exit_x"
+                },
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_4",
+                  "from_node": "renamed_agent_join",
+                  "to_node": "renamed_agent_exit_y"
+                }
+              ],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_1",
+                  "from_node": "renamed_agent_entry_a",
+                  "to_node": "renamed_agent_join"
+                },
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_2",
+                  "from_node": "renamed_agent_entry_b",
+                  "to_node": "renamed_agent_join"
+                }
+              ]
+            },
+            "cannot_reach_sink": [],
+            "cycles": {
+              "components": [],
+              "has_cycles": false,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 4,
+            "graph_name": "agent",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 5,
+            "node_ids": [
+              "renamed_agent_entry_a",
+              "renamed_agent_entry_b",
+              "renamed_agent_exit_x",
+              "renamed_agent_exit_y",
+              "renamed_agent_join"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 2,
+            "source_count": 2,
+            "topology_sinks": [
+              "renamed_agent_exit_x",
+              "renamed_agent_exit_y"
+            ],
+            "topology_sources": [
+              "renamed_agent_entry_a",
+              "renamed_agent_entry_b"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 1,
+            "weak_components": [
+              [
+                "renamed_agent_entry_a",
+                "renamed_agent_entry_b",
+                "renamed_agent_exit_x",
+                "renamed_agent_exit_y",
+                "renamed_agent_join"
+              ]
+            ]
+          },
+          "truth": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_3",
+                  "from_node": "join",
+                  "to_node": "exit_x"
+                },
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_4",
+                  "from_node": "join",
+                  "to_node": "exit_y"
+                }
+              ],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_1",
+                  "from_node": "entry_a",
+                  "to_node": "join"
+                },
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_2",
+                  "from_node": "entry_b",
+                  "to_node": "join"
+                }
+              ]
+            },
+            "cannot_reach_sink": [],
+            "cycles": {
+              "components": [],
+              "has_cycles": false,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 4,
+            "graph_name": "truth",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 5,
+            "node_ids": [
+              "entry_a",
+              "entry_b",
+              "exit_x",
+              "exit_y",
+              "join"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 2,
+            "source_count": 2,
+            "topology_sinks": [
+              "exit_x",
+              "exit_y"
+            ],
+            "topology_sources": [
+              "entry_a",
+              "entry_b"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 1,
+            "weak_components": [
+              [
+                "entry_a",
+                "entry_b",
+                "exit_x",
+                "exit_y",
+                "join"
+              ]
+            ]
+          }
+        },
+        "name": "multiple_entry_and_exit",
+        "normalization": {
+          "agent": {
+            "audit": {
+              "boundary_conditions": {
+                "sink_condition_edge_count": 0,
+                "sink_incoming_edges": [
+                  {
+                    "condition": {
+                      "asserted": false,
+                      "concept_id": null,
+                      "present": false
+                    },
+                    "edge_id": "agent_edge_3",
+                    "from_node": "renamed_agent_join",
+                    "to_node": "renamed_agent_exit_x"
+                  },
+                  {
+                    "condition": {
+                      "asserted": false,
+                      "concept_id": null,
+                      "present": false
+                    },
+                    "edge_id": "agent_edge_4",
+                    "from_node": "renamed_agent_join",
+                    "to_node": "renamed_agent_exit_y"
+                  }
+                ],
+                "source_condition_edge_count": 0,
+                "source_outgoing_edges": [
+                  {
+                    "condition": {
+                      "asserted": false,
+                      "concept_id": null,
+                      "present": false
+                    },
+                    "edge_id": "agent_edge_1",
+                    "from_node": "renamed_agent_entry_a",
+                    "to_node": "renamed_agent_join"
+                  },
+                  {
+                    "condition": {
+                      "asserted": false,
+                      "concept_id": null,
+                      "present": false
+                    },
+                    "edge_id": "agent_edge_2",
+                    "from_node": "renamed_agent_entry_b",
+                    "to_node": "renamed_agent_join"
+                  }
+                ]
+              },
+              "cannot_reach_sink": [],
+              "cycles": {
+                "components": [],
+                "has_cycles": false,
+                "self_loop_nodes": []
+              },
+              "dangling_edge_ids": [],
+              "declared_end_nodes": [],
+              "declared_start_node": null,
+              "edge_count": 4,
+              "graph_name": "agent",
+              "metadata_consistency": {
+                "assessment": "missing_or_inconsistent_boundary_metadata",
+                "consistent": false,
+                "declared_end_nodes_are_topology_sinks": true,
+                "declared_end_nodes_equal_topology_sinks": false,
+                "declared_end_nodes_exist": true,
+                "declared_start_covers_all_topology_sources": false,
+                "declared_start_exists": false,
+                "declared_start_is_topology_source": false,
+                "metadata_complete": false
+              },
+              "node_count": 5,
+              "node_ids": [
+                "renamed_agent_entry_a",
+                "renamed_agent_entry_b",
+                "renamed_agent_exit_x",
+                "renamed_agent_exit_y",
+                "renamed_agent_join"
+              ],
+              "reserved_boundary_id_collisions": {
+                "edge_ids": [],
+                "node_ids": []
+              },
+              "schema_version": "business_interview.boundary_diagnostics.v1",
+              "sink_count": 2,
+              "source_count": 2,
+              "topology_sinks": [
+                "renamed_agent_exit_x",
+                "renamed_agent_exit_y"
+              ],
+              "topology_sources": [
+                "renamed_agent_entry_a",
+                "renamed_agent_entry_b"
+              ],
+              "unreachable_from_source": [],
+              "weak_component_count": 1,
+              "weak_components": [
+                [
+                  "renamed_agent_entry_a",
+                  "renamed_agent_entry_b",
+                  "renamed_agent_exit_x",
+                  "renamed_agent_exit_y",
+                  "renamed_agent_join"
+                ]
+              ]
+            },
+            "canonical_copy": {
+              "business_edge_ids": [
+                "agent_edge_1",
+                "agent_edge_2",
+                "agent_edge_3",
+                "agent_edge_4"
+              ],
+              "business_node_ids": [
+                "renamed_agent_entry_a",
+                "renamed_agent_entry_b",
+                "renamed_agent_exit_x",
+                "renamed_agent_exit_y",
+                "renamed_agent_join"
+              ],
+              "invariant": {
+                "all_business_nodes_end_reachable": true,
+                "all_business_nodes_start_reachable": true,
+                "exactly_one_structural_end": true,
+                "exactly_one_structural_start": true,
+                "structural_end_has_no_outgoing": true,
+                "structural_nodes_are_not_concepts": true,
+                "structural_start_has_no_incoming": true,
+                "synthetic_edges_are_structural_only": true
+              },
+              "original_declared_end_nodes": [],
+              "original_declared_start_node": null,
+              "sink_nodes": [
+                "renamed_agent_exit_x",
+                "renamed_agent_exit_y"
+              ],
+              "source_nodes": [
+                "renamed_agent_entry_a",
+                "renamed_agent_entry_b"
+              ],
+              "structural_nodes": [
+                {
+                  "id": "__tau2_structural_start__",
+                  "kind": "structural_start"
+                },
+                {
+                  "id": "__tau2_structural_end__",
+                  "kind": "structural_end"
+                }
+              ],
+              "synthetic_edges": [
+                {
+                  "business_relation": false,
+                  "from_node": "renamed_agent_exit_x",
+                  "id": "__tau2_structural_boundary__end__renamed_agent_exit_x",
+                  "marker": "structural_boundary_only",
+                  "structural_only": true,
+                  "to_node": "__tau2_structural_end__"
+                },
+                {
+                  "business_relation": false,
+                  "from_node": "renamed_agent_exit_y",
+                  "id": "__tau2_structural_boundary__end__renamed_agent_exit_y",
+                  "marker": "structural_boundary_only",
+                  "structural_only": true,
+                  "to_node": "__tau2_structural_end__"
+                },
+                {
+                  "business_relation": false,
+                  "from_node": "__tau2_structural_start__",
+                  "id": "__tau2_structural_boundary__start__renamed_agent_entry_a",
+                  "marker": "structural_boundary_only",
+                  "structural_only": true,
+                  "to_node": "renamed_agent_entry_a"
+                },
+                {
+                  "business_relation": false,
+                  "from_node": "__tau2_structural_start__",
+                  "id": "__tau2_structural_boundary__start__renamed_agent_entry_b",
+                  "marker": "structural_boundary_only",
+                  "structural_only": true,
+                  "to_node": "renamed_agent_entry_b"
+                }
+              ]
+            },
+            "classification": "normalizable_multiple_entries_and_exits",
+            "possible": true,
+            "reason": "virtual boundaries can fan out and merge without changing business edges"
+          },
+          "truth": {
+            "audit": {
+              "boundary_conditions": {
+                "sink_condition_edge_count": 0,
+                "sink_incoming_edges": [
+                  {
+                    "condition": {
+                      "asserted": false,
+                      "concept_id": null,
+                      "present": false
+                    },
+                    "edge_id": "truth_edge_3",
+                    "from_node": "join",
+                    "to_node": "exit_x"
+                  },
+                  {
+                    "condition": {
+                      "asserted": false,
+                      "concept_id": null,
+                      "present": false
+                    },
+                    "edge_id": "truth_edge_4",
+                    "from_node": "join",
+                    "to_node": "exit_y"
+                  }
+                ],
+                "source_condition_edge_count": 0,
+                "source_outgoing_edges": [
+                  {
+                    "condition": {
+                      "asserted": false,
+                      "concept_id": null,
+                      "present": false
+                    },
+                    "edge_id": "truth_edge_1",
+                    "from_node": "entry_a",
+                    "to_node": "join"
+                  },
+                  {
+                    "condition": {
+                      "asserted": false,
+                      "concept_id": null,
+                      "present": false
+                    },
+                    "edge_id": "truth_edge_2",
+                    "from_node": "entry_b",
+                    "to_node": "join"
+                  }
+                ]
+              },
+              "cannot_reach_sink": [],
+              "cycles": {
+                "components": [],
+                "has_cycles": false,
+                "self_loop_nodes": []
+              },
+              "dangling_edge_ids": [],
+              "declared_end_nodes": [],
+              "declared_start_node": null,
+              "edge_count": 4,
+              "graph_name": "truth",
+              "metadata_consistency": {
+                "assessment": "missing_or_inconsistent_boundary_metadata",
+                "consistent": false,
+                "declared_end_nodes_are_topology_sinks": true,
+                "declared_end_nodes_equal_topology_sinks": false,
+                "declared_end_nodes_exist": true,
+                "declared_start_covers_all_topology_sources": false,
+                "declared_start_exists": false,
+                "declared_start_is_topology_source": false,
+                "metadata_complete": false
+              },
+              "node_count": 5,
+              "node_ids": [
+                "entry_a",
+                "entry_b",
+                "exit_x",
+                "exit_y",
+                "join"
+              ],
+              "reserved_boundary_id_collisions": {
+                "edge_ids": [],
+                "node_ids": []
+              },
+              "schema_version": "business_interview.boundary_diagnostics.v1",
+              "sink_count": 2,
+              "source_count": 2,
+              "topology_sinks": [
+                "exit_x",
+                "exit_y"
+              ],
+              "topology_sources": [
+                "entry_a",
+                "entry_b"
+              ],
+              "unreachable_from_source": [],
+              "weak_component_count": 1,
+              "weak_components": [
+                [
+                  "entry_a",
+                  "entry_b",
+                  "exit_x",
+                  "exit_y",
+                  "join"
+                ]
+              ]
+            },
+            "canonical_copy": {
+              "business_edge_ids": [
+                "truth_edge_1",
+                "truth_edge_2",
+                "truth_edge_3",
+                "truth_edge_4"
+              ],
+              "business_node_ids": [
+                "entry_a",
+                "entry_b",
+                "exit_x",
+                "exit_y",
+                "join"
+              ],
+              "invariant": {
+                "all_business_nodes_end_reachable": true,
+                "all_business_nodes_start_reachable": true,
+                "exactly_one_structural_end": true,
+                "exactly_one_structural_start": true,
+                "structural_end_has_no_outgoing": true,
+                "structural_nodes_are_not_concepts": true,
+                "structural_start_has_no_incoming": true,
+                "synthetic_edges_are_structural_only": true
+              },
+              "original_declared_end_nodes": [],
+              "original_declared_start_node": null,
+              "sink_nodes": [
+                "exit_x",
+                "exit_y"
+              ],
+              "source_nodes": [
+                "entry_a",
+                "entry_b"
+              ],
+              "structural_nodes": [
+                {
+                  "id": "__tau2_structural_start__",
+                  "kind": "structural_start"
+                },
+                {
+                  "id": "__tau2_structural_end__",
+                  "kind": "structural_end"
+                }
+              ],
+              "synthetic_edges": [
+                {
+                  "business_relation": false,
+                  "from_node": "exit_x",
+                  "id": "__tau2_structural_boundary__end__exit_x",
+                  "marker": "structural_boundary_only",
+                  "structural_only": true,
+                  "to_node": "__tau2_structural_end__"
+                },
+                {
+                  "business_relation": false,
+                  "from_node": "exit_y",
+                  "id": "__tau2_structural_boundary__end__exit_y",
+                  "marker": "structural_boundary_only",
+                  "structural_only": true,
+                  "to_node": "__tau2_structural_end__"
+                },
+                {
+                  "business_relation": false,
+                  "from_node": "__tau2_structural_start__",
+                  "id": "__tau2_structural_boundary__start__entry_a",
+                  "marker": "structural_boundary_only",
+                  "structural_only": true,
+                  "to_node": "entry_a"
+                },
+                {
+                  "business_relation": false,
+                  "from_node": "__tau2_structural_start__",
+                  "id": "__tau2_structural_boundary__start__entry_b",
+                  "marker": "structural_boundary_only",
+                  "structural_only": true,
+                  "to_node": "entry_b"
+                }
+              ]
+            },
+            "classification": "normalizable_multiple_entries_and_exits",
+            "possible": true,
+            "reason": "virtual boundaries can fan out and merge without changing business edges"
+          }
+        },
+        "status": "ok"
+      },
+      {
+        "boundary_audit": {
+          "agent": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_4",
+                  "from_node": "cycle_agent_cycle_b",
+                  "to_node": "cycle_agent_exit"
+                }
+              ],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_1",
+                  "from_node": "cycle_agent_entry",
+                  "to_node": "cycle_agent_cycle_a"
+                }
+              ]
+            },
+            "cannot_reach_sink": [],
+            "cycles": {
+              "components": [
+                [
+                  "cycle_agent_cycle_a",
+                  "cycle_agent_cycle_b"
+                ]
+              ],
+              "has_cycles": true,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 4,
+            "graph_name": "agent",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 4,
+            "node_ids": [
+              "cycle_agent_cycle_a",
+              "cycle_agent_cycle_b",
+              "cycle_agent_entry",
+              "cycle_agent_exit"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 1,
+            "source_count": 1,
+            "topology_sinks": [
+              "cycle_agent_exit"
+            ],
+            "topology_sources": [
+              "cycle_agent_entry"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 1,
+            "weak_components": [
+              [
+                "cycle_agent_cycle_a",
+                "cycle_agent_cycle_b",
+                "cycle_agent_entry",
+                "cycle_agent_exit"
+              ]
+            ]
+          },
+          "truth": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_4",
+                  "from_node": "cycle_b",
+                  "to_node": "exit"
+                }
+              ],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_1",
+                  "from_node": "entry",
+                  "to_node": "cycle_a"
+                }
+              ]
+            },
+            "cannot_reach_sink": [],
+            "cycles": {
+              "components": [
+                [
+                  "cycle_a",
+                  "cycle_b"
+                ]
+              ],
+              "has_cycles": true,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 4,
+            "graph_name": "truth",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 4,
+            "node_ids": [
+              "cycle_a",
+              "cycle_b",
+              "entry",
+              "exit"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 1,
+            "source_count": 1,
+            "topology_sinks": [
+              "exit"
+            ],
+            "topology_sources": [
+              "entry"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 1,
+            "weak_components": [
+              [
+                "cycle_a",
+                "cycle_b",
+                "entry",
+                "exit"
+              ]
+            ]
+          }
+        },
+        "name": "cycle_with_exit",
+        "normalization": {
+          "agent": {
+            "audit": {
+              "boundary_conditions": {
+                "sink_condition_edge_count": 0,
+                "sink_incoming_edges": [
+                  {
+                    "condition": {
+                      "asserted": false,
+                      "concept_id": null,
+                      "present": false
+                    },
+                    "edge_id": "agent_edge_4",
+                    "from_node": "cycle_agent_cycle_b",
+                    "to_node": "cycle_agent_exit"
+                  }
+                ],
+                "source_condition_edge_count": 0,
+                "source_outgoing_edges": [
+                  {
+                    "condition": {
+                      "asserted": false,
+                      "concept_id": null,
+                      "present": false
+                    },
+                    "edge_id": "agent_edge_1",
+                    "from_node": "cycle_agent_entry",
+                    "to_node": "cycle_agent_cycle_a"
+                  }
+                ]
+              },
+              "cannot_reach_sink": [],
+              "cycles": {
+                "components": [
+                  [
+                    "cycle_agent_cycle_a",
+                    "cycle_agent_cycle_b"
+                  ]
+                ],
+                "has_cycles": true,
+                "self_loop_nodes": []
+              },
+              "dangling_edge_ids": [],
+              "declared_end_nodes": [],
+              "declared_start_node": null,
+              "edge_count": 4,
+              "graph_name": "agent",
+              "metadata_consistency": {
+                "assessment": "missing_or_inconsistent_boundary_metadata",
+                "consistent": false,
+                "declared_end_nodes_are_topology_sinks": true,
+                "declared_end_nodes_equal_topology_sinks": false,
+                "declared_end_nodes_exist": true,
+                "declared_start_covers_all_topology_sources": false,
+                "declared_start_exists": false,
+                "declared_start_is_topology_source": false,
+                "metadata_complete": false
+              },
+              "node_count": 4,
+              "node_ids": [
+                "cycle_agent_cycle_a",
+                "cycle_agent_cycle_b",
+                "cycle_agent_entry",
+                "cycle_agent_exit"
+              ],
+              "reserved_boundary_id_collisions": {
+                "edge_ids": [],
+                "node_ids": []
+              },
+              "schema_version": "business_interview.boundary_diagnostics.v1",
+              "sink_count": 1,
+              "source_count": 1,
+              "topology_sinks": [
+                "cycle_agent_exit"
+              ],
+              "topology_sources": [
+                "cycle_agent_entry"
+              ],
+              "unreachable_from_source": [],
+              "weak_component_count": 1,
+              "weak_components": [
+                [
+                  "cycle_agent_cycle_a",
+                  "cycle_agent_cycle_b",
+                  "cycle_agent_entry",
+                  "cycle_agent_exit"
+                ]
+              ]
+            },
+            "canonical_copy": {
+              "business_edge_ids": [
+                "agent_edge_1",
+                "agent_edge_2",
+                "agent_edge_3",
+                "agent_edge_4"
+              ],
+              "business_node_ids": [
+                "cycle_agent_cycle_a",
+                "cycle_agent_cycle_b",
+                "cycle_agent_entry",
+                "cycle_agent_exit"
+              ],
+              "invariant": {
+                "all_business_nodes_end_reachable": true,
+                "all_business_nodes_start_reachable": true,
+                "exactly_one_structural_end": true,
+                "exactly_one_structural_start": true,
+                "structural_end_has_no_outgoing": true,
+                "structural_nodes_are_not_concepts": true,
+                "structural_start_has_no_incoming": true,
+                "synthetic_edges_are_structural_only": true
+              },
+              "original_declared_end_nodes": [],
+              "original_declared_start_node": null,
+              "sink_nodes": [
+                "cycle_agent_exit"
+              ],
+              "source_nodes": [
+                "cycle_agent_entry"
+              ],
+              "structural_nodes": [
+                {
+                  "id": "__tau2_structural_start__",
+                  "kind": "structural_start"
+                },
+                {
+                  "id": "__tau2_structural_end__",
+                  "kind": "structural_end"
+                }
+              ],
+              "synthetic_edges": [
+                {
+                  "business_relation": false,
+                  "from_node": "cycle_agent_exit",
+                  "id": "__tau2_structural_boundary__end__cycle_agent_exit",
+                  "marker": "structural_boundary_only",
+                  "structural_only": true,
+                  "to_node": "__tau2_structural_end__"
+                },
+                {
+                  "business_relation": false,
+                  "from_node": "__tau2_structural_start__",
+                  "id": "__tau2_structural_boundary__start__cycle_agent_entry",
+                  "marker": "structural_boundary_only",
+                  "structural_only": true,
+                  "to_node": "cycle_agent_entry"
+                }
+              ]
+            },
+            "classification": "normalizable_with_cycle",
+            "possible": true,
+            "reason": "the cycle is preserved; all nodes still reach the canonical END"
+          },
+          "truth": {
+            "audit": {
+              "boundary_conditions": {
+                "sink_condition_edge_count": 0,
+                "sink_incoming_edges": [
+                  {
+                    "condition": {
+                      "asserted": false,
+                      "concept_id": null,
+                      "present": false
+                    },
+                    "edge_id": "truth_edge_4",
+                    "from_node": "cycle_b",
+                    "to_node": "exit"
+                  }
+                ],
+                "source_condition_edge_count": 0,
+                "source_outgoing_edges": [
+                  {
+                    "condition": {
+                      "asserted": false,
+                      "concept_id": null,
+                      "present": false
+                    },
+                    "edge_id": "truth_edge_1",
+                    "from_node": "entry",
+                    "to_node": "cycle_a"
+                  }
+                ]
+              },
+              "cannot_reach_sink": [],
+              "cycles": {
+                "components": [
+                  [
+                    "cycle_a",
+                    "cycle_b"
+                  ]
+                ],
+                "has_cycles": true,
+                "self_loop_nodes": []
+              },
+              "dangling_edge_ids": [],
+              "declared_end_nodes": [],
+              "declared_start_node": null,
+              "edge_count": 4,
+              "graph_name": "truth",
+              "metadata_consistency": {
+                "assessment": "missing_or_inconsistent_boundary_metadata",
+                "consistent": false,
+                "declared_end_nodes_are_topology_sinks": true,
+                "declared_end_nodes_equal_topology_sinks": false,
+                "declared_end_nodes_exist": true,
+                "declared_start_covers_all_topology_sources": false,
+                "declared_start_exists": false,
+                "declared_start_is_topology_source": false,
+                "metadata_complete": false
+              },
+              "node_count": 4,
+              "node_ids": [
+                "cycle_a",
+                "cycle_b",
+                "entry",
+                "exit"
+              ],
+              "reserved_boundary_id_collisions": {
+                "edge_ids": [],
+                "node_ids": []
+              },
+              "schema_version": "business_interview.boundary_diagnostics.v1",
+              "sink_count": 1,
+              "source_count": 1,
+              "topology_sinks": [
+                "exit"
+              ],
+              "topology_sources": [
+                "entry"
+              ],
+              "unreachable_from_source": [],
+              "weak_component_count": 1,
+              "weak_components": [
+                [
+                  "cycle_a",
+                  "cycle_b",
+                  "entry",
+                  "exit"
+                ]
+              ]
+            },
+            "canonical_copy": {
+              "business_edge_ids": [
+                "truth_edge_1",
+                "truth_edge_2",
+                "truth_edge_3",
+                "truth_edge_4"
+              ],
+              "business_node_ids": [
+                "cycle_a",
+                "cycle_b",
+                "entry",
+                "exit"
+              ],
+              "invariant": {
+                "all_business_nodes_end_reachable": true,
+                "all_business_nodes_start_reachable": true,
+                "exactly_one_structural_end": true,
+                "exactly_one_structural_start": true,
+                "structural_end_has_no_outgoing": true,
+                "structural_nodes_are_not_concepts": true,
+                "structural_start_has_no_incoming": true,
+                "synthetic_edges_are_structural_only": true
+              },
+              "original_declared_end_nodes": [],
+              "original_declared_start_node": null,
+              "sink_nodes": [
+                "exit"
+              ],
+              "source_nodes": [
+                "entry"
+              ],
+              "structural_nodes": [
+                {
+                  "id": "__tau2_structural_start__",
+                  "kind": "structural_start"
+                },
+                {
+                  "id": "__tau2_structural_end__",
+                  "kind": "structural_end"
+                }
+              ],
+              "synthetic_edges": [
+                {
+                  "business_relation": false,
+                  "from_node": "exit",
+                  "id": "__tau2_structural_boundary__end__exit",
+                  "marker": "structural_boundary_only",
+                  "structural_only": true,
+                  "to_node": "__tau2_structural_end__"
+                },
+                {
+                  "business_relation": false,
+                  "from_node": "__tau2_structural_start__",
+                  "id": "__tau2_structural_boundary__start__entry",
+                  "marker": "structural_boundary_only",
+                  "structural_only": true,
+                  "to_node": "entry"
+                }
+              ]
+            },
+            "classification": "normalizable_with_cycle",
+            "possible": true,
+            "reason": "the cycle is preserved; all nodes still reach the canonical END"
+          }
+        },
+        "status": "ok"
+      },
+      {
+        "boundary_audit": {
+          "agent": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_3",
+                  "from_node": "renamed_symmetric_sym_join",
+                  "to_node": "renamed_symmetric_sym_x"
+                },
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_4",
+                  "from_node": "renamed_symmetric_sym_join",
+                  "to_node": "renamed_symmetric_sym_y"
+                }
+              ],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_1",
+                  "from_node": "renamed_symmetric_sym_a",
+                  "to_node": "renamed_symmetric_sym_join"
+                },
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_2",
+                  "from_node": "renamed_symmetric_sym_b",
+                  "to_node": "renamed_symmetric_sym_join"
+                }
+              ]
+            },
+            "cannot_reach_sink": [],
+            "cycles": {
+              "components": [],
+              "has_cycles": false,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 4,
+            "graph_name": "agent",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 5,
+            "node_ids": [
+              "renamed_symmetric_sym_a",
+              "renamed_symmetric_sym_b",
+              "renamed_symmetric_sym_join",
+              "renamed_symmetric_sym_x",
+              "renamed_symmetric_sym_y"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 2,
+            "source_count": 2,
+            "topology_sinks": [
+              "renamed_symmetric_sym_x",
+              "renamed_symmetric_sym_y"
+            ],
+            "topology_sources": [
+              "renamed_symmetric_sym_a",
+              "renamed_symmetric_sym_b"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 1,
+            "weak_components": [
+              [
+                "renamed_symmetric_sym_a",
+                "renamed_symmetric_sym_b",
+                "renamed_symmetric_sym_join",
+                "renamed_symmetric_sym_x",
+                "renamed_symmetric_sym_y"
+              ]
+            ]
+          },
+          "truth": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_3",
+                  "from_node": "sym_join",
+                  "to_node": "sym_x"
+                },
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_4",
+                  "from_node": "sym_join",
+                  "to_node": "sym_y"
+                }
+              ],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_1",
+                  "from_node": "sym_a",
+                  "to_node": "sym_join"
+                },
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_2",
+                  "from_node": "sym_b",
+                  "to_node": "sym_join"
+                }
+              ]
+            },
+            "cannot_reach_sink": [],
+            "cycles": {
+              "components": [],
+              "has_cycles": false,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 4,
+            "graph_name": "truth",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 5,
+            "node_ids": [
+              "sym_a",
+              "sym_b",
+              "sym_join",
+              "sym_x",
+              "sym_y"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 2,
+            "source_count": 2,
+            "topology_sinks": [
+              "sym_x",
+              "sym_y"
+            ],
+            "topology_sources": [
+              "sym_a",
+              "sym_b"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 1,
+            "weak_components": [
+              [
+                "sym_a",
+                "sym_b",
+                "sym_join",
+                "sym_x",
+                "sym_y"
+              ]
+            ]
+          }
+        },
+        "name": "symmetric_entry_exit_roles",
+        "normalization": {
+          "agent": {
+            "audit": {
+              "boundary_conditions": {
+                "sink_condition_edge_count": 0,
+                "sink_incoming_edges": [
+                  {
+                    "condition": {
+                      "asserted": false,
+                      "concept_id": null,
+                      "present": false
+                    },
+                    "edge_id": "agent_edge_3",
+                    "from_node": "renamed_symmetric_sym_join",
+                    "to_node": "renamed_symmetric_sym_x"
+                  },
+                  {
+                    "condition": {
+                      "asserted": false,
+                      "concept_id": null,
+                      "present": false
+                    },
+                    "edge_id": "agent_edge_4",
+                    "from_node": "renamed_symmetric_sym_join",
+                    "to_node": "renamed_symmetric_sym_y"
+                  }
+                ],
+                "source_condition_edge_count": 0,
+                "source_outgoing_edges": [
+                  {
+                    "condition": {
+                      "asserted": false,
+                      "concept_id": null,
+                      "present": false
+                    },
+                    "edge_id": "agent_edge_1",
+                    "from_node": "renamed_symmetric_sym_a",
+                    "to_node": "renamed_symmetric_sym_join"
+                  },
+                  {
+                    "condition": {
+                      "asserted": false,
+                      "concept_id": null,
+                      "present": false
+                    },
+                    "edge_id": "agent_edge_2",
+                    "from_node": "renamed_symmetric_sym_b",
+                    "to_node": "renamed_symmetric_sym_join"
+                  }
+                ]
+              },
+              "cannot_reach_sink": [],
+              "cycles": {
+                "components": [],
+                "has_cycles": false,
+                "self_loop_nodes": []
+              },
+              "dangling_edge_ids": [],
+              "declared_end_nodes": [],
+              "declared_start_node": null,
+              "edge_count": 4,
+              "graph_name": "agent",
+              "metadata_consistency": {
+                "assessment": "missing_or_inconsistent_boundary_metadata",
+                "consistent": false,
+                "declared_end_nodes_are_topology_sinks": true,
+                "declared_end_nodes_equal_topology_sinks": false,
+                "declared_end_nodes_exist": true,
+                "declared_start_covers_all_topology_sources": false,
+                "declared_start_exists": false,
+                "declared_start_is_topology_source": false,
+                "metadata_complete": false
+              },
+              "node_count": 5,
+              "node_ids": [
+                "renamed_symmetric_sym_a",
+                "renamed_symmetric_sym_b",
+                "renamed_symmetric_sym_join",
+                "renamed_symmetric_sym_x",
+                "renamed_symmetric_sym_y"
+              ],
+              "reserved_boundary_id_collisions": {
+                "edge_ids": [],
+                "node_ids": []
+              },
+              "schema_version": "business_interview.boundary_diagnostics.v1",
+              "sink_count": 2,
+              "source_count": 2,
+              "topology_sinks": [
+                "renamed_symmetric_sym_x",
+                "renamed_symmetric_sym_y"
+              ],
+              "topology_sources": [
+                "renamed_symmetric_sym_a",
+                "renamed_symmetric_sym_b"
+              ],
+              "unreachable_from_source": [],
+              "weak_component_count": 1,
+              "weak_components": [
+                [
+                  "renamed_symmetric_sym_a",
+                  "renamed_symmetric_sym_b",
+                  "renamed_symmetric_sym_join",
+                  "renamed_symmetric_sym_x",
+                  "renamed_symmetric_sym_y"
+                ]
+              ]
+            },
+            "canonical_copy": {
+              "business_edge_ids": [
+                "agent_edge_1",
+                "agent_edge_2",
+                "agent_edge_3",
+                "agent_edge_4"
+              ],
+              "business_node_ids": [
+                "renamed_symmetric_sym_a",
+                "renamed_symmetric_sym_b",
+                "renamed_symmetric_sym_join",
+                "renamed_symmetric_sym_x",
+                "renamed_symmetric_sym_y"
+              ],
+              "invariant": {
+                "all_business_nodes_end_reachable": true,
+                "all_business_nodes_start_reachable": true,
+                "exactly_one_structural_end": true,
+                "exactly_one_structural_start": true,
+                "structural_end_has_no_outgoing": true,
+                "structural_nodes_are_not_concepts": true,
+                "structural_start_has_no_incoming": true,
+                "synthetic_edges_are_structural_only": true
+              },
+              "original_declared_end_nodes": [],
+              "original_declared_start_node": null,
+              "sink_nodes": [
+                "renamed_symmetric_sym_x",
+                "renamed_symmetric_sym_y"
+              ],
+              "source_nodes": [
+                "renamed_symmetric_sym_a",
+                "renamed_symmetric_sym_b"
+              ],
+              "structural_nodes": [
+                {
+                  "id": "__tau2_structural_start__",
+                  "kind": "structural_start"
+                },
+                {
+                  "id": "__tau2_structural_end__",
+                  "kind": "structural_end"
+                }
+              ],
+              "synthetic_edges": [
+                {
+                  "business_relation": false,
+                  "from_node": "renamed_symmetric_sym_x",
+                  "id": "__tau2_structural_boundary__end__renamed_symmetric_sym_x",
+                  "marker": "structural_boundary_only",
+                  "structural_only": true,
+                  "to_node": "__tau2_structural_end__"
+                },
+                {
+                  "business_relation": false,
+                  "from_node": "renamed_symmetric_sym_y",
+                  "id": "__tau2_structural_boundary__end__renamed_symmetric_sym_y",
+                  "marker": "structural_boundary_only",
+                  "structural_only": true,
+                  "to_node": "__tau2_structural_end__"
+                },
+                {
+                  "business_relation": false,
+                  "from_node": "__tau2_structural_start__",
+                  "id": "__tau2_structural_boundary__start__renamed_symmetric_sym_a",
+                  "marker": "structural_boundary_only",
+                  "structural_only": true,
+                  "to_node": "renamed_symmetric_sym_a"
+                },
+                {
+                  "business_relation": false,
+                  "from_node": "__tau2_structural_start__",
+                  "id": "__tau2_structural_boundary__start__renamed_symmetric_sym_b",
+                  "marker": "structural_boundary_only",
+                  "structural_only": true,
+                  "to_node": "renamed_symmetric_sym_b"
+                }
+              ]
+            },
+            "classification": "normalizable_multiple_entries_and_exits",
+            "possible": true,
+            "reason": "virtual boundaries can fan out and merge without changing business edges"
+          },
+          "truth": {
+            "audit": {
+              "boundary_conditions": {
+                "sink_condition_edge_count": 0,
+                "sink_incoming_edges": [
+                  {
+                    "condition": {
+                      "asserted": false,
+                      "concept_id": null,
+                      "present": false
+                    },
+                    "edge_id": "truth_edge_3",
+                    "from_node": "sym_join",
+                    "to_node": "sym_x"
+                  },
+                  {
+                    "condition": {
+                      "asserted": false,
+                      "concept_id": null,
+                      "present": false
+                    },
+                    "edge_id": "truth_edge_4",
+                    "from_node": "sym_join",
+                    "to_node": "sym_y"
+                  }
+                ],
+                "source_condition_edge_count": 0,
+                "source_outgoing_edges": [
+                  {
+                    "condition": {
+                      "asserted": false,
+                      "concept_id": null,
+                      "present": false
+                    },
+                    "edge_id": "truth_edge_1",
+                    "from_node": "sym_a",
+                    "to_node": "sym_join"
+                  },
+                  {
+                    "condition": {
+                      "asserted": false,
+                      "concept_id": null,
+                      "present": false
+                    },
+                    "edge_id": "truth_edge_2",
+                    "from_node": "sym_b",
+                    "to_node": "sym_join"
+                  }
+                ]
+              },
+              "cannot_reach_sink": [],
+              "cycles": {
+                "components": [],
+                "has_cycles": false,
+                "self_loop_nodes": []
+              },
+              "dangling_edge_ids": [],
+              "declared_end_nodes": [],
+              "declared_start_node": null,
+              "edge_count": 4,
+              "graph_name": "truth",
+              "metadata_consistency": {
+                "assessment": "missing_or_inconsistent_boundary_metadata",
+                "consistent": false,
+                "declared_end_nodes_are_topology_sinks": true,
+                "declared_end_nodes_equal_topology_sinks": false,
+                "declared_end_nodes_exist": true,
+                "declared_start_covers_all_topology_sources": false,
+                "declared_start_exists": false,
+                "declared_start_is_topology_source": false,
+                "metadata_complete": false
+              },
+              "node_count": 5,
+              "node_ids": [
+                "sym_a",
+                "sym_b",
+                "sym_join",
+                "sym_x",
+                "sym_y"
+              ],
+              "reserved_boundary_id_collisions": {
+                "edge_ids": [],
+                "node_ids": []
+              },
+              "schema_version": "business_interview.boundary_diagnostics.v1",
+              "sink_count": 2,
+              "source_count": 2,
+              "topology_sinks": [
+                "sym_x",
+                "sym_y"
+              ],
+              "topology_sources": [
+                "sym_a",
+                "sym_b"
+              ],
+              "unreachable_from_source": [],
+              "weak_component_count": 1,
+              "weak_components": [
+                [
+                  "sym_a",
+                  "sym_b",
+                  "sym_join",
+                  "sym_x",
+                  "sym_y"
+                ]
+              ]
+            },
+            "canonical_copy": {
+              "business_edge_ids": [
+                "truth_edge_1",
+                "truth_edge_2",
+                "truth_edge_3",
+                "truth_edge_4"
+              ],
+              "business_node_ids": [
+                "sym_a",
+                "sym_b",
+                "sym_join",
+                "sym_x",
+                "sym_y"
+              ],
+              "invariant": {
+                "all_business_nodes_end_reachable": true,
+                "all_business_nodes_start_reachable": true,
+                "exactly_one_structural_end": true,
+                "exactly_one_structural_start": true,
+                "structural_end_has_no_outgoing": true,
+                "structural_nodes_are_not_concepts": true,
+                "structural_start_has_no_incoming": true,
+                "synthetic_edges_are_structural_only": true
+              },
+              "original_declared_end_nodes": [],
+              "original_declared_start_node": null,
+              "sink_nodes": [
+                "sym_x",
+                "sym_y"
+              ],
+              "source_nodes": [
+                "sym_a",
+                "sym_b"
+              ],
+              "structural_nodes": [
+                {
+                  "id": "__tau2_structural_start__",
+                  "kind": "structural_start"
+                },
+                {
+                  "id": "__tau2_structural_end__",
+                  "kind": "structural_end"
+                }
+              ],
+              "synthetic_edges": [
+                {
+                  "business_relation": false,
+                  "from_node": "sym_x",
+                  "id": "__tau2_structural_boundary__end__sym_x",
+                  "marker": "structural_boundary_only",
+                  "structural_only": true,
+                  "to_node": "__tau2_structural_end__"
+                },
+                {
+                  "business_relation": false,
+                  "from_node": "sym_y",
+                  "id": "__tau2_structural_boundary__end__sym_y",
+                  "marker": "structural_boundary_only",
+                  "structural_only": true,
+                  "to_node": "__tau2_structural_end__"
+                },
+                {
+                  "business_relation": false,
+                  "from_node": "__tau2_structural_start__",
+                  "id": "__tau2_structural_boundary__start__sym_a",
+                  "marker": "structural_boundary_only",
+                  "structural_only": true,
+                  "to_node": "sym_a"
+                },
+                {
+                  "business_relation": false,
+                  "from_node": "__tau2_structural_start__",
+                  "id": "__tau2_structural_boundary__start__sym_b",
+                  "marker": "structural_boundary_only",
+                  "structural_only": true,
+                  "to_node": "sym_b"
+                }
+              ]
+            },
+            "classification": "normalizable_multiple_entries_and_exits",
+            "possible": true,
+            "reason": "virtual boundaries can fan out and merge without changing business edges"
+          }
+        },
+        "status": "ok"
+      }
+    ],
+    "invalid_graph_cases": [
+      {
+        "agent": {
+          "audit": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_1",
+                  "from_node": "invalid_disconnected_component_a",
+                  "to_node": "invalid_disconnected_component_b"
+                }
+              ],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_1",
+                  "from_node": "invalid_disconnected_component_a",
+                  "to_node": "invalid_disconnected_component_b"
+                }
+              ]
+            },
+            "cannot_reach_sink": [
+              "invalid_disconnected_component_cycle_a",
+              "invalid_disconnected_component_cycle_b"
+            ],
+            "cycles": {
+              "components": [
+                [
+                  "invalid_disconnected_component_cycle_a",
+                  "invalid_disconnected_component_cycle_b"
+                ]
+              ],
+              "has_cycles": true,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 3,
+            "graph_name": "agent",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 4,
+            "node_ids": [
+              "invalid_disconnected_component_a",
+              "invalid_disconnected_component_b",
+              "invalid_disconnected_component_cycle_a",
+              "invalid_disconnected_component_cycle_b"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 1,
+            "source_count": 1,
+            "topology_sinks": [
+              "invalid_disconnected_component_b"
+            ],
+            "topology_sources": [
+              "invalid_disconnected_component_a"
+            ],
+            "unreachable_from_source": [
+              "invalid_disconnected_component_cycle_a",
+              "invalid_disconnected_component_cycle_b"
+            ],
+            "weak_component_count": 2,
+            "weak_components": [
+              [
+                "invalid_disconnected_component_a",
+                "invalid_disconnected_component_b"
+              ],
+              [
+                "invalid_disconnected_component_cycle_a",
+                "invalid_disconnected_component_cycle_b"
+              ]
+            ]
+          },
+          "classification": "invalid_disconnected_component",
+          "possible": false,
+          "reason": "not every business node belongs to the one source-to-sink process"
+        },
+        "classification_agrees": true,
+        "expected_handling": "invalid_single_process_graph",
+        "name": "disconnected_component",
+        "truth": {
+          "audit": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_1",
+                  "from_node": "a",
+                  "to_node": "b"
+                }
+              ],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_1",
+                  "from_node": "a",
+                  "to_node": "b"
+                }
+              ]
+            },
+            "cannot_reach_sink": [
+              "cycle_a",
+              "cycle_b"
+            ],
+            "cycles": {
+              "components": [
+                [
+                  "cycle_a",
+                  "cycle_b"
+                ]
+              ],
+              "has_cycles": true,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 3,
+            "graph_name": "truth",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 4,
+            "node_ids": [
+              "a",
+              "b",
+              "cycle_a",
+              "cycle_b"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 1,
+            "source_count": 1,
+            "topology_sinks": [
+              "b"
+            ],
+            "topology_sources": [
+              "a"
+            ],
+            "unreachable_from_source": [
+              "cycle_a",
+              "cycle_b"
+            ],
+            "weak_component_count": 2,
+            "weak_components": [
+              [
+                "a",
+                "b"
+              ],
+              [
+                "cycle_a",
+                "cycle_b"
+              ]
+            ]
+          },
+          "classification": "invalid_disconnected_component",
+          "possible": false,
+          "reason": "not every business node belongs to the one source-to-sink process"
+        }
+      },
+      {
+        "agent": {
+          "audit": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_1",
+                  "from_node": "invalid_multiple_independent_processes_p1_a",
+                  "to_node": "invalid_multiple_independent_processes_p1_b"
+                },
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_2",
+                  "from_node": "invalid_multiple_independent_processes_p2_a",
+                  "to_node": "invalid_multiple_independent_processes_p2_b"
+                }
+              ],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_1",
+                  "from_node": "invalid_multiple_independent_processes_p1_a",
+                  "to_node": "invalid_multiple_independent_processes_p1_b"
+                },
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_2",
+                  "from_node": "invalid_multiple_independent_processes_p2_a",
+                  "to_node": "invalid_multiple_independent_processes_p2_b"
+                }
+              ]
+            },
+            "cannot_reach_sink": [],
+            "cycles": {
+              "components": [],
+              "has_cycles": false,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 2,
+            "graph_name": "agent",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 4,
+            "node_ids": [
+              "invalid_multiple_independent_processes_p1_a",
+              "invalid_multiple_independent_processes_p1_b",
+              "invalid_multiple_independent_processes_p2_a",
+              "invalid_multiple_independent_processes_p2_b"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 2,
+            "source_count": 2,
+            "topology_sinks": [
+              "invalid_multiple_independent_processes_p1_b",
+              "invalid_multiple_independent_processes_p2_b"
+            ],
+            "topology_sources": [
+              "invalid_multiple_independent_processes_p1_a",
+              "invalid_multiple_independent_processes_p2_a"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 2,
+            "weak_components": [
+              [
+                "invalid_multiple_independent_processes_p1_a",
+                "invalid_multiple_independent_processes_p1_b"
+              ],
+              [
+                "invalid_multiple_independent_processes_p2_a",
+                "invalid_multiple_independent_processes_p2_b"
+              ]
+            ]
+          },
+          "classification": "multiple_independent_processes",
+          "possible": false,
+          "reason": "independent weak components require separate process graphs"
+        },
+        "classification_agrees": true,
+        "expected_handling": "separate_process_representation_required",
+        "name": "multiple_independent_processes",
+        "truth": {
+          "audit": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_1",
+                  "from_node": "p1_a",
+                  "to_node": "p1_b"
+                },
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_2",
+                  "from_node": "p2_a",
+                  "to_node": "p2_b"
+                }
+              ],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_1",
+                  "from_node": "p1_a",
+                  "to_node": "p1_b"
+                },
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_2",
+                  "from_node": "p2_a",
+                  "to_node": "p2_b"
+                }
+              ]
+            },
+            "cannot_reach_sink": [],
+            "cycles": {
+              "components": [],
+              "has_cycles": false,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 2,
+            "graph_name": "truth",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 4,
+            "node_ids": [
+              "p1_a",
+              "p1_b",
+              "p2_a",
+              "p2_b"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 2,
+            "source_count": 2,
+            "topology_sinks": [
+              "p1_b",
+              "p2_b"
+            ],
+            "topology_sources": [
+              "p1_a",
+              "p2_a"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 2,
+            "weak_components": [
+              [
+                "p1_a",
+                "p1_b"
+              ],
+              [
+                "p2_a",
+                "p2_b"
+              ]
+            ]
+          },
+          "classification": "multiple_independent_processes",
+          "possible": false,
+          "reason": "independent weak components require separate process graphs"
+        }
+      },
+      {
+        "agent": {
+          "audit": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_4",
+                  "from_node": "invalid_cycle_b",
+                  "to_node": "invalid_cycle_end"
+                }
+              ],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_1",
+                  "from_node": "invalid_cycle_entry",
+                  "to_node": "invalid_cycle_a"
+                }
+              ]
+            },
+            "cannot_reach_sink": [],
+            "cycles": {
+              "components": [
+                [
+                  "invalid_cycle_a",
+                  "invalid_cycle_b"
+                ]
+              ],
+              "has_cycles": true,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 4,
+            "graph_name": "agent",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 4,
+            "node_ids": [
+              "invalid_cycle_a",
+              "invalid_cycle_b",
+              "invalid_cycle_end",
+              "invalid_cycle_entry"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 1,
+            "source_count": 1,
+            "topology_sinks": [
+              "invalid_cycle_end"
+            ],
+            "topology_sources": [
+              "invalid_cycle_entry"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 1,
+            "weak_components": [
+              [
+                "invalid_cycle_a",
+                "invalid_cycle_b",
+                "invalid_cycle_end",
+                "invalid_cycle_entry"
+              ]
+            ]
+          },
+          "canonical_copy": {
+            "business_edge_ids": [
+              "agent_edge_1",
+              "agent_edge_2",
+              "agent_edge_3",
+              "agent_edge_4"
+            ],
+            "business_node_ids": [
+              "invalid_cycle_a",
+              "invalid_cycle_b",
+              "invalid_cycle_end",
+              "invalid_cycle_entry"
+            ],
+            "invariant": {
+              "all_business_nodes_end_reachable": true,
+              "all_business_nodes_start_reachable": true,
+              "exactly_one_structural_end": true,
+              "exactly_one_structural_start": true,
+              "structural_end_has_no_outgoing": true,
+              "structural_nodes_are_not_concepts": true,
+              "structural_start_has_no_incoming": true,
+              "synthetic_edges_are_structural_only": true
+            },
+            "original_declared_end_nodes": [],
+            "original_declared_start_node": null,
+            "sink_nodes": [
+              "invalid_cycle_end"
+            ],
+            "source_nodes": [
+              "invalid_cycle_entry"
+            ],
+            "structural_nodes": [
+              {
+                "id": "__tau2_structural_start__",
+                "kind": "structural_start"
+              },
+              {
+                "id": "__tau2_structural_end__",
+                "kind": "structural_end"
+              }
+            ],
+            "synthetic_edges": [
+              {
+                "business_relation": false,
+                "from_node": "invalid_cycle_end",
+                "id": "__tau2_structural_boundary__end__invalid_cycle_end",
+                "marker": "structural_boundary_only",
+                "structural_only": true,
+                "to_node": "__tau2_structural_end__"
+              },
+              {
+                "business_relation": false,
+                "from_node": "__tau2_structural_start__",
+                "id": "__tau2_structural_boundary__start__invalid_cycle_entry",
+                "marker": "structural_boundary_only",
+                "structural_only": true,
+                "to_node": "invalid_cycle_entry"
+              }
+            ]
+          },
+          "classification": "normalizable_with_cycle",
+          "possible": true,
+          "reason": "the cycle is preserved; all nodes still reach the canonical END"
+        },
+        "classification_agrees": true,
+        "expected_handling": "normalization_possible",
+        "name": "cycle",
+        "truth": {
+          "audit": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_4",
+                  "from_node": "b",
+                  "to_node": "end"
+                }
+              ],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_1",
+                  "from_node": "entry",
+                  "to_node": "a"
+                }
+              ]
+            },
+            "cannot_reach_sink": [],
+            "cycles": {
+              "components": [
+                [
+                  "a",
+                  "b"
+                ]
+              ],
+              "has_cycles": true,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 4,
+            "graph_name": "truth",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 4,
+            "node_ids": [
+              "a",
+              "b",
+              "end",
+              "entry"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 1,
+            "source_count": 1,
+            "topology_sinks": [
+              "end"
+            ],
+            "topology_sources": [
+              "entry"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 1,
+            "weak_components": [
+              [
+                "a",
+                "b",
+                "end",
+                "entry"
+              ]
+            ]
+          },
+          "canonical_copy": {
+            "business_edge_ids": [
+              "truth_edge_1",
+              "truth_edge_2",
+              "truth_edge_3",
+              "truth_edge_4"
+            ],
+            "business_node_ids": [
+              "a",
+              "b",
+              "end",
+              "entry"
+            ],
+            "invariant": {
+              "all_business_nodes_end_reachable": true,
+              "all_business_nodes_start_reachable": true,
+              "exactly_one_structural_end": true,
+              "exactly_one_structural_start": true,
+              "structural_end_has_no_outgoing": true,
+              "structural_nodes_are_not_concepts": true,
+              "structural_start_has_no_incoming": true,
+              "synthetic_edges_are_structural_only": true
+            },
+            "original_declared_end_nodes": [],
+            "original_declared_start_node": null,
+            "sink_nodes": [
+              "end"
+            ],
+            "source_nodes": [
+              "entry"
+            ],
+            "structural_nodes": [
+              {
+                "id": "__tau2_structural_start__",
+                "kind": "structural_start"
+              },
+              {
+                "id": "__tau2_structural_end__",
+                "kind": "structural_end"
+              }
+            ],
+            "synthetic_edges": [
+              {
+                "business_relation": false,
+                "from_node": "end",
+                "id": "__tau2_structural_boundary__end__end",
+                "marker": "structural_boundary_only",
+                "structural_only": true,
+                "to_node": "__tau2_structural_end__"
+              },
+              {
+                "business_relation": false,
+                "from_node": "__tau2_structural_start__",
+                "id": "__tau2_structural_boundary__start__entry",
+                "marker": "structural_boundary_only",
+                "structural_only": true,
+                "to_node": "entry"
+              }
+            ]
+          },
+          "classification": "normalizable_with_cycle",
+          "possible": true,
+          "reason": "the cycle is preserved; all nodes still reach the canonical END"
+        }
+      },
+      {
+        "agent": {
+          "audit": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_3",
+                  "from_node": "invalid_self_loop_a",
+                  "to_node": "invalid_self_loop_end"
+                }
+              ],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_1",
+                  "from_node": "invalid_self_loop_entry",
+                  "to_node": "invalid_self_loop_a"
+                }
+              ]
+            },
+            "cannot_reach_sink": [],
+            "cycles": {
+              "components": [
+                [
+                  "invalid_self_loop_a"
+                ]
+              ],
+              "has_cycles": true,
+              "self_loop_nodes": [
+                "invalid_self_loop_a"
+              ]
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 3,
+            "graph_name": "agent",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 3,
+            "node_ids": [
+              "invalid_self_loop_a",
+              "invalid_self_loop_end",
+              "invalid_self_loop_entry"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 1,
+            "source_count": 1,
+            "topology_sinks": [
+              "invalid_self_loop_end"
+            ],
+            "topology_sources": [
+              "invalid_self_loop_entry"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 1,
+            "weak_components": [
+              [
+                "invalid_self_loop_a",
+                "invalid_self_loop_end",
+                "invalid_self_loop_entry"
+              ]
+            ]
+          },
+          "canonical_copy": {
+            "business_edge_ids": [
+              "agent_edge_1",
+              "agent_edge_2",
+              "agent_edge_3"
+            ],
+            "business_node_ids": [
+              "invalid_self_loop_a",
+              "invalid_self_loop_end",
+              "invalid_self_loop_entry"
+            ],
+            "invariant": {
+              "all_business_nodes_end_reachable": true,
+              "all_business_nodes_start_reachable": true,
+              "exactly_one_structural_end": true,
+              "exactly_one_structural_start": true,
+              "structural_end_has_no_outgoing": true,
+              "structural_nodes_are_not_concepts": true,
+              "structural_start_has_no_incoming": true,
+              "synthetic_edges_are_structural_only": true
+            },
+            "original_declared_end_nodes": [],
+            "original_declared_start_node": null,
+            "sink_nodes": [
+              "invalid_self_loop_end"
+            ],
+            "source_nodes": [
+              "invalid_self_loop_entry"
+            ],
+            "structural_nodes": [
+              {
+                "id": "__tau2_structural_start__",
+                "kind": "structural_start"
+              },
+              {
+                "id": "__tau2_structural_end__",
+                "kind": "structural_end"
+              }
+            ],
+            "synthetic_edges": [
+              {
+                "business_relation": false,
+                "from_node": "invalid_self_loop_end",
+                "id": "__tau2_structural_boundary__end__invalid_self_loop_end",
+                "marker": "structural_boundary_only",
+                "structural_only": true,
+                "to_node": "__tau2_structural_end__"
+              },
+              {
+                "business_relation": false,
+                "from_node": "__tau2_structural_start__",
+                "id": "__tau2_structural_boundary__start__invalid_self_loop_entry",
+                "marker": "structural_boundary_only",
+                "structural_only": true,
+                "to_node": "invalid_self_loop_entry"
+              }
+            ]
+          },
+          "classification": "normalizable_with_self_loop",
+          "possible": true,
+          "reason": "the self-loop is preserved; all nodes still reach the canonical END"
+        },
+        "classification_agrees": true,
+        "expected_handling": "normalization_possible",
+        "name": "self_loop",
+        "truth": {
+          "audit": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_3",
+                  "from_node": "a",
+                  "to_node": "end"
+                }
+              ],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_1",
+                  "from_node": "entry",
+                  "to_node": "a"
+                }
+              ]
+            },
+            "cannot_reach_sink": [],
+            "cycles": {
+              "components": [
+                [
+                  "a"
+                ]
+              ],
+              "has_cycles": true,
+              "self_loop_nodes": [
+                "a"
+              ]
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 3,
+            "graph_name": "truth",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 3,
+            "node_ids": [
+              "a",
+              "end",
+              "entry"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 1,
+            "source_count": 1,
+            "topology_sinks": [
+              "end"
+            ],
+            "topology_sources": [
+              "entry"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 1,
+            "weak_components": [
+              [
+                "a",
+                "end",
+                "entry"
+              ]
+            ]
+          },
+          "canonical_copy": {
+            "business_edge_ids": [
+              "truth_edge_1",
+              "truth_edge_2",
+              "truth_edge_3"
+            ],
+            "business_node_ids": [
+              "a",
+              "end",
+              "entry"
+            ],
+            "invariant": {
+              "all_business_nodes_end_reachable": true,
+              "all_business_nodes_start_reachable": true,
+              "exactly_one_structural_end": true,
+              "exactly_one_structural_start": true,
+              "structural_end_has_no_outgoing": true,
+              "structural_nodes_are_not_concepts": true,
+              "structural_start_has_no_incoming": true,
+              "synthetic_edges_are_structural_only": true
+            },
+            "original_declared_end_nodes": [],
+            "original_declared_start_node": null,
+            "sink_nodes": [
+              "end"
+            ],
+            "source_nodes": [
+              "entry"
+            ],
+            "structural_nodes": [
+              {
+                "id": "__tau2_structural_start__",
+                "kind": "structural_start"
+              },
+              {
+                "id": "__tau2_structural_end__",
+                "kind": "structural_end"
+              }
+            ],
+            "synthetic_edges": [
+              {
+                "business_relation": false,
+                "from_node": "end",
+                "id": "__tau2_structural_boundary__end__end",
+                "marker": "structural_boundary_only",
+                "structural_only": true,
+                "to_node": "__tau2_structural_end__"
+              },
+              {
+                "business_relation": false,
+                "from_node": "__tau2_structural_start__",
+                "id": "__tau2_structural_boundary__start__entry",
+                "marker": "structural_boundary_only",
+                "structural_only": true,
+                "to_node": "entry"
+              }
+            ]
+          },
+          "classification": "normalizable_with_self_loop",
+          "possible": true,
+          "reason": "the self-loop is preserved; all nodes still reach the canonical END"
+        }
+      },
+      {
+        "agent": {
+          "audit": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": []
+            },
+            "cannot_reach_sink": [
+              "invalid_source_missing_a",
+              "invalid_source_missing_b"
+            ],
+            "cycles": {
+              "components": [
+                [
+                  "invalid_source_missing_a",
+                  "invalid_source_missing_b"
+                ]
+              ],
+              "has_cycles": true,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 2,
+            "graph_name": "agent",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": true,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 2,
+            "node_ids": [
+              "invalid_source_missing_a",
+              "invalid_source_missing_b"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 0,
+            "source_count": 0,
+            "topology_sinks": [],
+            "topology_sources": [],
+            "unreachable_from_source": [
+              "invalid_source_missing_a",
+              "invalid_source_missing_b"
+            ],
+            "weak_component_count": 1,
+            "weak_components": [
+              [
+                "invalid_source_missing_a",
+                "invalid_source_missing_b"
+              ]
+            ]
+          },
+          "classification": "invalid_source_missing",
+          "possible": false,
+          "reason": "a finite graph without a topology source has no canonical entry"
+        },
+        "classification_agrees": true,
+        "expected_handling": "invalid_single_process_graph",
+        "name": "source_missing",
+        "truth": {
+          "audit": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": []
+            },
+            "cannot_reach_sink": [
+              "a",
+              "b"
+            ],
+            "cycles": {
+              "components": [
+                [
+                  "a",
+                  "b"
+                ]
+              ],
+              "has_cycles": true,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 2,
+            "graph_name": "truth",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": true,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 2,
+            "node_ids": [
+              "a",
+              "b"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 0,
+            "source_count": 0,
+            "topology_sinks": [],
+            "topology_sources": [],
+            "unreachable_from_source": [
+              "a",
+              "b"
+            ],
+            "weak_component_count": 1,
+            "weak_components": [
+              [
+                "a",
+                "b"
+              ]
+            ]
+          },
+          "classification": "invalid_source_missing",
+          "possible": false,
+          "reason": "a finite graph without a topology source has no canonical entry"
+        }
+      },
+      {
+        "agent": {
+          "audit": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_1",
+                  "from_node": "invalid_sink_missing_a",
+                  "to_node": "invalid_sink_missing_b"
+                }
+              ]
+            },
+            "cannot_reach_sink": [
+              "invalid_sink_missing_a",
+              "invalid_sink_missing_b"
+            ],
+            "cycles": {
+              "components": [
+                [
+                  "invalid_sink_missing_b"
+                ]
+              ],
+              "has_cycles": true,
+              "self_loop_nodes": [
+                "invalid_sink_missing_b"
+              ]
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 2,
+            "graph_name": "agent",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": true,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 2,
+            "node_ids": [
+              "invalid_sink_missing_a",
+              "invalid_sink_missing_b"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 0,
+            "source_count": 1,
+            "topology_sinks": [],
+            "topology_sources": [
+              "invalid_sink_missing_a"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 1,
+            "weak_components": [
+              [
+                "invalid_sink_missing_a",
+                "invalid_sink_missing_b"
+              ]
+            ]
+          },
+          "classification": "invalid_sink_missing",
+          "possible": false,
+          "reason": "a finite graph without a topology sink has no canonical exit"
+        },
+        "classification_agrees": true,
+        "expected_handling": "invalid_single_process_graph",
+        "name": "sink_missing",
+        "truth": {
+          "audit": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_1",
+                  "from_node": "a",
+                  "to_node": "b"
+                }
+              ]
+            },
+            "cannot_reach_sink": [
+              "a",
+              "b"
+            ],
+            "cycles": {
+              "components": [
+                [
+                  "b"
+                ]
+              ],
+              "has_cycles": true,
+              "self_loop_nodes": [
+                "b"
+              ]
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 2,
+            "graph_name": "truth",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": true,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 2,
+            "node_ids": [
+              "a",
+              "b"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 0,
+            "source_count": 1,
+            "topology_sinks": [],
+            "topology_sources": [
+              "a"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 1,
+            "weak_components": [
+              [
+                "a",
+                "b"
+              ]
+            ]
+          },
+          "classification": "invalid_sink_missing",
+          "possible": false,
+          "reason": "a finite graph without a topology sink has no canonical exit"
+        }
+      },
+      {
+        "agent": {
+          "audit": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_1",
+                  "from_node": "invalid_isolated_node_a",
+                  "to_node": "invalid_isolated_node_b"
+                }
+              ],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_1",
+                  "from_node": "invalid_isolated_node_a",
+                  "to_node": "invalid_isolated_node_b"
+                }
+              ]
+            },
+            "cannot_reach_sink": [],
+            "cycles": {
+              "components": [],
+              "has_cycles": false,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 1,
+            "graph_name": "agent",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 3,
+            "node_ids": [
+              "invalid_isolated_node_a",
+              "invalid_isolated_node_b",
+              "invalid_isolated_node_isolated"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 2,
+            "source_count": 2,
+            "topology_sinks": [
+              "invalid_isolated_node_b",
+              "invalid_isolated_node_isolated"
+            ],
+            "topology_sources": [
+              "invalid_isolated_node_a",
+              "invalid_isolated_node_isolated"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 2,
+            "weak_components": [
+              [
+                "invalid_isolated_node_a",
+                "invalid_isolated_node_b"
+              ],
+              [
+                "invalid_isolated_node_isolated"
+              ]
+            ]
+          },
+          "classification": "invalid_isolated_node",
+          "possible": false,
+          "reason": "an isolated business node cannot be part of this single process"
+        },
+        "classification_agrees": true,
+        "expected_handling": "invalid_single_process_graph",
+        "name": "isolated_node",
+        "truth": {
+          "audit": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_1",
+                  "from_node": "a",
+                  "to_node": "b"
+                }
+              ],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_1",
+                  "from_node": "a",
+                  "to_node": "b"
+                }
+              ]
+            },
+            "cannot_reach_sink": [],
+            "cycles": {
+              "components": [],
+              "has_cycles": false,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 1,
+            "graph_name": "truth",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 3,
+            "node_ids": [
+              "a",
+              "b",
+              "isolated"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 2,
+            "source_count": 2,
+            "topology_sinks": [
+              "b",
+              "isolated"
+            ],
+            "topology_sources": [
+              "a",
+              "isolated"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 2,
+            "weak_components": [
+              [
+                "a",
+                "b"
+              ],
+              [
+                "isolated"
+              ]
+            ]
+          },
+          "classification": "invalid_isolated_node",
+          "possible": false,
+          "reason": "an isolated business node cannot be part of this single process"
+        }
+      },
+      {
+        "agent": {
+          "audit": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_3",
+                  "from_node": "invalid_multiple_apparent_entry_conditions_join",
+                  "to_node": "invalid_multiple_apparent_entry_conditions_exit"
+                }
+              ],
+              "source_condition_edge_count": 2,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": true,
+                    "concept_id": "multiple_apparent_entry_conditions_agent_condition_1",
+                    "present": true
+                  },
+                  "edge_id": "agent_edge_1",
+                  "from_node": "invalid_multiple_apparent_entry_conditions_entry_a",
+                  "to_node": "invalid_multiple_apparent_entry_conditions_join"
+                },
+                {
+                  "condition": {
+                    "asserted": true,
+                    "concept_id": "multiple_apparent_entry_conditions_agent_condition_2",
+                    "present": true
+                  },
+                  "edge_id": "agent_edge_2",
+                  "from_node": "invalid_multiple_apparent_entry_conditions_entry_b",
+                  "to_node": "invalid_multiple_apparent_entry_conditions_join"
+                }
+              ]
+            },
+            "cannot_reach_sink": [],
+            "cycles": {
+              "components": [],
+              "has_cycles": false,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 3,
+            "graph_name": "agent",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 4,
+            "node_ids": [
+              "invalid_multiple_apparent_entry_conditions_entry_a",
+              "invalid_multiple_apparent_entry_conditions_entry_b",
+              "invalid_multiple_apparent_entry_conditions_exit",
+              "invalid_multiple_apparent_entry_conditions_join"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 1,
+            "source_count": 2,
+            "topology_sinks": [
+              "invalid_multiple_apparent_entry_conditions_exit"
+            ],
+            "topology_sources": [
+              "invalid_multiple_apparent_entry_conditions_entry_a",
+              "invalid_multiple_apparent_entry_conditions_entry_b"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 1,
+            "weak_components": [
+              [
+                "invalid_multiple_apparent_entry_conditions_entry_a",
+                "invalid_multiple_apparent_entry_conditions_entry_b",
+                "invalid_multiple_apparent_entry_conditions_exit",
+                "invalid_multiple_apparent_entry_conditions_join"
+              ]
+            ]
+          },
+          "canonical_copy": {
+            "business_edge_ids": [
+              "agent_edge_1",
+              "agent_edge_2",
+              "agent_edge_3"
+            ],
+            "business_node_ids": [
+              "invalid_multiple_apparent_entry_conditions_entry_a",
+              "invalid_multiple_apparent_entry_conditions_entry_b",
+              "invalid_multiple_apparent_entry_conditions_exit",
+              "invalid_multiple_apparent_entry_conditions_join"
+            ],
+            "invariant": {
+              "all_business_nodes_end_reachable": true,
+              "all_business_nodes_start_reachable": true,
+              "exactly_one_structural_end": true,
+              "exactly_one_structural_start": true,
+              "structural_end_has_no_outgoing": true,
+              "structural_nodes_are_not_concepts": true,
+              "structural_start_has_no_incoming": true,
+              "synthetic_edges_are_structural_only": true
+            },
+            "original_declared_end_nodes": [],
+            "original_declared_start_node": null,
+            "sink_nodes": [
+              "invalid_multiple_apparent_entry_conditions_exit"
+            ],
+            "source_nodes": [
+              "invalid_multiple_apparent_entry_conditions_entry_a",
+              "invalid_multiple_apparent_entry_conditions_entry_b"
+            ],
+            "structural_nodes": [
+              {
+                "id": "__tau2_structural_start__",
+                "kind": "structural_start"
+              },
+              {
+                "id": "__tau2_structural_end__",
+                "kind": "structural_end"
+              }
+            ],
+            "synthetic_edges": [
+              {
+                "business_relation": false,
+                "from_node": "invalid_multiple_apparent_entry_conditions_exit",
+                "id": "__tau2_structural_boundary__end__invalid_multiple_apparent_entry_conditions_exit",
+                "marker": "structural_boundary_only",
+                "structural_only": true,
+                "to_node": "__tau2_structural_end__"
+              },
+              {
+                "business_relation": false,
+                "from_node": "__tau2_structural_start__",
+                "id": "__tau2_structural_boundary__start__invalid_multiple_apparent_entry_conditions_entry_a",
+                "marker": "structural_boundary_only",
+                "structural_only": true,
+                "to_node": "invalid_multiple_apparent_entry_conditions_entry_a"
+              },
+              {
+                "business_relation": false,
+                "from_node": "__tau2_structural_start__",
+                "id": "__tau2_structural_boundary__start__invalid_multiple_apparent_entry_conditions_entry_b",
+                "marker": "structural_boundary_only",
+                "structural_only": true,
+                "to_node": "invalid_multiple_apparent_entry_conditions_entry_b"
+              }
+            ]
+          },
+          "classification": "normalizable_multiple_entries",
+          "possible": true,
+          "reason": "virtual START can fan out to each topology source"
+        },
+        "classification_agrees": true,
+        "expected_handling": "normalization_possible",
+        "name": "multiple_apparent_entry_conditions",
+        "truth": {
+          "audit": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_3",
+                  "from_node": "join",
+                  "to_node": "exit"
+                }
+              ],
+              "source_condition_edge_count": 2,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": true,
+                    "concept_id": "multiple_apparent_entry_conditions_truth_condition_1",
+                    "present": true
+                  },
+                  "edge_id": "truth_edge_1",
+                  "from_node": "entry_a",
+                  "to_node": "join"
+                },
+                {
+                  "condition": {
+                    "asserted": true,
+                    "concept_id": "multiple_apparent_entry_conditions_truth_condition_2",
+                    "present": true
+                  },
+                  "edge_id": "truth_edge_2",
+                  "from_node": "entry_b",
+                  "to_node": "join"
+                }
+              ]
+            },
+            "cannot_reach_sink": [],
+            "cycles": {
+              "components": [],
+              "has_cycles": false,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 3,
+            "graph_name": "truth",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 4,
+            "node_ids": [
+              "entry_a",
+              "entry_b",
+              "exit",
+              "join"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 1,
+            "source_count": 2,
+            "topology_sinks": [
+              "exit"
+            ],
+            "topology_sources": [
+              "entry_a",
+              "entry_b"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 1,
+            "weak_components": [
+              [
+                "entry_a",
+                "entry_b",
+                "exit",
+                "join"
+              ]
+            ]
+          },
+          "canonical_copy": {
+            "business_edge_ids": [
+              "truth_edge_1",
+              "truth_edge_2",
+              "truth_edge_3"
+            ],
+            "business_node_ids": [
+              "entry_a",
+              "entry_b",
+              "exit",
+              "join"
+            ],
+            "invariant": {
+              "all_business_nodes_end_reachable": true,
+              "all_business_nodes_start_reachable": true,
+              "exactly_one_structural_end": true,
+              "exactly_one_structural_start": true,
+              "structural_end_has_no_outgoing": true,
+              "structural_nodes_are_not_concepts": true,
+              "structural_start_has_no_incoming": true,
+              "synthetic_edges_are_structural_only": true
+            },
+            "original_declared_end_nodes": [],
+            "original_declared_start_node": null,
+            "sink_nodes": [
+              "exit"
+            ],
+            "source_nodes": [
+              "entry_a",
+              "entry_b"
+            ],
+            "structural_nodes": [
+              {
+                "id": "__tau2_structural_start__",
+                "kind": "structural_start"
+              },
+              {
+                "id": "__tau2_structural_end__",
+                "kind": "structural_end"
+              }
+            ],
+            "synthetic_edges": [
+              {
+                "business_relation": false,
+                "from_node": "exit",
+                "id": "__tau2_structural_boundary__end__exit",
+                "marker": "structural_boundary_only",
+                "structural_only": true,
+                "to_node": "__tau2_structural_end__"
+              },
+              {
+                "business_relation": false,
+                "from_node": "__tau2_structural_start__",
+                "id": "__tau2_structural_boundary__start__entry_a",
+                "marker": "structural_boundary_only",
+                "structural_only": true,
+                "to_node": "entry_a"
+              },
+              {
+                "business_relation": false,
+                "from_node": "__tau2_structural_start__",
+                "id": "__tau2_structural_boundary__start__entry_b",
+                "marker": "structural_boundary_only",
+                "structural_only": true,
+                "to_node": "entry_b"
+              }
+            ]
+          },
+          "classification": "normalizable_multiple_entries",
+          "possible": true,
+          "reason": "virtual START can fan out to each topology source"
+        }
+      },
+      {
+        "agent": {
+          "audit": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 2,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": true,
+                    "concept_id": "multiple_apparent_exit_conditions_agent_condition_1",
+                    "present": true
+                  },
+                  "edge_id": "agent_edge_1",
+                  "from_node": "invalid_multiple_apparent_exit_conditions_entry",
+                  "to_node": "invalid_multiple_apparent_exit_conditions_exit_a"
+                },
+                {
+                  "condition": {
+                    "asserted": true,
+                    "concept_id": "multiple_apparent_exit_conditions_agent_condition_2",
+                    "present": true
+                  },
+                  "edge_id": "agent_edge_2",
+                  "from_node": "invalid_multiple_apparent_exit_conditions_entry",
+                  "to_node": "invalid_multiple_apparent_exit_conditions_exit_b"
+                }
+              ],
+              "source_condition_edge_count": 2,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": true,
+                    "concept_id": "multiple_apparent_exit_conditions_agent_condition_1",
+                    "present": true
+                  },
+                  "edge_id": "agent_edge_1",
+                  "from_node": "invalid_multiple_apparent_exit_conditions_entry",
+                  "to_node": "invalid_multiple_apparent_exit_conditions_exit_a"
+                },
+                {
+                  "condition": {
+                    "asserted": true,
+                    "concept_id": "multiple_apparent_exit_conditions_agent_condition_2",
+                    "present": true
+                  },
+                  "edge_id": "agent_edge_2",
+                  "from_node": "invalid_multiple_apparent_exit_conditions_entry",
+                  "to_node": "invalid_multiple_apparent_exit_conditions_exit_b"
+                }
+              ]
+            },
+            "cannot_reach_sink": [],
+            "cycles": {
+              "components": [],
+              "has_cycles": false,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 2,
+            "graph_name": "agent",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 3,
+            "node_ids": [
+              "invalid_multiple_apparent_exit_conditions_entry",
+              "invalid_multiple_apparent_exit_conditions_exit_a",
+              "invalid_multiple_apparent_exit_conditions_exit_b"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 2,
+            "source_count": 1,
+            "topology_sinks": [
+              "invalid_multiple_apparent_exit_conditions_exit_a",
+              "invalid_multiple_apparent_exit_conditions_exit_b"
+            ],
+            "topology_sources": [
+              "invalid_multiple_apparent_exit_conditions_entry"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 1,
+            "weak_components": [
+              [
+                "invalid_multiple_apparent_exit_conditions_entry",
+                "invalid_multiple_apparent_exit_conditions_exit_a",
+                "invalid_multiple_apparent_exit_conditions_exit_b"
+              ]
+            ]
+          },
+          "canonical_copy": {
+            "business_edge_ids": [
+              "agent_edge_1",
+              "agent_edge_2"
+            ],
+            "business_node_ids": [
+              "invalid_multiple_apparent_exit_conditions_entry",
+              "invalid_multiple_apparent_exit_conditions_exit_a",
+              "invalid_multiple_apparent_exit_conditions_exit_b"
+            ],
+            "invariant": {
+              "all_business_nodes_end_reachable": true,
+              "all_business_nodes_start_reachable": true,
+              "exactly_one_structural_end": true,
+              "exactly_one_structural_start": true,
+              "structural_end_has_no_outgoing": true,
+              "structural_nodes_are_not_concepts": true,
+              "structural_start_has_no_incoming": true,
+              "synthetic_edges_are_structural_only": true
+            },
+            "original_declared_end_nodes": [],
+            "original_declared_start_node": null,
+            "sink_nodes": [
+              "invalid_multiple_apparent_exit_conditions_exit_a",
+              "invalid_multiple_apparent_exit_conditions_exit_b"
+            ],
+            "source_nodes": [
+              "invalid_multiple_apparent_exit_conditions_entry"
+            ],
+            "structural_nodes": [
+              {
+                "id": "__tau2_structural_start__",
+                "kind": "structural_start"
+              },
+              {
+                "id": "__tau2_structural_end__",
+                "kind": "structural_end"
+              }
+            ],
+            "synthetic_edges": [
+              {
+                "business_relation": false,
+                "from_node": "invalid_multiple_apparent_exit_conditions_exit_a",
+                "id": "__tau2_structural_boundary__end__invalid_multiple_apparent_exit_conditions_exit_a",
+                "marker": "structural_boundary_only",
+                "structural_only": true,
+                "to_node": "__tau2_structural_end__"
+              },
+              {
+                "business_relation": false,
+                "from_node": "invalid_multiple_apparent_exit_conditions_exit_b",
+                "id": "__tau2_structural_boundary__end__invalid_multiple_apparent_exit_conditions_exit_b",
+                "marker": "structural_boundary_only",
+                "structural_only": true,
+                "to_node": "__tau2_structural_end__"
+              },
+              {
+                "business_relation": false,
+                "from_node": "__tau2_structural_start__",
+                "id": "__tau2_structural_boundary__start__invalid_multiple_apparent_exit_conditions_entry",
+                "marker": "structural_boundary_only",
+                "structural_only": true,
+                "to_node": "invalid_multiple_apparent_exit_conditions_entry"
+              }
+            ]
+          },
+          "classification": "normalizable_multiple_exits",
+          "possible": true,
+          "reason": "each topology sink can merge into virtual END"
+        },
+        "classification_agrees": true,
+        "expected_handling": "normalization_possible",
+        "name": "multiple_apparent_exit_conditions",
+        "truth": {
+          "audit": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 2,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": true,
+                    "concept_id": "multiple_apparent_exit_conditions_truth_condition_1",
+                    "present": true
+                  },
+                  "edge_id": "truth_edge_1",
+                  "from_node": "entry",
+                  "to_node": "exit_a"
+                },
+                {
+                  "condition": {
+                    "asserted": true,
+                    "concept_id": "multiple_apparent_exit_conditions_truth_condition_2",
+                    "present": true
+                  },
+                  "edge_id": "truth_edge_2",
+                  "from_node": "entry",
+                  "to_node": "exit_b"
+                }
+              ],
+              "source_condition_edge_count": 2,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": true,
+                    "concept_id": "multiple_apparent_exit_conditions_truth_condition_1",
+                    "present": true
+                  },
+                  "edge_id": "truth_edge_1",
+                  "from_node": "entry",
+                  "to_node": "exit_a"
+                },
+                {
+                  "condition": {
+                    "asserted": true,
+                    "concept_id": "multiple_apparent_exit_conditions_truth_condition_2",
+                    "present": true
+                  },
+                  "edge_id": "truth_edge_2",
+                  "from_node": "entry",
+                  "to_node": "exit_b"
+                }
+              ]
+            },
+            "cannot_reach_sink": [],
+            "cycles": {
+              "components": [],
+              "has_cycles": false,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 2,
+            "graph_name": "truth",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 3,
+            "node_ids": [
+              "entry",
+              "exit_a",
+              "exit_b"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": []
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 2,
+            "source_count": 1,
+            "topology_sinks": [
+              "exit_a",
+              "exit_b"
+            ],
+            "topology_sources": [
+              "entry"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 1,
+            "weak_components": [
+              [
+                "entry",
+                "exit_a",
+                "exit_b"
+              ]
+            ]
+          },
+          "canonical_copy": {
+            "business_edge_ids": [
+              "truth_edge_1",
+              "truth_edge_2"
+            ],
+            "business_node_ids": [
+              "entry",
+              "exit_a",
+              "exit_b"
+            ],
+            "invariant": {
+              "all_business_nodes_end_reachable": true,
+              "all_business_nodes_start_reachable": true,
+              "exactly_one_structural_end": true,
+              "exactly_one_structural_start": true,
+              "structural_end_has_no_outgoing": true,
+              "structural_nodes_are_not_concepts": true,
+              "structural_start_has_no_incoming": true,
+              "synthetic_edges_are_structural_only": true
+            },
+            "original_declared_end_nodes": [],
+            "original_declared_start_node": null,
+            "sink_nodes": [
+              "exit_a",
+              "exit_b"
+            ],
+            "source_nodes": [
+              "entry"
+            ],
+            "structural_nodes": [
+              {
+                "id": "__tau2_structural_start__",
+                "kind": "structural_start"
+              },
+              {
+                "id": "__tau2_structural_end__",
+                "kind": "structural_end"
+              }
+            ],
+            "synthetic_edges": [
+              {
+                "business_relation": false,
+                "from_node": "exit_a",
+                "id": "__tau2_structural_boundary__end__exit_a",
+                "marker": "structural_boundary_only",
+                "structural_only": true,
+                "to_node": "__tau2_structural_end__"
+              },
+              {
+                "business_relation": false,
+                "from_node": "exit_b",
+                "id": "__tau2_structural_boundary__end__exit_b",
+                "marker": "structural_boundary_only",
+                "structural_only": true,
+                "to_node": "__tau2_structural_end__"
+              },
+              {
+                "business_relation": false,
+                "from_node": "__tau2_structural_start__",
+                "id": "__tau2_structural_boundary__start__entry",
+                "marker": "structural_boundary_only",
+                "structural_only": true,
+                "to_node": "entry"
+              }
+            ]
+          },
+          "classification": "normalizable_multiple_exits",
+          "possible": true,
+          "reason": "each topology sink can merge into virtual END"
+        }
+      },
+      {
+        "agent": {
+          "audit": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_2",
+                  "from_node": "business",
+                  "to_node": "__tau2_structural_end__"
+                }
+              ],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "agent_edge_1",
+                  "from_node": "__tau2_structural_start__",
+                  "to_node": "business"
+                }
+              ]
+            },
+            "cannot_reach_sink": [],
+            "cycles": {
+              "components": [],
+              "has_cycles": false,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 2,
+            "graph_name": "agent",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 3,
+            "node_ids": [
+              "__tau2_structural_end__",
+              "__tau2_structural_start__",
+              "business"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": [
+                "__tau2_structural_end__",
+                "__tau2_structural_start__"
+              ]
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 1,
+            "source_count": 1,
+            "topology_sinks": [
+              "__tau2_structural_end__"
+            ],
+            "topology_sources": [
+              "__tau2_structural_start__"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 1,
+            "weak_components": [
+              [
+                "__tau2_structural_end__",
+                "__tau2_structural_start__",
+                "business"
+              ]
+            ]
+          },
+          "classification": "invalid_reserved_boundary_id_collision",
+          "possible": false,
+          "reason": "reserved structural ids already exist in the business graph"
+        },
+        "classification_agrees": true,
+        "expected_handling": "invalid_single_process_graph",
+        "name": "existing_explicit_structural_boundary_ids",
+        "truth": {
+          "audit": {
+            "boundary_conditions": {
+              "sink_condition_edge_count": 0,
+              "sink_incoming_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_2",
+                  "from_node": "business",
+                  "to_node": "__tau2_structural_end__"
+                }
+              ],
+              "source_condition_edge_count": 0,
+              "source_outgoing_edges": [
+                {
+                  "condition": {
+                    "asserted": false,
+                    "concept_id": null,
+                    "present": false
+                  },
+                  "edge_id": "truth_edge_1",
+                  "from_node": "__tau2_structural_start__",
+                  "to_node": "business"
+                }
+              ]
+            },
+            "cannot_reach_sink": [],
+            "cycles": {
+              "components": [],
+              "has_cycles": false,
+              "self_loop_nodes": []
+            },
+            "dangling_edge_ids": [],
+            "declared_end_nodes": [],
+            "declared_start_node": null,
+            "edge_count": 2,
+            "graph_name": "truth",
+            "metadata_consistency": {
+              "assessment": "missing_or_inconsistent_boundary_metadata",
+              "consistent": false,
+              "declared_end_nodes_are_topology_sinks": true,
+              "declared_end_nodes_equal_topology_sinks": false,
+              "declared_end_nodes_exist": true,
+              "declared_start_covers_all_topology_sources": false,
+              "declared_start_exists": false,
+              "declared_start_is_topology_source": false,
+              "metadata_complete": false
+            },
+            "node_count": 3,
+            "node_ids": [
+              "__tau2_structural_end__",
+              "__tau2_structural_start__",
+              "business"
+            ],
+            "reserved_boundary_id_collisions": {
+              "edge_ids": [],
+              "node_ids": [
+                "__tau2_structural_end__",
+                "__tau2_structural_start__"
+              ]
+            },
+            "schema_version": "business_interview.boundary_diagnostics.v1",
+            "sink_count": 1,
+            "source_count": 1,
+            "topology_sinks": [
+              "__tau2_structural_end__"
+            ],
+            "topology_sources": [
+              "__tau2_structural_start__"
+            ],
+            "unreachable_from_source": [],
+            "weak_component_count": 1,
+            "weak_components": [
+              [
+                "__tau2_structural_end__",
+                "__tau2_structural_start__",
+                "business"
+              ]
+            ]
+          },
+          "classification": "invalid_reserved_boundary_id_collision",
+          "possible": false,
+          "reason": "reserved structural ids already exist in the business graph"
+        }
+      }
+    ]
+  },
+  "kind": "boundary_audit",
+  "saved_real_llm": [
+    {
+      "boundary_audit": {
+        "agent": {
+          "boundary_conditions": {
+            "sink_condition_edge_count": 1,
+            "sink_incoming_edges": [
+              {
+                "condition": {
+                  "asserted": true,
+                  "concept_id": "cond_end_of_month",
+                  "present": true
+                },
+                "edge_id": "edge_send_to_month_end",
+                "from_node": "node_send_quotation",
+                "to_node": "node_send_month_end_summary"
+              }
+            ],
+            "source_condition_edge_count": 0,
+            "source_outgoing_edges": [
+              {
+                "condition": {
+                  "asserted": false,
+                  "concept_id": null,
+                  "present": false
+                },
+                "edge_id": "edge_receive_to_check",
+                "from_node": "node_receive_request",
+                "to_node": "node_check_customer_info"
+              },
+              {
+                "condition": {
+                  "asserted": false,
+                  "concept_id": null,
+                  "present": false
+                },
+                "edge_id": "edge_receive_to_send",
+                "from_node": "node_receive_request",
+                "to_node": "node_send_quotation"
+              }
+            ]
+          },
+          "cannot_reach_sink": [],
+          "cycles": {
+            "components": [],
+            "has_cycles": false,
+            "self_loop_nodes": []
+          },
+          "dangling_edge_ids": [],
+          "declared_end_nodes": [
+            "node_send_month_end_summary",
+            "node_send_quotation"
+          ],
+          "declared_start_node": "node_receive_request",
+          "edge_count": 7,
+          "graph_name": "agent",
+          "metadata_consistency": {
+            "assessment": "missing_or_inconsistent_boundary_metadata",
+            "consistent": false,
+            "declared_end_nodes_are_topology_sinks": false,
+            "declared_end_nodes_equal_topology_sinks": false,
+            "declared_end_nodes_exist": true,
+            "declared_start_covers_all_topology_sources": true,
+            "declared_start_exists": true,
+            "declared_start_is_topology_source": true,
+            "metadata_complete": true
+          },
+          "node_count": 6,
+          "node_ids": [
+            "node_approve_high_value",
+            "node_check_customer_info",
+            "node_create_quotation_doc",
+            "node_receive_request",
+            "node_send_month_end_summary",
+            "node_send_quotation"
+          ],
+          "reserved_boundary_id_collisions": {
+            "edge_ids": [],
+            "node_ids": []
+          },
+          "schema_version": "business_interview.boundary_diagnostics.v1",
+          "sink_count": 1,
+          "source_count": 1,
+          "topology_sinks": [
+            "node_send_month_end_summary"
+          ],
+          "topology_sources": [
+            "node_receive_request"
+          ],
+          "unreachable_from_source": [],
+          "weak_component_count": 1,
+          "weak_components": [
+            [
+              "node_approve_high_value",
+              "node_check_customer_info",
+              "node_create_quotation_doc",
+              "node_receive_request",
+              "node_send_month_end_summary",
+              "node_send_quotation"
+            ]
+          ]
+        },
+        "truth": {
+          "boundary_conditions": {
+            "sink_condition_edge_count": 2,
+            "sink_incoming_edges": [
+              {
+                "condition": {
+                  "asserted": true,
+                  "concept_id": "tc_cond_at_or_below_1m",
+                  "present": true
+                },
+                "edge_id": "e4",
+                "from_node": "cq",
+                "to_node": "sq"
+              },
+              {
+                "condition": {
+                  "asserted": false,
+                  "concept_id": null,
+                  "present": false
+                },
+                "edge_id": "e5",
+                "from_node": "ap",
+                "to_node": "sq"
+              },
+              {
+                "condition": {
+                  "asserted": true,
+                  "concept_id": "tc_cond_month_end",
+                  "present": true
+                },
+                "edge_id": "e6",
+                "from_node": "cq",
+                "to_node": "me"
+              }
+            ],
+            "source_condition_edge_count": 0,
+            "source_outgoing_edges": [
+              {
+                "condition": {
+                  "asserted": false,
+                  "concept_id": null,
+                  "present": false
+                },
+                "edge_id": "e1",
+                "from_node": "r",
+                "to_node": "cc"
+              }
+            ]
+          },
+          "cannot_reach_sink": [],
+          "cycles": {
+            "components": [],
+            "has_cycles": false,
+            "self_loop_nodes": []
+          },
+          "dangling_edge_ids": [],
+          "declared_end_nodes": [
+            "me",
+            "sq"
+          ],
+          "declared_start_node": "r",
+          "edge_count": 6,
+          "graph_name": "truth",
+          "metadata_consistency": {
+            "assessment": "consistent",
+            "consistent": true,
+            "declared_end_nodes_are_topology_sinks": true,
+            "declared_end_nodes_equal_topology_sinks": true,
+            "declared_end_nodes_exist": true,
+            "declared_start_covers_all_topology_sources": true,
+            "declared_start_exists": true,
+            "declared_start_is_topology_source": true,
+            "metadata_complete": true
+          },
+          "node_count": 6,
+          "node_ids": [
+            "ap",
+            "cc",
+            "cq",
+            "me",
+            "r",
+            "sq"
+          ],
+          "reserved_boundary_id_collisions": {
+            "edge_ids": [],
+            "node_ids": []
+          },
+          "schema_version": "business_interview.boundary_diagnostics.v1",
+          "sink_count": 2,
+          "source_count": 1,
+          "topology_sinks": [
+            "me",
+            "sq"
+          ],
+          "topology_sources": [
+            "r"
+          ],
+          "unreachable_from_source": [],
+          "weak_component_count": 1,
+          "weak_components": [
+            [
+              "ap",
+              "cc",
+              "cq",
+              "me",
+              "r",
+              "sq"
+            ]
+          ]
+        }
+      },
+      "generation_trace": {
+        "diagnosis": "endpoint declaration was invoked; inspect its arguments and later updates",
+        "endpoint_declaration_call_count": 1,
+        "endpoint_metadata_was_omitted_by_tool_protocol": false,
+        "episode_complete": true,
+        "finish_interview_calls": [
+          {
+            "arguments": {
+              "summary": "Captured the quotation process. Starts when a sales employee receives the customer's quotation request. The sales employee checks customer information in the CRM, then creates the quotation document in the quoting system using pricing information. If the quotation amount is over 1,000,000 yen, the manager approves the high-value quotation for credit risk management, then the quotation is sent to the customer via email. If the amount is at or below 1,000,000 yen, the quotation is sent directly. Separately, at the end of the month, the sales employee sends a month-end summary of quotation information to Accounting using Excel. Rationales for most steps were unknown to the stakeholder."
+            },
+            "name": "finish_interview",
+            "turn_idx": 93
+          }
+        ],
+        "serialized_end_nodes": [
+          "node_send_quotation",
+          "node_send_month_end_summary"
+        ],
+        "serialized_start_node": "node_receive_request",
+        "set_graph_endpoints_calls": [
+          {
+            "arguments": {
+              "end_node_ids": [
+                "node_send_quotation",
+                "node_send_month_end_summary"
+              ],
+              "start_node_id": "node_receive_request"
+            },
+            "name": "set_graph_endpoints",
+            "turn_idx": 89
+          }
+        ],
+        "start_inference_calls": [
+          {
+            "arguments": {},
+            "name": "start_inference",
+            "turn_idx": 4
+          }
+        ],
+        "termination_reason": "episode_complete"
+      },
+      "name": "seed_9002",
+      "normalization": {
+        "agent": {
+          "canonical_invariant": {
+            "all_business_nodes_end_reachable": true,
+            "all_business_nodes_start_reachable": true,
+            "exactly_one_structural_end": true,
+            "exactly_one_structural_start": true,
+            "structural_end_has_no_outgoing": true,
+            "structural_nodes_are_not_concepts": true,
+            "structural_start_has_no_incoming": true,
+            "synthetic_edges_are_structural_only": true
+          },
+          "classification": "normalizable",
+          "possible": true,
+          "reason": "one source and one sink already exist topologically"
+        },
+        "truth": {
+          "canonical_invariant": {
+            "all_business_nodes_end_reachable": true,
+            "all_business_nodes_start_reachable": true,
+            "exactly_one_structural_end": true,
+            "exactly_one_structural_start": true,
+            "structural_end_has_no_outgoing": true,
+            "structural_nodes_are_not_concepts": true,
+            "structural_start_has_no_incoming": true,
+            "synthetic_edges_are_structural_only": true
+          },
+          "classification": "normalizable_multiple_exits",
+          "possible": true,
+          "reason": "each topology sink can merge into virtual END"
+        }
+      },
+      "seed": 9002
+    },
+    {
+      "boundary_audit": {
+        "agent": {
+          "boundary_conditions": {
+            "sink_condition_edge_count": 2,
+            "sink_incoming_edges": [
+              {
+                "condition": {
+                  "asserted": false,
+                  "concept_id": null,
+                  "present": false
+                },
+                "edge_id": "edge_approve_to_send",
+                "from_node": "node_manager_approve",
+                "to_node": "node_send_quotation"
+              },
+              {
+                "condition": {
+                  "asserted": true,
+                  "concept_id": "cond_at_or_below_1m",
+                  "present": true
+                },
+                "edge_id": "edge_create_to_send_direct",
+                "from_node": "node_create_quotation",
+                "to_node": "node_send_quotation"
+              },
+              {
+                "condition": {
+                  "asserted": true,
+                  "concept_id": "cond_month_end",
+                  "present": true
+                },
+                "edge_id": "edge_create_to_summary",
+                "from_node": "node_create_quotation",
+                "to_node": "node_send_summary"
+              }
+            ],
+            "source_condition_edge_count": 0,
+            "source_outgoing_edges": [
+              {
+                "condition": {
+                  "asserted": false,
+                  "concept_id": null,
+                  "present": false
+                },
+                "edge_id": "edge_receive_to_check",
+                "from_node": "node_receive_request",
+                "to_node": "node_check_customer_info"
+              }
+            ]
+          },
+          "cannot_reach_sink": [],
+          "cycles": {
+            "components": [],
+            "has_cycles": false,
+            "self_loop_nodes": []
+          },
+          "dangling_edge_ids": [],
+          "declared_end_nodes": [],
+          "declared_start_node": null,
+          "edge_count": 6,
+          "graph_name": "agent",
+          "metadata_consistency": {
+            "assessment": "missing_or_inconsistent_boundary_metadata",
+            "consistent": false,
+            "declared_end_nodes_are_topology_sinks": true,
+            "declared_end_nodes_equal_topology_sinks": false,
+            "declared_end_nodes_exist": true,
+            "declared_start_covers_all_topology_sources": false,
+            "declared_start_exists": false,
+            "declared_start_is_topology_source": false,
+            "metadata_complete": false
+          },
+          "node_count": 6,
+          "node_ids": [
+            "node_check_customer_info",
+            "node_create_quotation",
+            "node_manager_approve",
+            "node_receive_request",
+            "node_send_quotation",
+            "node_send_summary"
+          ],
+          "reserved_boundary_id_collisions": {
+            "edge_ids": [],
+            "node_ids": []
+          },
+          "schema_version": "business_interview.boundary_diagnostics.v1",
+          "sink_count": 2,
+          "source_count": 1,
+          "topology_sinks": [
+            "node_send_quotation",
+            "node_send_summary"
+          ],
+          "topology_sources": [
+            "node_receive_request"
+          ],
+          "unreachable_from_source": [],
+          "weak_component_count": 1,
+          "weak_components": [
+            [
+              "node_check_customer_info",
+              "node_create_quotation",
+              "node_manager_approve",
+              "node_receive_request",
+              "node_send_quotation",
+              "node_send_summary"
+            ]
+          ]
+        },
+        "truth": {
+          "boundary_conditions": {
+            "sink_condition_edge_count": 2,
+            "sink_incoming_edges": [
+              {
+                "condition": {
+                  "asserted": true,
+                  "concept_id": "tc_cond_at_or_below_1m",
+                  "present": true
+                },
+                "edge_id": "e4",
+                "from_node": "cq",
+                "to_node": "sq"
+              },
+              {
+                "condition": {
+                  "asserted": false,
+                  "concept_id": null,
+                  "present": false
+                },
+                "edge_id": "e5",
+                "from_node": "ap",
+                "to_node": "sq"
+              },
+              {
+                "condition": {
+                  "asserted": true,
+                  "concept_id": "tc_cond_month_end",
+                  "present": true
+                },
+                "edge_id": "e6",
+                "from_node": "cq",
+                "to_node": "me"
+              }
+            ],
+            "source_condition_edge_count": 0,
+            "source_outgoing_edges": [
+              {
+                "condition": {
+                  "asserted": false,
+                  "concept_id": null,
+                  "present": false
+                },
+                "edge_id": "e1",
+                "from_node": "r",
+                "to_node": "cc"
+              }
+            ]
+          },
+          "cannot_reach_sink": [],
+          "cycles": {
+            "components": [],
+            "has_cycles": false,
+            "self_loop_nodes": []
+          },
+          "dangling_edge_ids": [],
+          "declared_end_nodes": [
+            "me",
+            "sq"
+          ],
+          "declared_start_node": "r",
+          "edge_count": 6,
+          "graph_name": "truth",
+          "metadata_consistency": {
+            "assessment": "consistent",
+            "consistent": true,
+            "declared_end_nodes_are_topology_sinks": true,
+            "declared_end_nodes_equal_topology_sinks": true,
+            "declared_end_nodes_exist": true,
+            "declared_start_covers_all_topology_sources": true,
+            "declared_start_exists": true,
+            "declared_start_is_topology_source": true,
+            "metadata_complete": true
+          },
+          "node_count": 6,
+          "node_ids": [
+            "ap",
+            "cc",
+            "cq",
+            "me",
+            "r",
+            "sq"
+          ],
+          "reserved_boundary_id_collisions": {
+            "edge_ids": [],
+            "node_ids": []
+          },
+          "schema_version": "business_interview.boundary_diagnostics.v1",
+          "sink_count": 2,
+          "source_count": 1,
+          "topology_sinks": [
+            "me",
+            "sq"
+          ],
+          "topology_sources": [
+            "r"
+          ],
+          "unreachable_from_source": [],
+          "weak_component_count": 1,
+          "weak_components": [
+            [
+              "ap",
+              "cc",
+              "cq",
+              "me",
+              "r",
+              "sq"
+            ]
+          ]
+        }
+      },
+      "generation_trace": {
+        "diagnosis": "graph construction started, but endpoint declaration was never invoked; the graph serializer retained the model defaults",
+        "endpoint_declaration_call_count": 0,
+        "endpoint_metadata_was_omitted_by_tool_protocol": true,
+        "episode_complete": false,
+        "finish_interview_calls": [],
+        "serialized_end_nodes": [],
+        "serialized_start_node": null,
+        "set_graph_endpoints_calls": [],
+        "start_inference_calls": [
+          {
+            "arguments": {
+              "name": "Quotation process"
+            },
+            "name": "start_inference",
+            "turn_idx": 4
+          }
+        ],
+        "termination_reason": "max_steps"
+      },
+      "name": "seed_9003",
+      "normalization": {
+        "agent": {
+          "canonical_invariant": {
+            "all_business_nodes_end_reachable": true,
+            "all_business_nodes_start_reachable": true,
+            "exactly_one_structural_end": true,
+            "exactly_one_structural_start": true,
+            "structural_end_has_no_outgoing": true,
+            "structural_nodes_are_not_concepts": true,
+            "structural_start_has_no_incoming": true,
+            "synthetic_edges_are_structural_only": true
+          },
+          "classification": "normalizable_multiple_exits",
+          "possible": true,
+          "reason": "each topology sink can merge into virtual END"
+        },
+        "truth": {
+          "canonical_invariant": {
+            "all_business_nodes_end_reachable": true,
+            "all_business_nodes_start_reachable": true,
+            "exactly_one_structural_end": true,
+            "exactly_one_structural_start": true,
+            "structural_end_has_no_outgoing": true,
+            "structural_nodes_are_not_concepts": true,
+            "structural_start_has_no_incoming": true,
+            "synthetic_edges_are_structural_only": true
+          },
+          "classification": "normalizable_multiple_exits",
+          "possible": true,
+          "reason": "each topology sink can merge into virtual END"
+        }
+      },
+      "seed": 9003
+    },
+    {
+      "boundary_audit": {
+        "agent": {
+          "boundary_conditions": {
+            "sink_condition_edge_count": 2,
+            "sink_incoming_edges": [
+              {
+                "condition": {
+                  "asserted": false,
+                  "concept_id": null,
+                  "present": false
+                },
+                "edge_id": "edge_approve_to_send_customer",
+                "from_node": "node_approve_high_value",
+                "to_node": "node_send_quotation_customer"
+              },
+              {
+                "condition": {
+                  "asserted": true,
+                  "concept_id": "cond_month_end",
+                  "present": true
+                },
+                "edge_id": "edge_create_to_month_end",
+                "from_node": "node_create_quotation",
+                "to_node": "node_send_month_end_summary"
+              },
+              {
+                "condition": {
+                  "asserted": true,
+                  "concept_id": "cond_low_value",
+                  "present": true
+                },
+                "edge_id": "edge_create_to_send_customer",
+                "from_node": "node_create_quotation",
+                "to_node": "node_send_quotation_customer"
+              }
+            ],
+            "source_condition_edge_count": 0,
+            "source_outgoing_edges": [
+              {
+                "condition": {
+                  "asserted": false,
+                  "concept_id": null,
+                  "present": false
+                },
+                "edge_id": "edge_receive_to_check",
+                "from_node": "node_receive_request",
+                "to_node": "node_check_customer_info"
+              }
+            ]
+          },
+          "cannot_reach_sink": [],
+          "cycles": {
+            "components": [],
+            "has_cycles": false,
+            "self_loop_nodes": []
+          },
+          "dangling_edge_ids": [],
+          "declared_end_nodes": [
+            "node_send_month_end_summary",
+            "node_send_quotation_customer"
+          ],
+          "declared_start_node": "node_receive_request",
+          "edge_count": 6,
+          "graph_name": "agent",
+          "metadata_consistency": {
+            "assessment": "consistent",
+            "consistent": true,
+            "declared_end_nodes_are_topology_sinks": true,
+            "declared_end_nodes_equal_topology_sinks": true,
+            "declared_end_nodes_exist": true,
+            "declared_start_covers_all_topology_sources": true,
+            "declared_start_exists": true,
+            "declared_start_is_topology_source": true,
+            "metadata_complete": true
+          },
+          "node_count": 6,
+          "node_ids": [
+            "node_approve_high_value",
+            "node_check_customer_info",
+            "node_create_quotation",
+            "node_receive_request",
+            "node_send_month_end_summary",
+            "node_send_quotation_customer"
+          ],
+          "reserved_boundary_id_collisions": {
+            "edge_ids": [],
+            "node_ids": []
+          },
+          "schema_version": "business_interview.boundary_diagnostics.v1",
+          "sink_count": 2,
+          "source_count": 1,
+          "topology_sinks": [
+            "node_send_month_end_summary",
+            "node_send_quotation_customer"
+          ],
+          "topology_sources": [
+            "node_receive_request"
+          ],
+          "unreachable_from_source": [],
+          "weak_component_count": 1,
+          "weak_components": [
+            [
+              "node_approve_high_value",
+              "node_check_customer_info",
+              "node_create_quotation",
+              "node_receive_request",
+              "node_send_month_end_summary",
+              "node_send_quotation_customer"
+            ]
+          ]
+        },
+        "truth": {
+          "boundary_conditions": {
+            "sink_condition_edge_count": 2,
+            "sink_incoming_edges": [
+              {
+                "condition": {
+                  "asserted": true,
+                  "concept_id": "tc_cond_at_or_below_1m",
+                  "present": true
+                },
+                "edge_id": "e4",
+                "from_node": "cq",
+                "to_node": "sq"
+              },
+              {
+                "condition": {
+                  "asserted": false,
+                  "concept_id": null,
+                  "present": false
+                },
+                "edge_id": "e5",
+                "from_node": "ap",
+                "to_node": "sq"
+              },
+              {
+                "condition": {
+                  "asserted": true,
+                  "concept_id": "tc_cond_month_end",
+                  "present": true
+                },
+                "edge_id": "e6",
+                "from_node": "cq",
+                "to_node": "me"
+              }
+            ],
+            "source_condition_edge_count": 0,
+            "source_outgoing_edges": [
+              {
+                "condition": {
+                  "asserted": false,
+                  "concept_id": null,
+                  "present": false
+                },
+                "edge_id": "e1",
+                "from_node": "r",
+                "to_node": "cc"
+              }
+            ]
+          },
+          "cannot_reach_sink": [],
+          "cycles": {
+            "components": [],
+            "has_cycles": false,
+            "self_loop_nodes": []
+          },
+          "dangling_edge_ids": [],
+          "declared_end_nodes": [
+            "me",
+            "sq"
+          ],
+          "declared_start_node": "r",
+          "edge_count": 6,
+          "graph_name": "truth",
+          "metadata_consistency": {
+            "assessment": "consistent",
+            "consistent": true,
+            "declared_end_nodes_are_topology_sinks": true,
+            "declared_end_nodes_equal_topology_sinks": true,
+            "declared_end_nodes_exist": true,
+            "declared_start_covers_all_topology_sources": true,
+            "declared_start_exists": true,
+            "declared_start_is_topology_source": true,
+            "metadata_complete": true
+          },
+          "node_count": 6,
+          "node_ids": [
+            "ap",
+            "cc",
+            "cq",
+            "me",
+            "r",
+            "sq"
+          ],
+          "reserved_boundary_id_collisions": {
+            "edge_ids": [],
+            "node_ids": []
+          },
+          "schema_version": "business_interview.boundary_diagnostics.v1",
+          "sink_count": 2,
+          "source_count": 1,
+          "topology_sinks": [
+            "me",
+            "sq"
+          ],
+          "topology_sources": [
+            "r"
+          ],
+          "unreachable_from_source": [],
+          "weak_component_count": 1,
+          "weak_components": [
+            [
+              "ap",
+              "cc",
+              "cq",
+              "me",
+              "r",
+              "sq"
+            ]
+          ]
+        }
+      },
+      "generation_trace": {
+        "diagnosis": "endpoint declaration was invoked; inspect its arguments and later updates",
+        "endpoint_declaration_call_count": 1,
+        "endpoint_metadata_was_omitted_by_tool_protocol": false,
+        "episode_complete": true,
+        "finish_interview_calls": [
+          {
+            "arguments": {
+              "summary": "Captured the quotation process: starts when the sales employee receives the customer's quotation request, then checks customer information in the CRM, then creates the quotation in the quoting system using customer and pricing information. After creation, branches: if amount over 1,000,000 yen, the manager approves (for credit risk management) then the quotation is sent to the customer by email; if at or below 1,000,000 yen, the quotation is sent to the customer by email; if month-end, the month-end summary is sent to Accounting. Rationales for most steps are unknown."
+            },
+            "name": "finish_interview",
+            "turn_idx": 95
+          }
+        ],
+        "serialized_end_nodes": [
+          "node_send_quotation_customer",
+          "node_send_month_end_summary"
+        ],
+        "serialized_start_node": "node_receive_request",
+        "set_graph_endpoints_calls": [
+          {
+            "arguments": {
+              "end_node_ids": [
+                "node_send_quotation_customer",
+                "node_send_month_end_summary"
+              ],
+              "start_node_id": "node_receive_request"
+            },
+            "name": "set_graph_endpoints",
+            "turn_idx": 86
+          }
+        ],
+        "start_inference_calls": [
+          {
+            "arguments": {},
+            "name": "start_inference",
+            "turn_idx": 4
+          }
+        ],
+        "termination_reason": "episode_complete"
+      },
+      "name": "seed_9004",
+      "normalization": {
+        "agent": {
+          "canonical_invariant": {
+            "all_business_nodes_end_reachable": true,
+            "all_business_nodes_start_reachable": true,
+            "exactly_one_structural_end": true,
+            "exactly_one_structural_start": true,
+            "structural_end_has_no_outgoing": true,
+            "structural_nodes_are_not_concepts": true,
+            "structural_start_has_no_incoming": true,
+            "synthetic_edges_are_structural_only": true
+          },
+          "classification": "normalizable_multiple_exits",
+          "possible": true,
+          "reason": "each topology sink can merge into virtual END"
+        },
+        "truth": {
+          "canonical_invariant": {
+            "all_business_nodes_end_reachable": true,
+            "all_business_nodes_start_reachable": true,
+            "exactly_one_structural_end": true,
+            "exactly_one_structural_start": true,
+            "structural_end_has_no_outgoing": true,
+            "structural_nodes_are_not_concepts": true,
+            "structural_start_has_no_incoming": true,
+            "synthetic_edges_are_structural_only": true
+          },
+          "classification": "normalizable_multiple_exits",
+          "possible": true,
+          "reason": "each topology sink can merge into virtual END"
+        }
+      },
+      "seed": 9004
+    }
+  ],
+  "schema_version": "business_interview.boundary_diagnostics.v1"
+}

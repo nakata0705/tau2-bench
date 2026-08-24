@@ -84,6 +84,7 @@ The three stored seeds completed an exact bounded-space search in `3/3` reports;
 **Identifiability:** directed topology plus start/end roles makes the small seed Node skeletons identifiable. Concepts with repeated or slot-specific usage are usually identifiable; concepts whose usage is missing, extra, or structurally unsupported remain unmatched rather than being guessed. Symmetric duplicate subgraphs/concept usages remain valid ambiguity classes.
 
 **Viability:** this is viable as an evaluator-private diagnostic and as a candidate for further experiments, not a production migration. Before production use, validate objective weighting and edge cases on larger adversarial graphs, retain explicit optimality bounds, and measure whether the structural mapping is stable under realistic missing/extra structure. Existing production scoring and mappings are unchanged.
+
 ## Production-vs-joint Concept disagreement audit
 
 This section audits the seven Concept mapping differences from the saved
@@ -321,7 +322,6 @@ Among classifiable failures, `stakeholder_disclosure` is largest (7). The highes
 
 - structural ambiguity classes: none
 
-
 #### Concrete disagreements with the current lexical/content matcher
 
 | Agent concept | label | current Truth | usage Truth | classification | lexical score | usage F1 | exact usage |
@@ -462,7 +462,6 @@ Among classifiable failures, `stakeholder_disclosure` is largest (7). The highes
 
 - structural ambiguity classes: none
 
-
 #### Concrete disagreements with the current lexical/content matcher
 
 | Agent concept | label | current Truth | usage Truth | classification | lexical score | usage F1 | exact usage |
@@ -589,7 +588,6 @@ Among classifiable failures, `stakeholder_disclosure` is largest (7). The highes
 
 - structural ambiguity classes: none
 
-
 #### Concrete disagreements with the current lexical/content matcher
 
 | Agent concept | label | current Truth | usage Truth | classification | lexical score | usage F1 | exact usage |
@@ -670,3 +668,166 @@ Among classifiable failures, `stakeholder_disclosure` is largest (7). The highes
 | Agent Concept | usage Truth | joint Truth |
 | --- | --- | --- |
 | none | — | — |
+
+## Diagnostic structural boundary normalization experiment
+
+This section is a diagnostic/representation experiment only. It does not
+change production evaluator scoring, thresholds, concept matching, Agent
+policy, Stakeholder behavior, or any saved artifact. The implementation is in
+`src/tau2/domains/business_interview/boundary_diagnostics.py` and the runner is
+`scripts/business_interview_boundary_diagnostics.py`. Derived outputs are
+`artifacts/business_interview_real_llm/boundary_audit.json` and
+`artifacts/business_interview_real_llm/boundary_comparison.json`.
+
+### Current boundary audit
+
+The audit derives sources and sinks from directed edge topology without using
+labels or concepts. A graph can therefore be structurally complete while its
+explicit boundary metadata is absent or inconsistent.
+
+| seed | Agent declared start | Agent declared ends | Agent topology sources | Agent topology sinks | Truth declared boundary | cycles | reachability gaps | metadata assessment |
+| ---: | --- | --- | --- | --- | --- | --- | --- | --- |
+| 9002 | `node_receive_request` | `node_send_quotation`, `node_send_month_end_summary` | `node_receive_request` | `node_send_month_end_summary` | `r` / `sq`, `me` | no | none | Agent end metadata includes a non-sink |
+| 9003 | `None` | `[]` | `node_receive_request` | `node_send_quotation`, `node_send_summary` | `r` / `sq`, `me` | no | none | Agent metadata omitted |
+| 9004 | `node_receive_request` | `node_send_quotation_customer`, `node_send_month_end_summary` | `node_receive_request` | same two nodes | `r` / `sq`, `me` | no | none | consistent |
+
+For seed 9003 the omission is traceable to the interaction protocol rather
+than Node alignment: `start_inference` was called at turn 4, but
+`set_graph_endpoints` was never called; `finish_interview` was also never
+called, termination was `max_steps`, and serialization retained the graph
+model defaults (`start_node_id=None`, `end_node_ids=[]`). The topology audit
+can recover the missing boundary diagnosis, but the saved Agent metadata
+cannot be silently treated as if it had been declared.
+
+### Canonical representation contract
+
+The experiment uses reserved, stable structural ids:
+
+- `__tau2_structural_start__`, with diagnostic kind `structural_start`;
+- `__tau2_structural_end__`, with diagnostic kind `structural_end`;
+- synthetic edges prefixed by `__tau2_structural_boundary__` and marked
+  `structural_boundary_only=true`.
+
+The current `Node` models do not gain a production `kind` field. Instead, the
+diagnostic envelope explicitly records the virtual kind and the structural
+node/edge id sets. A normalized copy adds one virtual START before every
+source and one virtual END after every sink. Original business edges and their
+conditions are copied unchanged. The alignment input is then an explicit
+`business_projection_of_canonical_copy`: it removes virtual nodes and
+synthetic edges, fixes the virtual marker identities as START/END anchors, and
+projects their incidence to source/sink-role candidate constraints. This keeps
+canonical representation and business scoring separate.
+
+Virtual nodes contain no ConceptRef, and synthetic edges contain no business
+condition. Consequently they do not enter Concept matching or process-edge
+metrics. The renderer contract is to hide the virtual nodes and structural-only
+edges while showing the business nodes incident to them as apparent entries or
+exits; original edge conditions remain on original business edges.
+
+### A/B/C/D alignment comparison
+
+A = current graph, B = virtual START only, C = virtual END only, D = both.
+`objective` below is the diagnostic canonical-boundary objective; all business
+components use original business nodes/concepts/edges. `pairs/states` are Node
+candidate pairs and Node search states. `J/I/P` in the audit column mean
+`joint_strongly_supported`, `insufficient_structural_evidence`, and
+`possible_objective_failure` counts respectively. All three saved seeds were
+exact and unique in every variant; Node and Concept ambiguity counts were zero
+in these small artifacts.
+
+| seed | variant | objective / 12 | nodes | process edges | START | END | pairs / states | mapping changes (Node/Concept) | audit classes |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 9002 | A | 10.558 | 1.000 | 0.769 | 1.000 | 1.000 | 36 / 18,703 | 0 / 0 | J1/I1/P2 |
+| 9002 | B | 10.558 | 1.000 | 0.769 | 1.000 | 1.000 | 26 / 4,443 | 0 / 0 | J1/I1/P2 |
+| 9002 | C | 9.027 | 0.833 | 0.462 | 1.000 | 1.000 | 22 / 2,431 | 1 / 3 | J1/I1/P5 |
+| 9002 | D | 9.027 | 0.833 | 0.462 | 1.000 | 1.000 | 15 / 753 | 1 / 3 | J1/I1/P5 |
+| 9003 | A | 8.242 | 1.000 | 1.000 | 0.000 | 0.000 | 36 / 18,703 | 0 / 0 | J1/P1 |
+| 9003 | B | 9.242 | 1.000 | 1.000 | 1.000 | 0.000 | 26 / 4,443 | 0 / 0 | J1/P1 |
+| 9003 | C | 9.242 | 1.000 | 1.000 | 0.000 | 1.000 | 20 / 2,167 | 0 / 0 | J1/P1 |
+| 9003 | D | 10.242 | 1.000 | 1.000 | 1.000 | 1.000 | 14 / 737 | 0 / 0 | J1/P1 |
+| 9004 | A | 11.201 | 1.000 | 1.000 | 1.000 | 1.000 | 36 / 18,703 | 0 / 0 | P1 |
+| 9004 | B | 11.201 | 1.000 | 1.000 | 1.000 | 1.000 | 26 / 4,443 | 0 / 0 | P1 |
+| 9004 | C | 11.201 | 1.000 | 1.000 | 1.000 | 1.000 | 20 / 2,167 | 0 / 0 | P1 |
+| 9004 | D | 11.201 | 1.000 | 1.000 | 1.000 | 1.000 | 14 / 737 | 0 / 0 | P1 |
+
+The combined D anchor reduced candidate pairs by 58.3% for seed 9002 and
+61.1% for seeds 9003/9004. Node search states fell by 96.0%, 96.1%, and
+96.1%, respectively. START and END each contribute materially: for seed 9003,
+START-only reduced states from 18,703 to 4,443 and END-only reduced them to
+2,167; both reduced them to 737. This is a search-space/identifiability
+improvement, not evidence that the semantic Node matcher became more accurate.
+
+Seed 9003 is the positive representation case: the boundary components become
+exactly 1.000 without changing the Node or Concept mapping, while all six
+business process edges remain the same. Seed 9002 is an important negative
+counterfactual: END anchoring forces a different Node mapping, and both
+business Node agreement and process-topology agreement decrease. The synthetic
+boundary did not artificially improve process-edge agreement. Seed 9004 is
+already boundary-complete, so anchors reduce search but do not change the
+mapping or business objective. The disagreement-audit classification changes
+only for seed 9002 C/D; it is unchanged for seed 9003.
+
+### Invalid graph handling
+
+| fixture | classification | handling |
+| --- | --- | --- |
+| disconnected component with a cyclic component | `invalid_disconnected_component` | reject as one process |
+| multiple complete independent components | `multiple_independent_processes` | separate process representation required |
+| reachable cycle with an exit | `normalizable_with_cycle` | normalize and preserve cycle |
+| reachable self-loop with an exit | `normalizable_with_self_loop` | normalize and preserve self-loop |
+| no source | `invalid_source_missing` | reject; no canonical entry can be inferred |
+| no sink | `invalid_sink_missing` | reject; no canonical exit can be inferred |
+| isolated node alongside a process | `invalid_isolated_node` | reject as one process |
+| multiple apparent entry/exit branches | `normalizable_multiple_entries` / `normalizable_multiple_exits` | fan-out/fan-in at virtual boundaries |
+| reserved existing structural ids | `invalid_reserved_boundary_id_collision` | reject or migrate explicitly; never overwrite |
+
+A graph-only audit cannot know whether two complete weak components are
+semantically “independent processes” or an accidental disconnected component;
+the experiment conservatively requires separate representation for the former
+and rejects incomplete/disconnected structures. It never connects unrelated
+components merely to satisfy the invariant.
+
+### Human-facing diagram contract
+
+The internal canonical graph may contain:
+
+```text
+__tau2_structural_start__ -> entry A / entry B / entry C
+exit X / exit Y / exit Z -> __tau2_structural_end__
+```
+
+A human renderer hides the two structural nodes and all edges carrying the
+`structural_boundary_only` marker. It renders A/B/C as apparent starts and
+X/Y/Z as apparent exits. Conditions remain attached to the original business
+edges, so a virtual boundary label cannot become a semantic business concept.
+
+### Conclusions
+
+1. **Natural introduction:** Yes as a diagnostic canonical envelope and
+   business projection. The current production graph model itself still has
+   optional `start_node_id` and list-valued `end_node_ids`; a production
+   invariant would require a deliberate schema/version migration.
+2. **Seed 9003:** Yes diagnostically. Topology supplies one source and two
+   sinks, and D supplies one fixed structural START/END pair, resolving the
+   boundary metadata omission without changing the six-business-Node mapping.
+   It does not repair the original interaction trace; the missing tool call
+   remains a protocol/Agent behavior issue.
+3. **Search space:** D reduces Node candidate pairs by 58.3–61.1% and Node
+   search states by about 96% on seeds 9002–9004.
+4. **Mapping uniqueness:** The saved seeds were already unique; anchors did
+   not improve their ambiguity counts. The symmetric deterministic fixture
+   remains non-unique after D, which is the required behavior.
+5. **Disagreement audit:** Seed 9003 classification counts do not change.
+   Seed 9002 changes under END anchoring because the forced topology role
+   constraint changes the Node mapping; this is a caution, not a success claim.
+6. **Scoring contamination:** The risk is controlled in this experiment:
+   virtual nodes have no concepts, synthetic edges are marked and excluded,
+   and tests assert that process-edge denominators remain business-edge-only.
+7. **Largest remaining risk:** topology-derived sources/sinks are not always
+   semantic business entry/exit roles. Cycles, incomplete graphs, independent
+   components, or a wrong/missing edge can make a forced anchor actively harm
+   alignment, as seed 9002 demonstrates.
+8. **Recommendation:** Keep this diagnostic-only. Do not promote to a
+   production invariant yet. First collect larger adversarial artifacts,
+   decide how semantic entry/exit declarations interact with topology, and
+   establish a versioned boundary-node schema plus renderer/metric contracts.

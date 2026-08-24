@@ -399,13 +399,26 @@ def _node_candidate_potential(
 
 
 def _node_candidates(
-    agent: _GraphIndex, truth: _GraphIndex
+    agent: _GraphIndex,
+    truth: _GraphIndex,
+    *,
+    allowed_node_pairs: Mapping[str, Iterable[str]] | None = None,
 ) -> tuple[dict[str, list[str]], dict[tuple[str, str], Fraction]]:
     candidates: dict[str, list[str]] = {}
     potentials: dict[tuple[str, str], Fraction] = {}
+    allowed_sets = (
+        {agent_id: set(truth_ids) for agent_id, truth_ids in allowed_node_pairs.items()}
+        if allowed_node_pairs is not None
+        else None
+    )
     for agent_node_id in agent.node_ids:
         pairs: list[tuple[Fraction, str]] = []
+        allowed_truth_ids = (
+            allowed_sets.get(agent_node_id, set()) if allowed_sets is not None else None
+        )
         for truth_node_id in truth.node_ids:
+            if allowed_truth_ids is not None and truth_node_id not in allowed_truth_ids:
+                continue
             potential = _node_candidate_potential(
                 agent, truth, agent_node_id, truth_node_id
             )
@@ -1140,6 +1153,7 @@ def build_joint_structural_alignment_diagnostics(
     production_node_to_truth: Mapping[str, str] | None = None,
     production_concept_to_truth: Mapping[str, str] | None = None,
     usage_concept_to_truth: Mapping[str, str] | None = None,
+    node_candidate_allowlist: Mapping[str, Iterable[str]] | None = None,
     max_node_search_states: int = 250_000,
     max_concept_search_states: int = 1_000_000,
     max_optimal_alternatives: int = 2_048,
@@ -1151,6 +1165,12 @@ def build_joint_structural_alignment_diagnostics(
     pairs, or break ties.  This makes the matcher independent of the
     production lexical and conditioned-usage experiments while allowing one
     private diagnostic section to compare all three mappings.
+
+    ``node_candidate_allowlist`` is an additional diagnostic-only restriction.
+    It is intended for representation experiments such as a fixed virtual
+    boundary anchor; the production call path leaves it as ``None``.  The
+    allowlist filters structural candidate pairs before the unchanged joint
+    objective/search is run and never reads labels or concept text.
     """
     if max_node_search_states <= 0 or max_concept_search_states <= 0:
         raise ValueError("search state limits must be positive")
@@ -1159,7 +1179,11 @@ def build_joint_structural_alignment_diagnostics(
 
     agent_index = _build_index(agent)
     truth_index = _build_index(truth)
-    candidates, potentials = _node_candidates(agent_index, truth_index)
+    candidates, potentials = _node_candidates(
+        agent_index,
+        truth_index,
+        allowed_node_pairs=node_candidate_allowlist,
+    )
     search = _MutableSearch(
         max_node_states=max_node_search_states,
         max_concept_states=max_concept_search_states,
