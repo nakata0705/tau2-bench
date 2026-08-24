@@ -240,7 +240,10 @@ def test_renaming_and_shuffling_agent_ids_preserves_structural_result():
     renamed = _joint(truth, renamed_agent)
 
     assert renamed.objective == baseline.objective
-    assert renamed.search.node_candidate_pair_count == baseline.search.node_candidate_pair_count
+    assert (
+        renamed.search.node_candidate_pair_count
+        == baseline.search.node_candidate_pair_count
+    )
     assert renamed.objective.components == baseline.objective.components
     assert renamed.objective.normalized_score == baseline.objective.normalized_score
 
@@ -294,9 +297,7 @@ def _one_node_data_graph(
     )
     agent_nodes = {"a_node": agent_node}
     if extra_agent_node:
-        agent_nodes["a_fabricated"] = Node(
-            id="a_fabricated", activity=_ref("a_extra")
-        )
+        agent_nodes["a_fabricated"] = Node(id="a_fabricated", activity=_ref("a_extra"))
     return (
         BusinessProcessGraph(
             concepts=truth_concepts,
@@ -315,7 +316,10 @@ def _one_node_data_graph(
 
 def test_missing_usage_lowers_structural_agreement():
     truth, agent = _one_node_data_graph(
-        truth_reads=["t_read"], truth_writes=["t_write"], agent_reads=[], agent_writes=["a_write"]
+        truth_reads=["t_read"],
+        truth_writes=["t_write"],
+        agent_reads=[],
+        agent_writes=["a_write"],
     )
     trace = _joint(truth, agent)
 
@@ -348,7 +352,10 @@ def test_fabricated_nodes_can_remain_unmatched():
 
 def test_reads_and_writes_are_distinct_even_when_labels_are_wrong():
     truth, agent = _one_node_data_graph(
-        truth_reads=["t_read"], truth_writes=["t_write"], agent_reads=["a_read"], agent_writes=["a_write"]
+        truth_reads=["t_read"],
+        truth_writes=["t_write"],
+        agent_reads=["a_read"],
+        agent_writes=["a_write"],
     )
     trace = _joint(truth, agent)
 
@@ -364,7 +371,11 @@ def test_different_concept_kinds_never_map():
         nodes={"t": TruthNode(id="t", reads=[_ref("t_data")])},
     )
     agent = AgentGraph(
-        concepts={"a_activity": AgentConcept(id="a_activity", kind="activity", display_label="x")},
+        concepts={
+            "a_activity": AgentConcept(
+                id="a_activity", kind="activity", display_label="x"
+            )
+        },
         nodes={"a": Node(id="a", reads=[_ref("a_activity")])},
     )
     trace = _joint(truth, agent)
@@ -383,12 +394,18 @@ def test_topology_disambiguates_similar_nodes():
             "t_first": TruthNode(id="t_first", activity=_ref("t_act")),
             "t_second": TruthNode(id="t_second", activity=_ref("t_act")),
         },
-        edges={"t_edge": TruthEdge(id="t_edge", from_node="t_first", to_node="t_second")},
+        edges={
+            "t_edge": TruthEdge(id="t_edge", from_node="t_first", to_node="t_second")
+        },
         start_node_id="t_first",
         end_node_ids=["t_second"],
     )
     agent = AgentGraph(
-        concepts={"a_act": AgentConcept(id="a_act", kind="activity", display_label="misleading")},
+        concepts={
+            "a_act": AgentConcept(
+                id="a_act", kind="activity", display_label="misleading"
+            )
+        },
         nodes={
             "a_first": Node(id="a_first", activity=_ref("a_act")),
             "a_second": Node(id="a_second", activity=_ref("a_act")),
@@ -415,8 +432,12 @@ def test_repeated_usage_strengthens_concept_alignment():
             "t_other": TruthConcept(id="t_other", kind="data"),
         },
         nodes={
-            "t_one": TruthNode(id="t_one", activity=_ref("t_act_1"), reads=[_ref("t_shared")]),
-            "t_two": TruthNode(id="t_two", activity=_ref("t_act_2"), reads=[_ref("t_shared")]),
+            "t_one": TruthNode(
+                id="t_one", activity=_ref("t_act_1"), reads=[_ref("t_shared")]
+            ),
+            "t_two": TruthNode(
+                id="t_two", activity=_ref("t_act_2"), reads=[_ref("t_shared")]
+            ),
             "t_three": TruthNode(id="t_three", reads=[_ref("t_other")]),
         },
     )
@@ -424,12 +445,20 @@ def test_repeated_usage_strengthens_concept_alignment():
         concepts={
             "a_act_1": AgentConcept(id="a_act_1", kind="activity", display_label="x"),
             "a_act_2": AgentConcept(id="a_act_2", kind="activity", display_label="y"),
-            "a_shared": AgentConcept(id="a_shared", kind="data", display_label="strongly wrong"),
-            "a_other": AgentConcept(id="a_other", kind="data", display_label="also wrong"),
+            "a_shared": AgentConcept(
+                id="a_shared", kind="data", display_label="strongly wrong"
+            ),
+            "a_other": AgentConcept(
+                id="a_other", kind="data", display_label="also wrong"
+            ),
         },
         nodes={
-            "a_one": Node(id="a_one", activity=_ref("a_act_1"), reads=[_ref("a_shared")]),
-            "a_two": Node(id="a_two", activity=_ref("a_act_2"), reads=[_ref("a_shared")]),
+            "a_one": Node(
+                id="a_one", activity=_ref("a_act_1"), reads=[_ref("a_shared")]
+            ),
+            "a_two": Node(
+                id="a_two", activity=_ref("a_act_2"), reads=[_ref("a_shared")]
+            ),
             "a_three": Node(id="a_three", reads=[_ref("a_other")]),
         },
     )
@@ -447,8 +476,12 @@ def test_symmetric_structures_report_ambiguity_not_identity():
             "t_y": TruthConcept(id="t_y", kind="data"),
         },
         nodes={
-            "t_one": TruthNode(id="t_one", activity=_ref("t_act"), reads=[_ref("t_x"), _ref("t_y")]),
-            "t_two": TruthNode(id="t_two", activity=_ref("t_act"), reads=[_ref("t_x"), _ref("t_y")]),
+            "t_one": TruthNode(
+                id="t_one", activity=_ref("t_act"), reads=[_ref("t_x"), _ref("t_y")]
+            ),
+            "t_two": TruthNode(
+                id="t_two", activity=_ref("t_act"), reads=[_ref("t_x"), _ref("t_y")]
+            ),
         },
     )
     agent = AgentGraph(
@@ -458,8 +491,16 @@ def test_symmetric_structures_report_ambiguity_not_identity():
             "a_right": AgentConcept(id="a_right", kind="data", display_label="right"),
         },
         nodes={
-            "a_one": Node(id="a_one", activity=_ref("a_act"), reads=[_ref("a_left"), _ref("a_right")]),
-            "a_two": Node(id="a_two", activity=_ref("a_act"), reads=[_ref("a_left"), _ref("a_right")]),
+            "a_one": Node(
+                id="a_one",
+                activity=_ref("a_act"),
+                reads=[_ref("a_left"), _ref("a_right")],
+            ),
+            "a_two": Node(
+                id="a_two",
+                activity=_ref("a_act"),
+                reads=[_ref("a_left"), _ref("a_right")],
+            ),
         },
     )
     trace = _joint(truth, agent)
@@ -488,15 +529,15 @@ def test_one_to_two_symmetric_mapping_reports_variably_unmatched_truth():
         },
     )
     agent = AgentGraph(
-        concepts={"a_act": AgentConcept(id="a_act", kind="activity", display_label="x")},
+        concepts={
+            "a_act": AgentConcept(id="a_act", kind="activity", display_label="x")
+        },
         nodes={"a_only": Node(id="a_only", activity=_ref("a_act"))},
     )
     trace = _joint(truth, agent)
 
     ambiguity = next(
-        item
-        for item in trace.node_ambiguity_classes
-        if item.agent_ids == ["a_only"]
+        item for item in trace.node_ambiguity_classes if item.agent_ids == ["a_only"]
     )
     assert ambiguity.truth_ids == ["t_left", "t_right"]
     assert ambiguity.unmatched_truth_ids == ["t_left", "t_right"]
@@ -526,7 +567,9 @@ def test_epistemic_markers_do_not_become_concept_nodes():
     assert isinstance(DONT_KNOW, type(UNSET)) is False
 
 
-def test_disabling_joint_diagnostics_preserves_scores_and_production_mapping(monkeypatch):
+def test_disabling_joint_diagnostics_preserves_scores_and_production_mapping(
+    monkeypatch,
+):
     truth, agent = _synthetic_graphs()
     first = evaluate(InterviewDB(graph=agent), None, EvaluationSpec(), truth=truth)
     monkeypatch.setattr(
@@ -539,7 +582,10 @@ def test_disabling_joint_diagnostics_preserves_scores_and_production_mapping(mon
     assert first.model_dump(mode="json", exclude={"diagnostics"}) == second.model_dump(
         mode="json", exclude={"diagnostics"}
     )
-    assert first.diagnostics.concepts.agent_to_truth == second.diagnostics.concepts.agent_to_truth
+    assert (
+        first.diagnostics.concepts.agent_to_truth
+        == second.diagnostics.concepts.agent_to_truth
+    )
     assert first.diagnostics.node_diagnostics == second.diagnostics.node_diagnostics
     assert first.diagnostics.edge_diagnostics == second.diagnostics.edge_diagnostics
 
@@ -574,15 +620,18 @@ def test_disabling_joint_diagnostics_preserves_stored_metrics_and_mappings(
     assert baseline["metrics"] == disabled["metrics"]
     baseline_diagnostics = baseline["evaluation"]["diagnostics"]
     disabled_diagnostics = disabled["evaluation"]["diagnostics"]
-    assert baseline_diagnostics["concepts"]["agent_to_truth"] == disabled_diagnostics[
-        "concepts"
-    ]["agent_to_truth"]
-    assert baseline_diagnostics["node_diagnostics"] == disabled_diagnostics[
-        "node_diagnostics"
-    ]
-    assert baseline_diagnostics["edge_diagnostics"] == disabled_diagnostics[
-        "edge_diagnostics"
-    ]
+    assert (
+        baseline_diagnostics["concepts"]["agent_to_truth"]
+        == disabled_diagnostics["concepts"]["agent_to_truth"]
+    )
+    assert (
+        baseline_diagnostics["node_diagnostics"]
+        == disabled_diagnostics["node_diagnostics"]
+    )
+    assert (
+        baseline_diagnostics["edge_diagnostics"]
+        == disabled_diagnostics["edge_diagnostics"]
+    )
 
 
 def test_search_bound_is_reported_without_claiming_uniqueness():
@@ -600,7 +649,4 @@ def test_search_bound_is_reported_without_claiming_uniqueness():
     assert not trace.invariants_proven
     assert not trace.search.optimal_solution_count_is_exact
     assert not trace.search.optimal_solution_count_is_lower_bound
-    assert (
-        trace.search.objective_lower_bound
-        <= trace.search.objective_upper_bound
-    )
+    assert trace.search.objective_lower_bound <= trace.search.objective_upper_bound

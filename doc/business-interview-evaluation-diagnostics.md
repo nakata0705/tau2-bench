@@ -84,6 +84,171 @@ The three stored seeds completed an exact bounded-space search in `3/3` reports;
 **Identifiability:** directed topology plus start/end roles makes the small seed Node skeletons identifiable. Concepts with repeated or slot-specific usage are usually identifiable; concepts whose usage is missing, extra, or structurally unsupported remain unmatched rather than being guessed. Symmetric duplicate subgraphs/concept usages remain valid ambiguity classes.
 
 **Viability:** this is viable as an evaluator-private diagnostic and as a candidate for further experiments, not a production migration. Before production use, validate objective weighting and edge cases on larger adversarial graphs, retain explicit optimality bounds, and measure whether the structural mapping is stable under realistic missing/extra structure. Existing production scoring and mappings are unchanged.
+## Production-vs-joint Concept disagreement audit
+
+This section audits the seven Concept mapping differences from the saved
+real-LLM artifacts. Structural coordinates are computed only after
+projecting Agent locations through the representative joint Node/edge
+mapping. Labels, canonical terms, descriptions, Observation text,
+EvidenceRef text, and semantic sidecars are shown only for human review
+and are not inputs to candidate selection, tie-breaking, objective
+evaluation, or classification.
+
+### Aggregate classification
+
+| classification | count |
+| --- | ---: |
+| `joint_strongly_supported` | 2 |
+| `production_strongly_supported` | 0 |
+| `structurally_ambiguous` | 0 |
+| `insufficient_structural_evidence` | 1 |
+| `possible_objective_failure` | 4 |
+
+### Evidence table
+
+| seed | Agent Concept (display label) | kind | production Truth | joint Truth | production structural evidence | joint structural evidence | production overlap | joint overlap | local objective delta (joint-production) | classification |
+| ---: | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
+| 9002 | `cond_end_of_month` (at the end of the month) | `condition` | `tc_cond_month_end` | `—` | `no_structural_overlap (0 overlap)` | `no_candidate (0 overlap)` | 0 | 0 | -0.046512 | `possible_objective_failure` |
+| 9002 | `data_quotation` (quotation) | `data` | `tc_quote` | `—` | `no_structural_overlap (0 overlap)` | `no_candidate (0 overlap)` | 0 | 0 | +0.333333 | `insufficient_structural_evidence` |
+| 9002 | `data_quotation_document` (quotation document) | `data` | `—` | `tc_quote` | `no_candidate (0 overlap)` | `partial_overlap (1 overlap)` | 0 | 1 | +0.379845 | `joint_strongly_supported` |
+| 9002 | `data_quotation_request` (customer's quotation request) | `data` | `tc_request` | `—` | `no_structural_overlap (0 overlap)` | `no_candidate (0 overlap)` | 0 | 0 | -0.046512 | `possible_objective_failure` |
+| 9003 | `act_manager_approve` (manager approves the quotation) | `activity` | `—` | `tc_activity_approve_quotation` | `no_candidate (0 overlap)` | `exact (1 overlap)` | 0 | 1 | +0.219298 | `joint_strongly_supported` |
+| 9003 | `data_quotation_request` (customer's quotation request) | `data` | `tc_request` | `—` | `no_structural_overlap (0 overlap)` | `no_candidate (0 overlap)` | 0 | 0 | -0.052632 | `possible_objective_failure` |
+| 9004 | `data_quotation_request` (customer's quotation request) | `data` | `tc_request` | `—` | `no_structural_overlap (0 overlap)` | `no_candidate (0 overlap)` | 0 | 0 | -0.048780 | `possible_objective_failure` |
+
+### Per-disagreement structural evidence
+
+#### Seed 9002 — `cond_end_of_month` (condition; display label: at the end of the month)
+
+- production candidate: `tc_cond_month_end` (no_structural_overlap (0 overlap)); joint candidate: `—` (no_candidate (0 overlap))
+- Agent locations: `['edge:edge_send_to_month_end:condition']`
+- projected Agent locations: `[]`
+- production Truth locations: `['edge:e6:condition']`; joint Truth locations: `[]`
+- production overlap: `[]`; Agent-only: `[]`; Truth-only: `[{'location': 'edge:e6:condition', 'count': 1}]`
+- joint overlap: `[]`; Agent-only: `[]`; Truth-only: `[]`
+- relation consistency: production=`{'agent_relation_counts': {'condition': 1}, 'truth_relation_counts': {'condition': 1}, 'relation_intersection_counts': {'condition': 1}, 'overlap_relation_counts': {}, 'same_relation_support_count': 1, 'has_same_relation_support': True}`, joint=`{'agent_relation_counts': {'condition': 1}, 'truth_relation_counts': {}, 'relation_intersection_counts': {}, 'overlap_relation_counts': {}, 'same_relation_support_count': 0, 'has_same_relation_support': False}`
+- repeated usage support: production=`{'agent_occurrence_count': 0, 'truth_occurrence_count': 1, 'overlap_occurrence_count': 0, 'agent_repeated': False, 'truth_repeated': False, 'repeated_overlap': False}`, joint=`{'agent_occurrence_count': 0, 'truth_occurrence_count': 0, 'overlap_occurrence_count': 0, 'agent_repeated': False, 'truth_repeated': False, 'repeated_overlap': False}`
+- process topology / mapped endpoint support: production=`{'mapped_node_location_count': 0, 'mapped_edge_condition_count': 0, 'unmapped_node_location_count': 0, 'unmapped_edge_condition_count': 1, 'overlapping_edge_condition_count': 0, 'projected_topology_shapes': [], 'truth_topology_shapes': [['edge_condition', 'condition', [[1, 3, False, False], [1, 0, False, True]]]]}`, joint=`{'mapped_node_location_count': 0, 'mapped_edge_condition_count': 0, 'unmapped_node_location_count': 0, 'unmapped_edge_condition_count': 1, 'overlapping_edge_condition_count': 0, 'projected_topology_shapes': [], 'truth_topology_shapes': []}`
+- unsupported candidate: production=`True`, joint=`None`; alternative optimal mapping: `unmatched_in_all_exact_optima`
+- full forced objective delta (joint-production): `+0.240310`; changed components: `concepts:-0.093, writes:+0.333`
+- local candidate counterfactual delta (joint-production): `-0.046512`; changed components: `concepts:-0.047`
+- classification: `possible_objective_failure` — Neither candidate has positive structural overlap, yet forcing the unsupported production assignment raises the raw objective. This is an objective/admissibility warning, not evidence that production is structurally correct.
+
+#### Seed 9002 — `data_quotation` (data; display label: quotation)
+
+- production candidate: `tc_quote` (no_structural_overlap (0 overlap)); joint candidate: `—` (no_candidate (0 overlap))
+- Agent locations: `['node:node_send_quotation:writes']`
+- projected Agent locations: `['node:sq:writes']`
+- production Truth locations: `['node:cq:writes']`; joint Truth locations: `[]`
+- production overlap: `[]`; Agent-only: `[{'location': 'node:sq:writes', 'count': 1}]`; Truth-only: `[{'location': 'node:cq:writes', 'count': 1}]`
+- joint overlap: `[]`; Agent-only: `[{'location': 'node:sq:writes', 'count': 1}]`; Truth-only: `[]`
+- relation consistency: production=`{'agent_relation_counts': {'writes': 1}, 'truth_relation_counts': {'writes': 1}, 'relation_intersection_counts': {'writes': 1}, 'overlap_relation_counts': {}, 'same_relation_support_count': 1, 'has_same_relation_support': True}`, joint=`{'agent_relation_counts': {'writes': 1}, 'truth_relation_counts': {}, 'relation_intersection_counts': {}, 'overlap_relation_counts': {}, 'same_relation_support_count': 0, 'has_same_relation_support': False}`
+- repeated usage support: production=`{'agent_occurrence_count': 1, 'truth_occurrence_count': 1, 'overlap_occurrence_count': 0, 'agent_repeated': False, 'truth_repeated': False, 'repeated_overlap': False}`, joint=`{'agent_occurrence_count': 1, 'truth_occurrence_count': 0, 'overlap_occurrence_count': 0, 'agent_repeated': False, 'truth_repeated': False, 'repeated_overlap': False}`
+- process topology / mapped endpoint support: production=`{'mapped_node_location_count': 1, 'mapped_edge_condition_count': 0, 'unmapped_node_location_count': 0, 'unmapped_edge_condition_count': 0, 'overlapping_edge_condition_count': 0, 'projected_topology_shapes': [['node_slot', 'writes', 2, 0, False, True]], 'truth_topology_shapes': [['node_slot', 'writes', 1, 3, False, False]]}`, joint=`{'mapped_node_location_count': 1, 'mapped_edge_condition_count': 0, 'unmapped_node_location_count': 0, 'unmapped_edge_condition_count': 0, 'overlapping_edge_condition_count': 0, 'projected_topology_shapes': [['node_slot', 'writes', 2, 0, False, True]], 'truth_topology_shapes': []}`
+- unsupported candidate: production=`True`, joint=`None`; alternative optimal mapping: `unmatched_in_all_exact_optima`
+- full forced objective delta (joint-production): `+0.240310`; changed components: `concepts:-0.093, writes:+0.333`
+- local candidate counterfactual delta (joint-production): `+0.333333`; changed components: `writes:+0.333`
+- classification: `insufficient_structural_evidence` — Neither candidate has positive structural overlap after projecting Agent locations through the joint Node/edge mapping.
+
+#### Seed 9002 — `data_quotation_document` (data; display label: quotation document)
+
+- production candidate: `—` (no_candidate (0 overlap)); joint candidate: `tc_quote` (partial_overlap (1 overlap))
+- Agent locations: `['node:node_approve_high_value:reads', 'node:node_create_quotation_doc:writes']`
+- projected Agent locations: `['node:ap:reads', 'node:cq:writes']`
+- production Truth locations: `[]`; joint Truth locations: `['node:cq:writes']`
+- production overlap: `[]`; Agent-only: `[{'location': 'node:ap:reads', 'count': 1}, {'location': 'node:cq:writes', 'count': 1}]`; Truth-only: `[]`
+- joint overlap: `[{'location': 'node:cq:writes', 'count': 1}]`; Agent-only: `[{'location': 'node:ap:reads', 'count': 1}]`; Truth-only: `[]`
+- relation consistency: production=`{'agent_relation_counts': {'reads': 1, 'writes': 1}, 'truth_relation_counts': {}, 'relation_intersection_counts': {}, 'overlap_relation_counts': {}, 'same_relation_support_count': 0, 'has_same_relation_support': False}`, joint=`{'agent_relation_counts': {'reads': 1, 'writes': 1}, 'truth_relation_counts': {'writes': 1}, 'relation_intersection_counts': {'writes': 1}, 'overlap_relation_counts': {'writes': 1}, 'same_relation_support_count': 1, 'has_same_relation_support': True}`
+- repeated usage support: production=`{'agent_occurrence_count': 2, 'truth_occurrence_count': 0, 'overlap_occurrence_count': 0, 'agent_repeated': True, 'truth_repeated': False, 'repeated_overlap': False}`, joint=`{'agent_occurrence_count': 2, 'truth_occurrence_count': 1, 'overlap_occurrence_count': 1, 'agent_repeated': True, 'truth_repeated': False, 'repeated_overlap': False}`
+- process topology / mapped endpoint support: production=`{'mapped_node_location_count': 2, 'mapped_edge_condition_count': 0, 'unmapped_node_location_count': 0, 'unmapped_edge_condition_count': 0, 'overlapping_edge_condition_count': 0, 'projected_topology_shapes': [['node_slot', 'reads', 1, 1, False, False], ['node_slot', 'writes', 1, 3, False, False]], 'truth_topology_shapes': []}`, joint=`{'mapped_node_location_count': 2, 'mapped_edge_condition_count': 0, 'unmapped_node_location_count': 0, 'unmapped_edge_condition_count': 0, 'overlapping_edge_condition_count': 0, 'projected_topology_shapes': [['node_slot', 'reads', 1, 1, False, False], ['node_slot', 'writes', 1, 3, False, False]], 'truth_topology_shapes': [['node_slot', 'writes', 1, 3, False, False]]}`
+- unsupported candidate: production=`None`, joint=`False`; alternative optimal mapping: `mapping_is_invariant`
+- full forced objective delta (joint-production): `+0.240310`; changed components: `concepts:-0.093, writes:+0.333`
+- local candidate counterfactual delta (joint-production): `+0.379845`; changed components: `concepts:+0.047, writes:+0.333`
+- classification: `joint_strongly_supported` — The joint candidate has positive mapped-coordinate overlap while the production candidate has no positive structural support.
+
+#### Seed 9002 — `data_quotation_request` (data; display label: customer's quotation request)
+
+- production candidate: `tc_request` (no_structural_overlap (0 overlap)); joint candidate: `—` (no_candidate (0 overlap))
+- Agent locations: `['node:node_receive_request:reads']`
+- projected Agent locations: `['node:r:reads']`
+- production Truth locations: `['node:r:writes']`; joint Truth locations: `[]`
+- production overlap: `[]`; Agent-only: `[{'location': 'node:r:reads', 'count': 1}]`; Truth-only: `[{'location': 'node:r:writes', 'count': 1}]`
+- joint overlap: `[]`; Agent-only: `[{'location': 'node:r:reads', 'count': 1}]`; Truth-only: `[]`
+- relation consistency: production=`{'agent_relation_counts': {'reads': 1}, 'truth_relation_counts': {'writes': 1}, 'relation_intersection_counts': {}, 'overlap_relation_counts': {}, 'same_relation_support_count': 0, 'has_same_relation_support': False}`, joint=`{'agent_relation_counts': {'reads': 1}, 'truth_relation_counts': {}, 'relation_intersection_counts': {}, 'overlap_relation_counts': {}, 'same_relation_support_count': 0, 'has_same_relation_support': False}`
+- repeated usage support: production=`{'agent_occurrence_count': 1, 'truth_occurrence_count': 1, 'overlap_occurrence_count': 0, 'agent_repeated': False, 'truth_repeated': False, 'repeated_overlap': False}`, joint=`{'agent_occurrence_count': 1, 'truth_occurrence_count': 0, 'overlap_occurrence_count': 0, 'agent_repeated': False, 'truth_repeated': False, 'repeated_overlap': False}`
+- process topology / mapped endpoint support: production=`{'mapped_node_location_count': 1, 'mapped_edge_condition_count': 0, 'unmapped_node_location_count': 0, 'unmapped_edge_condition_count': 0, 'overlapping_edge_condition_count': 0, 'projected_topology_shapes': [['node_slot', 'reads', 0, 1, True, False]], 'truth_topology_shapes': [['node_slot', 'writes', 0, 1, True, False]]}`, joint=`{'mapped_node_location_count': 1, 'mapped_edge_condition_count': 0, 'unmapped_node_location_count': 0, 'unmapped_edge_condition_count': 0, 'overlapping_edge_condition_count': 0, 'projected_topology_shapes': [['node_slot', 'reads', 0, 1, True, False]], 'truth_topology_shapes': []}`
+- unsupported candidate: production=`True`, joint=`None`; alternative optimal mapping: `unmatched_in_all_exact_optima`
+- full forced objective delta (joint-production): `+0.240310`; changed components: `concepts:-0.093, writes:+0.333`
+- local candidate counterfactual delta (joint-production): `-0.046512`; changed components: `concepts:-0.047`
+- classification: `possible_objective_failure` — Neither candidate has positive structural overlap, yet forcing the unsupported production assignment raises the raw objective. This is an objective/admissibility warning, not evidence that production is structurally correct.
+
+#### Seed 9003 — `act_manager_approve` (activity; display label: manager approves the quotation)
+
+- production candidate: `—` (no_candidate (0 overlap)); joint candidate: `tc_activity_approve_quotation` (exact (1 overlap))
+- Agent locations: `['node:node_manager_approve:activity']`
+- projected Agent locations: `['node:ap:activity']`
+- production Truth locations: `[]`; joint Truth locations: `['node:ap:activity']`
+- production overlap: `[]`; Agent-only: `[{'location': 'node:ap:activity', 'count': 1}]`; Truth-only: `[]`
+- joint overlap: `[{'location': 'node:ap:activity', 'count': 1}]`; Agent-only: `[]`; Truth-only: `[]`
+- relation consistency: production=`{'agent_relation_counts': {'activity': 1}, 'truth_relation_counts': {}, 'relation_intersection_counts': {}, 'overlap_relation_counts': {}, 'same_relation_support_count': 0, 'has_same_relation_support': False}`, joint=`{'agent_relation_counts': {'activity': 1}, 'truth_relation_counts': {'activity': 1}, 'relation_intersection_counts': {'activity': 1}, 'overlap_relation_counts': {'activity': 1}, 'same_relation_support_count': 1, 'has_same_relation_support': True}`
+- repeated usage support: production=`{'agent_occurrence_count': 1, 'truth_occurrence_count': 0, 'overlap_occurrence_count': 0, 'agent_repeated': False, 'truth_repeated': False, 'repeated_overlap': False}`, joint=`{'agent_occurrence_count': 1, 'truth_occurrence_count': 1, 'overlap_occurrence_count': 1, 'agent_repeated': False, 'truth_repeated': False, 'repeated_overlap': False}`
+- process topology / mapped endpoint support: production=`{'mapped_node_location_count': 1, 'mapped_edge_condition_count': 0, 'unmapped_node_location_count': 0, 'unmapped_edge_condition_count': 0, 'overlapping_edge_condition_count': 0, 'projected_topology_shapes': [['node_slot', 'activity', 1, 1, False, False]], 'truth_topology_shapes': []}`, joint=`{'mapped_node_location_count': 1, 'mapped_edge_condition_count': 0, 'unmapped_node_location_count': 0, 'unmapped_edge_condition_count': 0, 'overlapping_edge_condition_count': 0, 'projected_topology_shapes': [['node_slot', 'activity', 1, 1, False, False]], 'truth_topology_shapes': [['node_slot', 'activity', 1, 1, False, False]]}`
+- unsupported candidate: production=`None`, joint=`False`; alternative optimal mapping: `mapping_is_invariant`
+- full forced objective delta (joint-production): `+0.166667`; changed components: `activity:+0.167`
+- local candidate counterfactual delta (joint-production): `+0.219298`; changed components: `activity:+0.167, concepts:+0.053`
+- classification: `joint_strongly_supported` — The joint candidate has positive mapped-coordinate overlap while the production candidate has no positive structural support.
+
+#### Seed 9003 — `data_quotation_request` (data; display label: customer's quotation request)
+
+- production candidate: `tc_request` (no_structural_overlap (0 overlap)); joint candidate: `—` (no_candidate (0 overlap))
+- Agent locations: `['node:node_receive_request:reads']`
+- projected Agent locations: `['node:r:reads']`
+- production Truth locations: `['node:r:writes']`; joint Truth locations: `[]`
+- production overlap: `[]`; Agent-only: `[{'location': 'node:r:reads', 'count': 1}]`; Truth-only: `[{'location': 'node:r:writes', 'count': 1}]`
+- joint overlap: `[]`; Agent-only: `[{'location': 'node:r:reads', 'count': 1}]`; Truth-only: `[]`
+- relation consistency: production=`{'agent_relation_counts': {'reads': 1}, 'truth_relation_counts': {'writes': 1}, 'relation_intersection_counts': {}, 'overlap_relation_counts': {}, 'same_relation_support_count': 0, 'has_same_relation_support': False}`, joint=`{'agent_relation_counts': {'reads': 1}, 'truth_relation_counts': {}, 'relation_intersection_counts': {}, 'overlap_relation_counts': {}, 'same_relation_support_count': 0, 'has_same_relation_support': False}`
+- repeated usage support: production=`{'agent_occurrence_count': 1, 'truth_occurrence_count': 1, 'overlap_occurrence_count': 0, 'agent_repeated': False, 'truth_repeated': False, 'repeated_overlap': False}`, joint=`{'agent_occurrence_count': 1, 'truth_occurrence_count': 0, 'overlap_occurrence_count': 0, 'agent_repeated': False, 'truth_repeated': False, 'repeated_overlap': False}`
+- process topology / mapped endpoint support: production=`{'mapped_node_location_count': 1, 'mapped_edge_condition_count': 0, 'unmapped_node_location_count': 0, 'unmapped_edge_condition_count': 0, 'overlapping_edge_condition_count': 0, 'projected_topology_shapes': [['node_slot', 'reads', 0, 1, True, False]], 'truth_topology_shapes': [['node_slot', 'writes', 0, 1, True, False]]}`, joint=`{'mapped_node_location_count': 1, 'mapped_edge_condition_count': 0, 'unmapped_node_location_count': 0, 'unmapped_edge_condition_count': 0, 'overlapping_edge_condition_count': 0, 'projected_topology_shapes': [['node_slot', 'reads', 0, 1, True, False]], 'truth_topology_shapes': []}`
+- unsupported candidate: production=`True`, joint=`None`; alternative optimal mapping: `unmatched_in_all_exact_optima`
+- full forced objective delta (joint-production): `+0.166667`; changed components: `activity:+0.167`
+- local candidate counterfactual delta (joint-production): `-0.052632`; changed components: `concepts:-0.053`
+- classification: `possible_objective_failure` — Neither candidate has positive structural overlap, yet forcing the unsupported production assignment raises the raw objective. This is an objective/admissibility warning, not evidence that production is structurally correct.
+
+#### Seed 9004 — `data_quotation_request` (data; display label: customer's quotation request)
+
+- production candidate: `tc_request` (no_structural_overlap (0 overlap)); joint candidate: `—` (no_candidate (0 overlap))
+- Agent locations: `['node:node_receive_request:reads']`
+- projected Agent locations: `['node:r:reads']`
+- production Truth locations: `['node:r:writes']`; joint Truth locations: `[]`
+- production overlap: `[]`; Agent-only: `[{'location': 'node:r:reads', 'count': 1}]`; Truth-only: `[{'location': 'node:r:writes', 'count': 1}]`
+- joint overlap: `[]`; Agent-only: `[{'location': 'node:r:reads', 'count': 1}]`; Truth-only: `[]`
+- relation consistency: production=`{'agent_relation_counts': {'reads': 1}, 'truth_relation_counts': {'writes': 1}, 'relation_intersection_counts': {}, 'overlap_relation_counts': {}, 'same_relation_support_count': 0, 'has_same_relation_support': False}`, joint=`{'agent_relation_counts': {'reads': 1}, 'truth_relation_counts': {}, 'relation_intersection_counts': {}, 'overlap_relation_counts': {}, 'same_relation_support_count': 0, 'has_same_relation_support': False}`
+- repeated usage support: production=`{'agent_occurrence_count': 1, 'truth_occurrence_count': 1, 'overlap_occurrence_count': 0, 'agent_repeated': False, 'truth_repeated': False, 'repeated_overlap': False}`, joint=`{'agent_occurrence_count': 1, 'truth_occurrence_count': 0, 'overlap_occurrence_count': 0, 'agent_repeated': False, 'truth_repeated': False, 'repeated_overlap': False}`
+- process topology / mapped endpoint support: production=`{'mapped_node_location_count': 1, 'mapped_edge_condition_count': 0, 'unmapped_node_location_count': 0, 'unmapped_edge_condition_count': 0, 'overlapping_edge_condition_count': 0, 'projected_topology_shapes': [['node_slot', 'reads', 0, 1, True, False]], 'truth_topology_shapes': [['node_slot', 'writes', 0, 1, True, False]]}`, joint=`{'mapped_node_location_count': 1, 'mapped_edge_condition_count': 0, 'unmapped_node_location_count': 0, 'unmapped_edge_condition_count': 0, 'overlapping_edge_condition_count': 0, 'projected_topology_shapes': [['node_slot', 'reads', 0, 1, True, False]], 'truth_topology_shapes': []}`
+- unsupported candidate: production=`True`, joint=`None`; alternative optimal mapping: `unmatched_in_all_exact_optima`
+- full forced objective delta (joint-production): `-0.048780`; changed components: `concepts:-0.049`
+- local candidate counterfactual delta (joint-production): `-0.048780`; changed components: `concepts:-0.049`
+- classification: `possible_objective_failure` — Neither candidate has positive structural overlap, yet forcing the unsupported production assignment raises the raw objective. This is an objective/admissibility warning, not evidence that production is structurally correct.
+
+### Seed 9003 start/end investigation
+
+- assessment: `agent_graph_boundary_metadata_missing_or_omitted`
+- Agent declared fields: start=`None`, ends=`[]`
+- Truth declared fields: start=`r`, ends=`['me', 'sq']`
+- directed-topology Agent sources/sinks: `['node_receive_request']` / `['node_send_quotation', 'node_send_summary']`
+- directed-topology Truth sources/sinks: `['r']` / `['me', 'sq']`
+- projected Agent sources/sinks: `['r']` / `['me', 'sq']`
+- objective components: start=`{'matched_count': 0, 'agent_count': 0, 'truth_count': 1, 'agreement': 0.0, 'weight': 1.0, 'contribution': 0.0}`, end=`{'matched_count': 0, 'agent_count': 0, 'truth_count': 2, 'agreement': 0.0, 'weight': 1.0, 'contribution': 0.0}`
+- conclusion: The saved Agent graph omits explicit start/end metadata even though its directed topology projects to the Truth boundaries; this is closer to extraction/graph-recording omission than to a Node mapping failure. The audit does not infer or rewrite those fields.
+
+### Audit conclusion
+
+1. Joint is more strongly supported by structural evidence in `2` of `7` disagreements.
+2. Production is more strongly supported in `0`.
+3. `0` are structurally indistinguishable/ambiguous; `1` have insufficient positive structural evidence without an objective warning.
+4. `4` case(s) raise an objective/admissibility warning: a forced production assignment with zero structural overlap raises the raw objective, primarily through the `concepts` component. This is not treated as structural support for production.
+5. **Promotion decision: no.** The joint matcher is useful as an evaluator-private diagnostic, but the present real-LLM evidence does not justify making it the production Concept identity signal. It strongly supports only a minority of disagreements and exposes unsupported-assignment objective behavior.
+6. The minimum next evidence is an adversarial evaluation set with independently verified structural correspondences, repeated/parallel/symmetric usages, missing/extra locations, and explicit boundary metadata. Before promotion, the objective/admissible-domain contract must also be tested so unsupported mappings cannot improve the reported objective under a forced counterfactual.
 
 ## Aggregate failed-slot attribution
 

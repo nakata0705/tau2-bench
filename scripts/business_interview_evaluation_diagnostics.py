@@ -20,6 +20,9 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import cast
 
+from scripts.business_interview_joint_alignment_audit import (  # pyright: ignore[reportMissingImports]
+    build_joint_concept_disagreement_audit,
+)
 from tau2.domains.business_interview.evaluation import (
     EvaluationResult,
     EvaluationSpec,
@@ -204,6 +207,13 @@ def evaluate_artifact(public_path: Path, private_path: Path) -> dict:
         db=db,
         annotations=annotations,
     )
+    joint_concept_disagreement_audit = build_joint_concept_disagreement_audit(
+        db.graph,
+        truth,
+        result.diagnostics.joint_structural_alignment,
+        observations=db.observations,
+        seed=public.get("seed"),
+    )
     return {
         "schema_version": result.diagnostics.schema_version,
         "seed": public.get("seed"),
@@ -212,6 +222,7 @@ def evaluate_artifact(public_path: Path, private_path: Path) -> dict:
         "evaluation": result.model_dump(mode="json"),
         "metrics": _metric_snapshot(result),
         "metric_parity": metric_parity,
+        "joint_concept_disagreement_audit": joint_concept_disagreement_audit,
         "root_cause_attributions": [
             attribution.model_dump(mode="json") for attribution in attributions
         ],
@@ -505,9 +516,10 @@ def _joint_detail_lines(trace: dict) -> list[str]:
             "| --- | --- | --- |",
         ]
     )
-    differences = joint["production_vs_joint_node_differences"] + joint[
-        "production_vs_joint_concept_differences"
-    ]
+    differences = (
+        joint["production_vs_joint_node_differences"]
+        + joint["production_vs_joint_concept_differences"]
+    )
     if not differences:
         lines.append("| none | — | — |")
     else:
@@ -537,6 +549,185 @@ def _joint_detail_lines(trace: dict) -> list[str]:
                 f"`{_md_value(item['left_truth_id'])}` | "
                 f"`{_md_value(item['right_truth_id'])}` |"
             )
+    return lines
+
+
+def _joint_concept_disagreement_audit_lines(traces: list[dict]) -> list[str]:
+    audits = [trace["joint_concept_disagreement_audit"] for trace in traces]
+    records = [record for audit in audits for record in audit["records"]]
+    counts = Counter(record["classification"] for record in records)
+
+    def support_summary(candidate: dict) -> str:
+        overlap = sum(item["count"] for item in candidate["overlapping_usage"])
+        return f"{candidate['structural_usage_status']} ({overlap} overlap)"
+
+    def component_delta_summary(comparison: dict) -> str:
+        changed = []
+        for name, delta in comparison["component_deltas"].items():
+            value = delta["agreement_delta_joint_minus_production"]
+            if abs(value) > _FLOAT_TOLERANCE:
+                changed.append(f"{name}:{value:+.3f}")
+        return ", ".join(changed) or "none"
+
+    lines = [
+        "## Production-vs-joint Concept disagreement audit",
+        "",
+        "This section audits the seven Concept mapping differences from the saved",
+        "real-LLM artifacts. Structural coordinates are computed only after",
+        "projecting Agent locations through the representative joint Node/edge",
+        "mapping. Labels, canonical terms, descriptions, Observation text,",
+        "EvidenceRef text, and semantic sidecars are shown only for human review",
+        "and are not inputs to candidate selection, tie-breaking, objective",
+        "evaluation, or classification.",
+        "",
+        "### Aggregate classification",
+        "",
+        "| classification | count |",
+        "| --- | ---: |",
+    ]
+    for classification in (
+        "joint_strongly_supported",
+        "production_strongly_supported",
+        "structurally_ambiguous",
+        "insufficient_structural_evidence",
+        "possible_objective_failure",
+    ):
+        lines.append(f"| `{classification}` | {counts[classification]} |")
+    lines.extend(
+        [
+            "",
+            "### Evidence table",
+            "",
+            "| seed | Agent Concept (display label) | kind | production Truth | joint Truth | production structural evidence | joint structural evidence | production overlap | joint overlap | local objective delta (joint-production) | classification |",
+            "| ---: | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |",
+        ]
+    )
+    for record in records:
+        production = record["production_candidate_evidence"]
+        joint = record["joint_candidate_evidence"]
+        local = record["counterfactual"]["local_candidate_counterfactual"]
+        lines.append(
+            "| {seed} | `{agent}` ({label}) | `{kind}` | `{production}` | "
+            "`{joint_id}` | `{production_status}` | `{joint_status}` | {production_overlap} | "
+            "{joint_overlap} | {delta:+.6f} | `{classification}` |".format(
+                seed=record["seed"],
+                agent=_md_value(record["agent_concept_id"]),
+                label=_md_value(record["agent_label"]),
+                kind=_md_value(record["concept_kind"]),
+                production=_md_value(record["production_truth_concept_id"]),
+                joint_id=_md_value(record["joint_truth_concept_id"]),
+                production_status=support_summary(production),
+                joint_status=support_summary(joint),
+                production_overlap=sum(
+                    item["count"] for item in production["overlapping_usage"]
+                ),
+                joint_overlap=sum(item["count"] for item in joint["overlapping_usage"]),
+                delta=local["objective_delta_joint_minus_production"],
+                classification=record["classification"],
+            )
+        )
+
+    lines.extend(["", "### Per-disagreement structural evidence", ""])
+    for record in records:
+        production = record["production_candidate_evidence"]
+        joint = record["joint_candidate_evidence"]
+        local = record["counterfactual"]["local_candidate_counterfactual"]
+        lines.extend(
+            [
+                f"#### Seed {record['seed']} — `{record['agent_concept_id']}` "
+                f"({record['concept_kind']}; display label: "
+                f"{_md_value(record['agent_label'])})",
+                "",
+                f"- production candidate: `{_md_value(record['production_truth_concept_id'])}` "
+                f"({support_summary(production)}); joint candidate: "
+                f"`{_md_value(record['joint_truth_concept_id'])}` "
+                f"({support_summary(joint)})",
+                f"- Agent locations: `{_md_value(record['agent_structural_usage']['locations'])}`",
+                f"- projected Agent locations: "
+                f"`{_md_value(production['projected_agent_locations'])}`",
+                f"- production Truth locations: `{_md_value([item['location'] for item in production['truth_locations']])}`; "
+                f"joint Truth locations: `{_md_value([item['location'] for item in joint['truth_locations']])}`",
+                f"- production overlap: `{_md_value(production['overlapping_usage'])}`; "
+                f"Agent-only: `{_md_value(production['agent_only_locations'])}`; "
+                f"Truth-only: `{_md_value(production['truth_only_locations'])}`",
+                f"- joint overlap: `{_md_value(joint['overlapping_usage'])}`; "
+                f"Agent-only: `{_md_value(joint['agent_only_locations'])}`; "
+                f"Truth-only: `{_md_value(joint['truth_only_locations'])}`",
+                f"- relation consistency: production="
+                f"`{_md_value(production['relation_type_consistency'])}`, joint="
+                f"`{_md_value(joint['relation_type_consistency'])}`",
+                f"- repeated usage support: production="
+                f"`{_md_value(production['repeated_usage_support'])}`, joint="
+                f"`{_md_value(joint['repeated_usage_support'])}`",
+                f"- process topology / mapped endpoint support: production="
+                f"`{_md_value(production['process_topology_support'])}`, joint="
+                f"`{_md_value(joint['process_topology_support'])}`",
+                f"- unsupported candidate: production=`{production['candidate_support']['unsupported_candidate']}`, "
+                f"joint=`{joint['candidate_support']['unsupported_candidate']}`; "
+                f"alternative optimal mapping: `{record['alternative_optimal_mapping']['status']}`",
+                f"- full forced objective delta (joint-production): "
+                f"`{record['counterfactual']['full_mapping_comparison']['objective_delta_joint_minus_production']:+.6f}`; "
+                f"changed components: `{component_delta_summary(record['counterfactual']['full_mapping_comparison'])}`",
+                f"- local candidate counterfactual delta (joint-production): "
+                f"`{local['objective_delta_joint_minus_production']:+.6f}`; "
+                f"changed components: `{component_delta_summary(local)}`",
+                f"- classification: `{record['classification']}` — "
+                f"{record['classification_rationale']}",
+                "",
+            ]
+        )
+
+    start_end = next(
+        (
+            audit["seed_9003_start_end_investigation"]
+            for audit in audits
+            if audit.get("seed_9003_start_end_investigation") is not None
+        ),
+        None,
+    )
+    lines.extend(["### Seed 9003 start/end investigation", ""])
+    if start_end is None:
+        lines.append("- no seed 9003 audit was generated")
+    else:
+        lines.extend(
+            [
+                f"- assessment: `{start_end['assessment']}`",
+                f"- Agent declared fields: start=`{start_end['agent_declared_start_node']}`, "
+                f"ends=`{start_end['agent_declared_end_nodes']}`",
+                f"- Truth declared fields: start=`{start_end['truth_declared_start_node']}`, "
+                f"ends=`{start_end['truth_declared_end_nodes']}`",
+                f"- directed-topology Agent sources/sinks: "
+                f"`{start_end['agent_topology_sources']}` / `{start_end['agent_topology_sinks']}`",
+                f"- directed-topology Truth sources/sinks: "
+                f"`{start_end['truth_topology_sources']}` / `{start_end['truth_topology_sinks']}`",
+                f"- projected Agent sources/sinks: "
+                f"`{start_end['projected_agent_topology_sources']}` / "
+                f"`{start_end['projected_agent_topology_sinks']}`",
+                f"- objective components: start=`{start_end['joint_start_component']}`, "
+                f"end=`{start_end['joint_end_component']}`",
+                f"- conclusion: {start_end['interpretation']}",
+                "",
+            ]
+        )
+
+    joint_count = counts["joint_strongly_supported"]
+    production_count = counts["production_strongly_supported"]
+    ambiguous_count = counts["structurally_ambiguous"]
+    objective_count = counts["possible_objective_failure"]
+    insufficient_count = counts["insufficient_structural_evidence"]
+    lines.extend(
+        [
+            "### Audit conclusion",
+            "",
+            f"1. Joint is more strongly supported by structural evidence in `{joint_count}` of `{len(records)}` disagreements.",
+            f"2. Production is more strongly supported in `{production_count}`.",
+            f"3. `{ambiguous_count}` are structurally indistinguishable/ambiguous; `{insufficient_count}` have insufficient positive structural evidence without an objective warning.",
+            f"4. `{objective_count}` case(s) raise an objective/admissibility warning: a forced production assignment with zero structural overlap raises the raw objective, primarily through the `concepts` component. This is not treated as structural support for production.",
+            "5. **Promotion decision: no.** The joint matcher is useful as an evaluator-private diagnostic, but the present real-LLM evidence does not justify making it the production Concept identity signal. It strongly supports only a minority of disagreements and exposes unsupported-assignment objective behavior.",
+            "6. The minimum next evidence is an adversarial evaluation set with independently verified structural correspondences, repeated/parallel/symmetric usages, missing/extra locations, and explicit boundary metadata. Before promotion, the objective/admissible-domain contract must also be tested so unsupported mappings cannot improve the reported objective under a forced counterfactual.",
+            "",
+        ]
+    )
     return lines
 
 
@@ -836,7 +1027,11 @@ def render_report(traces: list[dict], output_path: Path) -> None:
             "measure whether the structural mapping is stable under realistic "
             "missing/extra structure. Existing production scoring and mappings are "
             "unchanged.",
-            "",
+        ]
+    )
+    lines.extend(_joint_concept_disagreement_audit_lines(traces))
+    lines.extend(
+        [
             "## Aggregate failed-slot attribution",
             "",
             "Counts are failed scored slots, not token-level or LLM judgments. "
@@ -1010,6 +1205,44 @@ def main() -> int:
             encoding="utf-8",
         )
         print(f"re-evaluated seed {trace['seed']}: {output_path}")
+
+    audit_records = [
+        record
+        for trace in traces
+        for record in trace["joint_concept_disagreement_audit"]["records"]
+    ]
+    audit_summary = {
+        "schema_version": "business_interview.joint_concept_disagreement_audit.aggregate.v1",
+        "seeds": [trace["seed"] for trace in traces],
+        "disagreement_count": len(audit_records),
+        "classification_counts": dict(
+            sorted(
+                Counter(record["classification"] for record in audit_records).items()
+            )
+        ),
+        "records": audit_records,
+        "seed_9003_start_end_investigation": next(
+            (
+                trace["joint_concept_disagreement_audit"][
+                    "seed_9003_start_end_investigation"
+                ]
+                for trace in traces
+                if trace["joint_concept_disagreement_audit"].get(
+                    "seed_9003_start_end_investigation"
+                )
+                is not None
+            ),
+            None,
+        ),
+    }
+    aggregate_audit_path = _safe_repo_path(
+        output_dir / "joint_concept_disagreement_audit.json"
+    )
+    aggregate_audit_path.write_text(
+        json.dumps(audit_summary, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    print(f"wrote audit: {aggregate_audit_path.relative_to(REPO_ROOT)}")
     render_report(traces, report_path)
     print(f"wrote report: {report_path.relative_to(REPO_ROOT)}")
     return 0

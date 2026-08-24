@@ -184,7 +184,9 @@ class JointStructuralAlignmentDiagnostics(BaseModel):
     objective: JointStructuralObjective = Field(
         default_factory=JointStructuralObjective
     )
-    search: JointStructuralSearchStats = Field(default_factory=JointStructuralSearchStats)
+    search: JointStructuralSearchStats = Field(
+        default_factory=JointStructuralSearchStats
+    )
     production_agent_node_to_truth_node: dict[str, str] = Field(default_factory=dict)
     production_agent_concept_to_truth_concept: dict[str, str] = Field(
         default_factory=dict
@@ -336,16 +338,16 @@ def _build_index(graph) -> _GraphIndex:
         node_ids=node_ids,
         edge_ids=edge_ids,
         concept_ids=concept_ids,
-        concept_ids_by_kind={kind: list(ids) for kind, ids in concept_ids_by_kind.items()},
+        concept_ids_by_kind={
+            kind: list(ids) for kind, ids in concept_ids_by_kind.items()
+        },
         node_refs=node_refs,
         edge_condition_refs=edge_condition_refs,
         relation_totals=relation_totals,
         incoming_degree=incoming_degree,
         outgoing_degree=outgoing_degree,
         end_nodes=end_nodes,
-        start_node=(
-            graph.start_node_id if graph.start_node_id in node_ids else None
-        ),
+        start_node=(graph.start_node_id if graph.start_node_id in node_ids else None),
         node_kind_counts=node_kind_counts,
     )
 
@@ -376,12 +378,18 @@ def _node_candidate_potential(
     # Two completely bare, equally-role'd nodes are still structurally
     # eligible.  Their eventual mapping is intentionally reported ambiguous.
     agent_bare = (
-        all(not agent.node_kind_counts[(agent_node_id, relation)] for relation in _NODE_RELATIONS)
+        all(
+            not agent.node_kind_counts[(agent_node_id, relation)]
+            for relation in _NODE_RELATIONS
+        )
         and agent.incoming_degree[agent_node_id] == 0
         and agent.outgoing_degree[agent_node_id] == 0
     )
     truth_bare = (
-        all(not truth.node_kind_counts[(truth_node_id, relation)] for relation in _NODE_RELATIONS)
+        all(
+            not truth.node_kind_counts[(truth_node_id, relation)]
+            for relation in _NODE_RELATIONS
+        )
         and truth.incoming_degree[truth_node_id] == 0
         and truth.outgoing_degree[truth_node_id] == 0
     )
@@ -436,9 +444,7 @@ def _enumerate_best_additive_assignments(
             key=lambda right_id: (-weights[(left_id, right_id)], right_id)
         )
         candidates[left_id] = candidate_ids
-    ordered_left = sorted(
-        left, key=lambda left_id: (len(candidates[left_id]), left_id)
-    )
+    ordered_left = sorted(left, key=lambda left_id: (len(candidates[left_id]), left_id))
     suffix_max: list[Fraction] = [Fraction(0, 1)] * (len(ordered_left) + 1)
     for index in range(len(ordered_left) - 1, -1, -1):
         left_id = ordered_left[index]
@@ -521,9 +527,7 @@ def _enumerate_candidate_assignments(
         return [{}], False
     candidates: dict[str, list[str]] = {
         left_id: sorted(
-            right_id
-            for right_id in right
-            if allowed.get((left_id, right_id), False)
+            right_id for right_id in right if allowed.get((left_id, right_id), False)
         )
         for left_id in left
     }
@@ -728,14 +732,20 @@ def _pair_support(
     ).values():
         for agent_edge_id in agent_edge_ids:
             agent_condition = agent_graph.edges[agent_edge_id].condition
-            if not isinstance(agent_condition, ConceptRef) or not agent_condition.asserted:
+            if (
+                not isinstance(agent_condition, ConceptRef)
+                or not agent_condition.asserted
+            ):
                 continue
             if agent_condition.concept_id not in agent_graph.concepts:
                 continue
             agent_kind = agent_graph.concepts[agent_condition.concept_id].kind
             for truth_edge_id in truth_edge_ids:
                 truth_condition = truth_graph.edges[truth_edge_id].condition
-                if not isinstance(truth_condition, ConceptRef) or not truth_condition.asserted:
+                if (
+                    not isinstance(truth_condition, ConceptRef)
+                    or not truth_condition.asserted
+                ):
                     continue
                 if truth_condition.concept_id not in truth_graph.concepts:
                     continue
@@ -752,9 +762,7 @@ def _component(
     truth_count: int,
 ) -> tuple[int, int, int, Fraction]:
     denominator = agent_count + truth_count
-    agreement = (
-        Fraction(2 * matched, denominator) if denominator else Fraction(1, 1)
-    )
+    agreement = Fraction(2 * matched, denominator) if denominator else Fraction(1, 1)
     return matched, agent_count, truth_count, agreement
 
 
@@ -767,9 +775,7 @@ def _solution_for_mapping(
     concept_mapping: Mapping[str, str],
     search: _MutableSearch,
 ) -> _Solution:
-    support, _ = _pair_support(
-        agent_graph, truth_graph, agent, truth, node_mapping
-    )
+    support, _ = _pair_support(agent_graph, truth_graph, agent, truth, node_mapping)
     edge_mapping, edge_matches, condition_matches = _edge_mapping_and_condition_hits(
         agent_graph, truth_graph, node_mapping, concept_mapping, search
     )
@@ -799,14 +805,18 @@ def _solution_for_mapping(
     )
 
     both_start_absent = agent.start_node is None and truth.start_node is None
-    start_match = 1 if (
-        both_start_absent
-        or (
-            agent.start_node is not None
-            and truth.start_node is not None
-            and node_mapping.get(agent.start_node) == truth.start_node
+    start_match = (
+        1
+        if (
+            both_start_absent
+            or (
+                agent.start_node is not None
+                and truth.start_node is not None
+                and node_mapping.get(agent.start_node) == truth.start_node
+            )
         )
-    ) else 0
+        else 0
+    )
     if both_start_absent:
         components["start_node"] = (0, 0, 0, Fraction(1, 1))
     else:
@@ -854,7 +864,9 @@ def _pair_weights(
     )
     relation_rewards = {
         relation: (
-            Fraction(2, agent.relation_totals[relation] + truth.relation_totals[relation])
+            Fraction(
+                2, agent.relation_totals[relation] + truth.relation_totals[relation]
+            )
             if agent.relation_totals[relation] + truth.relation_totals[relation]
             else Fraction(0, 1)
         )
@@ -867,8 +879,7 @@ def _pair_weights(
         if agent_graph.concepts[pair[0]].kind != truth_graph.concepts[pair[1]].kind:
             continue
         incidence_reward = sum(
-            count * relation_rewards[relation]
-            for relation, count in values.items()
+            count * relation_rewards[relation] for relation, count in values.items()
         )
         if incidence_reward > 0:
             weights[pair] = concept_reward + incidence_reward
@@ -938,9 +949,7 @@ def _ambiguity_classes(
         or any(len(reverse[target_id]) > 1 for target_id in possible[entity_id])
     }
     ambiguous_seed_truths = {
-        target_id
-        for target_id, source_ids in reverse.items()
-        if len(source_ids) > 1
+        target_id for target_id, source_ids in reverse.items() if len(source_ids) > 1
     }
 
     adjacency_agent: dict[str, set[str]] = defaultdict(set)
@@ -954,8 +963,7 @@ def _ambiguity_classes(
     visited_agents: set[str] = set()
     visited_truths: set[str] = set()
     seeds = sorted(ambiguous_seed_agents) + [
-        f"\x00{target_id}"
-        for target_id in sorted(ambiguous_seed_truths)
+        f"\x00{target_id}" for target_id in sorted(ambiguous_seed_truths)
     ]
     for seed in seeds:
         if seed.startswith("\x00"):
@@ -993,9 +1001,7 @@ def _ambiguity_classes(
         if not class_agents and not class_truths:
             continue
         unmatched_agents = sorted(
-            entity_id
-            for entity_id in class_agents
-            if unmapped.get(entity_id, False)
+            entity_id for entity_id in class_agents if unmapped.get(entity_id, False)
         )
         unmatched_truths = sorted(
             truth_id
@@ -1050,7 +1056,12 @@ def _fraction_to_float(value: Fraction) -> float:
 
 def _objective_model(solution: _Solution) -> JointStructuralObjective:
     components: dict[str, JointStructuralComponent] = {}
-    for name, (matched, agent_count, truth_count, agreement) in solution.components.items():
+    for name, (
+        matched,
+        agent_count,
+        truth_count,
+        agreement,
+    ) in solution.components.items():
         components[name] = JointStructuralComponent(
             matched_count=matched,
             agent_count=agent_count,
@@ -1070,9 +1081,7 @@ def _objective_model(solution: _Solution) -> JointStructuralObjective:
     return JointStructuralObjective(
         total_score=_fraction_to_float(total),
         max_score=_fraction_to_float(max_score),
-        normalized_score=(
-            _fraction_to_float(total / max_score) if max_score else 1.0
-        ),
+        normalized_score=(_fraction_to_float(total / max_score) if max_score else 1.0),
         components=components,
     )
 
@@ -1080,6 +1089,48 @@ def _objective_model(solution: _Solution) -> JointStructuralObjective:
 # ---------------------------------------------------------------------------
 # Public builder
 # ---------------------------------------------------------------------------
+
+
+def evaluate_joint_structural_mapping_objective(
+    agent: AgentGraph,
+    truth,
+    *,
+    node_mapping: Mapping[str, str],
+    concept_mapping: Mapping[str, str],
+    max_edge_search_states: int = 1_000_000,
+) -> JointStructuralObjective:
+    """Evaluate the existing objective for a fixed mapping, without searching.
+
+    This helper is for evaluator-private counterfactual diagnostics.  It calls
+    the same objective implementation as the joint search and does not add a
+    candidate, alter admissibility, or participate in tie-breaking.  The
+    fixed mappings are intentionally accepted as-is so an audit can measure
+    what would happen if a production mapping were forced, including an
+    unsupported assignment.
+    """
+    if max_edge_search_states <= 0:
+        raise ValueError("max_edge_search_states must be positive")
+    agent_index = _build_index(agent)
+    truth_index = _build_index(truth)
+    search = _MutableSearch(
+        max_node_states=1,
+        max_concept_states=max_edge_search_states,
+        max_alternatives=1,
+    )
+    solution = _solution_for_mapping(
+        agent,
+        truth,
+        agent_index,
+        truth_index,
+        dict(node_mapping),
+        dict(concept_mapping),
+        search,
+    )
+    if search.bound_hit:
+        raise ValueError(
+            "fixed mapping objective evaluation exceeded the edge search bound"
+        )
+    return _objective_model(solution)
 
 
 def build_joint_structural_alignment_diagnostics(
@@ -1137,7 +1188,9 @@ def build_joint_structural_alignment_diagnostics(
             left = list(agent_index.concept_ids_by_kind.get(kind, []))
             right = list(truth_index.concept_ids_by_kind.get(kind, []))
             if kind == "condition":
-                allowed = _condition_pair_allowed(condition_possible, agent_index, truth_index)
+                allowed = _condition_pair_allowed(
+                    condition_possible, agent_index, truth_index
+                )
                 maps, truncated = _enumerate_candidate_assignments(
                     left, right, allowed, search
                 )
@@ -1152,9 +1205,7 @@ def build_joint_structural_alignment_diagnostics(
                 ).items()
                 if pair[0] in left and pair[1] in right
             }
-            result = _enumerate_best_additive_assignments(
-                weights, left, right, search
-            )
+            result = _enumerate_best_additive_assignments(weights, left, right, search)
             if result.truncated:
                 search.hit("additive_concept_assignment_bound")
             per_kind_maps.append(result.mappings)
@@ -1239,9 +1290,7 @@ def build_joint_structural_alignment_diagnostics(
             edge_mapping={},
         )
     else:
-        selected_solution = sorted(
-            optimal_solutions.values(), key=_mapping_key
-        )[0]
+        selected_solution = sorted(optimal_solutions.values(), key=_mapping_key)[0]
         empty_objective = _objective_model(selected_solution)
 
     exact_search = not search.bound_hit
@@ -1290,7 +1339,11 @@ def build_joint_structural_alignment_diagnostics(
         ),
         runtime_estimate_ms=max(
             1,
-            (search.node_search_states + search.concept_search_states + search.edge_assignment_states)
+            (
+                search.node_search_states
+                + search.concept_search_states
+                + search.edge_assignment_states
+            )
             // 1000,
         )
         if search.node_search_states
@@ -1347,5 +1400,6 @@ __all__ = [
     "JointStructuralComponent",
     "JointStructuralObjective",
     "JointStructuralSearchStats",
+    "evaluate_joint_structural_mapping_objective",
     "build_joint_structural_alignment_diagnostics",
 ]

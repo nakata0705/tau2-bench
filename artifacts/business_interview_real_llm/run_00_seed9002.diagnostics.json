@@ -8045,6 +8045,4468 @@
     "unsupported_ref_count": 3,
     "write_correctness": 0.16666666666666666
   },
+  "joint_concept_disagreement_audit": {
+    "classification_counts": {
+      "insufficient_structural_evidence": 1,
+      "joint_strongly_supported": 1,
+      "possible_objective_failure": 2
+    },
+    "disagreement_count": 4,
+    "display_text_is_not_a_matching_signal": true,
+    "joint_mapping_basis": {
+      "edge_mapping": {
+        "edge_approve_to_send": "e5",
+        "edge_check_to_create": "e2",
+        "edge_create_to_approve": "e3",
+        "edge_create_to_send": "e4",
+        "edge_receive_to_check": "e1"
+      },
+      "node_mapping": {
+        "node_approve_high_value": "ap",
+        "node_check_customer_info": "cc",
+        "node_create_quotation_doc": "cq",
+        "node_receive_request": "r",
+        "node_send_month_end_summary": "me",
+        "node_send_quotation": "sq"
+      },
+      "node_mapping_differences": [],
+      "production_node_mapping": {
+        "node_approve_high_value": "ap",
+        "node_check_customer_info": "cc",
+        "node_create_quotation_doc": "cq",
+        "node_receive_request": "r",
+        "node_send_month_end_summary": "me",
+        "node_send_quotation": "sq"
+      }
+    },
+    "label_independent_structural_calculation": true,
+    "limitations": [
+      "Structural coordinates are projected through the representative joint Node/edge mapping; unmapped locations remain explicit.",
+      "A representative mapping is not identity truth; exact optimal alternatives are reported separately.",
+      "Observation text, labels, descriptions, canonical terms, and evidence quotes are display-only and never enter calculation.",
+      "A forced unsupported production assignment can expose an objective/admissibility mismatch; that does not make the assignment structurally supported."
+    ],
+    "objective_basis": {
+      "full_mapping_comparison": {
+        "component_deltas": {
+          "activity": {
+            "agreement_delta_joint_minus_production": 0.0,
+            "contribution_delta_joint_minus_production": 0.0,
+            "matched_count_delta_joint_minus_production": 0
+          },
+          "actor": {
+            "agreement_delta_joint_minus_production": 0.0,
+            "contribution_delta_joint_minus_production": 0.0,
+            "matched_count_delta_joint_minus_production": 0
+          },
+          "concepts": {
+            "agreement_delta_joint_minus_production": -0.09302325581395343,
+            "contribution_delta_joint_minus_production": -0.09302325581395343,
+            "matched_count_delta_joint_minus_production": -2
+          },
+          "condition": {
+            "agreement_delta_joint_minus_production": 0.0,
+            "contribution_delta_joint_minus_production": 0.0,
+            "matched_count_delta_joint_minus_production": 0
+          },
+          "end_nodes": {
+            "agreement_delta_joint_minus_production": 0.0,
+            "contribution_delta_joint_minus_production": 0.0,
+            "matched_count_delta_joint_minus_production": 0
+          },
+          "nodes": {
+            "agreement_delta_joint_minus_production": 0.0,
+            "contribution_delta_joint_minus_production": 0.0,
+            "matched_count_delta_joint_minus_production": 0
+          },
+          "process_edges": {
+            "agreement_delta_joint_minus_production": 0.0,
+            "contribution_delta_joint_minus_production": 0.0,
+            "matched_count_delta_joint_minus_production": 0
+          },
+          "rationale": {
+            "agreement_delta_joint_minus_production": 0.0,
+            "contribution_delta_joint_minus_production": 0.0,
+            "matched_count_delta_joint_minus_production": 0
+          },
+          "reads": {
+            "agreement_delta_joint_minus_production": 0.0,
+            "contribution_delta_joint_minus_production": 0.0,
+            "matched_count_delta_joint_minus_production": 0
+          },
+          "start_node": {
+            "agreement_delta_joint_minus_production": 0.0,
+            "contribution_delta_joint_minus_production": 0.0,
+            "matched_count_delta_joint_minus_production": 0
+          },
+          "system": {
+            "agreement_delta_joint_minus_production": 0.0,
+            "contribution_delta_joint_minus_production": 0.0,
+            "matched_count_delta_joint_minus_production": 0
+          },
+          "writes": {
+            "agreement_delta_joint_minus_production": 0.3333333333333333,
+            "contribution_delta_joint_minus_production": 0.3333333333333333,
+            "matched_count_delta_joint_minus_production": 1
+          }
+        },
+        "joint_objective": {
+          "components": {
+            "activity": {
+              "agent_count": 6,
+              "agreement": 1.0,
+              "contribution": 1.0,
+              "matched_count": 6,
+              "truth_count": 6,
+              "weight": 1.0
+            },
+            "actor": {
+              "agent_count": 6,
+              "agreement": 1.0,
+              "contribution": 1.0,
+              "matched_count": 6,
+              "truth_count": 6,
+              "weight": 1.0
+            },
+            "concepts": {
+              "agent_count": 22,
+              "agreement": 0.8837209302325582,
+              "contribution": 0.8837209302325582,
+              "matched_count": 19,
+              "truth_count": 21,
+              "weight": 1.0
+            },
+            "condition": {
+              "agent_count": 3,
+              "agreement": 0.6666666666666666,
+              "contribution": 0.6666666666666666,
+              "matched_count": 2,
+              "truth_count": 3,
+              "weight": 1.0
+            },
+            "end_nodes": {
+              "agent_count": 2,
+              "agreement": 1.0,
+              "contribution": 1.0,
+              "matched_count": 2,
+              "truth_count": 2,
+              "weight": 1.0
+            },
+            "nodes": {
+              "agent_count": 6,
+              "agreement": 1.0,
+              "contribution": 1.0,
+              "matched_count": 6,
+              "truth_count": 6,
+              "weight": 1.0
+            },
+            "process_edges": {
+              "agent_count": 7,
+              "agreement": 0.7692307692307693,
+              "contribution": 0.7692307692307693,
+              "matched_count": 5,
+              "truth_count": 6,
+              "weight": 1.0
+            },
+            "rationale": {
+              "agent_count": 1,
+              "agreement": 1.0,
+              "contribution": 1.0,
+              "matched_count": 1,
+              "truth_count": 1,
+              "weight": 1.0
+            },
+            "reads": {
+              "agent_count": 4,
+              "agreement": 0.5714285714285714,
+              "contribution": 0.5714285714285714,
+              "matched_count": 2,
+              "truth_count": 3,
+              "weight": 1.0
+            },
+            "start_node": {
+              "agent_count": 1,
+              "agreement": 1.0,
+              "contribution": 1.0,
+              "matched_count": 1,
+              "truth_count": 1,
+              "weight": 1.0
+            },
+            "system": {
+              "agent_count": 4,
+              "agreement": 1.0,
+              "contribution": 1.0,
+              "matched_count": 4,
+              "truth_count": 4,
+              "weight": 1.0
+            },
+            "writes": {
+              "agent_count": 3,
+              "agreement": 0.6666666666666666,
+              "contribution": 0.6666666666666666,
+              "matched_count": 2,
+              "truth_count": 3,
+              "weight": 1.0
+            }
+          },
+          "max_score": 12.0,
+          "normalized_score": 0.8798094670187694,
+          "total_score": 10.557713604225231
+        },
+        "objective_delta_joint_minus_production": 0.2403100775193785,
+        "production_forced_objective": {
+          "components": {
+            "activity": {
+              "agent_count": 6,
+              "agreement": 1.0,
+              "contribution": 1.0,
+              "matched_count": 6,
+              "truth_count": 6,
+              "weight": 1.0
+            },
+            "actor": {
+              "agent_count": 6,
+              "agreement": 1.0,
+              "contribution": 1.0,
+              "matched_count": 6,
+              "truth_count": 6,
+              "weight": 1.0
+            },
+            "concepts": {
+              "agent_count": 22,
+              "agreement": 0.9767441860465116,
+              "contribution": 0.9767441860465116,
+              "matched_count": 21,
+              "truth_count": 21,
+              "weight": 1.0
+            },
+            "condition": {
+              "agent_count": 3,
+              "agreement": 0.6666666666666666,
+              "contribution": 0.6666666666666666,
+              "matched_count": 2,
+              "truth_count": 3,
+              "weight": 1.0
+            },
+            "end_nodes": {
+              "agent_count": 2,
+              "agreement": 1.0,
+              "contribution": 1.0,
+              "matched_count": 2,
+              "truth_count": 2,
+              "weight": 1.0
+            },
+            "nodes": {
+              "agent_count": 6,
+              "agreement": 1.0,
+              "contribution": 1.0,
+              "matched_count": 6,
+              "truth_count": 6,
+              "weight": 1.0
+            },
+            "process_edges": {
+              "agent_count": 7,
+              "agreement": 0.7692307692307693,
+              "contribution": 0.7692307692307693,
+              "matched_count": 5,
+              "truth_count": 6,
+              "weight": 1.0
+            },
+            "rationale": {
+              "agent_count": 1,
+              "agreement": 1.0,
+              "contribution": 1.0,
+              "matched_count": 1,
+              "truth_count": 1,
+              "weight": 1.0
+            },
+            "reads": {
+              "agent_count": 4,
+              "agreement": 0.5714285714285714,
+              "contribution": 0.5714285714285714,
+              "matched_count": 2,
+              "truth_count": 3,
+              "weight": 1.0
+            },
+            "start_node": {
+              "agent_count": 1,
+              "agreement": 1.0,
+              "contribution": 1.0,
+              "matched_count": 1,
+              "truth_count": 1,
+              "weight": 1.0
+            },
+            "system": {
+              "agent_count": 4,
+              "agreement": 1.0,
+              "contribution": 1.0,
+              "matched_count": 4,
+              "truth_count": 4,
+              "weight": 1.0
+            },
+            "writes": {
+              "agent_count": 3,
+              "agreement": 0.3333333333333333,
+              "contribution": 0.3333333333333333,
+              "matched_count": 1,
+              "truth_count": 3,
+              "weight": 1.0
+            }
+          },
+          "max_score": 12.0,
+          "normalized_score": 0.8597836272254877,
+          "total_score": 10.317403526705853
+        }
+      },
+      "joint_objective": {
+        "components": {
+          "activity": {
+            "agent_count": 6,
+            "agreement": 1.0,
+            "contribution": 1.0,
+            "matched_count": 6,
+            "truth_count": 6,
+            "weight": 1.0
+          },
+          "actor": {
+            "agent_count": 6,
+            "agreement": 1.0,
+            "contribution": 1.0,
+            "matched_count": 6,
+            "truth_count": 6,
+            "weight": 1.0
+          },
+          "concepts": {
+            "agent_count": 22,
+            "agreement": 0.8837209302325582,
+            "contribution": 0.8837209302325582,
+            "matched_count": 19,
+            "truth_count": 21,
+            "weight": 1.0
+          },
+          "condition": {
+            "agent_count": 3,
+            "agreement": 0.6666666666666666,
+            "contribution": 0.6666666666666666,
+            "matched_count": 2,
+            "truth_count": 3,
+            "weight": 1.0
+          },
+          "end_nodes": {
+            "agent_count": 2,
+            "agreement": 1.0,
+            "contribution": 1.0,
+            "matched_count": 2,
+            "truth_count": 2,
+            "weight": 1.0
+          },
+          "nodes": {
+            "agent_count": 6,
+            "agreement": 1.0,
+            "contribution": 1.0,
+            "matched_count": 6,
+            "truth_count": 6,
+            "weight": 1.0
+          },
+          "process_edges": {
+            "agent_count": 7,
+            "agreement": 0.7692307692307693,
+            "contribution": 0.7692307692307693,
+            "matched_count": 5,
+            "truth_count": 6,
+            "weight": 1.0
+          },
+          "rationale": {
+            "agent_count": 1,
+            "agreement": 1.0,
+            "contribution": 1.0,
+            "matched_count": 1,
+            "truth_count": 1,
+            "weight": 1.0
+          },
+          "reads": {
+            "agent_count": 4,
+            "agreement": 0.5714285714285714,
+            "contribution": 0.5714285714285714,
+            "matched_count": 2,
+            "truth_count": 3,
+            "weight": 1.0
+          },
+          "start_node": {
+            "agent_count": 1,
+            "agreement": 1.0,
+            "contribution": 1.0,
+            "matched_count": 1,
+            "truth_count": 1,
+            "weight": 1.0
+          },
+          "system": {
+            "agent_count": 4,
+            "agreement": 1.0,
+            "contribution": 1.0,
+            "matched_count": 4,
+            "truth_count": 4,
+            "weight": 1.0
+          },
+          "writes": {
+            "agent_count": 3,
+            "agreement": 0.6666666666666666,
+            "contribution": 0.6666666666666666,
+            "matched_count": 2,
+            "truth_count": 3,
+            "weight": 1.0
+          }
+        },
+        "max_score": 12.0,
+        "normalized_score": 0.8798094670187694,
+        "total_score": 10.557713604225231
+      },
+      "objective_implementation": "existing_joint_structural_objective",
+      "objective_or_search_was_not_modified": true,
+      "production_mapping_forced_objective": {
+        "components": {
+          "activity": {
+            "agent_count": 6,
+            "agreement": 1.0,
+            "contribution": 1.0,
+            "matched_count": 6,
+            "truth_count": 6,
+            "weight": 1.0
+          },
+          "actor": {
+            "agent_count": 6,
+            "agreement": 1.0,
+            "contribution": 1.0,
+            "matched_count": 6,
+            "truth_count": 6,
+            "weight": 1.0
+          },
+          "concepts": {
+            "agent_count": 22,
+            "agreement": 0.9767441860465116,
+            "contribution": 0.9767441860465116,
+            "matched_count": 21,
+            "truth_count": 21,
+            "weight": 1.0
+          },
+          "condition": {
+            "agent_count": 3,
+            "agreement": 0.6666666666666666,
+            "contribution": 0.6666666666666666,
+            "matched_count": 2,
+            "truth_count": 3,
+            "weight": 1.0
+          },
+          "end_nodes": {
+            "agent_count": 2,
+            "agreement": 1.0,
+            "contribution": 1.0,
+            "matched_count": 2,
+            "truth_count": 2,
+            "weight": 1.0
+          },
+          "nodes": {
+            "agent_count": 6,
+            "agreement": 1.0,
+            "contribution": 1.0,
+            "matched_count": 6,
+            "truth_count": 6,
+            "weight": 1.0
+          },
+          "process_edges": {
+            "agent_count": 7,
+            "agreement": 0.7692307692307693,
+            "contribution": 0.7692307692307693,
+            "matched_count": 5,
+            "truth_count": 6,
+            "weight": 1.0
+          },
+          "rationale": {
+            "agent_count": 1,
+            "agreement": 1.0,
+            "contribution": 1.0,
+            "matched_count": 1,
+            "truth_count": 1,
+            "weight": 1.0
+          },
+          "reads": {
+            "agent_count": 4,
+            "agreement": 0.5714285714285714,
+            "contribution": 0.5714285714285714,
+            "matched_count": 2,
+            "truth_count": 3,
+            "weight": 1.0
+          },
+          "start_node": {
+            "agent_count": 1,
+            "agreement": 1.0,
+            "contribution": 1.0,
+            "matched_count": 1,
+            "truth_count": 1,
+            "weight": 1.0
+          },
+          "system": {
+            "agent_count": 4,
+            "agreement": 1.0,
+            "contribution": 1.0,
+            "matched_count": 4,
+            "truth_count": 4,
+            "weight": 1.0
+          },
+          "writes": {
+            "agent_count": 3,
+            "agreement": 0.3333333333333333,
+            "contribution": 0.3333333333333333,
+            "matched_count": 1,
+            "truth_count": 3,
+            "weight": 1.0
+          }
+        },
+        "max_score": 12.0,
+        "normalized_score": 0.8597836272254877,
+        "total_score": 10.317403526705853
+      }
+    },
+    "records": [
+      {
+        "agent_concept_id": "cond_end_of_month",
+        "agent_label": "at the end of the month",
+        "agent_label_display_only": true,
+        "agent_structural_usage": {
+          "location_details": [
+            {
+              "location": "edge:edge_send_to_month_end:condition",
+              "relation": "condition",
+              "topology": {
+                "from": {
+                  "declared_end": true,
+                  "declared_start": false,
+                  "in_degree": 3,
+                  "out_degree": 1
+                },
+                "to": {
+                  "declared_end": true,
+                  "declared_start": false,
+                  "in_degree": 1,
+                  "out_degree": 0
+                }
+              },
+              "topology_shape": [
+                "edge_condition",
+                "condition",
+                [
+                  [
+                    3,
+                    1,
+                    false,
+                    true
+                  ],
+                  [
+                    1,
+                    0,
+                    false,
+                    true
+                  ]
+                ]
+              ]
+            }
+          ],
+          "locations": [
+            "edge:edge_send_to_month_end:condition"
+          ],
+          "mapped_location_count": 0,
+          "projected_locations": [
+            {
+              "element_type": "edge_condition",
+              "location": "edge:edge_send_to_month_end:condition",
+              "mapped_target_id": null,
+              "projected_location": null,
+              "projected_topology": null,
+              "relation": "condition",
+              "source_id": "edge_send_to_month_end",
+              "topology": {
+                "from": {
+                  "declared_end": true,
+                  "declared_start": false,
+                  "in_degree": 3,
+                  "out_degree": 1
+                },
+                "to": {
+                  "declared_end": true,
+                  "declared_start": false,
+                  "in_degree": 1,
+                  "out_degree": 0
+                }
+              }
+            }
+          ],
+          "unmapped_location_count": 1
+        },
+        "alternative_optimal_mapping": {
+          "alternative_optimal_mapping_exists": false,
+          "ambiguity_classes": [],
+          "exact_search": true,
+          "joint_mapping_is_invariant": false,
+          "status": "unmatched_in_all_exact_optima"
+        },
+        "classification": "possible_objective_failure",
+        "classification_rationale": "Neither candidate has positive structural overlap, yet forcing the unsupported production assignment raises the raw objective. This is an objective/admissibility warning, not evidence that production is structurally correct.",
+        "classification_signals": {
+          "full_objective_delta_joint_minus_production": 0.2403100775193785,
+          "joint_positive_structural_support": false,
+          "local_objective_delta_joint_minus_production": -0.04651162790697683,
+          "production_positive_structural_support": false,
+          "unsupported_production_candidate_gains_objective": true
+        },
+        "concept_kind": "condition",
+        "counterfactual": {
+          "full_mapping_comparison": {
+            "component_deltas": {
+              "activity": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "actor": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "concepts": {
+                "agreement_delta_joint_minus_production": -0.09302325581395343,
+                "contribution_delta_joint_minus_production": -0.09302325581395343,
+                "matched_count_delta_joint_minus_production": -2
+              },
+              "condition": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "end_nodes": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "nodes": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "process_edges": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "rationale": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "reads": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "start_node": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "system": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "writes": {
+                "agreement_delta_joint_minus_production": 0.3333333333333333,
+                "contribution_delta_joint_minus_production": 0.3333333333333333,
+                "matched_count_delta_joint_minus_production": 1
+              }
+            },
+            "joint_objective": {
+              "components": {
+                "activity": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "actor": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "concepts": {
+                  "agent_count": 22,
+                  "agreement": 0.8837209302325582,
+                  "contribution": 0.8837209302325582,
+                  "matched_count": 19,
+                  "truth_count": 21,
+                  "weight": 1.0
+                },
+                "condition": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "end_nodes": {
+                  "agent_count": 2,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 2,
+                  "truth_count": 2,
+                  "weight": 1.0
+                },
+                "nodes": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "process_edges": {
+                  "agent_count": 7,
+                  "agreement": 0.7692307692307693,
+                  "contribution": 0.7692307692307693,
+                  "matched_count": 5,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "rationale": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "reads": {
+                  "agent_count": 4,
+                  "agreement": 0.5714285714285714,
+                  "contribution": 0.5714285714285714,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "start_node": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "system": {
+                  "agent_count": 4,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 4,
+                  "truth_count": 4,
+                  "weight": 1.0
+                },
+                "writes": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                }
+              },
+              "max_score": 12.0,
+              "normalized_score": 0.8798094670187694,
+              "total_score": 10.557713604225231
+            },
+            "objective_delta_joint_minus_production": 0.2403100775193785,
+            "production_forced_objective": {
+              "components": {
+                "activity": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "actor": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "concepts": {
+                  "agent_count": 22,
+                  "agreement": 0.9767441860465116,
+                  "contribution": 0.9767441860465116,
+                  "matched_count": 21,
+                  "truth_count": 21,
+                  "weight": 1.0
+                },
+                "condition": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "end_nodes": {
+                  "agent_count": 2,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 2,
+                  "truth_count": 2,
+                  "weight": 1.0
+                },
+                "nodes": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "process_edges": {
+                  "agent_count": 7,
+                  "agreement": 0.7692307692307693,
+                  "contribution": 0.7692307692307693,
+                  "matched_count": 5,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "rationale": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "reads": {
+                  "agent_count": 4,
+                  "agreement": 0.5714285714285714,
+                  "contribution": 0.5714285714285714,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "start_node": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "system": {
+                  "agent_count": 4,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 4,
+                  "truth_count": 4,
+                  "weight": 1.0
+                },
+                "writes": {
+                  "agent_count": 3,
+                  "agreement": 0.3333333333333333,
+                  "contribution": 0.3333333333333333,
+                  "matched_count": 1,
+                  "truth_count": 3,
+                  "weight": 1.0
+                }
+              },
+              "max_score": 12.0,
+              "normalized_score": 0.8597836272254877,
+              "total_score": 10.317403526705853
+            }
+          },
+          "local_candidate_counterfactual": {
+            "component_deltas": {
+              "activity": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "actor": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "concepts": {
+                "agreement_delta_joint_minus_production": -0.046511627906976716,
+                "contribution_delta_joint_minus_production": -0.046511627906976716,
+                "matched_count_delta_joint_minus_production": -1
+              },
+              "condition": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "end_nodes": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "nodes": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "process_edges": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "rationale": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "reads": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "start_node": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "system": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "writes": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              }
+            },
+            "joint_candidate_concept_mapping": {
+              "act_approve_high_value": "tc_activity_approve_quotation",
+              "act_check_customer_info": "tc_activity_check_customer",
+              "act_create_quotation_doc": "tc_activity_create_quotation",
+              "act_receive_request": "tc_activity_receive_request",
+              "act_send_month_end_summary": "tc_activity_send_month_end_summary",
+              "act_send_quotation": "tc_activity_send_quotation",
+              "actor_manager": "tc_actor_manager",
+              "actor_sales_employee": "tc_actor_sales",
+              "cond_amount_at_or_below_1m": "tc_cond_at_or_below_1m",
+              "cond_amount_over_1m": "tc_cond_over_1m",
+              "data_customer_information": "tc_customer",
+              "data_month_end_summary": "tc_excel_summary",
+              "data_pricing_information": "tc_pricing",
+              "data_quotation_document": "tc_quote",
+              "rationale_credit_risk": "tc_rationale_credit_risk",
+              "sys_crm": "tc_system_crm",
+              "sys_email": "tc_system_email",
+              "sys_excel": "tc_system_excel",
+              "sys_quoting_system": "tc_system_quoting"
+            },
+            "joint_objective": {
+              "components": {
+                "activity": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "actor": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "concepts": {
+                  "agent_count": 22,
+                  "agreement": 0.8837209302325582,
+                  "contribution": 0.8837209302325582,
+                  "matched_count": 19,
+                  "truth_count": 21,
+                  "weight": 1.0
+                },
+                "condition": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "end_nodes": {
+                  "agent_count": 2,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 2,
+                  "truth_count": 2,
+                  "weight": 1.0
+                },
+                "nodes": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "process_edges": {
+                  "agent_count": 7,
+                  "agreement": 0.7692307692307693,
+                  "contribution": 0.7692307692307693,
+                  "matched_count": 5,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "rationale": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "reads": {
+                  "agent_count": 4,
+                  "agreement": 0.5714285714285714,
+                  "contribution": 0.5714285714285714,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "start_node": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "system": {
+                  "agent_count": 4,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 4,
+                  "truth_count": 4,
+                  "weight": 1.0
+                },
+                "writes": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                }
+              },
+              "max_score": 12.0,
+              "normalized_score": 0.8798094670187694,
+              "total_score": 10.557713604225231
+            },
+            "objective_delta_joint_minus_production": -0.04651162790697683,
+            "production_candidate_concept_mapping": {
+              "act_approve_high_value": "tc_activity_approve_quotation",
+              "act_check_customer_info": "tc_activity_check_customer",
+              "act_create_quotation_doc": "tc_activity_create_quotation",
+              "act_receive_request": "tc_activity_receive_request",
+              "act_send_month_end_summary": "tc_activity_send_month_end_summary",
+              "act_send_quotation": "tc_activity_send_quotation",
+              "actor_manager": "tc_actor_manager",
+              "actor_sales_employee": "tc_actor_sales",
+              "cond_amount_at_or_below_1m": "tc_cond_at_or_below_1m",
+              "cond_amount_over_1m": "tc_cond_over_1m",
+              "cond_end_of_month": "tc_cond_month_end",
+              "data_customer_information": "tc_customer",
+              "data_month_end_summary": "tc_excel_summary",
+              "data_pricing_information": "tc_pricing",
+              "data_quotation_document": "tc_quote",
+              "rationale_credit_risk": "tc_rationale_credit_risk",
+              "sys_crm": "tc_system_crm",
+              "sys_email": "tc_system_email",
+              "sys_excel": "tc_system_excel",
+              "sys_quoting_system": "tc_system_quoting"
+            },
+            "production_forced_objective": {
+              "components": {
+                "activity": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "actor": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "concepts": {
+                  "agent_count": 22,
+                  "agreement": 0.9302325581395349,
+                  "contribution": 0.9302325581395349,
+                  "matched_count": 20,
+                  "truth_count": 21,
+                  "weight": 1.0
+                },
+                "condition": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "end_nodes": {
+                  "agent_count": 2,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 2,
+                  "truth_count": 2,
+                  "weight": 1.0
+                },
+                "nodes": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "process_edges": {
+                  "agent_count": 7,
+                  "agreement": 0.7692307692307693,
+                  "contribution": 0.7692307692307693,
+                  "matched_count": 5,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "rationale": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "reads": {
+                  "agent_count": 4,
+                  "agreement": 0.5714285714285714,
+                  "contribution": 0.5714285714285714,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "start_node": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "system": {
+                  "agent_count": 4,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 4,
+                  "truth_count": 4,
+                  "weight": 1.0
+                },
+                "writes": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                }
+              },
+              "max_score": 12.0,
+              "normalized_score": 0.8836854360110175,
+              "total_score": 10.604225232132208
+            }
+          },
+          "scope": "same_joint_node_mapping_and_all_other_joint_concept_assignments"
+        },
+        "joint_candidate_evidence": {
+          "agent_only_locations": [],
+          "candidate_support": {
+            "no_candidate": true,
+            "positive_structural_support": false,
+            "unsupported_candidate": null
+          },
+          "exact_structural_usage_agreement": false,
+          "kind_consistent": null,
+          "overlapping_usage": [],
+          "process_topology_support": {
+            "mapped_edge_condition_count": 0,
+            "mapped_node_location_count": 0,
+            "overlapping_edge_condition_count": 0,
+            "projected_topology_shapes": [],
+            "truth_topology_shapes": [],
+            "unmapped_edge_condition_count": 1,
+            "unmapped_node_location_count": 0
+          },
+          "projected_agent_location_details": [
+            {
+              "mapped_target_id": null,
+              "projected_location": null,
+              "projected_topology": null,
+              "relation": "condition",
+              "source_location": "edge:edge_send_to_month_end:condition"
+            }
+          ],
+          "projected_agent_locations": [],
+          "relation_type_consistency": {
+            "agent_relation_counts": {
+              "condition": 1
+            },
+            "has_same_relation_support": false,
+            "overlap_relation_counts": {},
+            "relation_intersection_counts": {},
+            "same_relation_support_count": 0,
+            "truth_relation_counts": {}
+          },
+          "repeated_usage_support": {
+            "agent_occurrence_count": 0,
+            "agent_repeated": false,
+            "overlap_occurrence_count": 0,
+            "repeated_overlap": false,
+            "truth_occurrence_count": 0,
+            "truth_repeated": false
+          },
+          "structural_fingerprint": {
+            "agent_kind": "condition",
+            "agent_only_location_count": 0,
+            "agent_relation_counts": {
+              "condition": 1
+            },
+            "exact_structural_usage_agreement": false,
+            "mapped_edge_count": 0,
+            "mapped_node_count": 0,
+            "overlap_edge_condition_count": 0,
+            "overlap_location_count": 0,
+            "overlap_relation_counts": {},
+            "positive_structural_support": false,
+            "projected_location_count": 0,
+            "projected_topology_shapes": [],
+            "relation_intersection_counts": {},
+            "truth_kind": null,
+            "truth_location_count": 0,
+            "truth_only_location_count": 0,
+            "truth_relation_counts": {},
+            "truth_topology_shapes": [],
+            "unmapped_edge_count": 1,
+            "unmapped_node_count": 0
+          },
+          "structural_usage_status": "no_candidate",
+          "truth_concept_id": null,
+          "truth_concept_kind": null,
+          "truth_label": null,
+          "truth_label_display_only": true,
+          "truth_locations": [],
+          "truth_only_locations": []
+        },
+        "joint_truth_concept_id": null,
+        "joint_truth_label": null,
+        "joint_truth_label_display_only": true,
+        "observation_context": {
+          "display_only": true,
+          "records": [
+            {
+              "observation_id": "obs_19",
+              "occurrence": 0,
+              "order": 2,
+              "quote": "at the end of the month",
+              "source": "concept_mention",
+              "text": "Well, after I receive the customer's quotation request, I check the customer information in the CRM. Then I create the quotation document in the quoting system using the pricing information. From there, if the quotation amount is over 1,000,000 yen, the manager has to approve the high-value quotation for credit risk management. After that approval, I send the quotation to the customer via email. However, if the amount is at or below 1,000,000 yen, I can send the quotation to the customer directly. Also, at the end of the month, I send the month-end summary of quotation information to Accounting using Excel.",
+              "turn": 19
+            }
+          ],
+          "used_for_structural_calculation": false
+        },
+        "production_candidate_evidence": {
+          "agent_only_locations": [],
+          "candidate_support": {
+            "no_candidate": false,
+            "positive_structural_support": false,
+            "unsupported_candidate": true
+          },
+          "exact_structural_usage_agreement": false,
+          "kind_consistent": true,
+          "overlapping_usage": [],
+          "process_topology_support": {
+            "mapped_edge_condition_count": 0,
+            "mapped_node_location_count": 0,
+            "overlapping_edge_condition_count": 0,
+            "projected_topology_shapes": [],
+            "truth_topology_shapes": [
+              [
+                "edge_condition",
+                "condition",
+                [
+                  [
+                    1,
+                    3,
+                    false,
+                    false
+                  ],
+                  [
+                    1,
+                    0,
+                    false,
+                    true
+                  ]
+                ]
+              ]
+            ],
+            "unmapped_edge_condition_count": 1,
+            "unmapped_node_location_count": 0
+          },
+          "projected_agent_location_details": [
+            {
+              "mapped_target_id": null,
+              "projected_location": null,
+              "projected_topology": null,
+              "relation": "condition",
+              "source_location": "edge:edge_send_to_month_end:condition"
+            }
+          ],
+          "projected_agent_locations": [],
+          "relation_type_consistency": {
+            "agent_relation_counts": {
+              "condition": 1
+            },
+            "has_same_relation_support": true,
+            "overlap_relation_counts": {},
+            "relation_intersection_counts": {
+              "condition": 1
+            },
+            "same_relation_support_count": 1,
+            "truth_relation_counts": {
+              "condition": 1
+            }
+          },
+          "repeated_usage_support": {
+            "agent_occurrence_count": 0,
+            "agent_repeated": false,
+            "overlap_occurrence_count": 0,
+            "repeated_overlap": false,
+            "truth_occurrence_count": 1,
+            "truth_repeated": false
+          },
+          "structural_fingerprint": {
+            "agent_kind": "condition",
+            "agent_only_location_count": 0,
+            "agent_relation_counts": {
+              "condition": 1
+            },
+            "exact_structural_usage_agreement": false,
+            "mapped_edge_count": 0,
+            "mapped_node_count": 0,
+            "overlap_edge_condition_count": 0,
+            "overlap_location_count": 0,
+            "overlap_relation_counts": {},
+            "positive_structural_support": false,
+            "projected_location_count": 0,
+            "projected_topology_shapes": [],
+            "relation_intersection_counts": {
+              "condition": 1
+            },
+            "truth_kind": "condition",
+            "truth_location_count": 1,
+            "truth_only_location_count": 1,
+            "truth_relation_counts": {
+              "condition": 1
+            },
+            "truth_topology_shapes": [
+              [
+                "edge_condition",
+                "condition",
+                [
+                  [
+                    1,
+                    3,
+                    false,
+                    false
+                  ],
+                  [
+                    1,
+                    0,
+                    false,
+                    true
+                  ]
+                ]
+              ]
+            ],
+            "unmapped_edge_count": 1,
+            "unmapped_node_count": 0
+          },
+          "structural_usage_status": "no_structural_overlap",
+          "truth_concept_id": "tc_cond_month_end",
+          "truth_concept_kind": "condition",
+          "truth_label": "month-end",
+          "truth_label_display_only": true,
+          "truth_locations": [
+            {
+              "location": "edge:e6:condition",
+              "relation": "condition",
+              "topology": {
+                "from": {
+                  "declared_end": false,
+                  "declared_start": false,
+                  "in_degree": 1,
+                  "out_degree": 3
+                },
+                "to": {
+                  "declared_end": true,
+                  "declared_start": false,
+                  "in_degree": 1,
+                  "out_degree": 0
+                }
+              },
+              "topology_shape": [
+                "edge_condition",
+                "condition",
+                [
+                  [
+                    1,
+                    3,
+                    false,
+                    false
+                  ],
+                  [
+                    1,
+                    0,
+                    false,
+                    true
+                  ]
+                ]
+              ]
+            }
+          ],
+          "truth_only_locations": [
+            {
+              "count": 1,
+              "location": "edge:e6:condition"
+            }
+          ]
+        },
+        "production_truth_concept_id": "tc_cond_month_end",
+        "production_truth_label": "month-end",
+        "production_truth_label_display_only": true,
+        "seed": 9002
+      },
+      {
+        "agent_concept_id": "data_quotation",
+        "agent_label": "quotation",
+        "agent_label_display_only": true,
+        "agent_structural_usage": {
+          "location_details": [
+            {
+              "location": "node:node_send_quotation:writes",
+              "relation": "writes",
+              "topology": {
+                "declared_end": true,
+                "declared_start": false,
+                "in_degree": 3,
+                "out_degree": 1
+              },
+              "topology_shape": [
+                "node_slot",
+                "writes",
+                3,
+                1,
+                false,
+                true
+              ]
+            }
+          ],
+          "locations": [
+            "node:node_send_quotation:writes"
+          ],
+          "mapped_location_count": 1,
+          "projected_locations": [
+            {
+              "element_type": "node_slot",
+              "location": "node:node_send_quotation:writes",
+              "mapped_target_id": "sq",
+              "projected_location": "node:sq:writes",
+              "projected_topology": {
+                "declared_end": true,
+                "declared_start": false,
+                "in_degree": 2,
+                "out_degree": 0
+              },
+              "relation": "writes",
+              "source_id": "node_send_quotation",
+              "topology": {
+                "declared_end": true,
+                "declared_start": false,
+                "in_degree": 3,
+                "out_degree": 1
+              }
+            }
+          ],
+          "unmapped_location_count": 0
+        },
+        "alternative_optimal_mapping": {
+          "alternative_optimal_mapping_exists": false,
+          "ambiguity_classes": [],
+          "exact_search": true,
+          "joint_mapping_is_invariant": false,
+          "status": "unmatched_in_all_exact_optima"
+        },
+        "classification": "insufficient_structural_evidence",
+        "classification_rationale": "Neither candidate has positive structural overlap after projecting Agent locations through the joint Node/edge mapping.",
+        "classification_signals": {
+          "full_objective_delta_joint_minus_production": 0.2403100775193785,
+          "joint_positive_structural_support": false,
+          "local_objective_delta_joint_minus_production": 0.33333333333333215,
+          "production_positive_structural_support": false,
+          "unsupported_production_candidate_gains_objective": false
+        },
+        "concept_kind": "data",
+        "counterfactual": {
+          "full_mapping_comparison": {
+            "component_deltas": {
+              "activity": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "actor": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "concepts": {
+                "agreement_delta_joint_minus_production": -0.09302325581395343,
+                "contribution_delta_joint_minus_production": -0.09302325581395343,
+                "matched_count_delta_joint_minus_production": -2
+              },
+              "condition": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "end_nodes": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "nodes": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "process_edges": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "rationale": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "reads": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "start_node": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "system": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "writes": {
+                "agreement_delta_joint_minus_production": 0.3333333333333333,
+                "contribution_delta_joint_minus_production": 0.3333333333333333,
+                "matched_count_delta_joint_minus_production": 1
+              }
+            },
+            "joint_objective": {
+              "components": {
+                "activity": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "actor": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "concepts": {
+                  "agent_count": 22,
+                  "agreement": 0.8837209302325582,
+                  "contribution": 0.8837209302325582,
+                  "matched_count": 19,
+                  "truth_count": 21,
+                  "weight": 1.0
+                },
+                "condition": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "end_nodes": {
+                  "agent_count": 2,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 2,
+                  "truth_count": 2,
+                  "weight": 1.0
+                },
+                "nodes": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "process_edges": {
+                  "agent_count": 7,
+                  "agreement": 0.7692307692307693,
+                  "contribution": 0.7692307692307693,
+                  "matched_count": 5,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "rationale": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "reads": {
+                  "agent_count": 4,
+                  "agreement": 0.5714285714285714,
+                  "contribution": 0.5714285714285714,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "start_node": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "system": {
+                  "agent_count": 4,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 4,
+                  "truth_count": 4,
+                  "weight": 1.0
+                },
+                "writes": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                }
+              },
+              "max_score": 12.0,
+              "normalized_score": 0.8798094670187694,
+              "total_score": 10.557713604225231
+            },
+            "objective_delta_joint_minus_production": 0.2403100775193785,
+            "production_forced_objective": {
+              "components": {
+                "activity": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "actor": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "concepts": {
+                  "agent_count": 22,
+                  "agreement": 0.9767441860465116,
+                  "contribution": 0.9767441860465116,
+                  "matched_count": 21,
+                  "truth_count": 21,
+                  "weight": 1.0
+                },
+                "condition": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "end_nodes": {
+                  "agent_count": 2,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 2,
+                  "truth_count": 2,
+                  "weight": 1.0
+                },
+                "nodes": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "process_edges": {
+                  "agent_count": 7,
+                  "agreement": 0.7692307692307693,
+                  "contribution": 0.7692307692307693,
+                  "matched_count": 5,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "rationale": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "reads": {
+                  "agent_count": 4,
+                  "agreement": 0.5714285714285714,
+                  "contribution": 0.5714285714285714,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "start_node": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "system": {
+                  "agent_count": 4,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 4,
+                  "truth_count": 4,
+                  "weight": 1.0
+                },
+                "writes": {
+                  "agent_count": 3,
+                  "agreement": 0.3333333333333333,
+                  "contribution": 0.3333333333333333,
+                  "matched_count": 1,
+                  "truth_count": 3,
+                  "weight": 1.0
+                }
+              },
+              "max_score": 12.0,
+              "normalized_score": 0.8597836272254877,
+              "total_score": 10.317403526705853
+            }
+          },
+          "local_candidate_counterfactual": {
+            "component_deltas": {
+              "activity": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "actor": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "concepts": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "condition": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "end_nodes": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "nodes": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "process_edges": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "rationale": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "reads": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "start_node": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "system": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "writes": {
+                "agreement_delta_joint_minus_production": 0.3333333333333333,
+                "contribution_delta_joint_minus_production": 0.3333333333333333,
+                "matched_count_delta_joint_minus_production": 1
+              }
+            },
+            "joint_candidate_concept_mapping": {
+              "act_approve_high_value": "tc_activity_approve_quotation",
+              "act_check_customer_info": "tc_activity_check_customer",
+              "act_create_quotation_doc": "tc_activity_create_quotation",
+              "act_receive_request": "tc_activity_receive_request",
+              "act_send_month_end_summary": "tc_activity_send_month_end_summary",
+              "act_send_quotation": "tc_activity_send_quotation",
+              "actor_manager": "tc_actor_manager",
+              "actor_sales_employee": "tc_actor_sales",
+              "cond_amount_at_or_below_1m": "tc_cond_at_or_below_1m",
+              "cond_amount_over_1m": "tc_cond_over_1m",
+              "data_customer_information": "tc_customer",
+              "data_month_end_summary": "tc_excel_summary",
+              "data_pricing_information": "tc_pricing",
+              "data_quotation_document": "tc_quote",
+              "rationale_credit_risk": "tc_rationale_credit_risk",
+              "sys_crm": "tc_system_crm",
+              "sys_email": "tc_system_email",
+              "sys_excel": "tc_system_excel",
+              "sys_quoting_system": "tc_system_quoting"
+            },
+            "joint_objective": {
+              "components": {
+                "activity": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "actor": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "concepts": {
+                  "agent_count": 22,
+                  "agreement": 0.8837209302325582,
+                  "contribution": 0.8837209302325582,
+                  "matched_count": 19,
+                  "truth_count": 21,
+                  "weight": 1.0
+                },
+                "condition": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "end_nodes": {
+                  "agent_count": 2,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 2,
+                  "truth_count": 2,
+                  "weight": 1.0
+                },
+                "nodes": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "process_edges": {
+                  "agent_count": 7,
+                  "agreement": 0.7692307692307693,
+                  "contribution": 0.7692307692307693,
+                  "matched_count": 5,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "rationale": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "reads": {
+                  "agent_count": 4,
+                  "agreement": 0.5714285714285714,
+                  "contribution": 0.5714285714285714,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "start_node": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "system": {
+                  "agent_count": 4,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 4,
+                  "truth_count": 4,
+                  "weight": 1.0
+                },
+                "writes": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                }
+              },
+              "max_score": 12.0,
+              "normalized_score": 0.8798094670187694,
+              "total_score": 10.557713604225231
+            },
+            "objective_delta_joint_minus_production": 0.33333333333333215,
+            "production_candidate_concept_mapping": {
+              "act_approve_high_value": "tc_activity_approve_quotation",
+              "act_check_customer_info": "tc_activity_check_customer",
+              "act_create_quotation_doc": "tc_activity_create_quotation",
+              "act_receive_request": "tc_activity_receive_request",
+              "act_send_month_end_summary": "tc_activity_send_month_end_summary",
+              "act_send_quotation": "tc_activity_send_quotation",
+              "actor_manager": "tc_actor_manager",
+              "actor_sales_employee": "tc_actor_sales",
+              "cond_amount_at_or_below_1m": "tc_cond_at_or_below_1m",
+              "cond_amount_over_1m": "tc_cond_over_1m",
+              "data_customer_information": "tc_customer",
+              "data_month_end_summary": "tc_excel_summary",
+              "data_pricing_information": "tc_pricing",
+              "data_quotation": "tc_quote",
+              "rationale_credit_risk": "tc_rationale_credit_risk",
+              "sys_crm": "tc_system_crm",
+              "sys_email": "tc_system_email",
+              "sys_excel": "tc_system_excel",
+              "sys_quoting_system": "tc_system_quoting"
+            },
+            "production_forced_objective": {
+              "components": {
+                "activity": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "actor": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "concepts": {
+                  "agent_count": 22,
+                  "agreement": 0.8837209302325582,
+                  "contribution": 0.8837209302325582,
+                  "matched_count": 19,
+                  "truth_count": 21,
+                  "weight": 1.0
+                },
+                "condition": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "end_nodes": {
+                  "agent_count": 2,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 2,
+                  "truth_count": 2,
+                  "weight": 1.0
+                },
+                "nodes": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "process_edges": {
+                  "agent_count": 7,
+                  "agreement": 0.7692307692307693,
+                  "contribution": 0.7692307692307693,
+                  "matched_count": 5,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "rationale": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "reads": {
+                  "agent_count": 4,
+                  "agreement": 0.5714285714285714,
+                  "contribution": 0.5714285714285714,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "start_node": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "system": {
+                  "agent_count": 4,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 4,
+                  "truth_count": 4,
+                  "weight": 1.0
+                },
+                "writes": {
+                  "agent_count": 3,
+                  "agreement": 0.3333333333333333,
+                  "contribution": 0.3333333333333333,
+                  "matched_count": 1,
+                  "truth_count": 3,
+                  "weight": 1.0
+                }
+              },
+              "max_score": 12.0,
+              "normalized_score": 0.8520316892409916,
+              "total_score": 10.2243802708919
+            }
+          },
+          "scope": "same_joint_node_mapping_and_all_other_joint_concept_assignments"
+        },
+        "joint_candidate_evidence": {
+          "agent_only_locations": [
+            {
+              "count": 1,
+              "location": "node:sq:writes"
+            }
+          ],
+          "candidate_support": {
+            "no_candidate": true,
+            "positive_structural_support": false,
+            "unsupported_candidate": null
+          },
+          "exact_structural_usage_agreement": false,
+          "kind_consistent": null,
+          "overlapping_usage": [],
+          "process_topology_support": {
+            "mapped_edge_condition_count": 0,
+            "mapped_node_location_count": 1,
+            "overlapping_edge_condition_count": 0,
+            "projected_topology_shapes": [
+              [
+                "node_slot",
+                "writes",
+                2,
+                0,
+                false,
+                true
+              ]
+            ],
+            "truth_topology_shapes": [],
+            "unmapped_edge_condition_count": 0,
+            "unmapped_node_location_count": 0
+          },
+          "projected_agent_location_details": [
+            {
+              "mapped_target_id": "sq",
+              "projected_location": "node:sq:writes",
+              "projected_topology": {
+                "declared_end": true,
+                "declared_start": false,
+                "in_degree": 2,
+                "out_degree": 0
+              },
+              "relation": "writes",
+              "source_location": "node:node_send_quotation:writes"
+            }
+          ],
+          "projected_agent_locations": [
+            "node:sq:writes"
+          ],
+          "relation_type_consistency": {
+            "agent_relation_counts": {
+              "writes": 1
+            },
+            "has_same_relation_support": false,
+            "overlap_relation_counts": {},
+            "relation_intersection_counts": {},
+            "same_relation_support_count": 0,
+            "truth_relation_counts": {}
+          },
+          "repeated_usage_support": {
+            "agent_occurrence_count": 1,
+            "agent_repeated": false,
+            "overlap_occurrence_count": 0,
+            "repeated_overlap": false,
+            "truth_occurrence_count": 0,
+            "truth_repeated": false
+          },
+          "structural_fingerprint": {
+            "agent_kind": "data",
+            "agent_only_location_count": 1,
+            "agent_relation_counts": {
+              "writes": 1
+            },
+            "exact_structural_usage_agreement": false,
+            "mapped_edge_count": 0,
+            "mapped_node_count": 1,
+            "overlap_edge_condition_count": 0,
+            "overlap_location_count": 0,
+            "overlap_relation_counts": {},
+            "positive_structural_support": false,
+            "projected_location_count": 1,
+            "projected_topology_shapes": [
+              [
+                "node_slot",
+                "writes",
+                2,
+                0,
+                false,
+                true
+              ]
+            ],
+            "relation_intersection_counts": {},
+            "truth_kind": null,
+            "truth_location_count": 0,
+            "truth_only_location_count": 0,
+            "truth_relation_counts": {},
+            "truth_topology_shapes": [],
+            "unmapped_edge_count": 0,
+            "unmapped_node_count": 0
+          },
+          "structural_usage_status": "no_candidate",
+          "truth_concept_id": null,
+          "truth_concept_kind": null,
+          "truth_label": null,
+          "truth_label_display_only": true,
+          "truth_locations": [],
+          "truth_only_locations": []
+        },
+        "joint_truth_concept_id": null,
+        "joint_truth_label": null,
+        "joint_truth_label_display_only": true,
+        "observation_context": {
+          "display_only": true,
+          "records": [
+            {
+              "observation_id": "obs_3",
+              "occurrence": 0,
+              "order": 1,
+              "quote": "send the quotation to the customer",
+              "source": "concept_mention",
+              "text": "Well, it starts when I, as a sales employee, receive the customer's quotation request. That's what kicks things off. And the intended outcome is to send the quotation to the customer.",
+              "turn": 3
+            },
+            {
+              "observation_id": "obs_3",
+              "occurrence": 0,
+              "order": 1,
+              "quote": "send the quotation to the customer",
+              "source": "node:node_send_quotation:writes",
+              "text": "Well, it starts when I, as a sales employee, receive the customer's quotation request. That's what kicks things off. And the intended outcome is to send the quotation to the customer.",
+              "turn": 3
+            }
+          ],
+          "used_for_structural_calculation": false
+        },
+        "production_candidate_evidence": {
+          "agent_only_locations": [
+            {
+              "count": 1,
+              "location": "node:sq:writes"
+            }
+          ],
+          "candidate_support": {
+            "no_candidate": false,
+            "positive_structural_support": false,
+            "unsupported_candidate": true
+          },
+          "exact_structural_usage_agreement": false,
+          "kind_consistent": true,
+          "overlapping_usage": [],
+          "process_topology_support": {
+            "mapped_edge_condition_count": 0,
+            "mapped_node_location_count": 1,
+            "overlapping_edge_condition_count": 0,
+            "projected_topology_shapes": [
+              [
+                "node_slot",
+                "writes",
+                2,
+                0,
+                false,
+                true
+              ]
+            ],
+            "truth_topology_shapes": [
+              [
+                "node_slot",
+                "writes",
+                1,
+                3,
+                false,
+                false
+              ]
+            ],
+            "unmapped_edge_condition_count": 0,
+            "unmapped_node_location_count": 0
+          },
+          "projected_agent_location_details": [
+            {
+              "mapped_target_id": "sq",
+              "projected_location": "node:sq:writes",
+              "projected_topology": {
+                "declared_end": true,
+                "declared_start": false,
+                "in_degree": 2,
+                "out_degree": 0
+              },
+              "relation": "writes",
+              "source_location": "node:node_send_quotation:writes"
+            }
+          ],
+          "projected_agent_locations": [
+            "node:sq:writes"
+          ],
+          "relation_type_consistency": {
+            "agent_relation_counts": {
+              "writes": 1
+            },
+            "has_same_relation_support": true,
+            "overlap_relation_counts": {},
+            "relation_intersection_counts": {
+              "writes": 1
+            },
+            "same_relation_support_count": 1,
+            "truth_relation_counts": {
+              "writes": 1
+            }
+          },
+          "repeated_usage_support": {
+            "agent_occurrence_count": 1,
+            "agent_repeated": false,
+            "overlap_occurrence_count": 0,
+            "repeated_overlap": false,
+            "truth_occurrence_count": 1,
+            "truth_repeated": false
+          },
+          "structural_fingerprint": {
+            "agent_kind": "data",
+            "agent_only_location_count": 1,
+            "agent_relation_counts": {
+              "writes": 1
+            },
+            "exact_structural_usage_agreement": false,
+            "mapped_edge_count": 0,
+            "mapped_node_count": 1,
+            "overlap_edge_condition_count": 0,
+            "overlap_location_count": 0,
+            "overlap_relation_counts": {},
+            "positive_structural_support": false,
+            "projected_location_count": 1,
+            "projected_topology_shapes": [
+              [
+                "node_slot",
+                "writes",
+                2,
+                0,
+                false,
+                true
+              ]
+            ],
+            "relation_intersection_counts": {
+              "writes": 1
+            },
+            "truth_kind": "data",
+            "truth_location_count": 1,
+            "truth_only_location_count": 1,
+            "truth_relation_counts": {
+              "writes": 1
+            },
+            "truth_topology_shapes": [
+              [
+                "node_slot",
+                "writes",
+                1,
+                3,
+                false,
+                false
+              ]
+            ],
+            "unmapped_edge_count": 0,
+            "unmapped_node_count": 0
+          },
+          "structural_usage_status": "no_structural_overlap",
+          "truth_concept_id": "tc_quote",
+          "truth_concept_kind": "data",
+          "truth_label": "quotation",
+          "truth_label_display_only": true,
+          "truth_locations": [
+            {
+              "location": "node:cq:writes",
+              "relation": "writes",
+              "topology": {
+                "declared_end": false,
+                "declared_start": false,
+                "in_degree": 1,
+                "out_degree": 3
+              },
+              "topology_shape": [
+                "node_slot",
+                "writes",
+                1,
+                3,
+                false,
+                false
+              ]
+            }
+          ],
+          "truth_only_locations": [
+            {
+              "count": 1,
+              "location": "node:cq:writes"
+            }
+          ]
+        },
+        "production_truth_concept_id": "tc_quote",
+        "production_truth_label": "quotation",
+        "production_truth_label_display_only": true,
+        "seed": 9002
+      },
+      {
+        "agent_concept_id": "data_quotation_document",
+        "agent_label": "quotation document",
+        "agent_label_display_only": true,
+        "agent_structural_usage": {
+          "location_details": [
+            {
+              "location": "node:node_approve_high_value:reads",
+              "relation": "reads",
+              "topology": {
+                "declared_end": false,
+                "declared_start": false,
+                "in_degree": 1,
+                "out_degree": 1
+              },
+              "topology_shape": [
+                "node_slot",
+                "reads",
+                1,
+                1,
+                false,
+                false
+              ]
+            },
+            {
+              "location": "node:node_create_quotation_doc:writes",
+              "relation": "writes",
+              "topology": {
+                "declared_end": false,
+                "declared_start": false,
+                "in_degree": 1,
+                "out_degree": 2
+              },
+              "topology_shape": [
+                "node_slot",
+                "writes",
+                1,
+                2,
+                false,
+                false
+              ]
+            }
+          ],
+          "locations": [
+            "node:node_approve_high_value:reads",
+            "node:node_create_quotation_doc:writes"
+          ],
+          "mapped_location_count": 2,
+          "projected_locations": [
+            {
+              "element_type": "node_slot",
+              "location": "node:node_approve_high_value:reads",
+              "mapped_target_id": "ap",
+              "projected_location": "node:ap:reads",
+              "projected_topology": {
+                "declared_end": false,
+                "declared_start": false,
+                "in_degree": 1,
+                "out_degree": 1
+              },
+              "relation": "reads",
+              "source_id": "node_approve_high_value",
+              "topology": {
+                "declared_end": false,
+                "declared_start": false,
+                "in_degree": 1,
+                "out_degree": 1
+              }
+            },
+            {
+              "element_type": "node_slot",
+              "location": "node:node_create_quotation_doc:writes",
+              "mapped_target_id": "cq",
+              "projected_location": "node:cq:writes",
+              "projected_topology": {
+                "declared_end": false,
+                "declared_start": false,
+                "in_degree": 1,
+                "out_degree": 3
+              },
+              "relation": "writes",
+              "source_id": "node_create_quotation_doc",
+              "topology": {
+                "declared_end": false,
+                "declared_start": false,
+                "in_degree": 1,
+                "out_degree": 2
+              }
+            }
+          ],
+          "unmapped_location_count": 0
+        },
+        "alternative_optimal_mapping": {
+          "alternative_optimal_mapping_exists": false,
+          "ambiguity_classes": [],
+          "exact_search": true,
+          "joint_mapping_is_invariant": true,
+          "status": "mapping_is_invariant"
+        },
+        "classification": "joint_strongly_supported",
+        "classification_rationale": "The joint candidate has positive mapped-coordinate overlap while the production candidate has no positive structural support.",
+        "classification_signals": {
+          "full_objective_delta_joint_minus_production": 0.2403100775193785,
+          "joint_positive_structural_support": true,
+          "local_objective_delta_joint_minus_production": 0.379844961240309,
+          "production_positive_structural_support": false,
+          "unsupported_production_candidate_gains_objective": false
+        },
+        "concept_kind": "data",
+        "counterfactual": {
+          "full_mapping_comparison": {
+            "component_deltas": {
+              "activity": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "actor": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "concepts": {
+                "agreement_delta_joint_minus_production": -0.09302325581395343,
+                "contribution_delta_joint_minus_production": -0.09302325581395343,
+                "matched_count_delta_joint_minus_production": -2
+              },
+              "condition": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "end_nodes": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "nodes": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "process_edges": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "rationale": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "reads": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "start_node": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "system": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "writes": {
+                "agreement_delta_joint_minus_production": 0.3333333333333333,
+                "contribution_delta_joint_minus_production": 0.3333333333333333,
+                "matched_count_delta_joint_minus_production": 1
+              }
+            },
+            "joint_objective": {
+              "components": {
+                "activity": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "actor": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "concepts": {
+                  "agent_count": 22,
+                  "agreement": 0.8837209302325582,
+                  "contribution": 0.8837209302325582,
+                  "matched_count": 19,
+                  "truth_count": 21,
+                  "weight": 1.0
+                },
+                "condition": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "end_nodes": {
+                  "agent_count": 2,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 2,
+                  "truth_count": 2,
+                  "weight": 1.0
+                },
+                "nodes": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "process_edges": {
+                  "agent_count": 7,
+                  "agreement": 0.7692307692307693,
+                  "contribution": 0.7692307692307693,
+                  "matched_count": 5,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "rationale": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "reads": {
+                  "agent_count": 4,
+                  "agreement": 0.5714285714285714,
+                  "contribution": 0.5714285714285714,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "start_node": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "system": {
+                  "agent_count": 4,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 4,
+                  "truth_count": 4,
+                  "weight": 1.0
+                },
+                "writes": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                }
+              },
+              "max_score": 12.0,
+              "normalized_score": 0.8798094670187694,
+              "total_score": 10.557713604225231
+            },
+            "objective_delta_joint_minus_production": 0.2403100775193785,
+            "production_forced_objective": {
+              "components": {
+                "activity": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "actor": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "concepts": {
+                  "agent_count": 22,
+                  "agreement": 0.9767441860465116,
+                  "contribution": 0.9767441860465116,
+                  "matched_count": 21,
+                  "truth_count": 21,
+                  "weight": 1.0
+                },
+                "condition": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "end_nodes": {
+                  "agent_count": 2,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 2,
+                  "truth_count": 2,
+                  "weight": 1.0
+                },
+                "nodes": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "process_edges": {
+                  "agent_count": 7,
+                  "agreement": 0.7692307692307693,
+                  "contribution": 0.7692307692307693,
+                  "matched_count": 5,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "rationale": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "reads": {
+                  "agent_count": 4,
+                  "agreement": 0.5714285714285714,
+                  "contribution": 0.5714285714285714,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "start_node": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "system": {
+                  "agent_count": 4,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 4,
+                  "truth_count": 4,
+                  "weight": 1.0
+                },
+                "writes": {
+                  "agent_count": 3,
+                  "agreement": 0.3333333333333333,
+                  "contribution": 0.3333333333333333,
+                  "matched_count": 1,
+                  "truth_count": 3,
+                  "weight": 1.0
+                }
+              },
+              "max_score": 12.0,
+              "normalized_score": 0.8597836272254877,
+              "total_score": 10.317403526705853
+            }
+          },
+          "local_candidate_counterfactual": {
+            "component_deltas": {
+              "activity": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "actor": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "concepts": {
+                "agreement_delta_joint_minus_production": 0.046511627906976716,
+                "contribution_delta_joint_minus_production": 0.046511627906976716,
+                "matched_count_delta_joint_minus_production": 1
+              },
+              "condition": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "end_nodes": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "nodes": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "process_edges": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "rationale": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "reads": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "start_node": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "system": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "writes": {
+                "agreement_delta_joint_minus_production": 0.3333333333333333,
+                "contribution_delta_joint_minus_production": 0.3333333333333333,
+                "matched_count_delta_joint_minus_production": 1
+              }
+            },
+            "joint_candidate_concept_mapping": {
+              "act_approve_high_value": "tc_activity_approve_quotation",
+              "act_check_customer_info": "tc_activity_check_customer",
+              "act_create_quotation_doc": "tc_activity_create_quotation",
+              "act_receive_request": "tc_activity_receive_request",
+              "act_send_month_end_summary": "tc_activity_send_month_end_summary",
+              "act_send_quotation": "tc_activity_send_quotation",
+              "actor_manager": "tc_actor_manager",
+              "actor_sales_employee": "tc_actor_sales",
+              "cond_amount_at_or_below_1m": "tc_cond_at_or_below_1m",
+              "cond_amount_over_1m": "tc_cond_over_1m",
+              "data_customer_information": "tc_customer",
+              "data_month_end_summary": "tc_excel_summary",
+              "data_pricing_information": "tc_pricing",
+              "data_quotation_document": "tc_quote",
+              "rationale_credit_risk": "tc_rationale_credit_risk",
+              "sys_crm": "tc_system_crm",
+              "sys_email": "tc_system_email",
+              "sys_excel": "tc_system_excel",
+              "sys_quoting_system": "tc_system_quoting"
+            },
+            "joint_objective": {
+              "components": {
+                "activity": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "actor": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "concepts": {
+                  "agent_count": 22,
+                  "agreement": 0.8837209302325582,
+                  "contribution": 0.8837209302325582,
+                  "matched_count": 19,
+                  "truth_count": 21,
+                  "weight": 1.0
+                },
+                "condition": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "end_nodes": {
+                  "agent_count": 2,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 2,
+                  "truth_count": 2,
+                  "weight": 1.0
+                },
+                "nodes": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "process_edges": {
+                  "agent_count": 7,
+                  "agreement": 0.7692307692307693,
+                  "contribution": 0.7692307692307693,
+                  "matched_count": 5,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "rationale": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "reads": {
+                  "agent_count": 4,
+                  "agreement": 0.5714285714285714,
+                  "contribution": 0.5714285714285714,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "start_node": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "system": {
+                  "agent_count": 4,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 4,
+                  "truth_count": 4,
+                  "weight": 1.0
+                },
+                "writes": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                }
+              },
+              "max_score": 12.0,
+              "normalized_score": 0.8798094670187694,
+              "total_score": 10.557713604225231
+            },
+            "objective_delta_joint_minus_production": 0.379844961240309,
+            "production_candidate_concept_mapping": {
+              "act_approve_high_value": "tc_activity_approve_quotation",
+              "act_check_customer_info": "tc_activity_check_customer",
+              "act_create_quotation_doc": "tc_activity_create_quotation",
+              "act_receive_request": "tc_activity_receive_request",
+              "act_send_month_end_summary": "tc_activity_send_month_end_summary",
+              "act_send_quotation": "tc_activity_send_quotation",
+              "actor_manager": "tc_actor_manager",
+              "actor_sales_employee": "tc_actor_sales",
+              "cond_amount_at_or_below_1m": "tc_cond_at_or_below_1m",
+              "cond_amount_over_1m": "tc_cond_over_1m",
+              "data_customer_information": "tc_customer",
+              "data_month_end_summary": "tc_excel_summary",
+              "data_pricing_information": "tc_pricing",
+              "rationale_credit_risk": "tc_rationale_credit_risk",
+              "sys_crm": "tc_system_crm",
+              "sys_email": "tc_system_email",
+              "sys_excel": "tc_system_excel",
+              "sys_quoting_system": "tc_system_quoting"
+            },
+            "production_forced_objective": {
+              "components": {
+                "activity": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "actor": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "concepts": {
+                  "agent_count": 22,
+                  "agreement": 0.8372093023255814,
+                  "contribution": 0.8372093023255814,
+                  "matched_count": 18,
+                  "truth_count": 21,
+                  "weight": 1.0
+                },
+                "condition": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "end_nodes": {
+                  "agent_count": 2,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 2,
+                  "truth_count": 2,
+                  "weight": 1.0
+                },
+                "nodes": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "process_edges": {
+                  "agent_count": 7,
+                  "agreement": 0.7692307692307693,
+                  "contribution": 0.7692307692307693,
+                  "matched_count": 5,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "rationale": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "reads": {
+                  "agent_count": 4,
+                  "agreement": 0.5714285714285714,
+                  "contribution": 0.5714285714285714,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "start_node": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "system": {
+                  "agent_count": 4,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 4,
+                  "truth_count": 4,
+                  "weight": 1.0
+                },
+                "writes": {
+                  "agent_count": 3,
+                  "agreement": 0.3333333333333333,
+                  "contribution": 0.3333333333333333,
+                  "matched_count": 1,
+                  "truth_count": 3,
+                  "weight": 1.0
+                }
+              },
+              "max_score": 12.0,
+              "normalized_score": 0.8481557202487435,
+              "total_score": 10.177868642984922
+            }
+          },
+          "scope": "same_joint_node_mapping_and_all_other_joint_concept_assignments"
+        },
+        "joint_candidate_evidence": {
+          "agent_only_locations": [
+            {
+              "count": 1,
+              "location": "node:ap:reads"
+            }
+          ],
+          "candidate_support": {
+            "no_candidate": false,
+            "positive_structural_support": true,
+            "unsupported_candidate": false
+          },
+          "exact_structural_usage_agreement": false,
+          "kind_consistent": true,
+          "overlapping_usage": [
+            {
+              "count": 1,
+              "location": "node:cq:writes"
+            }
+          ],
+          "process_topology_support": {
+            "mapped_edge_condition_count": 0,
+            "mapped_node_location_count": 2,
+            "overlapping_edge_condition_count": 0,
+            "projected_topology_shapes": [
+              [
+                "node_slot",
+                "reads",
+                1,
+                1,
+                false,
+                false
+              ],
+              [
+                "node_slot",
+                "writes",
+                1,
+                3,
+                false,
+                false
+              ]
+            ],
+            "truth_topology_shapes": [
+              [
+                "node_slot",
+                "writes",
+                1,
+                3,
+                false,
+                false
+              ]
+            ],
+            "unmapped_edge_condition_count": 0,
+            "unmapped_node_location_count": 0
+          },
+          "projected_agent_location_details": [
+            {
+              "mapped_target_id": "ap",
+              "projected_location": "node:ap:reads",
+              "projected_topology": {
+                "declared_end": false,
+                "declared_start": false,
+                "in_degree": 1,
+                "out_degree": 1
+              },
+              "relation": "reads",
+              "source_location": "node:node_approve_high_value:reads"
+            },
+            {
+              "mapped_target_id": "cq",
+              "projected_location": "node:cq:writes",
+              "projected_topology": {
+                "declared_end": false,
+                "declared_start": false,
+                "in_degree": 1,
+                "out_degree": 3
+              },
+              "relation": "writes",
+              "source_location": "node:node_create_quotation_doc:writes"
+            }
+          ],
+          "projected_agent_locations": [
+            "node:ap:reads",
+            "node:cq:writes"
+          ],
+          "relation_type_consistency": {
+            "agent_relation_counts": {
+              "reads": 1,
+              "writes": 1
+            },
+            "has_same_relation_support": true,
+            "overlap_relation_counts": {
+              "writes": 1
+            },
+            "relation_intersection_counts": {
+              "writes": 1
+            },
+            "same_relation_support_count": 1,
+            "truth_relation_counts": {
+              "writes": 1
+            }
+          },
+          "repeated_usage_support": {
+            "agent_occurrence_count": 2,
+            "agent_repeated": true,
+            "overlap_occurrence_count": 1,
+            "repeated_overlap": false,
+            "truth_occurrence_count": 1,
+            "truth_repeated": false
+          },
+          "structural_fingerprint": {
+            "agent_kind": "data",
+            "agent_only_location_count": 1,
+            "agent_relation_counts": {
+              "reads": 1,
+              "writes": 1
+            },
+            "exact_structural_usage_agreement": false,
+            "mapped_edge_count": 0,
+            "mapped_node_count": 2,
+            "overlap_edge_condition_count": 0,
+            "overlap_location_count": 1,
+            "overlap_relation_counts": {
+              "writes": 1
+            },
+            "positive_structural_support": true,
+            "projected_location_count": 2,
+            "projected_topology_shapes": [
+              [
+                "node_slot",
+                "reads",
+                1,
+                1,
+                false,
+                false
+              ],
+              [
+                "node_slot",
+                "writes",
+                1,
+                3,
+                false,
+                false
+              ]
+            ],
+            "relation_intersection_counts": {
+              "writes": 1
+            },
+            "truth_kind": "data",
+            "truth_location_count": 1,
+            "truth_only_location_count": 0,
+            "truth_relation_counts": {
+              "writes": 1
+            },
+            "truth_topology_shapes": [
+              [
+                "node_slot",
+                "writes",
+                1,
+                3,
+                false,
+                false
+              ]
+            ],
+            "unmapped_edge_count": 0,
+            "unmapped_node_count": 0
+          },
+          "structural_usage_status": "partial_overlap",
+          "truth_concept_id": "tc_quote",
+          "truth_concept_kind": "data",
+          "truth_label": "quotation",
+          "truth_label_display_only": true,
+          "truth_locations": [
+            {
+              "location": "node:cq:writes",
+              "relation": "writes",
+              "topology": {
+                "declared_end": false,
+                "declared_start": false,
+                "in_degree": 1,
+                "out_degree": 3
+              },
+              "topology_shape": [
+                "node_slot",
+                "writes",
+                1,
+                3,
+                false,
+                false
+              ]
+            }
+          ],
+          "truth_only_locations": []
+        },
+        "joint_truth_concept_id": "tc_quote",
+        "joint_truth_label": "quotation",
+        "joint_truth_label_display_only": true,
+        "observation_context": {
+          "display_only": true,
+          "records": [
+            {
+              "observation_id": "obs_19",
+              "occurrence": 0,
+              "order": 2,
+              "quote": "the quotation document",
+              "source": "concept_mention",
+              "text": "Well, after I receive the customer's quotation request, I check the customer information in the CRM. Then I create the quotation document in the quoting system using the pricing information. From there, if the quotation amount is over 1,000,000 yen, the manager has to approve the high-value quotation for credit risk management. After that approval, I send the quotation to the customer via email. However, if the amount is at or below 1,000,000 yen, I can send the quotation to the customer directly. Also, at the end of the month, I send the month-end summary of quotation information to Accounting using Excel.",
+              "turn": 19
+            },
+            {
+              "observation_id": "obs_19",
+              "occurrence": 0,
+              "order": 2,
+              "quote": "approve the high-value quotation",
+              "source": "node:node_approve_high_value:reads",
+              "text": "Well, after I receive the customer's quotation request, I check the customer information in the CRM. Then I create the quotation document in the quoting system using the pricing information. From there, if the quotation amount is over 1,000,000 yen, the manager has to approve the high-value quotation for credit risk management. After that approval, I send the quotation to the customer via email. However, if the amount is at or below 1,000,000 yen, I can send the quotation to the customer directly. Also, at the end of the month, I send the month-end summary of quotation information to Accounting using Excel.",
+              "turn": 19
+            },
+            {
+              "observation_id": "obs_19",
+              "occurrence": 0,
+              "order": 2,
+              "quote": "I create the quotation document",
+              "source": "node:node_create_quotation_doc:writes",
+              "text": "Well, after I receive the customer's quotation request, I check the customer information in the CRM. Then I create the quotation document in the quoting system using the pricing information. From there, if the quotation amount is over 1,000,000 yen, the manager has to approve the high-value quotation for credit risk management. After that approval, I send the quotation to the customer via email. However, if the amount is at or below 1,000,000 yen, I can send the quotation to the customer directly. Also, at the end of the month, I send the month-end summary of quotation information to Accounting using Excel.",
+              "turn": 19
+            }
+          ],
+          "used_for_structural_calculation": false
+        },
+        "production_candidate_evidence": {
+          "agent_only_locations": [
+            {
+              "count": 1,
+              "location": "node:ap:reads"
+            },
+            {
+              "count": 1,
+              "location": "node:cq:writes"
+            }
+          ],
+          "candidate_support": {
+            "no_candidate": true,
+            "positive_structural_support": false,
+            "unsupported_candidate": null
+          },
+          "exact_structural_usage_agreement": false,
+          "kind_consistent": null,
+          "overlapping_usage": [],
+          "process_topology_support": {
+            "mapped_edge_condition_count": 0,
+            "mapped_node_location_count": 2,
+            "overlapping_edge_condition_count": 0,
+            "projected_topology_shapes": [
+              [
+                "node_slot",
+                "reads",
+                1,
+                1,
+                false,
+                false
+              ],
+              [
+                "node_slot",
+                "writes",
+                1,
+                3,
+                false,
+                false
+              ]
+            ],
+            "truth_topology_shapes": [],
+            "unmapped_edge_condition_count": 0,
+            "unmapped_node_location_count": 0
+          },
+          "projected_agent_location_details": [
+            {
+              "mapped_target_id": "ap",
+              "projected_location": "node:ap:reads",
+              "projected_topology": {
+                "declared_end": false,
+                "declared_start": false,
+                "in_degree": 1,
+                "out_degree": 1
+              },
+              "relation": "reads",
+              "source_location": "node:node_approve_high_value:reads"
+            },
+            {
+              "mapped_target_id": "cq",
+              "projected_location": "node:cq:writes",
+              "projected_topology": {
+                "declared_end": false,
+                "declared_start": false,
+                "in_degree": 1,
+                "out_degree": 3
+              },
+              "relation": "writes",
+              "source_location": "node:node_create_quotation_doc:writes"
+            }
+          ],
+          "projected_agent_locations": [
+            "node:ap:reads",
+            "node:cq:writes"
+          ],
+          "relation_type_consistency": {
+            "agent_relation_counts": {
+              "reads": 1,
+              "writes": 1
+            },
+            "has_same_relation_support": false,
+            "overlap_relation_counts": {},
+            "relation_intersection_counts": {},
+            "same_relation_support_count": 0,
+            "truth_relation_counts": {}
+          },
+          "repeated_usage_support": {
+            "agent_occurrence_count": 2,
+            "agent_repeated": true,
+            "overlap_occurrence_count": 0,
+            "repeated_overlap": false,
+            "truth_occurrence_count": 0,
+            "truth_repeated": false
+          },
+          "structural_fingerprint": {
+            "agent_kind": "data",
+            "agent_only_location_count": 2,
+            "agent_relation_counts": {
+              "reads": 1,
+              "writes": 1
+            },
+            "exact_structural_usage_agreement": false,
+            "mapped_edge_count": 0,
+            "mapped_node_count": 2,
+            "overlap_edge_condition_count": 0,
+            "overlap_location_count": 0,
+            "overlap_relation_counts": {},
+            "positive_structural_support": false,
+            "projected_location_count": 2,
+            "projected_topology_shapes": [
+              [
+                "node_slot",
+                "reads",
+                1,
+                1,
+                false,
+                false
+              ],
+              [
+                "node_slot",
+                "writes",
+                1,
+                3,
+                false,
+                false
+              ]
+            ],
+            "relation_intersection_counts": {},
+            "truth_kind": null,
+            "truth_location_count": 0,
+            "truth_only_location_count": 0,
+            "truth_relation_counts": {},
+            "truth_topology_shapes": [],
+            "unmapped_edge_count": 0,
+            "unmapped_node_count": 0
+          },
+          "structural_usage_status": "no_candidate",
+          "truth_concept_id": null,
+          "truth_concept_kind": null,
+          "truth_label": null,
+          "truth_label_display_only": true,
+          "truth_locations": [],
+          "truth_only_locations": []
+        },
+        "production_truth_concept_id": null,
+        "production_truth_label": null,
+        "production_truth_label_display_only": true,
+        "seed": 9002
+      },
+      {
+        "agent_concept_id": "data_quotation_request",
+        "agent_label": "customer's quotation request",
+        "agent_label_display_only": true,
+        "agent_structural_usage": {
+          "location_details": [
+            {
+              "location": "node:node_receive_request:reads",
+              "relation": "reads",
+              "topology": {
+                "declared_end": false,
+                "declared_start": true,
+                "in_degree": 0,
+                "out_degree": 2
+              },
+              "topology_shape": [
+                "node_slot",
+                "reads",
+                0,
+                2,
+                true,
+                false
+              ]
+            }
+          ],
+          "locations": [
+            "node:node_receive_request:reads"
+          ],
+          "mapped_location_count": 1,
+          "projected_locations": [
+            {
+              "element_type": "node_slot",
+              "location": "node:node_receive_request:reads",
+              "mapped_target_id": "r",
+              "projected_location": "node:r:reads",
+              "projected_topology": {
+                "declared_end": false,
+                "declared_start": true,
+                "in_degree": 0,
+                "out_degree": 1
+              },
+              "relation": "reads",
+              "source_id": "node_receive_request",
+              "topology": {
+                "declared_end": false,
+                "declared_start": true,
+                "in_degree": 0,
+                "out_degree": 2
+              }
+            }
+          ],
+          "unmapped_location_count": 0
+        },
+        "alternative_optimal_mapping": {
+          "alternative_optimal_mapping_exists": false,
+          "ambiguity_classes": [],
+          "exact_search": true,
+          "joint_mapping_is_invariant": false,
+          "status": "unmatched_in_all_exact_optima"
+        },
+        "classification": "possible_objective_failure",
+        "classification_rationale": "Neither candidate has positive structural overlap, yet forcing the unsupported production assignment raises the raw objective. This is an objective/admissibility warning, not evidence that production is structurally correct.",
+        "classification_signals": {
+          "full_objective_delta_joint_minus_production": 0.2403100775193785,
+          "joint_positive_structural_support": false,
+          "local_objective_delta_joint_minus_production": -0.04651162790697683,
+          "production_positive_structural_support": false,
+          "unsupported_production_candidate_gains_objective": true
+        },
+        "concept_kind": "data",
+        "counterfactual": {
+          "full_mapping_comparison": {
+            "component_deltas": {
+              "activity": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "actor": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "concepts": {
+                "agreement_delta_joint_minus_production": -0.09302325581395343,
+                "contribution_delta_joint_minus_production": -0.09302325581395343,
+                "matched_count_delta_joint_minus_production": -2
+              },
+              "condition": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "end_nodes": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "nodes": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "process_edges": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "rationale": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "reads": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "start_node": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "system": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "writes": {
+                "agreement_delta_joint_minus_production": 0.3333333333333333,
+                "contribution_delta_joint_minus_production": 0.3333333333333333,
+                "matched_count_delta_joint_minus_production": 1
+              }
+            },
+            "joint_objective": {
+              "components": {
+                "activity": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "actor": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "concepts": {
+                  "agent_count": 22,
+                  "agreement": 0.8837209302325582,
+                  "contribution": 0.8837209302325582,
+                  "matched_count": 19,
+                  "truth_count": 21,
+                  "weight": 1.0
+                },
+                "condition": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "end_nodes": {
+                  "agent_count": 2,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 2,
+                  "truth_count": 2,
+                  "weight": 1.0
+                },
+                "nodes": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "process_edges": {
+                  "agent_count": 7,
+                  "agreement": 0.7692307692307693,
+                  "contribution": 0.7692307692307693,
+                  "matched_count": 5,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "rationale": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "reads": {
+                  "agent_count": 4,
+                  "agreement": 0.5714285714285714,
+                  "contribution": 0.5714285714285714,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "start_node": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "system": {
+                  "agent_count": 4,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 4,
+                  "truth_count": 4,
+                  "weight": 1.0
+                },
+                "writes": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                }
+              },
+              "max_score": 12.0,
+              "normalized_score": 0.8798094670187694,
+              "total_score": 10.557713604225231
+            },
+            "objective_delta_joint_minus_production": 0.2403100775193785,
+            "production_forced_objective": {
+              "components": {
+                "activity": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "actor": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "concepts": {
+                  "agent_count": 22,
+                  "agreement": 0.9767441860465116,
+                  "contribution": 0.9767441860465116,
+                  "matched_count": 21,
+                  "truth_count": 21,
+                  "weight": 1.0
+                },
+                "condition": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "end_nodes": {
+                  "agent_count": 2,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 2,
+                  "truth_count": 2,
+                  "weight": 1.0
+                },
+                "nodes": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "process_edges": {
+                  "agent_count": 7,
+                  "agreement": 0.7692307692307693,
+                  "contribution": 0.7692307692307693,
+                  "matched_count": 5,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "rationale": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "reads": {
+                  "agent_count": 4,
+                  "agreement": 0.5714285714285714,
+                  "contribution": 0.5714285714285714,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "start_node": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "system": {
+                  "agent_count": 4,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 4,
+                  "truth_count": 4,
+                  "weight": 1.0
+                },
+                "writes": {
+                  "agent_count": 3,
+                  "agreement": 0.3333333333333333,
+                  "contribution": 0.3333333333333333,
+                  "matched_count": 1,
+                  "truth_count": 3,
+                  "weight": 1.0
+                }
+              },
+              "max_score": 12.0,
+              "normalized_score": 0.8597836272254877,
+              "total_score": 10.317403526705853
+            }
+          },
+          "local_candidate_counterfactual": {
+            "component_deltas": {
+              "activity": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "actor": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "concepts": {
+                "agreement_delta_joint_minus_production": -0.046511627906976716,
+                "contribution_delta_joint_minus_production": -0.046511627906976716,
+                "matched_count_delta_joint_minus_production": -1
+              },
+              "condition": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "end_nodes": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "nodes": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "process_edges": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "rationale": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "reads": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "start_node": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "system": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              },
+              "writes": {
+                "agreement_delta_joint_minus_production": 0.0,
+                "contribution_delta_joint_minus_production": 0.0,
+                "matched_count_delta_joint_minus_production": 0
+              }
+            },
+            "joint_candidate_concept_mapping": {
+              "act_approve_high_value": "tc_activity_approve_quotation",
+              "act_check_customer_info": "tc_activity_check_customer",
+              "act_create_quotation_doc": "tc_activity_create_quotation",
+              "act_receive_request": "tc_activity_receive_request",
+              "act_send_month_end_summary": "tc_activity_send_month_end_summary",
+              "act_send_quotation": "tc_activity_send_quotation",
+              "actor_manager": "tc_actor_manager",
+              "actor_sales_employee": "tc_actor_sales",
+              "cond_amount_at_or_below_1m": "tc_cond_at_or_below_1m",
+              "cond_amount_over_1m": "tc_cond_over_1m",
+              "data_customer_information": "tc_customer",
+              "data_month_end_summary": "tc_excel_summary",
+              "data_pricing_information": "tc_pricing",
+              "data_quotation_document": "tc_quote",
+              "rationale_credit_risk": "tc_rationale_credit_risk",
+              "sys_crm": "tc_system_crm",
+              "sys_email": "tc_system_email",
+              "sys_excel": "tc_system_excel",
+              "sys_quoting_system": "tc_system_quoting"
+            },
+            "joint_objective": {
+              "components": {
+                "activity": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "actor": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "concepts": {
+                  "agent_count": 22,
+                  "agreement": 0.8837209302325582,
+                  "contribution": 0.8837209302325582,
+                  "matched_count": 19,
+                  "truth_count": 21,
+                  "weight": 1.0
+                },
+                "condition": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "end_nodes": {
+                  "agent_count": 2,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 2,
+                  "truth_count": 2,
+                  "weight": 1.0
+                },
+                "nodes": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "process_edges": {
+                  "agent_count": 7,
+                  "agreement": 0.7692307692307693,
+                  "contribution": 0.7692307692307693,
+                  "matched_count": 5,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "rationale": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "reads": {
+                  "agent_count": 4,
+                  "agreement": 0.5714285714285714,
+                  "contribution": 0.5714285714285714,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "start_node": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "system": {
+                  "agent_count": 4,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 4,
+                  "truth_count": 4,
+                  "weight": 1.0
+                },
+                "writes": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                }
+              },
+              "max_score": 12.0,
+              "normalized_score": 0.8798094670187694,
+              "total_score": 10.557713604225231
+            },
+            "objective_delta_joint_minus_production": -0.04651162790697683,
+            "production_candidate_concept_mapping": {
+              "act_approve_high_value": "tc_activity_approve_quotation",
+              "act_check_customer_info": "tc_activity_check_customer",
+              "act_create_quotation_doc": "tc_activity_create_quotation",
+              "act_receive_request": "tc_activity_receive_request",
+              "act_send_month_end_summary": "tc_activity_send_month_end_summary",
+              "act_send_quotation": "tc_activity_send_quotation",
+              "actor_manager": "tc_actor_manager",
+              "actor_sales_employee": "tc_actor_sales",
+              "cond_amount_at_or_below_1m": "tc_cond_at_or_below_1m",
+              "cond_amount_over_1m": "tc_cond_over_1m",
+              "data_customer_information": "tc_customer",
+              "data_month_end_summary": "tc_excel_summary",
+              "data_pricing_information": "tc_pricing",
+              "data_quotation_document": "tc_quote",
+              "data_quotation_request": "tc_request",
+              "rationale_credit_risk": "tc_rationale_credit_risk",
+              "sys_crm": "tc_system_crm",
+              "sys_email": "tc_system_email",
+              "sys_excel": "tc_system_excel",
+              "sys_quoting_system": "tc_system_quoting"
+            },
+            "production_forced_objective": {
+              "components": {
+                "activity": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "actor": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "concepts": {
+                  "agent_count": 22,
+                  "agreement": 0.9302325581395349,
+                  "contribution": 0.9302325581395349,
+                  "matched_count": 20,
+                  "truth_count": 21,
+                  "weight": 1.0
+                },
+                "condition": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "end_nodes": {
+                  "agent_count": 2,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 2,
+                  "truth_count": 2,
+                  "weight": 1.0
+                },
+                "nodes": {
+                  "agent_count": 6,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 6,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "process_edges": {
+                  "agent_count": 7,
+                  "agreement": 0.7692307692307693,
+                  "contribution": 0.7692307692307693,
+                  "matched_count": 5,
+                  "truth_count": 6,
+                  "weight": 1.0
+                },
+                "rationale": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "reads": {
+                  "agent_count": 4,
+                  "agreement": 0.5714285714285714,
+                  "contribution": 0.5714285714285714,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                },
+                "start_node": {
+                  "agent_count": 1,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 1,
+                  "truth_count": 1,
+                  "weight": 1.0
+                },
+                "system": {
+                  "agent_count": 4,
+                  "agreement": 1.0,
+                  "contribution": 1.0,
+                  "matched_count": 4,
+                  "truth_count": 4,
+                  "weight": 1.0
+                },
+                "writes": {
+                  "agent_count": 3,
+                  "agreement": 0.6666666666666666,
+                  "contribution": 0.6666666666666666,
+                  "matched_count": 2,
+                  "truth_count": 3,
+                  "weight": 1.0
+                }
+              },
+              "max_score": 12.0,
+              "normalized_score": 0.8836854360110175,
+              "total_score": 10.604225232132208
+            }
+          },
+          "scope": "same_joint_node_mapping_and_all_other_joint_concept_assignments"
+        },
+        "joint_candidate_evidence": {
+          "agent_only_locations": [
+            {
+              "count": 1,
+              "location": "node:r:reads"
+            }
+          ],
+          "candidate_support": {
+            "no_candidate": true,
+            "positive_structural_support": false,
+            "unsupported_candidate": null
+          },
+          "exact_structural_usage_agreement": false,
+          "kind_consistent": null,
+          "overlapping_usage": [],
+          "process_topology_support": {
+            "mapped_edge_condition_count": 0,
+            "mapped_node_location_count": 1,
+            "overlapping_edge_condition_count": 0,
+            "projected_topology_shapes": [
+              [
+                "node_slot",
+                "reads",
+                0,
+                1,
+                true,
+                false
+              ]
+            ],
+            "truth_topology_shapes": [],
+            "unmapped_edge_condition_count": 0,
+            "unmapped_node_location_count": 0
+          },
+          "projected_agent_location_details": [
+            {
+              "mapped_target_id": "r",
+              "projected_location": "node:r:reads",
+              "projected_topology": {
+                "declared_end": false,
+                "declared_start": true,
+                "in_degree": 0,
+                "out_degree": 1
+              },
+              "relation": "reads",
+              "source_location": "node:node_receive_request:reads"
+            }
+          ],
+          "projected_agent_locations": [
+            "node:r:reads"
+          ],
+          "relation_type_consistency": {
+            "agent_relation_counts": {
+              "reads": 1
+            },
+            "has_same_relation_support": false,
+            "overlap_relation_counts": {},
+            "relation_intersection_counts": {},
+            "same_relation_support_count": 0,
+            "truth_relation_counts": {}
+          },
+          "repeated_usage_support": {
+            "agent_occurrence_count": 1,
+            "agent_repeated": false,
+            "overlap_occurrence_count": 0,
+            "repeated_overlap": false,
+            "truth_occurrence_count": 0,
+            "truth_repeated": false
+          },
+          "structural_fingerprint": {
+            "agent_kind": "data",
+            "agent_only_location_count": 1,
+            "agent_relation_counts": {
+              "reads": 1
+            },
+            "exact_structural_usage_agreement": false,
+            "mapped_edge_count": 0,
+            "mapped_node_count": 1,
+            "overlap_edge_condition_count": 0,
+            "overlap_location_count": 0,
+            "overlap_relation_counts": {},
+            "positive_structural_support": false,
+            "projected_location_count": 1,
+            "projected_topology_shapes": [
+              [
+                "node_slot",
+                "reads",
+                0,
+                1,
+                true,
+                false
+              ]
+            ],
+            "relation_intersection_counts": {},
+            "truth_kind": null,
+            "truth_location_count": 0,
+            "truth_only_location_count": 0,
+            "truth_relation_counts": {},
+            "truth_topology_shapes": [],
+            "unmapped_edge_count": 0,
+            "unmapped_node_count": 0
+          },
+          "structural_usage_status": "no_candidate",
+          "truth_concept_id": null,
+          "truth_concept_kind": null,
+          "truth_label": null,
+          "truth_label_display_only": true,
+          "truth_locations": [],
+          "truth_only_locations": []
+        },
+        "joint_truth_concept_id": null,
+        "joint_truth_label": null,
+        "joint_truth_label_display_only": true,
+        "observation_context": {
+          "display_only": true,
+          "records": [
+            {
+              "observation_id": "obs_3",
+              "occurrence": 0,
+              "order": 1,
+              "quote": "the customer's quotation request",
+              "source": "concept_mention",
+              "text": "Well, it starts when I, as a sales employee, receive the customer's quotation request. That's what kicks things off. And the intended outcome is to send the quotation to the customer.",
+              "turn": 3
+            },
+            {
+              "observation_id": "obs_3",
+              "occurrence": 0,
+              "order": 1,
+              "quote": "receive the customer's quotation request",
+              "source": "node:node_receive_request:reads",
+              "text": "Well, it starts when I, as a sales employee, receive the customer's quotation request. That's what kicks things off. And the intended outcome is to send the quotation to the customer.",
+              "turn": 3
+            }
+          ],
+          "used_for_structural_calculation": false
+        },
+        "production_candidate_evidence": {
+          "agent_only_locations": [
+            {
+              "count": 1,
+              "location": "node:r:reads"
+            }
+          ],
+          "candidate_support": {
+            "no_candidate": false,
+            "positive_structural_support": false,
+            "unsupported_candidate": true
+          },
+          "exact_structural_usage_agreement": false,
+          "kind_consistent": true,
+          "overlapping_usage": [],
+          "process_topology_support": {
+            "mapped_edge_condition_count": 0,
+            "mapped_node_location_count": 1,
+            "overlapping_edge_condition_count": 0,
+            "projected_topology_shapes": [
+              [
+                "node_slot",
+                "reads",
+                0,
+                1,
+                true,
+                false
+              ]
+            ],
+            "truth_topology_shapes": [
+              [
+                "node_slot",
+                "writes",
+                0,
+                1,
+                true,
+                false
+              ]
+            ],
+            "unmapped_edge_condition_count": 0,
+            "unmapped_node_location_count": 0
+          },
+          "projected_agent_location_details": [
+            {
+              "mapped_target_id": "r",
+              "projected_location": "node:r:reads",
+              "projected_topology": {
+                "declared_end": false,
+                "declared_start": true,
+                "in_degree": 0,
+                "out_degree": 1
+              },
+              "relation": "reads",
+              "source_location": "node:node_receive_request:reads"
+            }
+          ],
+          "projected_agent_locations": [
+            "node:r:reads"
+          ],
+          "relation_type_consistency": {
+            "agent_relation_counts": {
+              "reads": 1
+            },
+            "has_same_relation_support": false,
+            "overlap_relation_counts": {},
+            "relation_intersection_counts": {},
+            "same_relation_support_count": 0,
+            "truth_relation_counts": {
+              "writes": 1
+            }
+          },
+          "repeated_usage_support": {
+            "agent_occurrence_count": 1,
+            "agent_repeated": false,
+            "overlap_occurrence_count": 0,
+            "repeated_overlap": false,
+            "truth_occurrence_count": 1,
+            "truth_repeated": false
+          },
+          "structural_fingerprint": {
+            "agent_kind": "data",
+            "agent_only_location_count": 1,
+            "agent_relation_counts": {
+              "reads": 1
+            },
+            "exact_structural_usage_agreement": false,
+            "mapped_edge_count": 0,
+            "mapped_node_count": 1,
+            "overlap_edge_condition_count": 0,
+            "overlap_location_count": 0,
+            "overlap_relation_counts": {},
+            "positive_structural_support": false,
+            "projected_location_count": 1,
+            "projected_topology_shapes": [
+              [
+                "node_slot",
+                "reads",
+                0,
+                1,
+                true,
+                false
+              ]
+            ],
+            "relation_intersection_counts": {},
+            "truth_kind": "data",
+            "truth_location_count": 1,
+            "truth_only_location_count": 1,
+            "truth_relation_counts": {
+              "writes": 1
+            },
+            "truth_topology_shapes": [
+              [
+                "node_slot",
+                "writes",
+                0,
+                1,
+                true,
+                false
+              ]
+            ],
+            "unmapped_edge_count": 0,
+            "unmapped_node_count": 0
+          },
+          "structural_usage_status": "no_structural_overlap",
+          "truth_concept_id": "tc_request",
+          "truth_concept_kind": "data",
+          "truth_label": "quotation request",
+          "truth_label_display_only": true,
+          "truth_locations": [
+            {
+              "location": "node:r:writes",
+              "relation": "writes",
+              "topology": {
+                "declared_end": false,
+                "declared_start": true,
+                "in_degree": 0,
+                "out_degree": 1
+              },
+              "topology_shape": [
+                "node_slot",
+                "writes",
+                0,
+                1,
+                true,
+                false
+              ]
+            }
+          ],
+          "truth_only_locations": [
+            {
+              "count": 1,
+              "location": "node:r:writes"
+            }
+          ]
+        },
+        "production_truth_concept_id": "tc_request",
+        "production_truth_label": "quotation request",
+        "production_truth_label_display_only": true,
+        "seed": 9002
+      }
+    ],
+    "schema_version": "business_interview.joint_concept_disagreement_audit.v1",
+    "seed": 9002,
+    "seed_9003_start_end_investigation": null,
+    "status": "ok"
+  },
   "metric_parity": {
     "checked_fields": [
       "activity_correctness",
