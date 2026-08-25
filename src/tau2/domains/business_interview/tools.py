@@ -1071,6 +1071,7 @@ class InterviewTools(ToolKitBase):
         self,
         start_node_id: Optional[str] = None,
         end_node_ids: Optional[list[str]] = None,
+        start_node_ids: Optional[list[str]] = None,
     ) -> str:
         """Declare the graph's start and end node(s).
 
@@ -1079,17 +1080,28 @@ class InterviewTools(ToolKitBase):
         positions. Declare both before finishing the interview.
 
         Args:
-            start_node_id: The start node id.
-            end_node_ids: The end node ids.
+            start_node_id: One business entry node id (legacy convenience).
+            end_node_ids: The business exit node ids.
+            start_node_ids: All business entry node ids.  This is the
+                canonical Agent-side representation for multiple entries.
 
         Returns:
             A confirmation message.
         """
         graph = self._graph()
+        if start_node_id is not None and start_node_ids is not None:
+            raise ValueError("pass start_node_id or start_node_ids, not both")
+        selected_starts = start_node_ids
         if start_node_id is not None:
-            if start_node_id not in graph.nodes:
-                raise ValueError(f"node not found: {start_node_id}")
-            graph.start_node_id = start_node_id
+            selected_starts = [start_node_id]
+        if selected_starts is not None:
+            for sid in selected_starts:
+                if sid not in graph.nodes:
+                    raise ValueError(f"node not found: {sid}")
+            graph.start_node_ids = list(selected_starts)
+            graph.start_node_id = (
+                selected_starts[0] if len(selected_starts) == 1 else None
+            )
         if end_node_ids is not None:
             for eid in end_node_ids:
                 if eid not in graph.nodes:
@@ -1138,9 +1150,11 @@ class InterviewTools(ToolKitBase):
                 "Cannot finish: graph is structurally invalid.\n- "
                 + "\n- ".join(errors)
             )
-        if graph.start_node_id is None:
+        has_multiple_entries = len(graph.start_node_ids) > 1
+        if graph.start_node_id is None and not has_multiple_entries:
             raise ValueError(
-                "Cannot finish: declare the start node with set_graph_endpoints."
+                "Cannot finish: declare at least one business entry with "
+                "set_graph_endpoints."
             )
         if not graph.end_node_ids:
             raise ValueError(

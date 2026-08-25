@@ -1,8 +1,9 @@
 """Scenarios for the graph-native business_interview benchmark (v11).
 
-A scenario is a **Truth graph** (a ``BusinessProcessGraph`` whose nodes/edges
-reference ``TruthConcept``\\ s, with explicit start/end), the stakeholder
-filter(s), and the **StakeholderKnowledge** (``knowledge.py``): the
+A scenario is a canonical **Truth graph** (a ``BusinessProcessGraph`` whose
+nodes/edges reference ``TruthConcept``\\ s and whose explicit structural SOURCE
+and SINK own the boundary), the stakeholder filter(s), and the
+**StakeholderKnowledge** (``knowledge.py``): the
 stakeholder's world model — a masked graph with three-valued property slots
 (``ConceptRef | None | DONT_KNOW``) plus its local ``StakeholderKnowledgeConcept``\\ s.
 
@@ -21,6 +22,7 @@ from tau2.domains.business_interview.graph import (
     TruthConcept,
     TruthEdge,
     TruthNode,
+    canonicalize_truth_graph,
 )
 from tau2.domains.business_interview.knowledge import (
     StakeholderKnowledge,
@@ -52,206 +54,213 @@ def _tconcept(
 
 
 def quotation_truth() -> BusinessProcessGraph:
-    """The quotation workflow Truth graph (1 start / 2 ends; a directed
-    process graph — cycles remain valid in general)."""
-    return BusinessProcessGraph(
-        id="quotation",
-        name="Quotation creation",
-        concepts={
-            # activities
-            "tc_activity_receive_request": _tconcept(
-                "tc_activity_receive_request",
-                "activity",
-                "Receive the customer's quotation request.",
-                ["receive the quotation request"],
-            ),
-            "tc_activity_check_customer": _tconcept(
-                "tc_activity_check_customer",
-                "activity",
-                "Check the customer information.",
-                ["check the customer information"],
-            ),
-            "tc_activity_create_quotation": _tconcept(
-                "tc_activity_create_quotation",
-                "activity",
-                "Create the quotation document.",
-                ["create the quotation"],
-            ),
-            "tc_activity_approve_quotation": _tconcept(
-                "tc_activity_approve_quotation",
-                "activity",
-                "Approve the quotation.",
-                ["approve the high-value quotation"],
-            ),
-            "tc_activity_send_quotation": _tconcept(
-                "tc_activity_send_quotation",
-                "activity",
-                "Send the quotation to the customer.",
-                ["send the quotation to the customer"],
-            ),
-            "tc_activity_send_month_end_summary": _tconcept(
-                "tc_activity_send_month_end_summary",
-                "activity",
-                "Send the month-end summary of quotation information.",
-                ["send the month-end summary to Accounting"],
-            ),
-            # actors
-            "tc_actor_sales": _tconcept(
-                "tc_actor_sales", "actor", "The sales employee.", ["sales employee"]
-            ),
-            "tc_actor_manager": _tconcept(
-                "tc_actor_manager", "actor", "The manager who approves.", ["manager"]
-            ),
-            # systems
-            "tc_system_crm": _tconcept(
-                "tc_system_crm",
-                "system",
-                "The customer relationship management system.",
-                ["CRM"],
-            ),
-            "tc_system_quoting": _tconcept(
-                "tc_system_quoting",
-                "system",
-                "The quoting system.",
-                ["quoting system"],
-            ),
-            "tc_system_email": _tconcept(
-                "tc_system_email", "system", "The email system.", ["email"]
-            ),
-            "tc_system_excel": _tconcept(
-                "tc_system_excel",
-                "system",
-                "The spreadsheet application.",
-                ["Excel"],
-            ),
-            # data
-            "tc_request": _tconcept(
-                "tc_request",
-                "data",
-                "The customer's quotation request.",
-                ["quotation request"],
-            ),
-            "tc_customer": _tconcept(
-                "tc_customer",
-                "data",
-                "The customer's information.",
-                ["customer information"],
-            ),
-            "tc_pricing": _tconcept(
-                "tc_pricing",
-                "data",
-                "The pricing information.",
-                ["pricing information"],
-            ),
-            "tc_quote": _tconcept(
-                "tc_quote", "data", "The quotation document.", ["quotation"]
-            ),
-            "tc_approval": _tconcept(
-                "tc_approval", "data", "The approval record.", ["approval"]
-            ),
-            "tc_sent_quote": _tconcept(
-                "tc_sent_quote", "data", "The sent quotation.", ["sent quotation"]
-            ),
-            "tc_excel_summary": _tconcept(
-                "tc_excel_summary",
-                "data",
-                "The quotation information summary.",
-                ["summary of the quotation information"],
-            ),
-            # conditions
-            "tc_cond_over_1m": _tconcept(
-                "tc_cond_over_1m",
-                "condition",
-                "The quotation amount is over 1,000,000 yen.",
-                ["over 1,000,000 yen"],
-            ),
-            "tc_cond_at_or_below_1m": _tconcept(
-                "tc_cond_at_or_below_1m",
-                "condition",
-                "The quotation amount is at or below 1,000,000 yen.",
-                ["at or below 1,000,000 yen"],
-            ),
-            "tc_cond_month_end": _tconcept(
-                "tc_cond_month_end",
-                "condition",
-                "It is the end of the month.",
-                ["month-end"],
-            ),
-            # rationale
-            "tc_rationale_credit_risk": _tconcept(
-                "tc_rationale_credit_risk",
-                "rationale",
-                "Credit risk management.",
-                ["credit risk management"],
-            ),
-        },
-        nodes={
-            "r": TruthNode(
-                id="r",
-                activity=_ref("tc_activity_receive_request"),
-                actor=_ref("tc_actor_sales"),
-                writes=[_ref("tc_request")],
-            ),
-            "cc": TruthNode(
-                id="cc",
-                activity=_ref("tc_activity_check_customer"),
-                actor=_ref("tc_actor_sales"),
-                system=_ref("tc_system_crm"),
-                reads=[_ref("tc_customer")],
-            ),
-            "cq": TruthNode(
-                id="cq",
-                activity=_ref("tc_activity_create_quotation"),
-                actor=_ref("tc_actor_sales"),
-                system=_ref("tc_system_quoting"),
-                reads=[_ref("tc_customer"), _ref("tc_pricing")],
-                writes=[_ref("tc_quote")],
-            ),
-            "ap": TruthNode(
-                id="ap",
-                activity=_ref("tc_activity_approve_quotation"),
-                actor=_ref("tc_actor_manager"),
-                necessity_rationale=_ref("tc_rationale_credit_risk"),
-            ),
-            "sq": TruthNode(
-                id="sq",
-                activity=_ref("tc_activity_send_quotation"),
-                actor=_ref("tc_actor_sales"),
-                system=_ref("tc_system_email"),
-            ),
-            "me": TruthNode(
-                id="me",
-                activity=_ref("tc_activity_send_month_end_summary"),
-                actor=_ref("tc_actor_sales"),
-                system=_ref("tc_system_excel"),
-                writes=[_ref("tc_excel_summary")],
-            ),
-        },
-        edges={
-            "e1": TruthEdge(id="e1", from_node="r", to_node="cc"),
-            "e2": TruthEdge(id="e2", from_node="cc", to_node="cq"),
-            "e3": TruthEdge(
-                id="e3",
-                from_node="cq",
-                to_node="ap",
-                condition=_ref("tc_cond_over_1m"),
-            ),
-            "e4": TruthEdge(
-                id="e4",
-                from_node="cq",
-                to_node="sq",
-                condition=_ref("tc_cond_at_or_below_1m"),
-            ),
-            "e5": TruthEdge(id="e5", from_node="ap", to_node="sq"),
-            "e6": TruthEdge(
-                id="e6",
-                from_node="cq",
-                to_node="me",
-                condition=_ref("tc_cond_month_end"),
-            ),
-        },
-        start_node_id="r",
-        end_node_ids=["sq", "me"],
+    """The quotation workflow Truth graph (one entry, two business exits;
+    structural SOURCE/SINK boundaries are explicit)."""
+    return canonicalize_truth_graph(
+        BusinessProcessGraph(
+            id="quotation",
+            name="Quotation creation",
+            concepts={
+                # activities
+                "tc_activity_receive_request": _tconcept(
+                    "tc_activity_receive_request",
+                    "activity",
+                    "Receive the customer's quotation request.",
+                    ["receive the quotation request"],
+                ),
+                "tc_activity_check_customer": _tconcept(
+                    "tc_activity_check_customer",
+                    "activity",
+                    "Check the customer information.",
+                    ["check the customer information"],
+                ),
+                "tc_activity_create_quotation": _tconcept(
+                    "tc_activity_create_quotation",
+                    "activity",
+                    "Create the quotation document.",
+                    ["create the quotation"],
+                ),
+                "tc_activity_approve_quotation": _tconcept(
+                    "tc_activity_approve_quotation",
+                    "activity",
+                    "Approve the quotation.",
+                    ["approve the high-value quotation"],
+                ),
+                "tc_activity_send_quotation": _tconcept(
+                    "tc_activity_send_quotation",
+                    "activity",
+                    "Send the quotation to the customer.",
+                    ["send the quotation to the customer"],
+                ),
+                "tc_activity_send_month_end_summary": _tconcept(
+                    "tc_activity_send_month_end_summary",
+                    "activity",
+                    "Send the month-end summary of quotation information.",
+                    ["send the month-end summary to Accounting"],
+                ),
+                # actors
+                "tc_actor_sales": _tconcept(
+                    "tc_actor_sales", "actor", "The sales employee.", ["sales employee"]
+                ),
+                "tc_actor_manager": _tconcept(
+                    "tc_actor_manager",
+                    "actor",
+                    "The manager who approves.",
+                    ["manager"],
+                ),
+                # systems
+                "tc_system_crm": _tconcept(
+                    "tc_system_crm",
+                    "system",
+                    "The customer relationship management system.",
+                    ["CRM"],
+                ),
+                "tc_system_quoting": _tconcept(
+                    "tc_system_quoting",
+                    "system",
+                    "The quoting system.",
+                    ["quoting system"],
+                ),
+                "tc_system_email": _tconcept(
+                    "tc_system_email", "system", "The email system.", ["email"]
+                ),
+                "tc_system_excel": _tconcept(
+                    "tc_system_excel",
+                    "system",
+                    "The spreadsheet application.",
+                    ["Excel"],
+                ),
+                # data
+                "tc_request": _tconcept(
+                    "tc_request",
+                    "data",
+                    "The customer's quotation request.",
+                    ["quotation request"],
+                ),
+                "tc_customer": _tconcept(
+                    "tc_customer",
+                    "data",
+                    "The customer's information.",
+                    ["customer information"],
+                ),
+                "tc_pricing": _tconcept(
+                    "tc_pricing",
+                    "data",
+                    "The pricing information.",
+                    ["pricing information"],
+                ),
+                "tc_quote": _tconcept(
+                    "tc_quote", "data", "The quotation document.", ["quotation"]
+                ),
+                "tc_approval": _tconcept(
+                    "tc_approval", "data", "The approval record.", ["approval"]
+                ),
+                "tc_sent_quote": _tconcept(
+                    "tc_sent_quote", "data", "The sent quotation.", ["sent quotation"]
+                ),
+                "tc_excel_summary": _tconcept(
+                    "tc_excel_summary",
+                    "data",
+                    "The quotation information summary.",
+                    ["summary of the quotation information"],
+                ),
+                # conditions
+                "tc_cond_over_1m": _tconcept(
+                    "tc_cond_over_1m",
+                    "condition",
+                    "The quotation amount is over 1,000,000 yen.",
+                    ["over 1,000,000 yen"],
+                ),
+                "tc_cond_at_or_below_1m": _tconcept(
+                    "tc_cond_at_or_below_1m",
+                    "condition",
+                    "The quotation amount is at or below 1,000,000 yen.",
+                    ["at or below 1,000,000 yen"],
+                ),
+                "tc_cond_month_end": _tconcept(
+                    "tc_cond_month_end",
+                    "condition",
+                    "It is the end of the month.",
+                    ["month-end"],
+                ),
+                # rationale
+                "tc_rationale_credit_risk": _tconcept(
+                    "tc_rationale_credit_risk",
+                    "rationale",
+                    "Credit risk management.",
+                    ["credit risk management"],
+                ),
+            },
+            nodes={
+                "r": TruthNode(
+                    id="r",
+                    activity=_ref("tc_activity_receive_request"),
+                    actor=_ref("tc_actor_sales"),
+                    writes=[_ref("tc_request")],
+                ),
+                "cc": TruthNode(
+                    id="cc",
+                    activity=_ref("tc_activity_check_customer"),
+                    actor=_ref("tc_actor_sales"),
+                    system=_ref("tc_system_crm"),
+                    reads=[_ref("tc_customer")],
+                ),
+                "cq": TruthNode(
+                    id="cq",
+                    activity=_ref("tc_activity_create_quotation"),
+                    actor=_ref("tc_actor_sales"),
+                    system=_ref("tc_system_quoting"),
+                    reads=[_ref("tc_customer"), _ref("tc_pricing")],
+                    writes=[_ref("tc_quote")],
+                ),
+                "ap": TruthNode(
+                    id="ap",
+                    activity=_ref("tc_activity_approve_quotation"),
+                    actor=_ref("tc_actor_manager"),
+                    necessity_rationale=_ref("tc_rationale_credit_risk"),
+                ),
+                "sq": TruthNode(
+                    id="sq",
+                    activity=_ref("tc_activity_send_quotation"),
+                    actor=_ref("tc_actor_sales"),
+                    system=_ref("tc_system_email"),
+                ),
+                "me": TruthNode(
+                    id="me",
+                    activity=_ref("tc_activity_send_month_end_summary"),
+                    actor=_ref("tc_actor_sales"),
+                    system=_ref("tc_system_excel"),
+                    writes=[_ref("tc_excel_summary")],
+                ),
+            },
+            edges={
+                "e1": TruthEdge(id="e1", from_node="r", to_node="cc"),
+                "e2": TruthEdge(id="e2", from_node="cc", to_node="cq"),
+                "e3": TruthEdge(
+                    id="e3",
+                    from_node="cq",
+                    to_node="ap",
+                    condition=_ref("tc_cond_over_1m"),
+                ),
+                "e4": TruthEdge(
+                    id="e4",
+                    from_node="cq",
+                    to_node="sq",
+                    condition=_ref("tc_cond_at_or_below_1m"),
+                ),
+                "e5": TruthEdge(id="e5", from_node="ap", to_node="sq"),
+                "e6": TruthEdge(
+                    id="e6",
+                    from_node="cq",
+                    to_node="me",
+                    condition=_ref("tc_cond_month_end"),
+                ),
+            },
+            start_node_id="r",
+            end_node_ids=["sq", "me"],
+        ),
+        entry_node_ids=["r"],
+        exit_node_ids=["sq", "me"],
     )
 
 
@@ -296,18 +305,23 @@ def quotation_sales_filter() -> StakeholderFilter:
 
 
 def quotation_finance_filter() -> StakeholderFilter:
-    """A finance/audit stakeholder: sees the month-end tail with all its
-    properties but not the approval-branch credit-risk rationale."""
+    """A finance/audit stakeholder: sees the month-end tail and retains the
+    approval waypoint needed for safe topology projection, but does not know
+    most upstream/approval semantic properties."""
     return StakeholderFilter(
         name="finance",
-        visible_node_ids=["cq", "sq", "me"],
-        visible_edge_ids=["e4", "e6"],
+        # The approval node remains known as a structural waypoint; otherwise
+        # its conditioned branch could not be safely contracted.  Upstream
+        # serial nodes may still contract because all incident edge existence
+        # is known, while their semantic properties remain unknown.
+        visible_node_ids=["cq", "ap", "sq", "me"],
+        visible_edge_ids=["e1", "e2", "e3", "e4", "e5", "e6"],
         visible_node_attributes={
             "cq": ["activity", "actor", "system", "reads", "writes"],
             "sq": ["activity", "actor", "system", "reads", "writes"],
             "me": ["activity", "actor", "system", "reads", "writes", "rationale"],
         },
-        visible_edge_attributes={"e4": [], "e6": ["condition"]},
+        visible_edge_attributes={"e6": ["condition"]},
     )
 
 
@@ -367,113 +381,122 @@ def quotation_knowledge(locale: str = "en") -> StakeholderKnowledge:
 
 def lab_sample_truth() -> BusinessProcessGraph:
     """A non-quotation Truth graph (lab sample conditioning)."""
-    return BusinessProcessGraph(
-        id="lab",
-        name="Lab sample conditioning",
-        concepts={
-            "tc_activity_accession": _tconcept(
-                "tc_activity_accession",
-                "activity",
-                "Accession the specimen.",
-                ["specimen accession"],
-            ),
-            "tc_activity_seasoning": _tconcept(
-                "tc_activity_seasoning",
-                "activity",
-                "Season the environment chamber to prepare it.",
-                ["chamber seasoning"],
-            ),
-            "tc_activity_conditioning": _tconcept(
-                "tc_activity_conditioning",
-                "activity",
-                "Run the conditioning cycle on the samples.",
-                ["conditioning cycle"],
-            ),
-            "tc_activity_batch_approval": _tconcept(
-                "tc_activity_batch_approval",
-                "activity",
-                "Approve the conditioned batch.",
-                ["approve the conditioned batch"],
-            ),
-            "tc_actor_lab_tech": _tconcept(
-                "tc_actor_lab_tech", "actor", "The lab technician.", ["lab technician"]
-            ),
-            "tc_actor_lab_supervisor": _tconcept(
-                "tc_actor_lab_supervisor",
-                "actor",
-                "The lab supervisor.",
-                ["lab supervisor"],
-            ),
-            "tc_system_chamber": _tconcept(
-                "tc_system_chamber",
-                "system",
-                "The environment chamber.",
-                ["environment chamber"],
-            ),
-            "tc_sample": _tconcept("tc_sample", "data", "The raw sample.", ["sample"]),
-            "tc_accessioned_sample": _tconcept(
-                "tc_accessioned_sample",
-                "data",
-                "The accessioned sample.",
-                ["accessioned sample"],
-            ),
-            "tc_seasoned_chamber": _tconcept(
-                "tc_seasoned_chamber",
-                "data",
-                "The seasoned chamber.",
-                ["seasoned chamber"],
-            ),
-            "tc_conditioned_sample": _tconcept(
-                "tc_conditioned_sample",
-                "data",
-                "The conditioned sample.",
-                ["conditioned sample"],
-            ),
-            "tc_batch_approval": _tconcept(
-                "tc_batch_approval",
-                "data",
-                "The batch approval.",
-                ["batch approval"],
-            ),
-        },
-        nodes={
-            "n1": TruthNode(
-                id="n1",
-                activity=_ref("tc_activity_accession"),
-                actor=_ref("tc_actor_lab_tech"),
-                reads=[_ref("tc_sample")],
-                writes=[_ref("tc_accessioned_sample")],
-            ),
-            "n2": TruthNode(
-                id="n2",
-                activity=_ref("tc_activity_seasoning"),
-                actor=_ref("tc_actor_lab_tech"),
-                system=_ref("tc_system_chamber"),
-                writes=[_ref("tc_seasoned_chamber")],
-            ),
-            "n3": TruthNode(
-                id="n3",
-                activity=_ref("tc_activity_conditioning"),
-                actor=_ref("tc_actor_lab_tech"),
-                system=_ref("tc_system_chamber"),
-                reads=[_ref("tc_accessioned_sample")],
-                writes=[_ref("tc_conditioned_sample")],
-            ),
-            "n4": TruthNode(
-                id="n4",
-                activity=_ref("tc_activity_batch_approval"),
-                actor=_ref("tc_actor_lab_supervisor"),
-                reads=[_ref("tc_conditioned_sample")],
-                writes=[_ref("tc_batch_approval")],
-            ),
-        },
-        edges={
-            "l1": TruthEdge(id="l1", from_node="n1", to_node="n2"),
-            "l2": TruthEdge(id="l2", from_node="n2", to_node="n3"),
-            "l3": TruthEdge(id="l3", from_node="n3", to_node="n4"),
-        },
-        start_node_id="n1",
-        end_node_ids=["n4"],
+    return canonicalize_truth_graph(
+        BusinessProcessGraph(
+            id="lab",
+            name="Lab sample conditioning",
+            concepts={
+                "tc_activity_accession": _tconcept(
+                    "tc_activity_accession",
+                    "activity",
+                    "Accession the specimen.",
+                    ["specimen accession"],
+                ),
+                "tc_activity_seasoning": _tconcept(
+                    "tc_activity_seasoning",
+                    "activity",
+                    "Season the environment chamber to prepare it.",
+                    ["chamber seasoning"],
+                ),
+                "tc_activity_conditioning": _tconcept(
+                    "tc_activity_conditioning",
+                    "activity",
+                    "Run the conditioning cycle on the samples.",
+                    ["conditioning cycle"],
+                ),
+                "tc_activity_batch_approval": _tconcept(
+                    "tc_activity_batch_approval",
+                    "activity",
+                    "Approve the conditioned batch.",
+                    ["approve the conditioned batch"],
+                ),
+                "tc_actor_lab_tech": _tconcept(
+                    "tc_actor_lab_tech",
+                    "actor",
+                    "The lab technician.",
+                    ["lab technician"],
+                ),
+                "tc_actor_lab_supervisor": _tconcept(
+                    "tc_actor_lab_supervisor",
+                    "actor",
+                    "The lab supervisor.",
+                    ["lab supervisor"],
+                ),
+                "tc_system_chamber": _tconcept(
+                    "tc_system_chamber",
+                    "system",
+                    "The environment chamber.",
+                    ["environment chamber"],
+                ),
+                "tc_sample": _tconcept(
+                    "tc_sample", "data", "The raw sample.", ["sample"]
+                ),
+                "tc_accessioned_sample": _tconcept(
+                    "tc_accessioned_sample",
+                    "data",
+                    "The accessioned sample.",
+                    ["accessioned sample"],
+                ),
+                "tc_seasoned_chamber": _tconcept(
+                    "tc_seasoned_chamber",
+                    "data",
+                    "The seasoned chamber.",
+                    ["seasoned chamber"],
+                ),
+                "tc_conditioned_sample": _tconcept(
+                    "tc_conditioned_sample",
+                    "data",
+                    "The conditioned sample.",
+                    ["conditioned sample"],
+                ),
+                "tc_batch_approval": _tconcept(
+                    "tc_batch_approval",
+                    "data",
+                    "The batch approval.",
+                    ["batch approval"],
+                ),
+            },
+            nodes={
+                "n1": TruthNode(
+                    id="n1",
+                    activity=_ref("tc_activity_accession"),
+                    actor=_ref("tc_actor_lab_tech"),
+                    reads=[_ref("tc_sample")],
+                    writes=[_ref("tc_accessioned_sample")],
+                ),
+                "n2": TruthNode(
+                    id="n2",
+                    activity=_ref("tc_activity_seasoning"),
+                    actor=_ref("tc_actor_lab_tech"),
+                    system=_ref("tc_system_chamber"),
+                    writes=[_ref("tc_seasoned_chamber")],
+                ),
+                "n3": TruthNode(
+                    id="n3",
+                    activity=_ref("tc_activity_conditioning"),
+                    actor=_ref("tc_actor_lab_tech"),
+                    system=_ref("tc_system_chamber"),
+                    reads=[_ref("tc_accessioned_sample")],
+                    writes=[_ref("tc_conditioned_sample")],
+                ),
+                "n4": TruthNode(
+                    id="n4",
+                    activity=_ref("tc_activity_batch_approval"),
+                    actor=_ref("tc_actor_lab_supervisor"),
+                    reads=[_ref("tc_conditioned_sample")],
+                    writes=[_ref("tc_batch_approval")],
+                ),
+            },
+            edges={
+                "l1": TruthEdge(id="l1", from_node="n1", to_node="n2"),
+                "l2": TruthEdge(id="l2", from_node="n2", to_node="n3"),
+                "l3": TruthEdge(id="l3", from_node="n3", to_node="n4"),
+            },
+            start_node_id="n1",
+            end_node_ids=["n4"],
+        ),
+        entry_node_ids=["n1"],
+        exit_node_ids=["n4"],
     )
 
 

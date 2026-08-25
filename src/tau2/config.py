@@ -1,3 +1,10 @@
+"""Central tau2 configuration and provider-selection helpers."""
+
+from __future__ import annotations
+
+import os
+from typing import Any
+
 # =============================================================================
 # SIMULATION DEFAULTS (overridable via CLI)
 # =============================================================================
@@ -30,6 +37,98 @@ DEFAULT_LLM_ENV_INTERFACE_TEMPERATURE = 0.0
 DEFAULT_LLM_ENV_INTERFACE_ARGS = {"temperature": DEFAULT_LLM_ENV_INTERFACE_TEMPERATURE}
 
 DEFAULT_LLM_EVAL_USER_SIMULATOR = "claude-opus-4-5"
+
+# OpenRouter routing for bare OpenAI-compatible model names.  This is
+# intentionally environment-driven so existing explicit provider-qualified
+# model names keep their current behavior.
+OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
+_OPENROUTER_FALSE_VALUES = {"0", "false", "no", "off"}
+_OPENROUTER_TRUE_VALUES = {"1", "true", "yes", "on"}
+_OPENROUTER_MODEL_ALIASES = {"gpt-4.1-2025-04-14": "gpt-4.1"}
+
+
+def openrouter_for_openai_enabled(*, explicit_api_key: str | None = None) -> bool:
+    """Return whether bare OpenAI model names should use OpenRouter.
+
+    ``TAU2_USE_OPENROUTER_FOR_OPENAI`` explicitly overrides automatic
+    selection.  Otherwise OpenRouter wins when its key is configured and no
+    direct ``OPENAI_API_KEY`` is present.
+    """
+    override = os.getenv("TAU2_USE_OPENROUTER_FOR_OPENAI")
+    if override is not None:
+        normalized = override.strip().lower()
+        if normalized in _OPENROUTER_TRUE_VALUES:
+            return True
+        if normalized in _OPENROUTER_FALSE_VALUES:
+            return False
+        raise ValueError(
+            "TAU2_USE_OPENROUTER_FOR_OPENAI must be one of "
+            "0/1, false/true, no/yes, or off/on"
+        )
+    if explicit_api_key is not None:
+        return False
+    return bool(os.getenv("OPENROUTER_API_KEY")) and not bool(
+        os.getenv("OPENAI_API_KEY")
+    )
+
+
+def is_bare_openai_model(model: str) -> bool:
+    """Return whether ``model`` is an unqualified OpenAI model id."""
+    if not isinstance(model, str) or not model.strip() or "/" in model:
+        return False
+    normalized = model.strip().lower()
+    return normalized.startswith(
+        ("gpt-", "o1", "o3", "o4", "chatgpt-", "text-embedding-")
+    )
+
+
+def resolve_openrouter_model(
+    model: str,
+    *,
+    explicit_api_key: str | None = None,
+) -> str:
+    """Qualify a bare OpenAI model for LiteLLM/OpenRouter when enabled."""
+    if not is_bare_openai_model(model) or not openrouter_for_openai_enabled(
+        explicit_api_key=explicit_api_key
+    ):
+        return model
+    model_id = _OPENROUTER_MODEL_ALIASES.get(model.strip(), model.strip())
+    return f"openrouter/openai/{model_id}"
+
+
+def resolve_openai_compatible_model(
+    model: str,
+    *,
+    explicit_api_key: str | None = None,
+) -> str:
+    """Qualify a model for the raw OpenAI SDK/OpenRouter endpoint."""
+    if model.startswith("openrouter/"):
+        return model.removeprefix("openrouter/")
+    if not is_bare_openai_model(model) or not openrouter_for_openai_enabled(
+        explicit_api_key=explicit_api_key
+    ):
+        return model
+    model_id = _OPENROUTER_MODEL_ALIASES.get(model.strip(), model.strip())
+    return f"openai/{model_id}"
+
+
+def openai_client_kwargs(*, api_key: str | None = None) -> dict[str, Any]:
+    """Build direct OpenAI or OpenRouter-compatible OpenAI SDK kwargs."""
+    if openrouter_for_openai_enabled(explicit_api_key=api_key):
+        kwargs: dict[str, Any] = {
+            "api_key": os.getenv("OPENROUTER_API_KEY"),
+            "base_url": OPENROUTER_API_BASE,
+        }
+        headers: dict[str, str] = {}
+        if referer := os.getenv("OPENROUTER_HTTP_REFERER"):
+            headers["HTTP-Referer"] = referer
+        if title := os.getenv("OPENROUTER_APP_TITLE"):
+            headers["X-Title"] = title
+        if headers:
+            kwargs["default_headers"] = headers
+        return kwargs
+    return {"api_key": api_key or os.getenv("OPENAI_API_KEY")}
+
 
 # LLM debug logging
 DEFAULT_LLM_LOG_MODE = "latest"  # Options: "all", "latest"

@@ -55,6 +55,7 @@ remain simulator/evidence diagnostics; none of the text fields are
 interpreted as hidden provenance for reconstruction.
 """
 
+from collections import deque
 from typing import Any, Generic, Literal, Optional, Protocol, TypeVar, Union
 
 from pydantic import BaseModel, Field, field_validator
@@ -62,6 +63,21 @@ from pydantic import BaseModel, Field, field_validator
 from tau2.environment.db import DB
 
 C = TypeVar("C")
+
+# Canonical Truth/Stakeholder boundary identifiers.  The explicit node and
+# edge metadata below is authoritative; these constants only provide stable
+# serialization anchors and collision detection.
+STRUCTURAL_SOURCE_ID = "__tau2_structural_source__"
+STRUCTURAL_SINK_ID = "__tau2_structural_sink__"
+# Descriptive aliases for callers that prefer the node-oriented names.
+STRUCTURAL_SOURCE_NODE_ID = STRUCTURAL_SOURCE_ID
+STRUCTURAL_SINK_NODE_ID = STRUCTURAL_SINK_ID
+SOURCE_NODE_ID = STRUCTURAL_SOURCE_ID
+SINK_NODE_ID = STRUCTURAL_SINK_ID
+STRUCTURAL_BOUNDARY_EDGE_PREFIX = "__tau2_structural_boundary__"
+
+StructuralRole = Literal["source", "sink"]
+TruthEdgeKind = Literal["business", "structural_boundary", "shortcut"]
 
 
 class _NodeProto(Protocol):
@@ -476,6 +492,9 @@ class _GraphMixin(BaseModel, Generic[C]):
                 )
         if self.start_node_id is not None and self.start_node_id not in self.nodes:
             errors.append(f"start node not found: {self.start_node_id}")
+        for sid in getattr(self, "start_node_ids", []):
+            if sid not in self.nodes:
+                errors.append(f"start node not found: {sid}")
         for eid in self.end_node_ids:
             if eid not in self.nodes:
                 errors.append(f"end node not found: {eid}")
@@ -536,6 +555,17 @@ class TruthNode(BaseModel):
     reads: Optional[list[ConceptRef]] = None
     writes: Optional[list[ConceptRef]] = None
     necessity_rationale: Optional[ConceptRef] = None
+    # Explicit structural typing.  A structural node has no business
+    # semantics; its role is part of the graph contract, not inferred from an
+    # id or from topology alone.
+    structural: bool = False
+    structural_role: Optional[StructuralRole] = None
+    protected: bool = False
+
+    @property
+    def is_structural(self) -> bool:
+        """Whether this is the explicit canonical SOURCE or SINK node."""
+        return self.structural or self.structural_role is not None
 
     def refs(self, property_name: str) -> list[ConceptRef]:
         """The concept refs of a Truth property slot (single or list)."""
@@ -575,6 +605,20 @@ class TruthEdge(BaseModel):
     from_node: str
     to_node: str
     condition: Optional[ConceptRef] = None
+    # ``structural_boundary`` edges are SOURCE/entry and exit/SINK edges.
+    # ``shortcut`` edges are evaluator-private derived relations produced by
+    # safe stakeholder contraction; neither is a business semantic edge.
+    edge_kind: TruthEdgeKind = "business"
+    structural_only: bool = False
+    protected: bool = False
+    is_shortcut: bool = False
+    contracted_nodes: list[str] = Field(default_factory=list)
+    derived_from_edges: list[str] = Field(default_factory=list)
+
+    @property
+    def is_structural(self) -> bool:
+        """Whether the edge is excluded from ordinary business scoring."""
+        return self.structural_only or self.edge_kind == "structural_boundary"
 
     def condition_evidence(self) -> list[EvidenceRef]:
         """Truth edges carry no evidence; always empty."""
@@ -582,16 +626,460 @@ class TruthEdge(BaseModel):
 
 
 class BusinessProcessGraph(_GraphMixin[TruthConcept]):
-    """The Truth: nodes, edges and the TruthConcept glossary.
+    """The canonical Truth graph.
 
-    The graph itself is the semantic model — there are no generated claims.
-    Node/edge ids are Truth-local and stable; every addressable element has a
-    semantic ID (see module docstring). Truth slots are two-valued
-    (``ConceptRef | None``); there is no Agent four-state semantics here.
+    A production Truth graph contains exactly one explicitly typed SOURCE and
+    exactly one explicitly typed SINK.  Business entry/exit nodes are ordinary
+    nodes connected to those boundary nodes by ``structural_boundary`` edges.
+    The boundary nodes/edges are structural-only and must not enter business
+    node/edge scoring denominators.
+
+    ``start_node_id`` / ``end_node_ids`` remain on the shared graph surface for
+    the Agent reconstruction model and old diagnostic readers, but they are
+    not Truth semantics.  ``source_node_id`` / ``sink_node_id`` and the typed
+    node/edge metadata below are authoritative for Truth.
     """
 
     nodes: dict[str, TruthNode] = Field(default_factory=dict)
     edges: dict[str, TruthEdge] = Field(default_factory=dict)
+    source_node_id: str = STRUCTURAL_SOURCE_ID
+    sink_node_id: str = STRUCTURAL_SINK_ID
+
+    def structure_errors(self) -> list[str]:
+        """Return internal and canonical Truth invariant errors."""
+        return super().structure_errors() + canonical_structure_errors(self)
+
+    @property
+    def business_entry_node_ids(self) -> tuple[str, ...]:
+        return business_entry_node_ids(self)
+
+    @property
+    def business_exit_node_ids(self) -> tuple[str, ...]:
+        return business_exit_node_ids(self)
+
+    @property
+    def business_node_ids(self) -> tuple[str, ...]:
+        return tuple(business_node_ids(self))
+
+    @property
+    def business_edge_ids(self) -> tuple[str, ...]:
+        return tuple(business_edge_ids(self))
+
+
+# Public name used by the canonical contract documentation; the historical
+# implementation name remains available for domain callers.
+TruthGraph = BusinessProcessGraph
+
+
+# ---------------------------------------------------------------------------
+# Canonical graph contract
+# ---------------------------------------------------------------------------
+
+
+def node_is_structural(node: Any) -> bool:
+    """Return whether a node carries explicit structural metadata."""
+    return bool(
+        getattr(node, "structural", False)
+        or getattr(node, "structural_role", None) is not None
+        or getattr(node, "is_structural", False)
+    )
+
+
+def edge_is_structural(edge: Any) -> bool:
+    """Return whether an edge is structural-only, never a business relation."""
+    return bool(
+        getattr(edge, "structural_only", False)
+        or getattr(edge, "edge_kind", None) == "structural_boundary"
+        or getattr(edge, "is_structural", False)
+    )
+
+
+def _graph_node_ids(graph: Any) -> set[str]:
+    return set(getattr(graph, "nodes", {}))
+
+
+def _valid_adjacency(
+    graph: Any,
+) -> tuple[dict[str, set[str]], dict[str, set[str]], list[str]]:
+    """Build directed adjacency while reporting dangling edge ids."""
+    nodes = _graph_node_ids(graph)
+    adjacency = {node_id: set() for node_id in nodes}
+    reverse = {node_id: set() for node_id in nodes}
+    dangling: list[str] = []
+    for edge_id, edge in getattr(graph, "edges", {}).items():
+        if edge.from_node not in nodes or edge.to_node not in nodes:
+            dangling.append(edge_id)
+            continue
+        adjacency[edge.from_node].add(edge.to_node)
+        reverse[edge.to_node].add(edge.from_node)
+    return adjacency, reverse, sorted(dangling)
+
+
+def _reachable(starts: set[str], adjacency: dict[str, set[str]]) -> set[str]:
+    reached = set(starts)
+    queue = deque(sorted(reached))
+    while queue:
+        node_id = queue.popleft()
+        for successor in sorted(adjacency.get(node_id, ())):
+            if successor not in reached:
+                reached.add(successor)
+                queue.append(successor)
+    return reached
+
+
+def canonical_structure_errors(graph: Any) -> list[str]:
+    """Validate the explicit single-SOURCE/single-SINK graph contract.
+
+    The validator is deliberately independent of insertion order and of
+    business node/edge ids.  It rejects dangling/disconnected topology,
+    topology-derived extra sources/sinks, unprotected boundary elements, and
+    structural elements carrying business semantics.  It is usable for both
+    ``BusinessProcessGraph`` and ``StakeholderKnowledgeGraph``.
+    """
+    nodes = getattr(graph, "nodes", {})
+    edges = getattr(graph, "edges", {})
+    source_id = getattr(graph, "source_node_id", None)
+    sink_id = getattr(graph, "sink_node_id", None)
+    errors: list[str] = []
+    if not nodes:
+        return ["canonical graph must contain at least one business node"]
+    if source_id is None or sink_id is None:
+        return ["canonical graph must declare source_node_id and sink_node_id"]
+    if source_id == sink_id:
+        errors.append("SOURCE and SINK must be distinct")
+
+    source_roles = sorted(
+        node_id
+        for node_id, node in nodes.items()
+        if getattr(node, "structural_role", None) == "source"
+    )
+    sink_roles = sorted(
+        node_id
+        for node_id, node in nodes.items()
+        if getattr(node, "structural_role", None) == "sink"
+    )
+    if source_roles != [source_id]:
+        errors.append(
+            f"expected exactly one structural SOURCE {source_id!r}; "
+            f"found role nodes {source_roles!r}"
+        )
+    if sink_roles != [sink_id]:
+        errors.append(
+            f"expected exactly one structural SINK {sink_id!r}; "
+            f"found role nodes {sink_roles!r}"
+        )
+    if source_id not in nodes:
+        errors.append(f"structural SOURCE node not found: {source_id}")
+    if sink_id not in nodes:
+        errors.append(f"structural SINK node not found: {sink_id}")
+
+    for node_id, node in nodes.items():
+        if node_is_structural(node):
+            if node_id not in {source_id, sink_id}:
+                errors.append(f"unexpected structural node: {node_id}")
+            if not getattr(node, "protected", False):
+                errors.append(f"structural node is not protected: {node_id}")
+            # Structural nodes cannot smuggle business facts into the Truth.
+            for prop in (
+                "activity",
+                "actor",
+                "system",
+                "reads",
+                "writes",
+                "necessity_rationale",
+            ):
+                value = getattr(node, prop, None)
+                if value not in (None, [], ()):
+                    errors.append(
+                        f"structural node {node_id}: semantic property {prop} is set"
+                    )
+        elif getattr(node, "structural_role", None) is not None:
+            errors.append(f"business node {node_id} has a structural role")
+
+    adjacency, reverse, dangling = _valid_adjacency(graph)
+    if dangling:
+        errors.append(f"dangling edges: {dangling!r}")
+    incoming = {node_id: len(reverse[node_id]) for node_id in nodes}
+    outgoing = {node_id: len(adjacency[node_id]) for node_id in nodes}
+    topology_sources = sorted(
+        node_id for node_id, degree in incoming.items() if degree == 0
+    )
+    topology_sinks = sorted(
+        node_id for node_id, degree in outgoing.items() if degree == 0
+    )
+    if topology_sources != [source_id]:
+        errors.append(
+            f"topology sources must be exactly [SOURCE]; found {topology_sources!r}"
+        )
+    if topology_sinks != [sink_id]:
+        errors.append(
+            f"topology sinks must be exactly [SINK]; found {topology_sinks!r}"
+        )
+    if source_id in incoming and incoming[source_id] != 0:
+        errors.append("SOURCE must have indegree 0")
+    if sink_id in outgoing and outgoing[sink_id] != 0:
+        errors.append("SINK must have outdegree 0")
+
+    business_nodes = set(nodes) - {source_id, sink_id}
+    if not business_nodes:
+        errors.append("canonical graph must contain at least one business node")
+    reachable = _reachable({source_id} if source_id in nodes else set(), adjacency)
+    can_reach_sink = _reachable({sink_id} if sink_id in nodes else set(), reverse)
+    missing_from_source = sorted(business_nodes - reachable)
+    missing_sink_path = sorted(business_nodes - can_reach_sink)
+    if missing_from_source:
+        errors.append(f"business nodes not SOURCE-reachable: {missing_from_source!r}")
+    if missing_sink_path:
+        errors.append(f"business nodes cannot reach SINK: {missing_sink_path!r}")
+    isolated = sorted(
+        node_id
+        for node_id in business_nodes
+        if incoming.get(node_id, 0) == 0 and outgoing.get(node_id, 0) == 0
+    )
+    if isolated:
+        errors.append(f"isolated business nodes: {isolated!r}")
+
+    structural_edge_ids: set[str] = set()
+    for edge_id, edge in edges.items():
+        structural = edge_is_structural(edge)
+        if structural:
+            structural_edge_ids.add(edge_id)
+            if not getattr(edge, "protected", False):
+                errors.append(f"structural edge is not protected: {edge_id}")
+            if getattr(edge, "condition", None) is not None:
+                errors.append(f"structural edge must be unconditional: {edge_id}")
+            valid_boundary = (
+                edge.from_node == source_id and edge.to_node in business_nodes
+            ) or (edge.to_node == sink_id and edge.from_node in business_nodes)
+            if not valid_boundary:
+                errors.append(
+                    f"structural edge is not a SOURCE/entry or exit/SINK boundary: {edge_id}"
+                )
+        elif edge.from_node in {source_id, sink_id} or edge.to_node in {
+            source_id,
+            sink_id,
+        }:
+            errors.append(f"non-structural edge touches SOURCE/SINK: {edge_id}")
+    if source_id in nodes and not any(
+        edge_id in structural_edge_ids and edges[edge_id].from_node == source_id
+        for edge_id in edges
+    ):
+        errors.append("SOURCE must have at least one protected boundary edge")
+    if sink_id in nodes and not any(
+        edge_id in structural_edge_ids and edges[edge_id].to_node == sink_id
+        for edge_id in edges
+    ):
+        errors.append("SINK must have at least one protected boundary edge")
+    return errors
+
+
+def validate_canonical_graph(graph: Any) -> None:
+    """Raise ``ValueError`` unless ``graph`` satisfies the canonical contract."""
+    errors = canonical_structure_errors(graph)
+    if errors:
+        raise ValueError("Invalid canonical graph:\n- " + "\n- ".join(errors))
+
+
+def business_node_ids(graph: Any) -> list[str]:
+    """Return business node ids, excluding explicit structural nodes."""
+    return sorted(
+        node_id
+        for node_id, node in getattr(graph, "nodes", {}).items()
+        if not node_is_structural(node)
+    )
+
+
+def business_edge_ids(graph: Any) -> list[str]:
+    """Return business edge ids, excluding structural-only boundary edges."""
+    return sorted(
+        edge_id
+        for edge_id, edge in getattr(graph, "edges", {}).items()
+        if not edge_is_structural(edge)
+    )
+
+
+def business_entry_node_ids(graph: Any) -> tuple[str, ...]:
+    """Return canonical business entries (SOURCE's direct successors)."""
+    source_id = getattr(graph, "source_node_id", None)
+    if source_id in getattr(graph, "nodes", {}):
+        return tuple(
+            sorted(
+                {
+                    edge.to_node
+                    for edge in getattr(graph, "edges", {}).values()
+                    if edge.from_node == source_id
+                    and edge.to_node in business_node_ids(graph)
+                }
+            )
+        )
+    legacy = getattr(graph, "start_node_id", None)
+    return (legacy,) if legacy is not None else tuple()
+
+
+def business_exit_node_ids(graph: Any) -> tuple[str, ...]:
+    """Return canonical business exits (SINK's direct predecessors)."""
+    sink_id = getattr(graph, "sink_node_id", None)
+    if sink_id in getattr(graph, "nodes", {}):
+        return tuple(
+            sorted(
+                {
+                    edge.from_node
+                    for edge in getattr(graph, "edges", {}).values()
+                    if edge.to_node == sink_id
+                    and edge.from_node in business_node_ids(graph)
+                }
+            )
+        )
+    return tuple(sorted(set(getattr(graph, "end_node_ids", []))))
+
+
+def business_graph_projection(graph: Any) -> Any:
+    """Copy a canonical graph with structural elements removed for scoring.
+
+    The projection intentionally carries no structural node/edge denominator;
+    its legacy endpoint fields are populated only as a diagnostic business
+    entry/exit view.  The input graph is never mutated.
+    """
+    if not getattr(graph, "source_node_id", None):
+        return graph
+    projected = graph.model_copy(deep=True)
+    projected.nodes = {
+        node_id: node
+        for node_id, node in graph.nodes.items()
+        if not node_is_structural(node)
+    }
+    projected.edges = {
+        edge_id: edge
+        for edge_id, edge in graph.edges.items()
+        if not edge_is_structural(edge)
+    }
+    entries = business_entry_node_ids(graph)
+    exits = business_exit_node_ids(graph)
+    projected.start_node_id = entries[0] if len(entries) == 1 else None
+    projected.end_node_ids = list(exits)
+    return projected
+
+
+def _boundary_edge_id(side: str, ordinal: int) -> str:
+    return f"{STRUCTURAL_BOUNDARY_EDGE_PREFIX}{side}_{ordinal:03d}"
+
+
+def canonicalize_truth_graph(
+    graph: BusinessProcessGraph,
+    *,
+    entry_node_ids: Optional[list[str]] = None,
+    exit_node_ids: Optional[list[str]] = None,
+) -> BusinessProcessGraph:
+    """Return a canonical copy with explicit SOURCE/SINK boundaries.
+
+    This helper is used for fixture migration and deterministic scenario
+    construction.  It never invents business relations: it only adds typed,
+    protected, unconditional boundary edges.  Entry/exit ids are sorted before
+    boundary edge allocation, so insertion order cannot affect the result.
+    """
+    has_structural_metadata = any(
+        node_is_structural(node) for node in graph.nodes.values()
+    ) or any(edge_is_structural(edge) for edge in graph.edges.values())
+    if has_structural_metadata:
+        # A graph that already advertises structural elements is either
+        # canonical or invalid; never silently repair it while canonicalizing.
+        validate_canonical_graph(graph)
+    business_nodes = {
+        node_id: node
+        for node_id, node in graph.nodes.items()
+        if not node_is_structural(node)
+    }
+    business_edges = {
+        edge_id: edge
+        for edge_id, edge in graph.edges.items()
+        if not edge_is_structural(edge)
+    }
+    node_ids = set(business_nodes)
+    if entry_node_ids is None:
+        if has_structural_metadata:
+            entry_node_ids = list(business_entry_node_ids(graph))
+        else:
+            legacy_start = getattr(graph, "start_node_id", None)
+            entry_node_ids = [legacy_start] if legacy_start in node_ids else None
+    if exit_node_ids is None:
+        if has_structural_metadata:
+            exit_node_ids = list(business_exit_node_ids(graph))
+        else:
+            legacy_ends = [
+                node_id
+                for node_id in getattr(graph, "end_node_ids", [])
+                if node_id in node_ids
+            ]
+            exit_node_ids = legacy_ends or None
+    adjacency = {node_id: set() for node_id in node_ids}
+    reverse = {node_id: set() for node_id in node_ids}
+    for edge in business_edges.values():
+        if edge.from_node in node_ids and edge.to_node in node_ids:
+            adjacency[edge.from_node].add(edge.to_node)
+            reverse[edge.to_node].add(edge.from_node)
+    if entry_node_ids is None:
+        entry_node_ids = sorted(node_id for node_id in node_ids if not reverse[node_id])
+    if exit_node_ids is None:
+        exit_node_ids = sorted(
+            node_id for node_id in node_ids if not adjacency[node_id]
+        )
+    entries = sorted(set(entry_node_ids))
+    exits = sorted(set(exit_node_ids))
+    if not entries or not exits:
+        raise ValueError(
+            "cannot canonicalize a graph without explicit entries and exits"
+        )
+    if any(node_id not in node_ids for node_id in entries + exits):
+        raise ValueError("canonical boundary references an unknown business node")
+    if STRUCTURAL_SOURCE_ID in node_ids or STRUCTURAL_SINK_ID in node_ids:
+        raise ValueError("business graph uses a reserved structural node id")
+    if any(
+        edge_id.startswith(STRUCTURAL_BOUNDARY_EDGE_PREFIX)
+        for edge_id in business_edges
+    ):
+        raise ValueError("business graph uses a reserved structural edge id")
+
+    canonical = graph.model_copy(deep=True)
+    canonical.nodes = dict(business_nodes)
+    canonical.edges = dict(business_edges)
+    canonical.nodes[STRUCTURAL_SOURCE_ID] = TruthNode(
+        id=STRUCTURAL_SOURCE_ID,
+        structural=True,
+        structural_role="source",
+        protected=True,
+    )
+    canonical.nodes[STRUCTURAL_SINK_ID] = TruthNode(
+        id=STRUCTURAL_SINK_ID,
+        structural=True,
+        structural_role="sink",
+        protected=True,
+    )
+    for ordinal, node_id in enumerate(entries, 1):
+        edge_id = _boundary_edge_id("source", ordinal)
+        canonical.edges[edge_id] = TruthEdge(
+            id=edge_id,
+            from_node=STRUCTURAL_SOURCE_ID,
+            to_node=node_id,
+            edge_kind="structural_boundary",
+            structural_only=True,
+            protected=True,
+        )
+    for ordinal, node_id in enumerate(exits, 1):
+        edge_id = _boundary_edge_id("sink", ordinal)
+        canonical.edges[edge_id] = TruthEdge(
+            id=edge_id,
+            from_node=node_id,
+            to_node=STRUCTURAL_SINK_ID,
+            edge_kind="structural_boundary",
+            structural_only=True,
+            protected=True,
+        )
+    canonical.source_node_id = STRUCTURAL_SOURCE_ID
+    canonical.sink_node_id = STRUCTURAL_SINK_ID
+    canonical.start_node_id = None
+    canonical.end_node_ids = []
+    validate_canonical_graph(canonical)
+    return canonical
 
 
 # ---------------------------------------------------------------------------
@@ -641,6 +1129,9 @@ class AgentGraph(_GraphMixin[AgentConcept]):
 
     nodes: dict[str, Node] = Field(default_factory=dict)
     edges: dict[str, Edge] = Field(default_factory=dict)
+    # Multiple business entries are representable in the Agent graph too;
+    # ``start_node_id`` remains a single-entry convenience for old tool calls.
+    start_node_ids: list[str] = Field(default_factory=list)
 
     terminology_agreements: list[TerminologyAgreement] = Field(default_factory=list)
 

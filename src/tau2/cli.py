@@ -1,5 +1,6 @@
 import argparse
 import json
+from typing import Any
 
 from tau2.config import (
     DEFAULT_AGENT_IMPLEMENTATION,
@@ -75,7 +76,11 @@ def add_run_args(parser):
         "--agent-llm",
         type=str,
         default=DEFAULT_LLM_AGENT,
-        help=f"The LLM to use for the agent. Default is {DEFAULT_LLM_AGENT}.",
+        help=(
+            f"The LLM to use for the agent. Default is {DEFAULT_LLM_AGENT}. "
+            "Bare OpenAI ids use OpenRouter when OPENROUTER_API_KEY is set "
+            "without OPENAI_API_KEY."
+        ),
     )
     parser.add_argument(
         "--agent-llm-args",
@@ -94,7 +99,11 @@ def add_run_args(parser):
         "--user-llm",
         type=str,
         default=DEFAULT_LLM_USER,
-        help=f"The LLM to use for the user. Default is {DEFAULT_LLM_USER}.",
+        help=(
+            f"The LLM to use for the user. Default is {DEFAULT_LLM_USER}. "
+            "Bare OpenAI ids use OpenRouter when OPENROUTER_API_KEY is set "
+            "without OPENAI_API_KEY."
+        ),
     )
     parser.add_argument(
         "--user-llm-args",
@@ -396,8 +405,8 @@ def add_run_args(parser):
         help=(
             "Knowledge retrieval config name (banking_knowledge domain). "
             "Offline: no_knowledge, full_kb, golden_retrieval, bm25, bm25_grep, grep_only. "
-            "Requires OPENAI_API_KEY: openai_embeddings*, alltools. "
-            "Requires OPENROUTER_API_KEY: qwen_embeddings*, alltools-qwen. "
+            "Requires OPENROUTER_API_KEY (or legacy OPENAI_API_KEY): "
+            "openai_embeddings*, alltools, qwen_embeddings*, alltools-qwen. "
             "Requires sandbox-runtime: terminal_use*, alltools, alltools-qwen. "
             "Default for banking_knowledge: alltools (BM25 + dense + shell)."
         ),
@@ -656,7 +665,7 @@ def main():
         set_llm_log_mode(args.llm_log_mode)
 
         # Shared config kwargs
-        shared_kwargs = dict(
+        shared_kwargs: dict[str, Any] = dict(
             domain=args.domain,
             task_set_name=args.task_set_name,
             task_split_name=args.task_split_name,
@@ -1238,7 +1247,10 @@ def run_convert_results(args):
             backup_dir = meta_path.parent / "simulations.bak"
             if sims_dir.exists():
                 if backup_dir.exists():
-                    shutil.rmtree(backup_dir)
+                    try:
+                        shutil.rmtree(backup_dir)
+                    except FileNotFoundError:
+                        pass
                 shutil.copytree(sims_dir, backup_dir)
             backup = meta_path.with_suffix(".json.bak")
             shutil.copy2(meta_path, backup)
@@ -1252,7 +1264,10 @@ def run_convert_results(args):
         sims_dir = meta_path.parent / "simulations"
         results.save(meta_path, format="json")
         if sims_dir.exists():
-            shutil.rmtree(sims_dir)
+            try:
+                shutil.rmtree(sims_dir)
+            except FileNotFoundError:
+                pass
 
     n = len(results.simulations)
     print(f"  Done. {n} simulation(s) converted to '{target_fmt}' format.")

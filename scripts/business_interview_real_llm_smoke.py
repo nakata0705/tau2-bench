@@ -168,8 +168,11 @@ def graph_to_dict(graph) -> dict:
     return {
         "id": graph.id,
         "name": graph.name,
-        "start_node_id": graph.start_node_id,
-        "end_node_ids": list(graph.end_node_ids),
+        "source_node_id": getattr(graph, "source_node_id", None),
+        "sink_node_id": getattr(graph, "sink_node_id", None),
+        "start_node_id": getattr(graph, "start_node_id", None),
+        "start_node_ids": list(getattr(graph, "start_node_ids", []) or []),
+        "end_node_ids": list(getattr(graph, "end_node_ids", []) or []),
         "concepts": {
             cid: {
                 "id": concept.id,
@@ -199,6 +202,9 @@ def graph_to_dict(graph) -> dict:
                 "reads": _render_list_slot(node.reads),
                 "writes": _render_list_slot(node.writes),
                 "necessity_rationale": _render_ref(node.necessity_rationale),
+                "structural": bool(getattr(node, "is_structural", False)),
+                "structural_role": getattr(node, "structural_role", None),
+                "protected": bool(getattr(node, "protected", False)),
             }
             for nid, node in graph.nodes.items()
         },
@@ -208,6 +214,14 @@ def graph_to_dict(graph) -> dict:
                 "from_node": edge.from_node,
                 "to_node": edge.to_node,
                 "condition": _render_ref(edge.condition),
+                "edge_kind": getattr(edge, "edge_kind", "business"),
+                "structural_only": bool(getattr(edge, "is_structural", False)),
+                "protected": bool(getattr(edge, "protected", False)),
+                "is_shortcut": bool(getattr(edge, "is_shortcut", False)),
+                "contracted_nodes": list(getattr(edge, "contracted_nodes", []) or []),
+                "derived_from_edges": list(
+                    getattr(edge, "derived_from_edges", []) or []
+                ),
                 "evidence": _render_evidence(getattr(edge, "evidence", None) or []),
             }
             for eid, edge in graph.edges.items()

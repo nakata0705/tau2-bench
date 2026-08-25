@@ -3,9 +3,13 @@
 Exercises the full path: variant name -> resolve_variant -> build_tools ->
 tool invocation -> output, with a hard-coded 5-doc corpus.
 
-BM25/grep variants run offline.  Embedding variants hit real APIs and are
-gated by OPENAI_API_KEY / OPENROUTER_API_KEY env vars.
+BM25/grep variants run offline.  Embedding variants hit real APIs and are gated by
+OPENROUTER_API_KEY (or the legacy direct OPENAI_API_KEY) env vars.
 """
+
+# KnowledgeTools installs variant-specific methods dynamically; optional task
+# fixture fields are likewise populated by task data at runtime.
+# pyright: reportAttributeAccessIssue=false, reportOptionalSubscript=false, reportOptionalMemberAccess=false, reportOptionalIterable=false, reportArgumentType=false, reportGeneralTypeIssues=false
 
 from __future__ import annotations
 
@@ -20,8 +24,8 @@ from loguru import logger
 logger.disable("tau2")
 
 requires_openai = pytest.mark.skipif(
-    not os.environ.get("OPENAI_API_KEY"),
-    reason="OPENAI_API_KEY not set",
+    not (os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY")),
+    reason="OPENROUTER_API_KEY/OPENAI_API_KEY not set",
 )
 requires_openrouter = pytest.mark.skipif(
     not os.environ.get("OPENROUTER_API_KEY"),
@@ -32,8 +36,11 @@ requires_sandbox_runtime = pytest.mark.skipif(
     reason="sandbox-runtime (srt) is not installed",
 )
 requires_all_tools_deps = pytest.mark.skipif(
-    not os.environ.get("OPENAI_API_KEY") or shutil.which("srt") is None,
-    reason="alltools requires OPENAI_API_KEY and sandbox-runtime (srt)",
+    not (os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY"))
+    or shutil.which("srt") is None,
+    reason=(
+        "alltools requires OPENROUTER_API_KEY/OPENAI_API_KEY and sandbox-runtime (srt)"
+    ),
 )
 DOCUMENTS: List[Dict[str, Any]] = [
     {

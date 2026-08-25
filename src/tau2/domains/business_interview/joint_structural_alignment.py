@@ -35,7 +35,14 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
-from tau2.domains.business_interview.graph import AgentGraph, ConceptRef
+from tau2.domains.business_interview.graph import (
+    AgentGraph,
+    ConceptRef,
+    business_edge_ids,
+    business_entry_node_ids,
+    business_exit_node_ids,
+    business_node_ids,
+)
 
 _NODE_RELATIONS: tuple[str, ...] = (
     "activity",
@@ -280,8 +287,10 @@ def _asserted_ref_ids(value: Any, property_name: str) -> set[str]:
 
 
 def _build_index(graph) -> _GraphIndex:
-    node_ids = sorted(graph.nodes)
-    edge_ids = sorted(graph.edges)
+    # Canonical structural SOURCE/SINK and boundary edges are anchors for
+    # diagnostics only, never business matching candidates or denominators.
+    node_ids = sorted(business_node_ids(graph))
+    edge_ids = sorted(business_edge_ids(graph))
     node_refs: dict[tuple[str, str], set[str]] = {}
     edge_condition_refs: dict[str, set[str]] = {}
     relation_totals = {relation: 0 for relation in _RELATIONS}
@@ -317,13 +326,15 @@ def _build_index(graph) -> _GraphIndex:
 
     incoming_degree = {node_id: 0 for node_id in node_ids}
     outgoing_degree = {node_id: 0 for node_id in node_ids}
-    for edge in graph.edges.values():
+    for edge_id in edge_ids:
+        edge = graph.edges[edge_id]
         if edge.from_node in outgoing_degree:
             outgoing_degree[edge.from_node] += 1
         if edge.to_node in incoming_degree:
             incoming_degree[edge.to_node] += 1
 
-    end_nodes = set(graph.end_node_ids) & set(node_ids)
+    end_nodes = set(business_exit_node_ids(graph)) & set(node_ids)
+    entry_nodes = set(business_entry_node_ids(graph)) & set(node_ids)
     node_kind_counts: dict[tuple[str, str], dict[str, int]] = {}
     for node_id in node_ids:
         for relation in _NODE_RELATIONS:
@@ -347,7 +358,7 @@ def _build_index(graph) -> _GraphIndex:
         incoming_degree=incoming_degree,
         outgoing_degree=outgoing_degree,
         end_nodes=end_nodes,
-        start_node=(graph.start_node_id if graph.start_node_id in node_ids else None),
+        start_node=(next(iter(sorted(entry_nodes))) if len(entry_nodes) == 1 else None),
         node_kind_counts=node_kind_counts,
     )
 
@@ -946,8 +957,10 @@ def _ambiguity_classes(
         non_null = {value for value in values if value is not None}
         possible[entity_id] = set(non_null)
         unmapped[entity_id] = None in values
-        if exact and len(values) == 1 and next(iter(values), None) is not None:
-            invariant[entity_id] = next(iter(values))  # type: ignore[assignment]
+        if exact and len(values) == 1:
+            value = next(iter(values), None)
+            if isinstance(value, str):
+                invariant[entity_id] = value
 
     reverse: dict[str, set[str]] = defaultdict(set)
     for entity_id, targets in possible.items():

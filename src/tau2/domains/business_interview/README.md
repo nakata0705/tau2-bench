@@ -23,6 +23,24 @@ as **diagnostic** metadata and for simulator-integrity checks (the
 stakeholder must not reveal facts outside its StakeholderKnowledge), but it
 is never a hard gate for Agent scoring.
 
+## Canonical TruthGraph contract
+
+`BusinessProcessGraph` (also exported as `TruthGraph`) always contains the
+explicit nodes `STRUCTURAL_SOURCE_ID` and `STRUCTURAL_SINK_ID`. Their
+`structural_role` is respectively `source` and `sink`, and both are
+`protected`. Every boundary edge is typed `edge_kind="structural_boundary"`,
+`structural_only=True`, and `protected=True`.
+
+The canonical invariant requires exactly one topology source (SOURCE) and one
+topology sink (SINK), SOURCE indegree zero, SINK outdegree zero, no dangling
+or isolated node, and every business node on a SOURCE-to-SINK path. Multiple
+business entries fan out from SOURCE and multiple business exits fan in to
+SINK. A business exit is therefore never itself a topology sink.
+
+Use `canonical_structure_errors()` for a non-throwing audit and
+`validate_canonical_graph()` for fail-fast validation. Boundary nodes/edges
+are structural metadata, not business concepts or business relations.
+
 ## Semantic IDs
 
 Every addressable graph element has a **stable semantic ID** (never a list
@@ -82,14 +100,33 @@ replacement for this reasoning.
 
 ## StakeholderKnowledge (the stakeholder's world model)
 
-`project_knowledge(truth, stakeholder_filter)` builds the world model:
+`project_knowledge(truth, stakeholder_filter)` accepts only a canonical Truth
+(graph construction uses `canonicalize_truth_graph`) and always validates the
+resulting canonical graph. It never repairs a non-canonical Truth or an invalid
+forgetting sample:
 
-- nodes/edges the stakeholder does not know exist are **removed** — never
-  shortcut edges (A->B->C with unknown B yields no A->C);
-- known properties keep their values (as `ConceptRef`s into the
-  stakeholder's own concepts);
-- known-absent properties are `None`;
-- unknown properties of known elements are `DONT_KNOW`.
+- structural SOURCE/SINK and boundary edges are always retained and protected;
+- semantic forgetting keeps a node/edge in the topology while replacing
+  semantic slots with `DONT_KNOW`;
+- a forgotten business node may be removed only by safe serial-path
+  contraction (`indegree == outdegree == 1`), with no self-loop, no ambiguous
+  parallel edge, and condition-free Truth incident edges. If the stakeholder
+  does not know the resulting shortcut's condition slot, it remains
+  `DONT_KNOW`; no condition is composed heuristically;
+- conditioned paths and branch/merge nodes are rejected, never repaired or
+  composed heuristically;
+- invalid samples are discarded and forgetting is re-drawn up to
+  `StakeholderForgettingConfig.max_retries`. Exhaustion raises
+  `KnowledgeProjectionError` with the configuration and validation reasons.
+
+A derived edge has `is_shortcut=True`, `contracted_nodes`,
+`derived_from_edges`, and evaluator-private `shortcut_provenance`. It is a
+path contraction, not a newly asserted business fact.
+
+Known properties keep their values (as `ConceptRef`s into the stakeholder's
+own concepts); known-absent properties are `None`; unknown properties of
+known business elements are `DONT_KNOW`. The semantic forgetting probability
+applies to node slots and edge-condition slots; it never removes topology.
 
 `StakeholderKnowledgeConcept` is the stakeholder's local understanding of one
 Truth concept: `{id, truth_concept_id (private), kind, description, terms}`
@@ -181,18 +218,22 @@ Primary target: **AgentConcepts / AgentGraph vs TruthConcepts / TruthGraph**.
   glossary labels/descriptions vs the Truth concept canonical terms/
   descriptions, scoped per kind, followed by a content bijection);
   `concept_recall` / `concept_precision` / `concept_correctness`;
-- node/edge correspondence follows content matching (nodes by their
-  referenced-concept content signature; edges by endpoint pair on the Truth
-  graph); `node_recall` / `node_precision` / `edge_recall` / `edge_precision`
-  / fabricated counts; `start_correct` / `end_recall` / `end_precision`;
+- node/edge correspondence follows content matching on the **business
+  projection** (structural SOURCE/SINK and boundary edges are excluded from
+  all ordinary denominators); `node_recall` / `node_precision` /
+  `edge_recall` / `edge_precision` / fabricated counts; `start_correct` /
+  `end_recall` / `end_precision`;
 - property scoring per slot (epistemic, Truth-based): a Truth `ConceptRef`
   slot needs a matching agent ConceptRef; a Truth-absent (`None`) slot needs
   an explicit ABSENT marker (UNSET / DONT_KNOW / a concept are NOT correct —
   no answer is not a lucky guess); the same rule applies to edge conditions;
   `reads` / `writes` score recall x precision over the element set and
   require an explicit ABSENT when Truth has none;
-- `knowledge_coverage` (Truth vs StakeholderKnowledge) is reported
+- `knowledge_coverage` (business Truth vs StakeholderKnowledge) is reported
   separately as informational and is never mixed into Agent performance.
+  `EvaluationDiagnostics.canonical_contract` reports source/sink validity,
+  structural/business counts, shortcut provenance, and explicitly records that
+  topology-derived END inference was not used.
 
 `quality_pass` / `structural_pass` require full reconstruction correctness:
 all structural/property/concept metrics == 1.0, valid endpoints, valid graph.

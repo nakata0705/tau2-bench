@@ -1,18 +1,23 @@
 """OpenAI embedder using text-embedding models."""
 
-import os
 from typing import List
 
 import numpy as np
 from openai import OpenAI
 
+from tau2.config import (
+    openai_client_kwargs,
+    resolve_openai_compatible_model,
+)
 from tau2.knowledge.embedders.base import BaseEmbedder
 
 
 class OpenAIEmbedder(BaseEmbedder):
     """Embedder using OpenAI's embedding models."""
 
-    def __init__(self, model: str = "text-embedding-ada-002", api_key: str = None):
+    def __init__(
+        self, model: str = "text-embedding-ada-002", api_key: str | None = None
+    ):
         """
         Initialize OpenAI embedder.
 
@@ -21,10 +26,12 @@ class OpenAIEmbedder(BaseEmbedder):
                    - text-embedding-ada-002 (default, 1536 dimensions)
                    - text-embedding-3-small (1536 dimensions)
                    - text-embedding-3-large (3072 dimensions)
-            api_key: OpenAI API key (if None, will use OPENAI_API_KEY env var)
+            api_key: Optional direct API key. With no explicit key, the
+                      configured OpenRouter/OpenAI environment is selected.
         """
-        self.model = model
-        self.client = OpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY"))
+        self.requested_model = model
+        self.model = resolve_openai_compatible_model(model, explicit_api_key=api_key)
+        self.client = OpenAI(**openai_client_kwargs(api_key=api_key))
 
     def embed(self, texts: List[str]) -> np.ndarray:
         """
@@ -45,4 +52,4 @@ class OpenAIEmbedder(BaseEmbedder):
 
     def get_name(self) -> str:
         """Return the name of the embedder."""
-        return f"openai_{self.model}"
+        return f"openai_{self.requested_model}"

@@ -42,7 +42,7 @@ pytest -m "not full_duplex_integration"   # Skip live API tests
 Tests are organized into tiers that match the project's optional dependency groups. Running tests from a tier requires the corresponding extras to be installed.
 
 | Tier | Directories | Required install |
-|------|-------------|-----------------|
+| ------ | ------------- | ----------------- |
 | Core (`make test`) | `test_agent.py`, `test_environment.py`, `test_orchestrator.py`, `test_run.py`, `test_tasks.py`, `test_user.py`, `test_utils.py`, `test_llm_utils.py`, `test_checkpoint.py`, `test_results_format.py`, `test_domains/test_airline/`, `test_domains/test_mock/`, `test_domains/test_retail/`, `test_domains/test_telecom/` | `uv sync --extra dev` |
 | Voice (`make test-voice`) | `test_voice/`, `test_streaming/` | `uv sync --extra voice --extra dev` |
 | Knowledge (`make test-knowledge`) | `test_domains/test_banking_knowledge/` | `uv sync --extra knowledge --extra dev` |
@@ -56,6 +56,7 @@ Tests are organized into tiers that match the project's optional dependency grou
 ### Fixtures
 
 Shared fixtures are in `conftest.py` and default to the `mock` domain:
+
 - `domain_name` — returns `"mock"`
 - `get_environment` — returns the mock environment constructor
 - `base_task` — returns `create_task_1` from mock domain
@@ -71,6 +72,7 @@ Use the `mock` domain for unit tests. It's fast, has no external dependencies, a
 ### Provider Test Pattern
 
 Audio native provider tests in `tests/test_voice/test_audio_native/test_<provider>/`:
+
 - Gated by environment variable: `{PROVIDER}_TEST_ENABLED=1`
 - Use shared test audio from `tests/test_voice/test_audio_native/testdata/`
 - Required test classes: `TestProviderConnection`, `TestProviderConfiguration`, `TestProviderAudioSend`, `TestProviderAudioReceive`, `TestProviderTranscription`, `TestProviderToolFlow`
@@ -79,18 +81,22 @@ Audio native provider tests in `tests/test_voice/test_audio_native/test_<provide
 ### Domain Test Pattern
 
 Domain tool tests in `tests/test_domains/test_<domain>/`:
+
 - Test tools via `environment.get_response(ToolCall(...))`
 - Test both success and failure cases (wrong IDs, invalid amounts, etc.)
 - Use domain-specific fixtures for DB and environment setup
 
 The `banking_knowledge` domain has an extended test structure:
+
 - `test_tools_knowledge.py` — standard domain tool tests
 - `test_retrieval_system.py` — tests for the retrieval pipeline (embeddings, BM25, grep, reranking)
 - `test_retrieval_e2e.py` — end-to-end retrieval config tests with dependency-gated variants
 - `tasks/test_task_*.py` — per-task scenario tests with shared fixtures in `tasks/conftest.py`
 
 Retrieval e2e tests use skip markers to gate tests that require external dependencies:
-- `requires_openai` — skips when `OPENAI_API_KEY` is not set (openai_embeddings variants)
+
+- `requires_openai` — skips when neither `OPENROUTER_API_KEY` nor
+  `OPENAI_API_KEY` is set (OpenAI-compatible embedding variants)
 - `requires_openrouter` — skips when `OPENROUTER_API_KEY` is not set (qwen_embeddings variants)
 - `requires_sandbox_runtime` — skips when `srt` CLI is not installed (terminal_use variants)
 

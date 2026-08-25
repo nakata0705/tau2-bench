@@ -32,6 +32,11 @@ from tau2.domains.business_interview.graph import (
     TruthConcept,
     TruthEdge,
     TruthNode,
+    business_entry_node_ids,
+    business_exit_node_ids,
+    canonical_structure_errors,
+    edge_is_structural,
+    node_is_structural,
 )
 from tau2.domains.business_interview.joint_structural_alignment import (
     JointStructuralAlignmentDiagnostics,
@@ -304,8 +309,21 @@ def audit_boundary(graph: Any, *, graph_name: str | None = None) -> dict[str, An
     node_set = set(topology.node_ids)
     reachable = _reachable(topology.sources, topology.adjacency)
     can_reach_sink = _reachable(topology.sinks, topology.reverse_adjacency)
-    declared_start = graph.start_node_id
-    declared_ends = tuple(sorted(set(graph.end_node_ids)))
+    canonical_boundary = bool(
+        getattr(graph, "source_node_id", None) in node_set
+        and getattr(graph, "sink_node_id", None) in node_set
+        and any(node_is_structural(node) for node in graph.nodes.values())
+    )
+    declared_start = (
+        graph.source_node_id
+        if canonical_boundary
+        else getattr(graph, "start_node_id", None)
+    )
+    declared_ends = (
+        (graph.sink_node_id,)
+        if canonical_boundary
+        else tuple(sorted(set(getattr(graph, "end_node_ids", []))))
+    )
     declared_start_exists = declared_start is not None and declared_start in node_set
     declared_ends_exist = all(node_id in node_set for node_id in declared_ends)
     declared_start_is_source = (
@@ -348,6 +366,22 @@ def audit_boundary(graph: Any, *, graph_name: str | None = None) -> dict[str, An
         "graph_name": graph_name,
         "node_count": len(topology.node_ids),
         "edge_count": len(graph.edges),
+        "canonical_boundary": canonical_boundary,
+        "canonical_invariant_errors": (
+            canonical_structure_errors(graph) if canonical_boundary else []
+        ),
+        "structural_node_ids": sorted(
+            node_id for node_id, node in graph.nodes.items() if node_is_structural(node)
+        ),
+        "structural_edge_ids": sorted(
+            edge_id for edge_id, edge in graph.edges.items() if edge_is_structural(edge)
+        ),
+        "business_entry_nodes": list(business_entry_node_ids(graph))
+        if canonical_boundary
+        else [],
+        "business_exit_nodes": list(business_exit_node_ids(graph))
+        if canonical_boundary
+        else [],
         "node_ids": list(topology.node_ids),
         "declared_start_node": declared_start,
         "declared_end_nodes": list(declared_ends),
@@ -599,6 +633,77 @@ def normalize_graph(
     possible, classification, reason = _normalization_classification(audit)
     if not possible:
         return NormalizationResult(False, classification, reason, audit)
+
+    if audit.get("canonical_boundary") and not audit.get("canonical_invariant_errors"):
+        copy = graph.model_copy(deep=True)
+        structural_node_ids = {
+            node_id for node_id, node in copy.nodes.items() if node_is_structural(node)
+        }
+        structural_edge_ids = {
+            edge_id for edge_id, edge in copy.edges.items() if edge_is_structural(edge)
+        }
+        existing_structural_edges = tuple(
+            {
+                "id": edge_id,
+                "from_node": copy.edges[edge_id].from_node,
+                "to_node": copy.edges[edge_id].to_node,
+                "marker": "canonical_structural_boundary",
+                "structural_only": True,
+                "business_relation": False,
+            }
+            for edge_id in sorted(structural_edge_ids)
+        )
+        invariant = {
+            "exactly_one_structural_start": audit["topology_sources"]
+            == [graph.source_node_id],
+            "exactly_one_structural_end": audit["topology_sinks"]
+            == [graph.sink_node_id],
+            "structural_start_has_no_incoming": True,
+            "structural_end_has_no_outgoing": True,
+            "all_business_nodes_start_reachable": not audit["unreachable_from_source"],
+            "all_business_nodes_end_reachable": not audit["cannot_reach_sink"],
+            "structural_nodes_are_not_concepts": not structural_node_ids.intersection(
+                copy.concepts
+            ),
+            "synthetic_edges_are_structural_only": True,
+            "already_canonical": True,
+        }
+        canonical = DiagnosticCanonicalGraph(
+            graph=copy,
+            business_node_ids=tuple(
+                sorted(
+                    node_id
+                    for node_id in copy.nodes
+                    if node_id not in structural_node_ids
+                )
+            ),
+            business_edge_ids=tuple(
+                sorted(
+                    edge_id
+                    for edge_id in copy.edges
+                    if edge_id not in structural_edge_ids
+                )
+            ),
+            structural_node_ids=frozenset(structural_node_ids),
+            synthetic_edge_ids=frozenset(),
+            source_nodes=tuple(audit["topology_sources"]),
+            sink_nodes=tuple(audit["topology_sinks"]),
+            original_start_node_id=(
+                business_entry_node_ids(graph)[0]
+                if len(business_entry_node_ids(graph)) == 1
+                else None
+            ),
+            original_end_node_ids=tuple(business_exit_node_ids(graph)),
+            synthetic_edges=existing_structural_edges,
+            invariant=invariant,
+        )
+        return NormalizationResult(
+            True,
+            "already_canonical",
+            "graph already contains explicit structural SOURCE/SINK",
+            audit,
+            canonical,
+        )
 
     copy = graph.model_copy(deep=True)
     business_node_ids = tuple(sorted(graph.nodes))

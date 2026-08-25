@@ -5,8 +5,10 @@ There is exactly one Truth ``BusinessProcessGraph``; a stakeholder is a
 drives ``project_knowledge`` (knowledge.py):
 
 - ``visible_node_ids`` / ``visible_edge_ids``: elements the stakeholder
-  knows exist. Unknown nodes/edges are REMOVED from the stakeholder's world
-  model (never shortcut edges).
+  knows exist. Unknown business nodes are removed only through validated
+  serial-path contraction; unknown edges are removed and may cause sample
+  rejection if topology becomes invalid. Structural boundaries are ignored
+  by forgetting and always protected.
 - ``visible_node_attributes`` / ``visible_edge_attributes``: per-element
   property knowledge. A known property keeps its value; a property the
   stakeholder knows to be absent is None; an unknown property of a known
@@ -41,6 +43,42 @@ class ConceptKnowledgeOverride(BaseModel):
     local_terms: Optional[list[str]] = None
 
 
+class StakeholderForgettingConfig(BaseModel):
+    """Bounded stochastic forgetting policy for one stakeholder sample.
+
+    Structural nodes/edges are never sampled by this policy.  A
+    ``node_forget_probability`` removal is attempted only when the removed
+    node can be safely contracted as a condition-free serial path; otherwise
+    that sample is rejected.  ``property_forget_probability`` performs
+    semantic forgetting only: the node/edge remains in the topology and its
+    semantic slots become ``DONT_KNOW``.
+
+    ``forget_probability`` is a convenience baseline applied to both business
+    node and edge candidates.  All defaults are zero so deterministic fixture
+    projections remain deterministic.
+    """
+
+    forget_probability: float = Field(default=0.0, ge=0.0, le=1.0)
+    node_forget_probability: float = Field(default=0.0, ge=0.0, le=1.0)
+    edge_forget_probability: float = Field(default=0.0, ge=0.0, le=1.0)
+    property_forget_probability: float = Field(default=0.0, ge=0.0, le=1.0)
+    max_retries: int = Field(default=32, ge=1)
+    allow_shortcut_contraction: bool = True
+
+    @property
+    def effective_node_probability(self) -> float:
+        return max(self.forget_probability, self.node_forget_probability)
+
+    @property
+    def effective_edge_probability(self) -> float:
+        return max(self.forget_probability, self.edge_forget_probability)
+
+
+# Short public alias used by callers that want to configure generation without
+# depending on the historical filter name.
+ForgettingConfig = StakeholderForgettingConfig
+
+
 class StakeholderFilter(BaseModel):
     """What a stakeholder knows of the Truth.
 
@@ -62,6 +100,9 @@ class StakeholderFilter(BaseModel):
     visible_node_attributes: dict[str, list[str]] = Field(default_factory=dict)
     visible_edge_attributes: dict[str, list[str]] = Field(default_factory=dict)
     concept_overrides: dict[str, ConceptKnowledgeOverride] = Field(default_factory=dict)
+    forgetting: StakeholderForgettingConfig = Field(
+        default_factory=StakeholderForgettingConfig
+    )
 
     def node_properties_for(self, node_id: str) -> set[str]:
         """The set of node properties the stakeholder knows for ``node_id``."""

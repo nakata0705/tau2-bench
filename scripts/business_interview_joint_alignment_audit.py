@@ -14,7 +14,12 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from tau2.domains.business_interview.graph import ConceptRef
+from tau2.domains.business_interview.graph import (
+    ConceptRef,
+    business_entry_node_ids,
+    business_exit_node_ids,
+    node_is_structural,
+)
 from tau2.domains.business_interview.joint_structural_alignment import (
     evaluate_joint_structural_mapping_objective,
 )
@@ -61,11 +66,23 @@ def _node_degrees(graph, node_id: str) -> tuple[int, int]:
 
 def _node_topology(graph, node_id: str) -> dict[str, Any]:
     incoming, outgoing = _node_degrees(graph, node_id)
+    canonical = bool(
+        getattr(graph, "source_node_id", None) in graph.nodes
+        and getattr(graph, "sink_node_id", None) in graph.nodes
+        and any(node_is_structural(node) for node in graph.nodes.values())
+    )
+    declared_start = (
+        graph.source_node_id if canonical else getattr(graph, "start_node_id", None)
+    )
+    declared_ends = (
+        {graph.sink_node_id} if canonical else set(getattr(graph, "end_node_ids", []))
+    )
     return {
         "in_degree": incoming,
         "out_degree": outgoing,
-        "declared_start": graph.start_node_id == node_id,
-        "declared_end": node_id in set(graph.end_node_ids),
+        "declared_start": declared_start == node_id,
+        "declared_end": node_id in declared_ends,
+        "structural": node_is_structural(graph.nodes[node_id]),
     }
 
 
@@ -617,10 +634,23 @@ def build_start_end_investigation(
     projected_sinks = sorted(
         node_mapping[node_id] for node_id in agent_sinks if node_id in node_mapping
     )
-    truth_declared_sources = (
-        [truth_graph.start_node_id] if truth_graph.start_node_id is not None else []
+    truth_is_canonical = bool(
+        getattr(truth_graph, "source_node_id", None) in truth_graph.nodes
+        and getattr(truth_graph, "sink_node_id", None) in truth_graph.nodes
+        and any(node_is_structural(node) for node in truth_graph.nodes.values())
     )
-    truth_declared_sinks = sorted(set(truth_graph.end_node_ids))
+    truth_declared_sources = (
+        [truth_graph.source_node_id]
+        if truth_is_canonical
+        else (
+            [truth_graph.start_node_id] if truth_graph.start_node_id is not None else []
+        )
+    )
+    truth_declared_sinks = (
+        [truth_graph.sink_node_id]
+        if truth_is_canonical
+        else sorted(set(truth_graph.end_node_ids))
+    )
     metadata_missing = (
         agent_graph.start_node_id is None
         and not agent_graph.end_node_ids
@@ -642,8 +672,18 @@ def build_start_end_investigation(
         "evidence_basis": "saved_graph_fields_and_directed_edge_topology_only",
         "agent_declared_start_node": agent_graph.start_node_id,
         "agent_declared_end_nodes": sorted(set(agent_graph.end_node_ids)),
-        "truth_declared_start_node": truth_graph.start_node_id,
+        "truth_declared_start_node": truth_declared_sources[0]
+        if len(truth_declared_sources) == 1
+        else None,
         "truth_declared_end_nodes": truth_declared_sinks,
+        "truth_business_entry_nodes": list(business_entry_node_ids(truth_graph))
+        if truth_is_canonical
+        else [],
+        "truth_business_exit_nodes": list(business_exit_node_ids(truth_graph))
+        if truth_is_canonical
+        else [],
+        "truth_graph_is_canonical": truth_is_canonical,
+        "topology_derived_end_inference_used": False,
         "agent_topology_sources": agent_sources,
         "agent_topology_sinks": agent_sinks,
         "truth_topology_sources": truth_sources,

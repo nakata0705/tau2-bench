@@ -49,6 +49,8 @@ from tau2.domains.business_interview.facts import (
 )
 from tau2.domains.business_interview.graph import (
     DONT_KNOW,
+    STRUCTURAL_SINK_ID,
+    STRUCTURAL_SOURCE_ID,
     UNSET,
     AbsentType,
     AgentConcept,
@@ -63,12 +65,18 @@ from tau2.domains.business_interview.graph import (
     TruthEdge,
     TruthNode,
     UnsetType,
+    business_edge_ids,
+    business_node_ids,
+    canonicalize_truth_graph,
+    edge_is_structural,
     graph_semantic_ids,
     is_absent,
     is_dont_know,
     is_unset,
+    node_is_structural,
 )
 from tau2.domains.business_interview.knowledge import (
+    KnowledgeProjectionError,
     project_knowledge,
     slot_concepts,
 )
@@ -717,6 +725,8 @@ def _build_lab(tools: InterviewTools) -> None:
         return {"absent": True, "evidence": []}
 
     for nid, tnode in truth.nodes.items():
+        if node_is_structural(tnode):
+            continue
         args: dict = {
             "node_id": nid,
             "activity": created[tnode.activity.concept_id],  # type: ignore[union-attr]
@@ -744,6 +754,8 @@ def _build_lab(tools: InterviewTools) -> None:
         )
         tools.add_node(**args)
     for eid, tedge in truth.edges.items():
+        if edge_is_structural(tedge):
+            continue
         cond = (
             {"concept_id": created[tedge.condition.concept_id], "evidence": []}
             if isinstance(tedge.condition, ConceptRef)
@@ -751,8 +763,8 @@ def _build_lab(tools: InterviewTools) -> None:
         )
         tools.add_edge(eid, tedge.from_node, tedge.to_node, condition=cond)
     tools.set_graph_endpoints(
-        start_node_id=truth.start_node_id,
-        end_node_ids=list(truth.end_node_ids),
+        start_node_id=truth.business_entry_node_ids[0],
+        end_node_ids=list(truth.business_exit_node_ids),
     )
     tools.finish_interview()
 
@@ -876,7 +888,7 @@ def test_agent_four_states_unset_absent_dont_know_distinct():
     assert is_unset(node.system)
 
 
-def test_removal_creates_no_shortcut_edge():
+def test_removal_creates_safe_serial_shortcut_and_preserves_boundaries():
     truth = type(quotation_truth())(
         id="t",
         nodes={
@@ -896,6 +908,7 @@ def test_removal_creates_no_shortcut_edge():
         start_node_id="A",
         end_node_ids=["C"],
     )
+    truth = canonicalize_truth_graph(truth, entry_node_ids=["A"], exit_node_ids=["C"])
     filter_ = StakeholderFilter(
         name="partial",
         visible_node_ids=["A", "C"],  # B unknown -> removed
@@ -906,19 +919,35 @@ def test_removal_creates_no_shortcut_edge():
     knowledge = project_knowledge(truth, filter_)
     g = knowledge.graph
     node_t2l = {t: k for k, t in g.node_truth_ids.items()}
-    assert set(g.nodes) == {node_t2l["A"], node_t2l["C"]}
-    # opaque visible ids are CONTIGUOUS (no hidden-element gaps like
-    # skn_001, skn_003): allocated only after visibility filtering
-    assert sorted(g.nodes) == ["skn_001", "skn_002"]
+    assert set(g.nodes) == {
+        STRUCTURAL_SOURCE_ID,
+        STRUCTURAL_SINK_ID,
+        node_t2l["A"],
+        node_t2l["C"],
+    }
+    # Opaque business ids are CONTIGUOUS (no hidden-element gaps); structural
+    # ids are fixed and never allocated from the business-id sequence.
+    assert sorted(
+        node_id for node_id, node in g.nodes.items() if not node_is_structural(node)
+    ) == ["skn_001", "skn_002"]
     assert {c.truth_concept_id: k for k, c in g.concepts.items()} != {}
     assert all(cid.startswith("skc_") for cid in g.concepts)
-    assert set(g.edges) == set()
-    # never a shortcut A -> C
-    assert not any(
-        e.from_node == node_t2l["A"] and e.to_node == node_t2l["C"]
-        for e in g.edges.values()
+    shortcut_edges = [edge for edge in g.edges.values() if edge.is_shortcut]
+    assert len(shortcut_edges) == 1
+    shortcut = shortcut_edges[0]
+    assert (shortcut.from_node, shortcut.to_node) == (
+        node_t2l["A"],
+        node_t2l["C"],
     )
-    # start survives when the start node is known; unknown end is dropped
+    assert shortcut.contracted_nodes == ["B"]
+    assert shortcut.derived_from_edges == ["ab", "bc"]
+    boundary_edges = [edge for edge in g.edges.values() if edge_is_structural(edge)]
+    assert len(boundary_edges) == 2
+    assert all(edge.protected for edge in boundary_edges)
+    # Canonical endpoints are structural; legacy business endpoints remain
+    # available only as compatibility projections.
+    assert g.source_node_id == STRUCTURAL_SOURCE_ID
+    assert g.sink_node_id == STRUCTURAL_SINK_ID
     assert g.start_node_id == node_t2l["A"]
     assert g.end_node_ids == [node_t2l["C"]]
 
@@ -972,10 +1001,11 @@ def test_description_and_terminology_vary_independently():
     truth = quotation_truth()
     base = StakeholderFilter(
         name="s",
-        visible_node_ids=["r"],
-        visible_edge_ids=[],
+        # Keep canonical topology connected; vary only concept metadata.
+        visible_node_ids=business_node_ids(truth),
+        visible_edge_ids=business_edge_ids(truth),
         visible_node_attributes={"r": ["activity"]},
-        visible_edge_attributes={},
+        visible_edge_attributes={edge_id: [] for edge_id in business_edge_ids(truth)},
     )
     # both known (defaults)
     k1 = project_knowledge(truth, base)
@@ -2401,15 +2431,24 @@ def test_opaque_ids_are_stable_and_leak_no_truth_names():
     sc = _sc(SCENARIO)
     kg = sc.knowledge.graph
     truth = sc.truth
-    for nid in kg.nodes:
+    for nid, node in kg.nodes.items():
+        if node_is_structural(node):
+            assert nid in {STRUCTURAL_SOURCE_ID, STRUCTURAL_SINK_ID}
+            continue
         assert re.fullmatch(r"skn_\d{3}", nid), nid
-    for eid in kg.edges:
+    for eid, edge in kg.edges.items():
+        if edge_is_structural(edge):
+            continue
         assert re.fullmatch(r"ske_\d{3}", eid), eid
     for cid in kg.concepts:
         assert re.fullmatch(r"skc_\d{3}", cid), cid
     # no Truth id, label, term, node id or edge id leaks into any knowledge
     # id or semantic id (even when descriptions/terms are DONT_KNOW)
-    truth_tokens = set(truth.nodes) | set(truth.edges) | set(truth.concepts)
+    truth_tokens = (
+        {nid for nid, node in truth.nodes.items() if not node_is_structural(node)}
+        | {eid for eid, edge in truth.edges.items() if not edge_is_structural(edge)}
+        | set(truth.concepts)
+    )
     truth_tokens.update(t for c in truth.concepts.values() for t in c.canonical_terms)
     for sid in kg.semantic_ids():
         assert "tc_" not in sid, sid
@@ -2496,10 +2535,12 @@ def test_dont_know_descriptions_cannot_leak_through_prompt():
     truth = quotation_truth()
     filt = StakeholderFilter(
         name="s",
-        visible_node_ids=["r"],
-        visible_edge_ids=[],
+        # Canonical projections preserve topology; only concept metadata is
+        # hidden in this fixture.
+        visible_node_ids=business_node_ids(truth),
+        visible_edge_ids=business_edge_ids(truth),
         visible_node_attributes={"r": ["activity"]},
-        visible_edge_attributes={},
+        visible_edge_attributes={edge_id: [] for edge_id in business_edge_ids(truth)},
         concept_overrides={
             "tc_activity_receive_request": ConceptKnowledgeOverride(
                 description_known=False, terms_known=False
@@ -2816,6 +2857,7 @@ def test_knowledge_coverage_known_absent_unknown_removed():
         start_node_id="A",
         end_node_ids=["B"],
     )
+    truth = canonicalize_truth_graph(truth, entry_node_ids=["A"], exit_node_ids=["B"])
     ALL_PROPS = ["activity", "actor", "system", "reads", "writes", "rationale"]
     full = StakeholderFilter(
         name="full",
@@ -2846,7 +2888,9 @@ def test_knowledge_coverage_known_absent_unknown_removed():
         }
     )
     assert coverage(dk) == 15.0 / 17.0
-    # removed node + removed edge -> unavailable/unknown -> 7/17
+    # A removed node cannot be repaired when its incident business edge is
+    # unknown.  Canonical projection rejects this sample rather than silently
+    # creating a disconnected graph.
     rm = StakeholderFilter(
         name="rm",
         visible_node_ids=["B"],
@@ -2854,9 +2898,10 @@ def test_knowledge_coverage_known_absent_unknown_removed():
         visible_node_attributes={"B": ALL_PROPS},
         visible_edge_attributes={},
     )
-    assert coverage(rm) == 7.0 / 17.0
-    # node existence vs activity: removing A costs its existence + slots +
-    # elements — the activity slot is not "the node"
+    with pytest.raises(KnowledgeProjectionError, match="indegree"):
+        coverage(rm)
+    # The symmetric partial view is rejected for the same reason: forgetting
+    # B would require an unknown incident edge.
     rm2 = StakeholderFilter(
         name="rm2",
         visible_node_ids=["A"],
@@ -2864,8 +2909,8 @@ def test_knowledge_coverage_known_absent_unknown_removed():
         visible_node_attributes={"A": ALL_PROPS},
         visible_edge_attributes={},
     )
-    # known: A(1) + A slots(6) + A element(1) = 8 of 17
-    assert coverage(rm2) == 8.0 / 17.0
+    with pytest.raises(KnowledgeProjectionError, match="indegree"):
+        coverage(rm2)
 
 
 # ---------------------------------------------------------------------------
@@ -2875,33 +2920,55 @@ def test_knowledge_coverage_known_absent_unknown_removed():
 
 
 def test_opaque_visible_ids_have_no_hidden_gaps():
-    """Local node/edge ids are allocated ONLY after visibility filtering, so
-    a filter that sees {ap, cq} yields skn_001, skn_002 — never skn_001,
-    skn_003 — and never reveals hidden elements through gaps."""
+    """Local business ids are allocated ONLY after visibility filtering.
+
+    This uses a serial canonical fixture so forgetting the middle node is a
+    valid, provenance-bearing contraction rather than a disconnected repair.
+    """
     import re
 
-    truth = quotation_truth()
+    truth = canonicalize_truth_graph(
+        BusinessProcessGraph(
+            id="opaque",
+            concepts={
+                cid: TruthConcept(id=cid, kind="activity") for cid in ("a1", "a2", "a3")
+            },
+            nodes={
+                nid: TruthNode(id=nid, activity=ConceptRef(concept_id=f"a{i}"))
+                for i, nid in enumerate(("A", "B", "C"), 1)
+            },
+            edges={
+                "e1": TruthEdge(id="e1", from_node="A", to_node="B"),
+                "e2": TruthEdge(id="e2", from_node="B", to_node="C"),
+            },
+        ),
+        entry_node_ids=["A"],
+        exit_node_ids=["C"],
+    )
     filt = StakeholderFilter(
         name="partial",
-        visible_node_ids=["ap", "cq"],  # two of six Truth nodes
-        visible_edge_ids=["e3"],  # one of six Truth edges
-        visible_node_attributes={
-            "ap": ["activity", "actor", "rationale"],
-            "cq": ["activity", "actor", "system", "reads", "writes"],
-        },
-        visible_edge_attributes={"e3": ["condition"]},
+        visible_node_ids=["A", "C"],
+        visible_edge_ids=["e1", "e2"],
+        visible_node_attributes={"A": ["activity"], "C": ["activity"]},
+        visible_edge_attributes={"e1": [], "e2": []},
     )
     knowledge = project_knowledge(truth, filt)
     g = knowledge.graph
-    assert sorted(g.nodes) == ["skn_001", "skn_002"]
-    assert sorted(g.edges) == ["ske_001"]
-    for nid in g.nodes:
+    business_nodes = [
+        nid for nid, node in g.nodes.items() if not node_is_structural(node)
+    ]
+    business_edges = [
+        eid for eid, edge in g.edges.items() if not edge_is_structural(edge)
+    ]
+    assert sorted(business_nodes) == ["skn_001", "skn_002"]
+    assert sorted(business_edges) == ["ske_001"]
+    for nid in business_nodes:
         assert re.fullmatch(r"skn_\d{3}", nid)
-    for eid in g.edges:
+    for eid in business_edges:
         assert re.fullmatch(r"ske_\d{3}", eid)
     # the private mapping still resolves to the right Truth elements
     node_t2l = {t: k for k, t in g.node_truth_ids.items()}
-    assert node_t2l["ap"] == "skn_001" and node_t2l["cq"] == "skn_002"
+    assert node_t2l["A"] == "skn_001" and node_t2l["C"] == "skn_002"
     # determinism + reordering invariance preserved
     rev = filt.model_copy(
         update={
@@ -3140,15 +3207,28 @@ def test_semantic_mode_matches_knowledge_resolve():
 
     knowledge = quotation_knowledge("en")
     resolver = knowledge.graph.resolve
-    assert mode_for_resolved(resolver("node:skn_001")) == "exists"  # ap exists
-    assert mode_for_resolved(resolver("node:skn_001:rationale")) == "value"  # known
-    assert mode_for_resolved(resolver("node:skn_001:system")) == "dont_know"
-    assert mode_for_resolved(resolver("edge:ske_003")) == "exists"
-    assert mode_for_resolved(resolver("edge:ske_003:condition")) == "value"
-    assert mode_for_resolved(resolver("skc_016")) == "mention"
+    node_t2l = {
+        truth_id: local for local, truth_id in knowledge.graph.node_truth_ids.items()
+    }
+    edge_t2l = {
+        truth_id: local for local, truth_id in knowledge.graph.edge_truth_ids.items()
+    }
+    concept_t2l = {
+        concept.truth_concept_id: local
+        for local, concept in knowledge.graph.concepts.items()
+    }
+    ap = node_t2l["ap"]
+    e3 = edge_t2l["e3"]
+    rationale = concept_t2l["tc_rationale_credit_risk"]
+    assert mode_for_resolved(resolver(f"node:{ap}")) == "exists"
+    assert mode_for_resolved(resolver(f"node:{ap}:rationale")) == "value"
+    assert mode_for_resolved(resolver(f"node:{ap}:system")) == "dont_know"
+    assert mode_for_resolved(resolver(f"edge:{e3}")) == "exists"
+    assert mode_for_resolved(resolver(f"edge:{e3}:condition")) == "value"
+    assert mode_for_resolved(resolver(rationale)) == "mention"
     # node/edge existence is distinct from every property slot
-    assert mode_for_resolved(resolver("node:skn_001")) == "exists"
-    assert mode_for_resolved(resolver("node:skn_001:activity")) != "exists"
+    assert mode_for_resolved(resolver(f"node:{ap}")) == "exists"
+    assert mode_for_resolved(resolver(f"node:{ap}:activity")) != "exists"
 
 
 def test_semantic_mode_value_compatibility_accepted_and_rejected():
@@ -3278,10 +3358,10 @@ def test_none_plus_absent_accepted():
     truth = quotation_truth()
     filt = StakeholderFilter(
         name="s",
-        visible_node_ids=["r"],
-        visible_edge_ids=[],
+        visible_node_ids=business_node_ids(truth),
+        visible_edge_ids=business_edge_ids(truth),
         visible_node_attributes={"r": ["activity", "actor", "reads", "writes"]},
-        visible_edge_attributes={},
+        visible_edge_attributes={edge_id: [] for edge_id in business_edge_ids(truth)},
     )
     knowledge = project_knowledge(truth, filt)
     catalog = StakeholderKnowledgeCatalog("s", knowledge)
@@ -3455,17 +3535,22 @@ def test_knowledge_projection_does_not_depend_on_truth_unset():
     from tau2.domains.business_interview.knowledge import project_knowledge as pk
     from tau2.domains.business_interview.stakeholder import StakeholderFilter
 
+    absent_truth = quotation_truth()
     absent_filter = StakeholderFilter(
         name="s",
-        visible_node_ids=["r"],
-        visible_edge_ids=[],
+        visible_node_ids=business_node_ids(absent_truth),
+        visible_edge_ids=business_edge_ids(absent_truth),
         visible_node_attributes={"r": ["activity", "actor", "reads"]},
-        visible_edge_attributes={},
+        visible_edge_attributes={
+            edge_id: [] for edge_id in business_edge_ids(absent_truth)
+        },
     )
 
     def slot_states(knowledge):
         states = set()
         for node in knowledge.graph.nodes.values():
+            if node_is_structural(node):
+                continue
             for prop in ("activity", "actor", "system", "reads", "writes", "rationale"):
                 value = getattr(
                     node, "necessity_rationale" if prop == "rationale" else prop
@@ -3477,6 +3562,8 @@ def test_knowledge_projection_does_not_depend_on_truth_unset():
                 elif isinstance(value, (list, ConceptRef)):
                     states.add("value")
         for edge in knowledge.graph.edges.values():
+            if edge_is_structural(edge):
+                continue
             if is_dont_know(edge.condition):
                 states.add("dont_know")
             elif edge.condition is None:
@@ -3487,7 +3574,7 @@ def test_knowledge_projection_does_not_depend_on_truth_unset():
 
     # the absent_filter projection exposes r.reads = None -> known absent,
     # so it must contain ALL THREE stakeholder states (value/absent/dont_know)
-    proj = pk(quotation_truth(), absent_filter)
+    proj = pk(absent_truth, absent_filter)
     assert slot_states(proj) == {"value", "absent", "dont_know"}
     # the default sales projection produces value + dont_know (no known-absent
     # slots are visible to it) — still never UNSET-driven
@@ -3929,6 +4016,8 @@ def test_ja_scenario_reconstruction_scores():
         tools.create_concept(cid + "_ja", concept.kind, label)
         created[cid] = cid + "_ja"
     for nid, tnode in truth.nodes.items():
+        if node_is_structural(tnode):
+            continue
         args: dict = {
             "node_id": nid,
             "activity": created[tnode.activity.concept_id],  # type: ignore[union-attr]
@@ -3953,6 +4042,8 @@ def test_ja_scenario_reconstruction_scores():
             )
         tools.add_node(**args)
     for eid, tedge in truth.edges.items():
+        if edge_is_structural(tedge):
+            continue
         cond = (
             {"concept_id": created[tedge.condition.concept_id], "evidence": []}
             if isinstance(tedge.condition, ConceptRef)
@@ -3960,8 +4051,8 @@ def test_ja_scenario_reconstruction_scores():
         )
         tools.add_edge(eid, tedge.from_node, tedge.to_node, condition=cond)
     tools.set_graph_endpoints(
-        start_node_id=truth.start_node_id,
-        end_node_ids=list(truth.end_node_ids),
+        start_node_id=truth.business_entry_node_ids[0],
+        end_node_ids=list(truth.business_exit_node_ids),
     )
     tools.finish_interview()
     res = _eval(tools, JA_SCENARIO)

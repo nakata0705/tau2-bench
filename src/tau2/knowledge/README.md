@@ -11,26 +11,28 @@ If `--retrieval-config` is omitted for `banking_knowledge`, the default is **`al
 ### AllTools (`alltools`, `alltools-qwen`)
 
 | Tool | Role |
-|------|------|
+| ------ | ------ |
 | `KB_search_bm25` | BM25 sparse retrieval; pass **`k`** (default 10) for result count |
 | `KB_search_dense` | Dense embeddings; pass **`k`** (default 10); backend selected by retrieval config |
 | `shell` | Same read-only sandboxed shell as `terminal_use` |
 
 Requirements: **sandbox-runtime** for `shell`, and an embedding API for dense search:
 
-- **`alltools`**: uses OpenAI embeddings — set **`OPENAI_API_KEY`**. Model: **`text-embedding-3-large`**.
+- **`alltools`**: uses OpenAI embeddings through OpenRouter when
+  `OPENAI_API_KEY` is absent — set **`OPENROUTER_API_KEY`**. Model:
+  **`text-embedding-3-large`**.
 - **`alltools-qwen`**: uses OpenRouter/Qwen embeddings — set **`OPENROUTER_API_KEY`**. Model: **`qwen3-embedding-8b`**.
 
 ## Retrieval Configs
 
 | Config | Tools | Requirements |
-|--------|-------|--------------|
+| -------- | ------- | -------------- |
 | `no_knowledge` | None | None (offline) |
 | `full_kb` | None | None (offline) |
 | `golden_retrieval` | None | None (offline) |
 | `grep_only` | `grep` | None (offline) |
 | `bm25` | `KB_search` | None (offline) |
-| `openai_embeddings` | `KB_search` | `OPENAI_API_KEY` |
+| `openai_embeddings` | `KB_search` | `OPENROUTER_API_KEY` (OpenRouter) |
 | `qwen_embeddings` | `KB_search` | `OPENROUTER_API_KEY` |
 | `terminal_use` | `shell` | `sandbox-runtime` (see below) |
 | `terminal_use_write` | `shell` | `sandbox-runtime` (see below) |
@@ -38,11 +40,16 @@ Requirements: **sandbox-runtime** for `shell`, and an embedding API for dense se
 | `alltools-qwen` | `KB_search_bm25`, `KB_search_dense`, `shell` | BM25 offline + Qwen dense embeddings + sandbox-runtime |
 
 The `bm25`, `openai_embeddings`, and `qwen_embeddings` configs can also be combined with:
-- `_reranker` suffix — adds an LLM reranker postprocessor (requires `OPENAI_API_KEY`)
+
+- `_reranker` suffix — adds an LLM reranker postprocessor (uses
+  `OPENROUTER_API_KEY` for bare OpenAI model ids when no direct OpenAI key is set)
 - `_grep` suffix — adds a `grep` tool
 - Both (e.g. `openai_embeddings_reranker_grep`)
 
-Note: `*_reranker` variants always require `OPENAI_API_KEY` for the pointwise LLM reranker, even when the base embedder uses a different provider (e.g. `qwen_embeddings_reranker` needs both `OPENROUTER_API_KEY` and `OPENAI_API_KEY`).
+Note: OpenAI-compatible embedding/reranker clients use the OpenRouter
+OpenAI-compatible endpoint automatically when `OPENAI_API_KEY` is absent.
+A direct `OPENAI_API_KEY` remains an optional fallback for users who want the
+native OpenAI endpoint.
 
 ## Embedding Cache
 
@@ -52,7 +59,12 @@ Embedding-based configs (`openai_embeddings*`, `qwen_embeddings*`, `alltools`, `
 
 ### OpenRouter API Key
 
-The `qwen_embeddings*` and `alltools-qwen` configs route through [OpenRouter](https://openrouter.ai/). Set the `OPENROUTER_API_KEY` environment variable (or add it to your `.env` file — see `.env.example`).
+The `qwen_embeddings*`, `alltools-qwen`, and OpenAI-compatible text/
+embedding routes can use [OpenRouter](https://openrouter.ai/). Set the
+`OPENROUTER_API_KEY` environment variable (or add it to your `.env` file — see
+`.env.example`). Bare OpenAI chat model names are qualified automatically;
+explicit provider-qualified model names are left unchanged. Set
+`TAU2_USE_OPENROUTER_FOR_OPENAI=false` to opt out.
 
 ### sandbox-runtime
 
@@ -63,11 +75,13 @@ npm install -g @anthropic-ai/sandbox-runtime@0.0.23
 ```
 
 **macOS**: Also requires `ripgrep`:
+
 ```bash
 brew install ripgrep
 ```
 
 **Linux**: Also requires `ripgrep`, `bubblewrap`, and `socat`:
+
 ```bash
 # Ubuntu/Debian
 sudo apt-get install ripgrep bubblewrap socat

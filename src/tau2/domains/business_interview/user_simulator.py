@@ -498,25 +498,41 @@ class StakeholderUserSimulator(UserSimulator):
         for nid in sorted(graph.nodes):
             node = graph.nodes[nid]
             lines = []
-            for prop in ("activity", "actor", "system", "rationale", "reads", "writes"):
-                value = getattr(
-                    node,
-                    "necessity_rationale" if prop == "rationale" else prop,
-                    None,
+            structural = bool(getattr(node, "is_structural", False))
+            if structural:
+                lines.append(
+                    f'<structural role="{node.structural_role}" protected="true"/>'
                 )
-                rendered = _render_value(value)
-                lines.append(f'<property slot="node:{nid}:{prop}" value="{rendered}"/>')
-            for prop in ("reads", "writes"):
-                value = getattr(node, prop)
-                if isinstance(value, list):
-                    for ref in value:
-                        lines.append(
-                            f'<property slot="node:{nid}:{prop}:{ref.concept_id}" '
-                            f'value="{ref.concept_id}"/>'
-                        )
-            start = "true" if nid == graph.start_node_id else "false"
+            else:
+                for prop in (
+                    "activity",
+                    "actor",
+                    "system",
+                    "rationale",
+                    "reads",
+                    "writes",
+                ):
+                    value = getattr(
+                        node,
+                        "necessity_rationale" if prop == "rationale" else prop,
+                        None,
+                    )
+                    rendered = _render_value(value)
+                    lines.append(
+                        f'<property slot="node:{nid}:{prop}" value="{rendered}"/>'
+                    )
+                for prop in ("reads", "writes"):
+                    value = getattr(node, prop)
+                    if isinstance(value, list):
+                        for ref in value:
+                            lines.append(
+                                f'<property slot="node:{nid}:{prop}:{ref.concept_id}" '
+                                f'value="{ref.concept_id}"/>'
+                            )
+            role = getattr(node, "structural_role", None) or "business"
             positions.append(
-                f'<position id="node:{nid}" start="{start}">\n'
+                f'<position id="node:{nid}" role="{role}" '
+                f'structural="{"true" if structural else "false"}">\n'
                 + "\n".join(lines)
                 + "\n</position>"
             )
@@ -525,9 +541,15 @@ class StakeholderUserSimulator(UserSimulator):
             edge = graph.edges[eid]
             cond = _render_value(edge.condition)
             cond_line = f'<property slot="edge:{eid}:condition" value="{cond}"/>'
+            structural = bool(getattr(edge, "is_structural", False))
             relations.append(
                 f'<relation id="edge:{eid}" from="node:{edge.from_node}" '
-                f'to="node:{edge.to_node}">\n{cond_line}\n</relation>'
+                f'to="node:{edge.to_node}" '
+                f'kind="{edge.edge_kind}" structural_only="{str(structural).lower()}" '
+                f'protected="{str(getattr(edge, "protected", False)).lower()}" '
+                f'shortcut="{str(getattr(edge, "is_shortcut", False)).lower()}">\n'
+                + (cond_line if not structural else "")
+                + "\n</relation>"
             )
         concepts = []
         for cid, concept in sorted(graph.concepts.items()):

@@ -28,6 +28,7 @@ from tau2.config import (
     REDIS_PORT,
     REDIS_PREFIX,
     USE_LANGFUSE,
+    resolve_openrouter_model,
 )
 from tau2.data_model.message import (
     AssistantMessage,
@@ -520,8 +521,14 @@ def generate(
     if kwargs.get("num_retries") is None:
         kwargs["num_retries"] = DEFAULT_MAX_RETRIES
 
+    requested_model = model
+    provider_model = resolve_openrouter_model(
+        model,
+        explicit_api_key=kwargs.get("api_key"),
+    )
+
     # Vertex AI Gemini 3 models require VERTEXAI_LOCATION="global"
-    if model.startswith("vertex_ai/gemini-3") and not os.environ.get(
+    if provider_model.startswith("vertex_ai/gemini-3") and not os.environ.get(
         "VERTEXAI_LOCATION"
     ):
         os.environ["VERTEXAI_LOCATION"] = "global"
@@ -534,7 +541,8 @@ def generate(
     # Prepare request data for logging
     formatted_messages = _format_messages_for_logging(litellm_messages)
     request_data = {
-        "model": model,
+        "model": provider_model,
+        "requested_model": requested_model,
         "messages": formatted_messages,
         "tools": tools_schema,
         "tool_choice": tool_choice,
@@ -548,7 +556,7 @@ def generate(
     start_time = time.perf_counter()
     try:
         response = completion(
-            model=model,
+            model=provider_model,
             messages=litellm_messages,
             tools=tools_schema,
             tool_choice=tool_choice,
@@ -561,7 +569,7 @@ def generate(
         failed_latency = time.perf_counter() - start_time
         _record_llm_call_metrics(
             side=side,
-            model=model,
+            model=provider_model,
             messages=messages,
             litellm_messages=litellm_messages,
             tools_schema=tools_schema,
@@ -684,7 +692,7 @@ def generate(
 
     _record_llm_call_metrics(
         side=side,
-        model=model,
+        model=provider_model,
         messages=messages,
         litellm_messages=litellm_messages,
         tools_schema=tools_schema,

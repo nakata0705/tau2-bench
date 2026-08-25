@@ -1,10 +1,13 @@
-import os
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Tuple
 
 from openai import OpenAI
 from pydantic import BaseModel
 
+from tau2.config import (
+    openai_client_kwargs,
+    resolve_openai_compatible_model,
+)
 from tau2.knowledge.postprocessors.base import BasePostprocessor
 from tau2.knowledge.registry import register_postprocessor
 
@@ -37,8 +40,8 @@ class PointwiseLLMReranker(BasePostprocessor):
         model: str = "gpt-5.2",
         min_score: int = 7,
         query_key: str = "query",
-        prompt: str = None,
-        api_key: str = None,
+        prompt: str | None = None,
+        api_key: str | None = None,
         reasoning_effort: str = "low",
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
         **kwargs,
@@ -50,13 +53,13 @@ class PointwiseLLMReranker(BasePostprocessor):
             prompt=prompt,
             **kwargs,
         )
-        self.model = model
+        self.model = resolve_openai_compatible_model(model, explicit_api_key=api_key)
         self.min_score = min_score
         self.query_key = query_key
         self.prompt_template = (
             prompt if prompt is not None else DEFAULT_POINTWISE_PROMPT
         )
-        self.client = OpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY"))
+        self.client = OpenAI(**openai_client_kwargs(api_key=api_key))
         self.reasoning_effort = reasoning_effort
         self.max_concurrency = max_concurrency
 
@@ -73,7 +76,9 @@ class PointwiseLLMReranker(BasePostprocessor):
             "messages": [{"role": "user", "content": prompt}],
             "response_format": RelevanceScore,
         }
-        if self.reasoning_effort and self.model.startswith(("gpt-5")):
+        if self.reasoning_effort and self.model.startswith(
+            ("gpt-5", "openai/gpt-5", "openrouter/openai/gpt-5")
+        ):
             kwargs["reasoning_effort"] = self.reasoning_effort
 
         response = self.client.beta.chat.completions.parse(**kwargs)
@@ -102,7 +107,7 @@ class PointwiseLLMReranker(BasePostprocessor):
         if not docs_to_rate:
             return []
 
-        def rate_doc(args):
+        def rate_doc(args: Tuple[str, str]) -> Tuple[str, int] | None:
             doc_id, passage = args
             try:
                 rating = self._rate_passage(query, doc_id, passage)
@@ -111,15 +116,22 @@ class PointwiseLLMReranker(BasePostprocessor):
                 return None
 
         with ThreadPoolExecutor(max_workers=self.max_concurrency) as executor:
-            results = list(executor.map(rate_doc, docs_to_rate))
+            raw_ratings: List[Tuple[str, int] | None] = list(
+                executor.map(rate_doc, docs_to_rate)
+            )
 
-        rated_results = [
-            (doc_id, float(rating))
-            for result in results
-            if result is not None
-            for doc_id, rating in [result]
-            if rating >= self.min_score
-        ]
+        rated_results: List[Tuple[str, float]] = []
+        for result in raw_ratings:
+            if result is None:
+                continue
+            doc_id, rating = result
+            if rating < self.min_score:
+                continue
+            try:
+                numeric_rating = float(rating)
+            except (TypeError, ValueError):
+                continue
+            rated_results.append((doc_id, numeric_rating))
 
         rated_results.sort(key=lambda x: x[1], reverse=True)
         return rated_results

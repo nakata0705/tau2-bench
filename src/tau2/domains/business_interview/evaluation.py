@@ -50,9 +50,16 @@ from tau2.domains.business_interview.graph import (
     DontKnowType,
     EvidenceRef,
     InterviewDB,
+    business_edge_ids,
+    business_entry_node_ids,
+    business_graph_projection,
+    business_node_ids,
+    canonical_structure_errors,
+    edge_is_structural,
     is_absent,
     is_dont_know,
     is_unset,
+    node_is_structural,
 )
 from tau2.domains.business_interview.grounding import (
     grounded_ids as grounded_semantic_ids,
@@ -229,9 +236,15 @@ class FailureAttribution(BaseModel):
 
 
 class EvaluationDiagnostics(BaseModel):
-    """Evaluator-only Truth/Agent reconstruction trace."""
+    """Evaluator-only Truth/Agent reconstruction trace.
 
-    schema_version: str = "business_interview.evaluation_diagnostics.v3"
+    ``canonical_contract`` is diagnostic metadata only.  Structural SOURCE,
+    SINK, boundary edges, and shortcut provenance are never folded into the
+    ordinary business node/edge score fields.
+    """
+
+    schema_version: str = "business_interview.evaluation_diagnostics.v4"
+    canonical_contract: dict[str, object] = Field(default_factory=dict)
     score_fields_unchanged: bool = True
     node_diagnostics: list[NodeDiagnostic] = Field(default_factory=list)
     unmatched_agent_nodes: list[str] = Field(default_factory=list)
@@ -1053,7 +1066,8 @@ def _knowledge_coverage(truth, knowledge) -> float:
     concept_t2l = {c.truth_concept_id: k for k, c in kg.concepts.items()}
     total = known = 0
 
-    for nid, node in truth.nodes.items():
+    for nid in business_node_ids(truth):
+        node = truth.nodes[nid]
         local = node_t2l.get(nid)
         kn = kg.nodes.get(local) if local is not None else None
         total += 1
@@ -1080,7 +1094,7 @@ def _knowledge_coverage(truth, knowledge) -> float:
                         ref.concept_id
                     ) in {r.concept_id for r in value}:
                         known += 1
-    for eid, edge in truth.edges.items():
+    for eid in business_edge_ids(truth):
         local = edge_t2l.get(eid)
         ke = kg.edges.get(local) if local is not None else None
         total += 1
@@ -1097,6 +1111,65 @@ def _prop_value(node, prop):
         return getattr(node, prop)
     attr = "necessity_rationale" if prop == "rationale" else prop
     return getattr(node, attr)
+
+
+def _canonical_contract_diagnostic(graph, knowledge=None) -> dict[str, object]:
+    """Describe boundary/shortcut handling without affecting any score."""
+    has_explicit_boundary = bool(
+        getattr(graph, "source_node_id", None)
+        and getattr(graph, "sink_node_id", None)
+        and any(node_is_structural(node) for node in graph.nodes.values())
+    )
+    structural_nodes = [
+        node_id for node_id, node in graph.nodes.items() if node_is_structural(node)
+    ]
+    structural_edges = [
+        edge_id for edge_id, edge in graph.edges.items() if edge_is_structural(edge)
+    ]
+    shortcuts = [
+        {
+            "edge_id": edge_id,
+            "contracted_nodes": list(getattr(edge, "contracted_nodes", [])),
+            "derived_from_edges": list(getattr(edge, "derived_from_edges", [])),
+        }
+        for edge_id, edge in sorted(graph.edges.items())
+        if getattr(edge, "is_shortcut", False)
+    ]
+    errors = canonical_structure_errors(graph) if has_explicit_boundary else []
+    stakeholder_graph = getattr(knowledge, "graph", None)
+    stakeholder_shortcuts = []
+    if stakeholder_graph is not None:
+        stakeholder_shortcuts = [
+            {
+                "edge_id": edge_id,
+                "from_node": edge.from_node,
+                "to_node": edge.to_node,
+                "contracted_nodes": list(getattr(edge, "contracted_nodes", [])),
+                "derived_from_edges": list(getattr(edge, "derived_from_edges", [])),
+            }
+            for edge_id, edge in sorted(stakeholder_graph.edges.items())
+            if getattr(edge, "is_shortcut", False)
+        ]
+    return {
+        "explicit_source_node_id": getattr(graph, "source_node_id", None),
+        "explicit_sink_node_id": getattr(graph, "sink_node_id", None),
+        "canonical": has_explicit_boundary and not errors,
+        "invariant_errors": errors,
+        "structural_node_count": len(structural_nodes),
+        "structural_edge_count": len(structural_edges),
+        "business_node_count": len(business_node_ids(graph)),
+        "business_edge_count": len(business_edge_ids(graph)),
+        "structural_node_ids": sorted(structural_nodes),
+        "structural_edge_ids": sorted(structural_edges),
+        "truth_shortcut_edges": shortcuts,
+        "stakeholder_shortcut_edges": stakeholder_shortcuts,
+        "existing_evaluator_shortcut_policy": (
+            "shortcut edges are currently ordinary Agent business edges; "
+            "provenance is diagnostic and no score credit is granted"
+        ),
+        "scoring_excludes_structural_elements": True,
+        "topology_derived_end_inference_used": False,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1643,7 +1716,12 @@ def evaluate(
     informational coverage metric. The provenance ledgers are diagnostics and
     never gate quality.
     """
-    target = truth if truth is not None else knowledge.graph
+    raw_target = truth if truth is not None else knowledge.graph
+    # Canonical SOURCE/SINK and boundary edges are structural-only.  The
+    # scoring target is an immutable business projection; the full contract is
+    # retained separately in diagnostics.
+    target = business_graph_projection(raw_target)
+    canonical_contract = _canonical_contract_diagnostic(raw_target, knowledge)
     agent = db.graph if db.graph is not None else AgentGraph()
     protocol = db.interview_complete
     graph_created = len(agent.nodes) > 0
@@ -1683,10 +1761,14 @@ def evaluate(
     edge_precision = len(edge_map) / len(agent_edge_list) if agent.edges else 0.0
     fabricated_edge_count = len(agent_edge_list) - len(edge_map)
 
-    start_correct = bool(
-        agent.start_node_id is not None
-        and mapping.get(agent.start_node_id) == target.start_node_id
-    )
+    agent_start_ids = set(getattr(agent, "start_node_ids", []))
+    if not agent_start_ids and agent.start_node_id is not None:
+        agent_start_ids = {agent.start_node_id}
+    mapped_agent_starts = {
+        mapping[node_id] for node_id in agent_start_ids if node_id in mapping
+    }
+    target_entries = set(business_entry_node_ids(raw_target))
+    start_correct = mapped_agent_starts == target_entries
     agent_ends = {mapping.get(eid) for eid in agent.end_node_ids if mapping.get(eid)}
     target_ends = set(target.end_node_ids)
     end_recall = (
@@ -1802,6 +1884,7 @@ def evaluate(
         mapping,
         edge_map,
     )
+    diagnostics.canonical_contract = canonical_contract
 
     return EvaluationResult(
         protocol_completed=protocol,

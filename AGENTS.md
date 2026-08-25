@@ -25,7 +25,10 @@ Environment variables: copy `.env.example` to `.env` and set API keys. Uses [Lit
 
 Required keys depend on the task:
 
-- `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` — for LLM-based agents and user simulators
+- `OPENROUTER_API_KEY` — for text LLM agents/user simulators, including bare
+  OpenAI model ids (routed through OpenRouter automatically)
+- `ANTHROPIC_API_KEY` — for direct Anthropic models
+- `OPENAI_API_KEY` — optional direct OpenAI APIs such as Realtime/Whisper
 - `ELEVENLABS_API_KEY` — voice synthesis
 - `DEEPGRAM_API_KEY` — voice transcription
 
@@ -281,4 +284,9 @@ test: add integration tests for retail domain
 - **Task splits**: The `base` split is the default for evaluation. The `train`/`test` splits are for RL experiments.
 - **Pre-commit hook**: Runs `make check-all` (ruff lint + format). Fix any issues before committing.
 - **Notebooks**: Excluded from ruff (`*.ipynb` in pyproject.toml exclude).
-- **`banking_knowledge` domain**: Uses `--retrieval-config` to specify how the agent accesses the knowledge base. If omitted, defaults to `alltools` (BM25 + dense + shell; see `src/tau2/knowledge/README.md`). For offline-only, use e.g. `bm25`. Other offline configs: `no_knowledge`, `full_kb`, `golden_retrieval`, `bm25_grep`, `grep_only`. `openai_embeddings*` and default `alltools` require `OPENAI_API_KEY`. `qwen_embeddings*` and `alltools-qwen` require `OPENROUTER_API_KEY` (included in `.env.example`). `*_reranker` configs additionally require `OPENAI_API_KEY` for the LLM reranker. `terminal_use*`, `alltools`, and `alltools-qwen` require `sandbox-runtime`: install via `npm install -g @anthropic-ai/sandbox-runtime@0.0.23` **AND** the system tools it shells out to (`apt install ripgrep bubblewrap socat` on Linux, `brew install ripgrep` on macOS) — `SandboxManager` raises `SandboxRuntimeError` at construction time if any are missing. Embedding cache lives in `data/.embeddings_cache` (gitignored). See `src/tau2/knowledge/README.md` for full details.
+- **`banking_knowledge` domain**: Uses `--retrieval-config` to specify how the agent accesses the knowledge base. If omitted, defaults to `alltools` (BM25 + dense + shell; see `src/tau2/knowledge/README.md`). For offline-only, use e.g. `bm25`. Other offline configs: `no_knowledge`, `full_kb`, `golden_retrieval`, `bm25_grep`, `grep_only`. `openai_embeddings*`, default `alltools`, and bare OpenAI text models use
+`OPENROUTER_API_KEY` through OpenRouter when `OPENAI_API_KEY` is absent.
+`qwen_embeddings*` and `alltools-qwen` also require `OPENROUTER_API_KEY`
+(included in `.env.example`). `OPENAI_API_KEY` remains an optional direct
+provider fallback for OpenAI-compatible embedding/reranker clients and direct
+voice APIs. `terminal_use*`, `alltools`, and `alltools-qwen` require `sandbox-runtime`: install via `npm install -g @anthropic-ai/sandbox-runtime@0.0.23` **AND** the system tools it shells out to (`apt install ripgrep bubblewrap socat` on Linux, `brew install ripgrep` on macOS) — `SandboxManager` raises `SandboxRuntimeError` at construction time if any are missing. Embedding cache lives in `data/.embeddings_cache` (gitignored). See `src/tau2/knowledge/README.md` for full details.
