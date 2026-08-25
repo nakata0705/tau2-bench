@@ -20,13 +20,15 @@
                 "declared_end": true,
                 "declared_start": false,
                 "in_degree": 3,
-                "out_degree": 1
+                "out_degree": 1,
+                "structural": false
               },
               "to": {
                 "declared_end": true,
                 "declared_start": false,
                 "in_degree": 1,
-                "out_degree": 0
+                "out_degree": 0,
+                "structural": false
               }
             },
             "topology_shape": [
@@ -67,13 +69,15 @@
                 "declared_end": true,
                 "declared_start": false,
                 "in_degree": 3,
-                "out_degree": 1
+                "out_degree": 1,
+                "structural": false
               },
               "to": {
                 "declared_end": true,
                 "declared_start": false,
                 "in_degree": 1,
-                "out_degree": 0
+                "out_degree": 0,
+                "structural": false
               }
             }
           }
@@ -913,13 +917,15 @@
                 "declared_end": false,
                 "declared_start": false,
                 "in_degree": 1,
-                "out_degree": 3
+                "out_degree": 3,
+                "structural": false
               },
               "to": {
                 "declared_end": true,
                 "declared_start": false,
                 "in_degree": 1,
-                "out_degree": 0
+                "out_degree": 0,
+                "structural": false
               }
             },
             "topology_shape": [
@@ -967,7 +973,8 @@
               "declared_end": true,
               "declared_start": false,
               "in_degree": 3,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "topology_shape": [
               "node_slot",
@@ -993,7 +1000,8 @@
               "declared_end": true,
               "declared_start": false,
               "in_degree": 2,
-              "out_degree": 0
+              "out_degree": 0,
+              "structural": false
             },
             "relation": "writes",
             "source_id": "node_send_quotation",
@@ -1001,7 +1009,8 @@
               "declared_end": true,
               "declared_start": false,
               "in_degree": 3,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             }
           }
         ],
@@ -1652,7 +1661,8 @@
               "declared_end": true,
               "declared_start": false,
               "in_degree": 2,
-              "out_degree": 0
+              "out_degree": 0,
+              "structural": false
             },
             "relation": "writes",
             "source_location": "node:node_send_quotation:writes"
@@ -1797,7 +1807,8 @@
               "declared_end": true,
               "declared_start": false,
               "in_degree": 2,
-              "out_degree": 0
+              "out_degree": 0,
+              "structural": false
             },
             "relation": "writes",
             "source_location": "node:node_send_quotation:writes"
@@ -1887,7 +1898,8 @@
               "declared_end": false,
               "declared_start": false,
               "in_degree": 1,
-              "out_degree": 3
+              "out_degree": 3,
+              "structural": false
             },
             "topology_shape": [
               "node_slot",
@@ -1924,7 +1936,8 @@
               "declared_end": false,
               "declared_start": false,
               "in_degree": 1,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "topology_shape": [
               "node_slot",
@@ -1942,7 +1955,8 @@
               "declared_end": false,
               "declared_start": false,
               "in_degree": 1,
-              "out_degree": 2
+              "out_degree": 2,
+              "structural": false
             },
             "topology_shape": [
               "node_slot",
@@ -1969,7 +1983,8 @@
               "declared_end": false,
               "declared_start": false,
               "in_degree": 1,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "relation": "reads",
             "source_id": "node_approve_high_value",
@@ -1977,7 +1992,8 @@
               "declared_end": false,
               "declared_start": false,
               "in_degree": 1,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             }
           },
           {
@@ -1989,7 +2005,8 @@
               "declared_end": false,
               "declared_start": false,
               "in_degree": 1,
-              "out_degree": 3
+              "out_degree": 3,
+              "structural": false
             },
             "relation": "writes",
             "source_id": "node_create_quotation_doc",
@@ -1997,7 +2014,8 @@
               "declared_end": false,
               "declared_start": false,
               "in_degree": 1,
-              "out_degree": 2
+              "out_degree": 2,
+              "structural": false
             }
           }
         ],
@@ -2669,7 +2687,8 @@
               "declared_end": false,
               "declared_start": false,
               "in_degree": 1,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "relation": "reads",
             "source_location": "node:node_approve_high_value:reads"
@@ -2681,7 +2700,8 @@
               "declared_end": false,
               "declared_start": false,
               "in_degree": 1,
-              "out_degree": 3
+              "out_degree": 3,
+              "structural": false
             },
             "relation": "writes",
             "source_location": "node:node_create_quotation_doc:writes"
@@ -2786,7 +2806,8 @@
               "declared_end": false,
               "declared_start": false,
               "in_degree": 1,
-              "out_degree": 3
+              "out_degree": 3,
+              "structural": false
             },
             "topology_shape": [
               "node_slot",
@@ -2889,7 +2910,8 @@
               "declared_end": false,
               "declared_start": false,
               "in_degree": 1,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "relation": "reads",
             "source_location": "node:node_approve_high_value:reads"
@@ -2901,7 +2923,8 @@
               "declared_end": false,
               "declared_start": false,
               "in_degree": 1,
-              "out_degree": 3
+              "out_degree": 3,
+              "structural": false
             },
             "relation": "writes",
             "source_location": "node:node_create_quotation_doc:writes"
@@ -2998,7 +3021,8 @@
               "declared_end": false,
               "declared_start": true,
               "in_degree": 0,
-              "out_degree": 2
+              "out_degree": 2,
+              "structural": false
             },
             "topology_shape": [
               "node_slot",
@@ -3024,7 +3048,8 @@
               "declared_end": false,
               "declared_start": true,
               "in_degree": 0,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "relation": "reads",
             "source_id": "node_receive_request",
@@ -3032,7 +3057,8 @@
               "declared_end": false,
               "declared_start": true,
               "in_degree": 0,
-              "out_degree": 2
+              "out_degree": 2,
+              "structural": false
             }
           }
         ],
@@ -3684,7 +3710,8 @@
               "declared_end": false,
               "declared_start": true,
               "in_degree": 0,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "relation": "reads",
             "source_location": "node:node_receive_request:reads"
@@ -3829,7 +3856,8 @@
               "declared_end": false,
               "declared_start": true,
               "in_degree": 0,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "relation": "reads",
             "source_location": "node:node_receive_request:reads"
@@ -3915,7 +3943,8 @@
               "declared_end": false,
               "declared_start": true,
               "in_degree": 0,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "topology_shape": [
               "node_slot",
@@ -3952,7 +3981,8 @@
               "declared_end": false,
               "declared_start": false,
               "in_degree": 1,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "topology_shape": [
               "node_slot",
@@ -3978,7 +4008,8 @@
               "declared_end": false,
               "declared_start": false,
               "in_degree": 1,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "relation": "activity",
             "source_id": "node_manager_approve",
@@ -3986,7 +4017,8 @@
               "declared_end": false,
               "declared_start": false,
               "in_degree": 1,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             }
           }
         ],
@@ -4639,7 +4671,8 @@
               "declared_end": false,
               "declared_start": false,
               "in_degree": 1,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "relation": "activity",
             "source_location": "node:node_manager_approve:activity"
@@ -4733,7 +4766,8 @@
               "declared_end": false,
               "declared_start": false,
               "in_degree": 1,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "topology_shape": [
               "node_slot",
@@ -4806,7 +4840,8 @@
               "declared_end": false,
               "declared_start": false,
               "in_degree": 1,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "relation": "activity",
             "source_location": "node:node_manager_approve:activity"
@@ -4892,7 +4927,8 @@
               "declared_end": false,
               "declared_start": false,
               "in_degree": 0,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "topology_shape": [
               "node_slot",
@@ -4918,7 +4954,8 @@
               "declared_end": false,
               "declared_start": true,
               "in_degree": 0,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "relation": "reads",
             "source_id": "node_receive_request",
@@ -4926,7 +4963,8 @@
               "declared_end": false,
               "declared_start": false,
               "in_degree": 0,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             }
           }
         ],
@@ -5572,7 +5610,8 @@
               "declared_end": false,
               "declared_start": true,
               "in_degree": 0,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "relation": "reads",
             "source_location": "node:node_receive_request:reads"
@@ -5717,7 +5756,8 @@
               "declared_end": false,
               "declared_start": true,
               "in_degree": 0,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "relation": "reads",
             "source_location": "node:node_receive_request:reads"
@@ -5803,7 +5843,8 @@
               "declared_end": false,
               "declared_start": true,
               "in_degree": 0,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "topology_shape": [
               "node_slot",
@@ -5840,7 +5881,8 @@
               "declared_end": false,
               "declared_start": true,
               "in_degree": 0,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "topology_shape": [
               "node_slot",
@@ -5866,7 +5908,8 @@
               "declared_end": false,
               "declared_start": true,
               "in_degree": 0,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "relation": "reads",
             "source_id": "node_receive_request",
@@ -5874,7 +5917,8 @@
               "declared_end": false,
               "declared_start": true,
               "in_degree": 0,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             }
           }
         ],
@@ -6526,7 +6570,8 @@
               "declared_end": false,
               "declared_start": true,
               "in_degree": 0,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "relation": "reads",
             "source_location": "node:node_receive_request:reads"
@@ -6662,7 +6707,8 @@
               "declared_end": false,
               "declared_start": true,
               "in_degree": 0,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "relation": "reads",
             "source_location": "node:node_receive_request:reads"
@@ -6748,7 +6794,8 @@
               "declared_end": false,
               "declared_start": true,
               "in_degree": 0,
-              "out_degree": 1
+              "out_degree": 1,
+              "structural": false
             },
             "topology_shape": [
               "node_slot",
@@ -6820,11 +6867,15 @@
     ],
     "projected_sinks_equal_truth_declared_ends": true,
     "projected_sources_equal_truth_declared_start": true,
+    "topology_derived_end_inference_used": false,
+    "truth_business_entry_nodes": [],
+    "truth_business_exit_nodes": [],
     "truth_declared_end_nodes": [
       "me",
       "sq"
     ],
     "truth_declared_start_node": "r",
+    "truth_graph_is_canonical": false,
     "truth_topology_sinks": [
       "me",
       "sq"

@@ -82,6 +82,10 @@ ForgettingConfig = StakeholderForgettingConfig
 class StakeholderFilter(BaseModel):
     """What a stakeholder knows of the Truth.
 
+    ``stakeholder_id`` and ``role`` are optional stable metadata used when a
+    scenario has more than one simulator.  The id is preferred over list
+    position when reference evaluations are serialized.
+
     - ``visible_node_ids`` / ``visible_edge_ids``: which nodes / edges exist
       in the stakeholder's world model.
     - ``visible_node_attributes``: per-node property knowledge
@@ -95,6 +99,8 @@ class StakeholderFilter(BaseModel):
     """
 
     name: str
+    stakeholder_id: Optional[str] = None
+    role: Optional[str] = None
     visible_node_ids: list[str] = Field(default_factory=list)
     visible_edge_ids: list[str] = Field(default_factory=list)
     visible_node_attributes: dict[str, list[str]] = Field(default_factory=dict)

@@ -33,13 +33,24 @@ edge conditions. The private provenance ledger
 (annotations/alignments/terminology) and evidence-hygiene metrics remain as
 **diagnostics** only. They are reported but never gate ``quality_pass``.
 
+Evaluation therefore has one primary meaning:
+
+    AgentGraph -> compare -> TruthGraph -> Truth reconstruction score
+
 StakeholderKnowledge stays a simulator constraint, not the scored target: it
 limits what the conversation can reveal, while the scored target is the Truth.
+For interpretation, ``stakeholder_truth_reference`` separately compares each
+StakeholderKnowledge view to the same Truth business projection. Those
+reference-only values expose information completeness/forgetting and never
+change the Agent denominator, primary pass/fail, or ranking. Structural
+SOURCE/SINK elements and boundary edges are excluded from both business
+projections. A DONT_KNOW slot is incomplete, and a contracted shortcut keeps
+its provenance without receiving exact Truth-edge credit.
 """
 
 import re
 import unicodedata
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -72,6 +83,8 @@ from .joint_structural_alignment import (  # pyright: ignore[reportMissingImport
     JointStructuralAlignmentDiagnostics,
     build_joint_structural_alignment_diagnostics,
 )
+from .knowledge import StakeholderKnowledge
+from .stakeholder import StakeholderForgettingConfig
 from .usage_alignment import (  # pyright: ignore[reportMissingImports]
     UsageAlignmentDiagnostics,
     build_usage_alignment_diagnostics,
@@ -83,6 +96,11 @@ __all__ = [
     "EvaluationResult",
     "EvaluationDiagnostics",
     "FailureAttribution",
+    "StakeholderReferenceInput",
+    "StakeholderTruthReferenceAggregate",
+    "StakeholderTruthReferenceDiagnostics",
+    "StakeholderTruthReferenceEvaluation",
+    "StakeholderTruthReferenceMetrics",
     "evaluate",
     "grounded_semantic_ids",
     "resolve_grounding_refs",
@@ -268,6 +286,106 @@ class EvaluationSpec(BaseModel):
     """
 
 
+class StakeholderReferenceInput(BaseModel):
+    """One evaluator-side StakeholderKnowledge reference input.
+
+    ``knowledge`` is deliberately kept as a StakeholderKnowledge object rather
+    than converted to an AgentGraph.  Its three-valued epistemic state and
+    shortcut provenance therefore remain intact while the same Truth-based
+    comparison primitives are reused.
+    """
+
+    stakeholder_id: str
+    stakeholder_name: str = ""
+    stakeholder_role: Optional[str] = None
+    forgetting_configuration: dict[str, Any] = Field(default_factory=dict)
+    knowledge: StakeholderKnowledge
+
+
+class StakeholderTruthReferenceMetrics(BaseModel):
+    """Truth-reconstruction components for one stakeholder, reference-only.
+
+    These fields mirror the ordinary Agent↔Truth reconstruction axes where
+    they are meaningful.  They describe the completeness of one
+    StakeholderKnowledge view; they are never used as the benchmark's Agent
+    score, pass/fail gate, denominator, or ranking input.
+    """
+
+    graph_created: bool
+    graph_valid: bool
+    node_recall: float
+    node_precision: float
+    edge_recall: float
+    edge_precision: float
+    start_correct: bool
+    end_recall: float
+    end_precision: float
+    activity_correctness: float
+    actor_correctness: float
+    system_correctness: float
+    read_correctness: float
+    write_correctness: float
+    rationale_correctness: float
+    condition_correctness: float
+    concept_correctness: float
+    concept_recall: float
+    concept_precision: float
+    unsupported_ref_count: int
+    fabricated_node_count: int
+    fabricated_edge_count: int
+    glossary_complete: bool
+    knowledge_coverage: float
+    structural_component_score: float
+    quality_component_score: float
+    aggregate_score: float
+    structural_pass: bool
+    reconstruction_pass: bool
+    quality_pass: bool
+
+
+class StakeholderTruthReferenceDiagnostics(BaseModel):
+    """Evaluator-private alignment and forgetting diagnostics for one view."""
+
+    schema_version: str = "business_interview.stakeholder_truth_reference.v1"
+    reference_only: bool = True
+    primary_score_untouched: bool = True
+    scoring_excludes_structural_elements: bool = True
+    node_alignment: dict[str, str] = Field(default_factory=dict)
+    edge_alignment: dict[str, str] = Field(default_factory=dict)
+    concept_alignment: dict[str, str] = Field(default_factory=dict)
+    missing_truth_node_ids: list[str] = Field(default_factory=list)
+    missing_truth_edge_ids: list[str] = Field(default_factory=list)
+    unmatched_stakeholder_node_ids: list[str] = Field(default_factory=list)
+    unmatched_stakeholder_edge_ids: list[str] = Field(default_factory=list)
+    missing_truth_concept_ids: list[str] = Field(default_factory=list)
+    validation_errors: list[str] = Field(default_factory=list)
+    forgetting_configuration: dict[str, Any] = Field(default_factory=dict)
+    contracted_node_count: int = 0
+    shortcut_edge_count: int = 0
+    shortcut_provenance: list[dict[str, Any]] = Field(default_factory=list)
+    canonical_contract: dict[str, object] = Field(default_factory=dict)
+
+
+class StakeholderTruthReferenceEvaluation(BaseModel):
+    """One named StakeholderKnowledge↔Truth reference evaluation."""
+
+    stakeholder_id: str
+    stakeholder_name: str = ""
+    stakeholder_role: Optional[str] = None
+    truth_reconstruction: StakeholderTruthReferenceMetrics
+    diagnostics: StakeholderTruthReferenceDiagnostics
+
+
+class StakeholderTruthReferenceAggregate(BaseModel):
+    """Descriptive aggregate of per-stakeholder reference scores only."""
+
+    reference_only: bool = True
+    stakeholder_count: int = 0
+    min_stakeholder_truth_score: Optional[float] = None
+    max_stakeholder_truth_score: Optional[float] = None
+    mean_stakeholder_truth_score: Optional[float] = None
+
+
 class EvaluationResult(BaseModel):
     protocol_completed: bool
     graph_created: bool
@@ -323,6 +441,15 @@ class EvaluationResult(BaseModel):
     # evaluator-only Truth/Agent reconstruction trace. This is deliberately
     # not part of InterviewDB or any Agent/Stakeholder-visible surface.
     diagnostics: EvaluationDiagnostics
+
+    # Reference-only diagnostics: one Truth comparison for every configured
+    # StakeholderKnowledge view. These fields never feed the primary score.
+    stakeholder_truth_reference: list[StakeholderTruthReferenceEvaluation] = Field(
+        default_factory=list
+    )
+    stakeholder_truth_reference_aggregate: StakeholderTruthReferenceAggregate = Field(
+        default_factory=StakeholderTruthReferenceAggregate
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -750,18 +877,18 @@ def _map_nodes_and_edges(
     Agent-node-id reorderings.
     """
     agent_sigs = {
-        anid: _node_signature(
+        agent_node_id: _node_signature(
             node, agent.concepts, is_truth=False, agent_to_truth=agent_to_truth
         )
-        for anid, node in agent.nodes.items()
+        for agent_node_id, node in agent.nodes.items()
     }
     truth_sigs = {
         tnid: _node_signature(node, truth.concepts, is_truth=True)
         for tnid, node in truth.nodes.items()
     }
     weights: dict[tuple[str, str], float] = {}
-    for anid in agent_sigs:
-        a = agent_sigs[anid]
+    for agent_node_id in agent_sigs:
+        a = agent_sigs[agent_node_id]
         if not a:
             continue
         for tnid in truth_sigs:
@@ -778,7 +905,7 @@ def _map_nodes_and_edges(
                 continue
             s = _similarity(a, t)
             if s > 0.0:
-                weights[(anid, tnid)] = s
+                weights[(agent_node_id, tnid)] = s
     mapping = _max_weight_assignment(
         weights, sorted(agent_sigs), sorted(truth_sigs), threshold=0.0
     )
@@ -813,22 +940,28 @@ def _score_scalar_slot(
     agent_value,
     truth_value,
     agent_to_truth: dict[str, str],
+    *,
+    known_absent=None,
 ) -> int:
     """Epistemic-aware scalar slot score (1 correct / 0 otherwise).
 
-    Truth ``ConceptRef`` -> only a matching asserted Agent ``ConceptRef`` is
-    correct; every other Agent state is incorrect. Truth ``None`` -> only an
-    explicit Agent ``ABSENT`` marker is correct; ``UNSET``, ``DONT_KNOW`` and
-    any ``ConceptRef`` are incorrect. The same rule applies to edge
-    conditions; no-answer is never rewarded as a lucky guess.
+    The Truth-side rule is shared by Agent and Stakeholder comparisons:
+    ``ConceptRef`` requires the matching Truth concept, while canonical
+    absence requires an explicit known-absence state.  Agent comparisons use
+    ``ABSENT`` as that state; StakeholderKnowledge comparisons pass
+    ``known_absent=lambda value: value is None``.  ``DONT_KNOW`` is never a
+    correct answer to a Truth value and never a lucky match for a Truth
+    absence.
     """
     tcid = _truth_scalar_value(truth_value)
     if tcid is not None:
         if not isinstance(agent_value, ConceptRef) or not agent_value.asserted:
             return 0
         return 1 if agent_to_truth.get(agent_value.concept_id) == tcid else 0
-    # Truth absent: explicit ABSENT is the only correct state
+    # Truth absent: explicit candidate known-absence is the only correct state.
     if isinstance(agent_value, AbsentType):
+        return 1
+    if known_absent is not None and known_absent(agent_value):
         return 1
     return 0
 
@@ -837,13 +970,15 @@ def _score_list_slot(
     agent_value,
     truth_value,
     agent_to_truth: dict[str, str],
+    *,
+    known_absent=None,
 ) -> tuple[float, int]:
-    """Epistemic-aware reads/writes slot score, plus unsupported count.
+    """Shared reads/writes completeness score, plus unsupported count.
 
-    Truth list -> recall*precision over the normal element set.
-    Truth None / known-empty -> only an explicit Agent ABSENT marker scores
-    1.0; UNSET and DONT_KNOW are incomplete; asserted list refs are
-    fabricated.
+    Truth lists use recall*precision over the normal element set.  Truth
+    ``None`` / known-empty requires an explicit candidate known-absence state
+    (Agent ``ABSENT`` or Stakeholder ``None``); ``UNSET`` and ``DONT_KNOW`` are
+    incomplete and asserted list refs are fabricated.
     """
     expected: set[str] = (
         {ref.concept_id for ref in truth_value}
@@ -852,6 +987,8 @@ def _score_list_slot(
     )
     if not expected:
         if isinstance(agent_value, AbsentType):
+            return 1.0, 0
+        if known_absent is not None and known_absent(agent_value):
             return 1.0, 0
         if isinstance(agent_value, list):
             unsupported = sum(1 for r in agent_value if r.asserted)
@@ -1104,6 +1241,504 @@ def _knowledge_coverage(truth, knowledge) -> float:
         if ke is not None and not is_dont_know(ke.condition):
             known += 1
     return known / total if total else 0.0
+
+
+def _reference_stakeholder_id(name: str, index: int = 0) -> str:
+    """Derive a stable identifier only when a scenario gives no explicit id.
+
+    ``index`` is retained for API compatibility but is deliberately not used
+    as the fallback identity; a graph id or name must identify the view.
+    """
+    del index
+    slug = re.sub(r"[^a-z0-9]+", "_", (name or "").strip().lower()).strip("_")
+    return slug or "stakeholder"
+
+
+def _knowledge_fallback_identity(knowledge: StakeholderKnowledge) -> tuple[str, str]:
+    """Return stable fallback metadata for artifact re-evaluation.
+
+    Historical private artifacts do not preserve the StakeholderFilter.  Their
+    graph id/name is still stable evaluator metadata; multi-stakeholder callers
+    should provide explicit ids through StakeholderReferenceInput.
+    """
+    graph = knowledge.graph
+    name = str(getattr(graph, "name", "") or "")
+    graph_id = str(getattr(graph, "id", "") or "")
+    return graph_id or _reference_stakeholder_id(name), name
+
+
+def _forgetting_configuration(filter_) -> dict[str, Any]:
+    """Serialize optional StakeholderFilter forgetting metadata safely."""
+    forgetting = getattr(filter_, "forgetting", None)
+    if forgetting is None:
+        return {}
+    if isinstance(forgetting, StakeholderForgettingConfig):
+        return forgetting.model_dump(mode="json")
+    if isinstance(forgetting, dict):
+        return dict(forgetting)
+    return {}
+
+
+def _coerce_stakeholder_reference(item: Any, index: int) -> StakeholderReferenceInput:
+    """Accept the public reference model and Scenario stakeholder profiles."""
+    if isinstance(item, StakeholderReferenceInput):
+        return item
+    if isinstance(item, StakeholderKnowledge):
+        stakeholder_id, stakeholder_name = _knowledge_fallback_identity(item)
+        return StakeholderReferenceInput(
+            stakeholder_id=stakeholder_id,
+            stakeholder_name=stakeholder_name,
+            knowledge=item,
+        )
+    if isinstance(item, dict):
+        return StakeholderReferenceInput.model_validate(item)
+
+    knowledge = getattr(item, "knowledge", None)
+    if isinstance(knowledge, dict):
+        knowledge = StakeholderKnowledge.model_validate(knowledge)
+    if not isinstance(knowledge, StakeholderKnowledge):
+        raise TypeError(
+            "stakeholder reference must contain a StakeholderKnowledge object"
+        )
+    filter_ = getattr(item, "stakeholder", None)
+    name = (
+        getattr(item, "stakeholder_name", None)
+        or getattr(item, "name", None)
+        or getattr(filter_, "name", None)
+        or ""
+    )
+    stakeholder_id = (
+        getattr(item, "stakeholder_id", None)
+        or getattr(filter_, "stakeholder_id", None)
+        or _reference_stakeholder_id(name, index)
+    )
+    role = getattr(item, "stakeholder_role", None) or getattr(filter_, "role", None)
+    return StakeholderReferenceInput(
+        stakeholder_id=str(stakeholder_id),
+        stakeholder_name=str(name),
+        stakeholder_role=role,
+        forgetting_configuration=_forgetting_configuration(filter_),
+        knowledge=knowledge,
+    )
+
+
+def _normalize_stakeholder_references(
+    knowledge,
+    stakeholder,
+    stakeholder_references: Optional[list[Any]],
+) -> list[StakeholderReferenceInput]:
+    """Resolve the single legacy input or an explicit multi-stakeholder list."""
+    if stakeholder_references is not None:
+        references = [
+            _coerce_stakeholder_reference(item, index)
+            for index, item in enumerate(stakeholder_references)
+        ]
+        references = sorted(
+            references,
+            key=lambda item: (
+                item.stakeholder_id,
+                item.stakeholder_name,
+                item.stakeholder_role or "",
+            ),
+        )
+        ids = [item.stakeholder_id for item in references]
+        if len(ids) != len(set(ids)):
+            raise ValueError(
+                "stakeholder reference ids must be unique; provide explicit "
+                "stable ids for multiple StakeholderKnowledge views"
+            )
+        return references
+    if knowledge is None:
+        return []
+    fallback_id, fallback_name = _knowledge_fallback_identity(knowledge)
+    name = getattr(stakeholder, "name", "") or fallback_name
+    stakeholder_id = getattr(stakeholder, "stakeholder_id", None) or fallback_id
+    return [
+        StakeholderReferenceInput(
+            stakeholder_id=str(stakeholder_id),
+            stakeholder_name=str(name),
+            stakeholder_role=getattr(stakeholder, "role", None),
+            forgetting_configuration=_forgetting_configuration(stakeholder),
+            knowledge=knowledge,
+        )
+    ]
+
+
+def _reference_truth_mappings(
+    truth,
+    knowledge: StakeholderKnowledge,
+) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    """Map opaque stakeholder-local ids through evaluator-private mappings.
+
+    No local identifier is interpreted lexically.  A shortcut edge is
+    intentionally excluded from ``edge_alignment`` even when its endpoints
+    happen to resemble a Truth edge: contraction is a loss of the intervening
+    Truth business edges, not a new exact edge claim.
+    """
+    target = business_graph_projection(truth)
+    graph = knowledge.graph
+    node_alignment: dict[str, str] = {}
+    for local_id in sorted(business_node_ids(graph)):
+        truth_id = graph.node_truth_ids.get(local_id)
+        if not isinstance(truth_id, str) or truth_id not in target.nodes:
+            continue
+        node_alignment[local_id] = truth_id
+
+    edge_alignment: dict[str, str] = {}
+    for local_id in sorted(business_edge_ids(graph)):
+        edge = graph.edges[local_id]
+        if getattr(edge, "is_shortcut", False):
+            continue
+        truth_id = graph.edge_truth_ids.get(local_id)
+        if not isinstance(truth_id, str) or truth_id not in target.edges:
+            continue
+        truth_edge_id: str = truth_id
+        from_truth = node_alignment.get(edge.from_node)
+        to_truth = node_alignment.get(edge.to_node)
+        truth_edge = target.edges[truth_edge_id]
+        if from_truth == truth_edge.from_node and to_truth == truth_edge.to_node:
+            edge_alignment[local_id] = truth_edge_id
+
+    expected_concepts = _truth_referenced_concept_ids(target)
+    concept_alignment: dict[str, str] = {}
+    for local_id in sorted(graph.referenced_concept_ids()):
+        concept = graph.concepts.get(local_id)
+        truth_id = getattr(concept, "truth_concept_id", None)
+        if (
+            isinstance(truth_id, str)
+            and truth_id in expected_concepts
+            and concept is not None
+            and getattr(concept, "kind", None)
+            == getattr(target.concepts.get(truth_id), "kind", None)
+        ):
+            concept_alignment[local_id] = truth_id
+    return node_alignment, edge_alignment, concept_alignment
+
+
+def _reference_shortcut_diagnostics(
+    truth,
+    knowledge: StakeholderKnowledge,
+    node_alignment: dict[str, str],
+) -> list[dict[str, Any]]:
+    """Record contraction provenance without granting direct-edge credit."""
+    graph = knowledge.graph
+    records: list[dict[str, Any]] = []
+    for local_id, edge in sorted(graph.edges.items()):
+        if not getattr(edge, "is_shortcut", False):
+            continue
+        provenance = dict(graph.shortcut_provenance.get(local_id, {}))
+        contracted = list(
+            provenance.get("contracted_nodes") or getattr(edge, "contracted_nodes", [])
+        )
+        derived = list(
+            provenance.get("derived_from_edges")
+            or getattr(edge, "derived_from_edges", [])
+        )
+        records.append(
+            {
+                "stakeholder_edge_id": local_id,
+                "from_node_id": edge.from_node,
+                "to_node_id": edge.to_node,
+                "truth_from_node_id": node_alignment.get(edge.from_node),
+                "truth_to_node_id": node_alignment.get(edge.to_node),
+                "is_shortcut": True,
+                "contracted_nodes": contracted,
+                "derived_from_edges": derived,
+                "truth_path_edge_ids": [
+                    edge_id for edge_id in derived if edge_id in truth.edges
+                ],
+                "matched_truth_edge_id": None,
+                "direct_business_edge_credit": False,
+                "reason": (
+                    "safe serial contraction is diagnostic provenance; the "
+                    "derived edge is not an exact Truth business edge"
+                ),
+            }
+        )
+    return records
+
+
+def _reference_component_score(values: list[float]) -> float:
+    return sum(values) / len(values) if values else 0.0
+
+
+def _evaluate_stakeholder_truth_reference(
+    truth,
+    reference: StakeholderReferenceInput,
+) -> StakeholderTruthReferenceEvaluation:
+    """Compare one StakeholderKnowledge graph to the canonical Truth graph.
+
+    This is deliberately a parallel *candidate* comparison, not a conversion
+    to AgentGraph.  It reuses the Truth projection, scalar/list slot scorers,
+    business denominators, endpoint semantics, and concept reference sets
+    from the primary evaluator while treating Stakeholder ``None`` as known
+    absence and ``DONT_KNOW`` as incomplete.
+    """
+    target = business_graph_projection(truth)
+    graph = reference.knowledge.graph
+    validation_errors = graph.structure_errors()
+    node_alignment, edge_alignment, concept_alignment = _reference_truth_mappings(
+        truth, reference.knowledge
+    )
+    target_node_ids = sorted(target.nodes)
+    target_edge_ids = sorted(target.edges)
+    stakeholder_node_ids = sorted(business_node_ids(graph))
+    stakeholder_edge_ids = sorted(business_edge_ids(graph))
+
+    matched_nodes = set(node_alignment.values())
+    node_recall = len(matched_nodes) / len(target_node_ids) if target_node_ids else 1.0
+    node_precision = (
+        len(node_alignment) / len(stakeholder_node_ids) if stakeholder_node_ids else 0.0
+    )
+    fabricated_node_count = len(stakeholder_node_ids) - len(node_alignment)
+
+    matched_edges = set(edge_alignment.values())
+    edge_recall = len(matched_edges) / len(target_edge_ids) if target_edge_ids else 1.0
+    edge_precision = (
+        len(edge_alignment) / len(stakeholder_edge_ids) if stakeholder_edge_ids else 0.0
+    )
+    fabricated_edge_count = len(stakeholder_edge_ids) - len(edge_alignment)
+
+    target_entries = set(business_entry_node_ids(truth))
+    stakeholder_starts = set()
+    if graph.start_node_id is not None:
+        stakeholder_starts.add(graph.start_node_id)
+    else:
+        # Canonical StakeholderKnowledge intentionally leaves the legacy
+        # singular field empty for multiple entries.  Read all protected
+        # SOURCE boundary edges instead of treating that valid case as no
+        # start nodes.
+        stakeholder_starts.update(
+            edge.to_node
+            for edge in graph.edges.values()
+            if edge_is_structural(edge)
+            and edge.from_node == graph.source_node_id
+            and edge.to_node in graph.nodes
+        )
+    mapped_starts = {
+        node_alignment[node_id]
+        for node_id in stakeholder_starts
+        if node_id in node_alignment
+    }
+    start_correct = mapped_starts == target_entries
+    target_ends = set(target.end_node_ids)
+    stakeholder_ends = {
+        node_alignment[node_id]
+        for node_id in graph.end_node_ids
+        if node_id in node_alignment
+    }
+    end_recall = (
+        len(stakeholder_ends & target_ends) / len(target_ends) if target_ends else 1.0
+    )
+    end_precision = (
+        len(stakeholder_ends & target_ends) / len(stakeholder_ends)
+        if stakeholder_ends
+        else 0.0
+    )
+
+    hits = {prop: 0.0 for prop in _NODE_PROPS}
+    unsupported = 0
+    for local_id, truth_id in sorted(node_alignment.items()):
+        stakeholder_node = graph.nodes[local_id]
+        truth_node = target.nodes[truth_id]
+        for prop in _NODE_PROPS:
+            candidate_value = _prop_value(stakeholder_node, prop)
+            truth_value = _prop_value(truth_node, prop)
+            if prop in ("reads", "writes"):
+                score, unsupported_here = _score_list_slot(
+                    candidate_value,
+                    truth_value,
+                    concept_alignment,
+                    known_absent=lambda value: value is None,
+                )
+                hits[prop] += score
+                unsupported += unsupported_here
+            else:
+                hits[prop] += _score_scalar_slot(
+                    candidate_value,
+                    truth_value,
+                    concept_alignment,
+                    known_absent=lambda value: value is None,
+                )
+    matched_node_count = len(node_alignment) or 1
+    activity_correctness = hits["activity"] / matched_node_count
+    actor_correctness = hits["actor"] / matched_node_count
+    system_correctness = hits["system"] / matched_node_count
+    read_correctness = hits["reads"] / matched_node_count
+    write_correctness = hits["writes"] / matched_node_count
+    rationale_correctness = hits["rationale"] / matched_node_count
+
+    condition_hits = 0.0
+    for truth_id in target_edge_ids:
+        local_id = next(
+            (
+                edge_id
+                for edge_id, mapped_truth_id in edge_alignment.items()
+                if mapped_truth_id == truth_id
+            ),
+            None,
+        )
+        if local_id is None:
+            continue
+        if _score_scalar_slot(
+            graph.edges[local_id].condition,
+            target.edges[truth_id].condition,
+            concept_alignment,
+            known_absent=lambda value: value is None,
+        ):
+            condition_hits += 1.0
+    condition_correctness = (
+        condition_hits / len(target_edge_ids) if target_edge_ids else 1.0
+    )
+
+    expected_concepts = _truth_referenced_concept_ids(target)
+    attempted_concepts = set(graph.referenced_concept_ids())
+    recalled_concepts = set(concept_alignment.values()) & expected_concepts
+    concept_recall = (
+        len(recalled_concepts) / len(expected_concepts) if expected_concepts else 1.0
+    )
+    concept_precision = (
+        len(concept_alignment) / len(attempted_concepts) if attempted_concepts else 1.0
+    )
+    concept_correctness = concept_recall * concept_precision
+    glossary_complete = concept_recall == 1.0 and concept_precision == 1.0
+    graph_created = bool(stakeholder_node_ids)
+    graph_valid = not validation_errors
+
+    structural_values = [
+        1.0 if graph_valid else 0.0,
+        node_recall,
+        node_precision,
+        edge_recall,
+        edge_precision,
+        1.0 if start_correct else 0.0,
+        end_recall,
+        end_precision,
+    ]
+    quality_values = [
+        activity_correctness,
+        actor_correctness,
+        system_correctness,
+        read_correctness,
+        write_correctness,
+        rationale_correctness,
+        condition_correctness,
+        concept_correctness,
+        concept_recall,
+        concept_precision,
+    ]
+    structural_component_score = _reference_component_score(structural_values)
+    quality_component_score = _reference_component_score(quality_values)
+    aggregate_score = (structural_component_score + quality_component_score) / 2.0
+    complete = bool(
+        graph_created
+        and graph_valid
+        and node_recall == 1.0
+        and node_precision == 1.0
+        and edge_recall == 1.0
+        and edge_precision == 1.0
+        and start_correct
+        and end_recall == 1.0
+        and end_precision == 1.0
+        and activity_correctness == 1.0
+        and actor_correctness == 1.0
+        and system_correctness == 1.0
+        and read_correctness == 1.0
+        and write_correctness == 1.0
+        and rationale_correctness == 1.0
+        and condition_correctness == 1.0
+        and concept_recall == 1.0
+        and concept_precision == 1.0
+        and concept_correctness == 1.0
+        and glossary_complete
+    )
+    metrics = StakeholderTruthReferenceMetrics(
+        graph_created=graph_created,
+        graph_valid=graph_valid,
+        node_recall=node_recall,
+        node_precision=node_precision,
+        edge_recall=edge_recall,
+        edge_precision=edge_precision,
+        start_correct=start_correct,
+        end_recall=end_recall,
+        end_precision=end_precision,
+        activity_correctness=activity_correctness,
+        actor_correctness=actor_correctness,
+        system_correctness=system_correctness,
+        read_correctness=read_correctness,
+        write_correctness=write_correctness,
+        rationale_correctness=rationale_correctness,
+        condition_correctness=condition_correctness,
+        concept_correctness=concept_correctness,
+        concept_recall=concept_recall,
+        concept_precision=concept_precision,
+        unsupported_ref_count=unsupported,
+        fabricated_node_count=fabricated_node_count,
+        fabricated_edge_count=fabricated_edge_count,
+        glossary_complete=glossary_complete,
+        knowledge_coverage=_knowledge_coverage(truth, reference.knowledge),
+        structural_component_score=structural_component_score,
+        quality_component_score=quality_component_score,
+        aggregate_score=aggregate_score,
+        structural_pass=complete,
+        reconstruction_pass=complete,
+        quality_pass=complete,
+    )
+
+    shortcut_records = _reference_shortcut_diagnostics(
+        truth, reference.knowledge, node_alignment
+    )
+    canonical_contract = _canonical_contract_diagnostic(truth, reference.knowledge)
+    canonical_contract.update(
+        {
+            "reference_only": True,
+            "shortcut_edges_receive_direct_business_edge_credit": False,
+            "reference_business_projection": True,
+            "stakeholder_shortcut_provenance": shortcut_records,
+        }
+    )
+    contracted_node_ids = {
+        node_id for record in shortcut_records for node_id in record["contracted_nodes"]
+    }
+    diagnostics = StakeholderTruthReferenceDiagnostics(
+        node_alignment=dict(sorted(node_alignment.items())),
+        edge_alignment=dict(sorted(edge_alignment.items())),
+        concept_alignment=dict(sorted(concept_alignment.items())),
+        missing_truth_node_ids=sorted(set(target_node_ids) - matched_nodes),
+        missing_truth_edge_ids=sorted(set(target_edge_ids) - matched_edges),
+        unmatched_stakeholder_node_ids=sorted(
+            set(stakeholder_node_ids) - set(node_alignment)
+        ),
+        unmatched_stakeholder_edge_ids=sorted(
+            set(stakeholder_edge_ids) - set(edge_alignment)
+        ),
+        missing_truth_concept_ids=sorted(expected_concepts - recalled_concepts),
+        validation_errors=validation_errors,
+        forgetting_configuration=dict(reference.forgetting_configuration),
+        contracted_node_count=len(contracted_node_ids),
+        shortcut_edge_count=len(shortcut_records),
+        shortcut_provenance=shortcut_records,
+        canonical_contract=canonical_contract,
+    )
+    return StakeholderTruthReferenceEvaluation(
+        stakeholder_id=reference.stakeholder_id,
+        stakeholder_name=reference.stakeholder_name,
+        stakeholder_role=reference.stakeholder_role,
+        truth_reconstruction=metrics,
+        diagnostics=diagnostics,
+    )
+
+
+def _aggregate_stakeholder_truth_references(
+    references: list[StakeholderTruthReferenceEvaluation],
+) -> StakeholderTruthReferenceAggregate:
+    scores = [item.truth_reconstruction.aggregate_score for item in references]
+    return StakeholderTruthReferenceAggregate(
+        stakeholder_count=len(references),
+        min_stakeholder_truth_score=min(scores) if scores else None,
+        max_stakeholder_truth_score=max(scores) if scores else None,
+        mean_stakeholder_truth_score=(sum(scores) / len(scores) if scores else None),
+    )
 
 
 def _prop_value(node, prop):
@@ -1708,13 +2343,17 @@ def evaluate(
     annotations=None,
     alignments=None,
     terminology=None,
+    stakeholder_references: Optional[list[Any]] = None,
 ) -> EvaluationResult:
-    """Evaluate the inferred AgentGraph against the Truth (content-based).
+    """Evaluate Agent↔Truth primarily and Stakeholder↔Truth by reference.
 
-    ``truth`` (the BusinessProcessGraph) is the primary target. ``knowledge``
-    (StakeholderKnowledge) and ``stakeholder`` are used only for the
-    informational coverage metric. The provenance ledgers are diagnostics and
-    never gate quality.
+    ``truth`` (the BusinessProcessGraph) is always the primary target.
+    ``knowledge`` and ``stakeholder`` remain the legacy single-stakeholder
+    inputs for terminology enrichment and informational coverage.  The
+    optional ``stakeholder_references`` list adds one explicitly named
+    StakeholderKnowledge↔Truth evaluation per simulator; it never changes
+    Agent score fields, denominators, pass/fail, or ranking.  The provenance
+    ledgers are diagnostics and never gate quality.
     """
     raw_target = truth if truth is not None else knowledge.graph
     # Canonical SOURCE/SINK and boundary edges are structural-only.  The
@@ -1780,8 +2419,8 @@ def evaluate(
 
     hits = {p: 0.0 for p in _NODE_PROPS}
     unsupported = 0
-    for anid, tnid in mapping.items():
-        anode = agent.nodes[anid]
+    for agent_node_id, tnid in mapping.items():
+        anode = agent.nodes[agent_node_id]
         tnode = target.nodes[tnid]
         for prop in _NODE_PROPS:
             aval = anode.slot_value(prop)
@@ -1886,6 +2525,20 @@ def evaluate(
     )
     diagnostics.canonical_contract = canonical_contract
 
+    # Reference evaluations are computed only after every primary field has
+    # been finalized.  They are separate nested metadata and cannot feed back
+    # into any Agent score or pass/fail decision.
+    reference_evaluations: list[StakeholderTruthReferenceEvaluation] = []
+    if truth is not None:
+        reference_inputs = _normalize_stakeholder_references(
+            knowledge, stakeholder, stakeholder_references
+        )
+        reference_evaluations = [
+            _evaluate_stakeholder_truth_reference(truth, reference)
+            for reference in reference_inputs
+        ]
+    reference_aggregate = _aggregate_stakeholder_truth_references(reference_evaluations)
+
     return EvaluationResult(
         protocol_completed=protocol,
         graph_created=graph_created,
@@ -1929,4 +2582,6 @@ def evaluate(
         quality_pass=quality_pass,
         knowledge_coverage=_knowledge_coverage(truth, knowledge),
         diagnostics=diagnostics,
+        stakeholder_truth_reference=reference_evaluations,
+        stakeholder_truth_reference_aggregate=reference_aggregate,
     )

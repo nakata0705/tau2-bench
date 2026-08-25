@@ -240,6 +240,46 @@ all structural/property/concept metrics == 1.0, valid endpoints, valid graph.
 Provenance (evidence hygiene, sidecar annotations and dialogue events) is
 reported as diagnostic only and never gates `quality_pass`.
 
+### Stakeholder Truth reference scores (reference only)
+
+The benchmark's primary score is always **AgentGraph ↔ TruthGraph** Truth
+reconstruction. `StakeholderKnowledge` is not evaluator ground truth and never
+replaces Truth, relaxes the primary denominator, excuses Agent errors, changes
+`quality_pass`, or changes leaderboard ranking. A stakeholder may forget part
+of the process; an Agent that copies that incomplete view is still incomplete
+against Truth.
+
+`EvaluationResult.stakeholder_truth_reference` stores one named
+`StakeholderKnowledge ↔ TruthGraph` evaluation per configured stakeholder. Each
+entry includes the same Truth-reconstruction components where applicable:
+node/concept/process-edge recall and precision, slot correctness for activity,
+actor, system, reads, writes, rationale and conditions, endpoint checks,
+graph validity, structural/quality component scores, and an aggregate
+reference value. `stakeholder_truth_reference_aggregate` contains descriptive
+min/max/mean values only. Stable `stakeholder_id` plus name/role identify each
+entry; results do not depend on positional ordering or opaque local IDs.
+Reference diagnostics also retain the forgetting configuration when the
+scenario provides it, plus contracted-node and shortcut-edge counts. A high
+reference score with a poor Agent score points to elicitation/recording or
+matching loss; a strong Agent score above several low individual references
+can indicate successful integration of distributed partial views.
+
+Reference comparison reuses the primary evaluator's Truth business projection,
+concept-reference sets, node/edge alignment contracts, scalar/list slot
+scorers, endpoint semantics, and structural denominator. Stakeholder `None` is
+known absence; `DONT_KNOW` is incomplete and never matches a Truth value or
+absence. Structural SOURCE/SINK nodes and boundary edges are excluded from
+business reference denominators, so protected boundaries cannot inflate
+completeness.
+
+Safe serial shortcut contraction is reported with `is_shortcut`,
+`contracted_nodes`, `derived_from_edges`, and `shortcut_provenance`, but the
+derived edge receives no automatic exact Truth-business-edge credit. The
+Truth graph is never rewritten. Union/combined recoverability across multiple
+stakeholder views is intentionally not implemented yet because conflicts,
+local concept identity, `DONT_KNOW`, and shortcut evidence need a separate
+well-defined merge semantics.
+
 The matcher is deterministic lexical matching, not semantic understanding: it
 uses normalized token/Dice overlap, a small low-information-token set, and
 scenario-provided locale terms. It can miss genuine paraphrases that share no
@@ -304,8 +344,8 @@ Observation id + public text.
 | `stakeholder.py` | StakeholderFilter (element/property/concept knowledge knobs) |
 | `facts.py` | SemanticAnnotation + PlanResponseItem + private dialogue events + SemanticLedger + catalog (annotation/plan validation) |
 | `grounding.py` | shared global-span provenance (evidence refs -> semantic ids) |
-| `scenario.py` | Truth graphs + filters + knowledge (quotation / lab / JA) |
-| `evaluation.py` | content/Truth-reconstruction evaluator (AgentGraph + AgentConcepts vs TruthGraph + TruthConcepts); provenance reported as diagnostics |
+| `scenario.py` | Truth graphs + filters + named stakeholder reference views (quotation / lab / JA) |
+| `evaluation.py` | content/Truth-reconstruction evaluator (AgentGraph + AgentConcepts vs TruthGraph + TruthConcepts), plus per-stakeholder Truth reference diagnostics; provenance reported as diagnostics |
 | `tools.py` | glossary + graph tools (optional diagnostic evidence; mentions and terminology bookkeeping plus belief markers; no concept-grounding lifecycle and NO observation tools) |
 | `user_simulator.py` | semantic stakeholder: chooses the Semantic Response Plan, validates it, realizes it (graph-native sidecar) |
 | `environment.py` | conversation ledger + private sidecar validation/binding + environment-owned Observation creation + `episode_complete` |

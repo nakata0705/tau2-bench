@@ -1184,6 +1184,18 @@ class InterviewTools(ToolKitBase):
             annotations=self.assertion_ledger.annotations(),
             alignments=self.assertion_ledger.alignments(),
             terminology=self.assertion_ledger.terminology(),
+            stakeholder_references=[
+                {
+                    "stakeholder_id": profile.stakeholder_id,
+                    "stakeholder_name": profile.name,
+                    "stakeholder_role": profile.role,
+                    "forgetting_configuration": profile.stakeholder.forgetting.model_dump(
+                        mode="json"
+                    ),
+                    "knowledge": profile.knowledge,
+                }
+                for profile in sc.stakeholder_references
+            ],
         )
 
     def assert_finish_interview(self) -> bool:

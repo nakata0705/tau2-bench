@@ -36,6 +36,39 @@ from tau2.domains.business_interview.stakeholder import (
 JA_SCENARIO_SUFFIX = "_ja"
 
 
+@dataclass
+class ScenarioStakeholder:
+    """One named stakeholder simulator and its private knowledge view.
+
+    The current runtime uses ``Scenario.stakeholder``/``knowledge`` as the
+    active legacy simulator.  ``Scenario.stakeholders`` can additionally hold
+    multiple named views for evaluator reference diagnostics; each view keeps
+    its own stable identifier, role, filter, and StakeholderKnowledge.
+    """
+
+    stakeholder_id: str
+    stakeholder: StakeholderFilter
+    knowledge: StakeholderKnowledge
+    stakeholder_name: Optional[str] = None
+    stakeholder_role: Optional[str] = None
+
+    @property
+    def name(self) -> str:
+        return self.stakeholder_name or self.stakeholder.name
+
+    @property
+    def role(self) -> Optional[str]:
+        return self.stakeholder_role or self.stakeholder.role
+
+
+def _default_stakeholder_id(filter_: StakeholderFilter) -> str:
+    """Use explicit metadata first, then a stable name-derived fallback."""
+    if filter_.stakeholder_id:
+        return filter_.stakeholder_id
+    slug = "_".join(filter_.name.lower().split())
+    return "stakeholder" if not slug else slug
+
+
 def _ref(concept_id: str) -> ConceptRef:
     return ConceptRef(concept_id=concept_id, confidence=1.0)
 
@@ -283,6 +316,8 @@ def quotation_sales_filter() -> StakeholderFilter:
     """
     return StakeholderFilter(
         name="sales",
+        stakeholder_id="sales",
+        role="sales",
         visible_node_ids=["r", "cc", "cq", "ap", "sq", "me"],
         visible_edge_ids=["e1", "e2", "e3", "e4", "e5", "e6"],
         visible_node_attributes={
@@ -310,6 +345,8 @@ def quotation_finance_filter() -> StakeholderFilter:
     most upstream/approval semantic properties."""
     return StakeholderFilter(
         name="finance",
+        stakeholder_id="finance",
+        role="finance",
         # The approval node remains known as a structural waypoint; otherwise
         # its conditioned branch could not be safely contracted.  Upstream
         # serial nodes may still contract because all incident edge existence
@@ -507,6 +544,8 @@ def lab_sample_filter() -> StakeholderFilter:
     restraint, not invention)."""
     return StakeholderFilter(
         name="lab tech",
+        stakeholder_id="lab_tech",
+        role="lab",
         visible_node_ids=["n1", "n2", "n3", "n4"],
         visible_edge_ids=["l1", "l2", "l3"],
         visible_node_attributes={
@@ -529,6 +568,29 @@ class Scenario:
     truth: BusinessProcessGraph
     stakeholder: StakeholderFilter
     knowledge: StakeholderKnowledge
+    # Optional multi-stakeholder reference views.  The first profile is also
+    # exposed through the legacy singular fields so existing simulation code
+    # remains unchanged.
+    stakeholders: Optional[tuple[ScenarioStakeholder, ...]] = None
+
+    def __post_init__(self) -> None:
+        if self.stakeholders:
+            first = self.stakeholders[0]
+            self.stakeholder = first.stakeholder
+            self.knowledge = first.knowledge
+
+    @property
+    def stakeholder_references(self) -> tuple[ScenarioStakeholder, ...]:
+        """Named views used by the evaluator's reference-only comparison."""
+        if self.stakeholders:
+            return self.stakeholders
+        return (
+            ScenarioStakeholder(
+                stakeholder_id=_default_stakeholder_id(self.stakeholder),
+                stakeholder=self.stakeholder,
+                knowledge=self.knowledge,
+            ),
+        )
 
 
 _SCENARIOS: dict[str, Scenario] = {

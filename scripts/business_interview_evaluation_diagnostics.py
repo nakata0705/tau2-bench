@@ -5,9 +5,11 @@ The default invocation reads the existing quotation artifacts for seeds 9002,
 9003, and 9004, evaluates their saved final AgentGraph against the stored
 Truth/StakeholderKnowledge sidecars, writes one evaluator-private diagnostic
 trace per seed, and renders ``doc/business-interview-evaluation-diagnostics.md``.
-The trace also contains a diagnostic-only usage-based concept-alignment
-experiment conditioned on the evaluator's current node/edge mapping and a
-label-independent joint structural Node/Concept alignment experiment.
+The trace also contains per-stakeholder Truth reference scores (reference only),
+forgetting/shortcut diagnostics, a diagnostic-only usage-based
+concept-alignment experiment conditioned on the evaluator's current node/edge
+mapping, and a label-independent joint structural Node/Concept alignment
+experiment.
 """
 
 from __future__ import annotations
@@ -124,11 +126,10 @@ def _annotations(private: dict) -> dict[str, list[dict]]:
 
 
 def _metric_snapshot(result: EvaluationResult) -> dict:
-    return {
-        field: getattr(result, field)
-        for field in EvaluationResult.model_fields
-        if field != "diagnostics"
-    }
+    """Return JSON-ready scalar and reference metrics, excluding trace detail."""
+    payload = result.model_dump(mode="json")
+    payload.pop("diagnostics", None)
+    return payload
 
 
 def _metric_equal(expected, stored) -> bool:
@@ -155,12 +156,20 @@ def _check_metric_parity(result: EvaluationResult, stored_metrics) -> dict:
             "artifact has no compatible evaluator_metrics; refusing offline attribution"
         )
     expected = _metric_snapshot(result)
-    missing = sorted(set(expected) - set(stored_metrics))
+    # Historical smoke artifacts predate the additive reference-only fields.
+    # Their primary scalar parity is still checked; newly generated artifacts
+    # must contain and compare the reference fields as well.
+    historical_optional = {
+        "stakeholder_truth_reference",
+        "stakeholder_truth_reference_aggregate",
+    }
+    missing = sorted((set(expected) - set(stored_metrics)) - historical_optional)
     if missing:
         raise MetricParityError(
             "artifact evaluator_metrics is missing required fields: "
             + ", ".join(missing)
         )
+    checked_fields = sorted(set(expected) & set(stored_metrics))
     differences = [
         {
             "field": field,
@@ -168,7 +177,7 @@ def _check_metric_parity(result: EvaluationResult, stored_metrics) -> dict:
             "reevaluated": value,
         }
         for field, value in expected.items()
-        if not _metric_equal(value, stored_metrics[field])
+        if field in checked_fields and not _metric_equal(value, stored_metrics[field])
     ]
     if differences:
         details = "; ".join(
@@ -180,7 +189,7 @@ def _check_metric_parity(result: EvaluationResult, stored_metrics) -> dict:
     return {
         "status": "matched",
         "compatible": True,
-        "checked_fields": sorted(expected),
+        "checked_fields": checked_fields,
         "differences": [],
     }
 
@@ -230,6 +239,8 @@ def evaluate_artifact(public_path: Path, private_path: Path) -> dict:
 
 
 def _round(value) -> str:
+    if value is None:
+        return "—"
     if isinstance(value, float):
         return f"{value:.3f}"
     return str(value)
@@ -809,6 +820,96 @@ def render_report(traces: list[dict], output_path: Path) -> None:
 
     lines.extend(
         [
+            "",
+            "## Stakeholder knowledge coverage (reference only)",
+            "",
+            "The Agent Truth reconstruction above remains the only primary score. "
+            "The following rows compare each StakeholderKnowledge view directly "
+            "with the same Truth business projection; they do not alter Agent "
+            "denominators, `quality_pass`, or ranking.",
+            "",
+            "| seed | stakeholder id | name / role | aggregate Truth score | graph valid | nodes R/P | edges R/P | concepts R/P | activity | actor | system | reads | writes | rationale | condition | forgetting config | contracted nodes | shortcuts |",
+            "| ---: | --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: |",
+        ]
+    )
+    for trace in traces:
+        references = trace["evaluation"].get("stakeholder_truth_reference", [])
+        if not references:
+            lines.append(
+                f"| {trace['seed']} | none | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |"
+            )
+            continue
+        for reference in references:
+            m = reference["truth_reconstruction"]
+            d = reference["diagnostics"]
+            identity = reference["stakeholder_id"]
+            label = reference.get("stakeholder_name") or "—"
+            role = reference.get("stakeholder_role")
+            if role:
+                label = f"{label} / {role}"
+            forgetting_config = d.get("forgetting_configuration") or {}
+            forgetting_label = (
+                json.dumps(forgetting_config, sort_keys=True)
+                if forgetting_config
+                else "—"
+            )
+            lines.append(
+                "| {seed} | `{sid}` | {label} | {aggregate} | {valid} | "
+                "{nr}/{np} | {er}/{ep} | {cr}/{cp} | {activity} | {actor} | {system} | "
+                "{reads} | {writes} | {rationale} | {condition} | {forgetting} | "
+                "{contracted} | {shortcuts} |".format(
+                    seed=trace["seed"],
+                    sid=_md_value(identity),
+                    label=_md_value(label),
+                    aggregate=_round(m["aggregate_score"]),
+                    valid=m["graph_valid"],
+                    nr=_round(m["node_recall"]),
+                    np=_round(m["node_precision"]),
+                    er=_round(m["edge_recall"]),
+                    ep=_round(m["edge_precision"]),
+                    cr=_round(m["concept_recall"]),
+                    cp=_round(m["concept_precision"]),
+                    activity=_round(m["activity_correctness"]),
+                    actor=_round(m["actor_correctness"]),
+                    system=_round(m["system_correctness"]),
+                    reads=_round(m["read_correctness"]),
+                    writes=_round(m["write_correctness"]),
+                    rationale=_round(m["rationale_correctness"]),
+                    condition=_round(m["condition_correctness"]),
+                    forgetting=_md_value(forgetting_label),
+                    contracted=d.get("contracted_node_count", 0),
+                    shortcuts=d.get(
+                        "shortcut_edge_count", len(d.get("shortcut_provenance", []))
+                    ),
+                )
+            )
+    lines.extend(
+        [
+            "",
+            "### Reference aggregate (reference only)",
+            "",
+            "| seed | stakeholder count | min | max | mean |",
+            "| ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for trace in traces:
+        aggregate = trace["evaluation"].get("stakeholder_truth_reference_aggregate", {})
+        lines.append(
+            "| {seed} | {count} | {min_score} | {max_score} | {mean_score} |".format(
+                seed=trace["seed"],
+                count=aggregate.get("stakeholder_count", 0),
+                min_score=_round(aggregate.get("min_stakeholder_truth_score")),
+                max_score=_round(aggregate.get("max_stakeholder_truth_score")),
+                mean_score=_round(aggregate.get("mean_stakeholder_truth_score")),
+            )
+        )
+    lines.extend(
+        [
+            "",
+            "Per-stakeholder shortcut provenance is retained in each JSON "
+            "`diagnostics.shortcut_provenance` entry, including contracted Truth "
+            "nodes and derived Truth edges. A shortcut receives no automatic "
+            "direct-edge credit.",
             "",
             "## Usage-based concept alignment (diagnostic only)",
             "",

@@ -9,6 +9,23 @@
     "concept_recall": 1.0,
     "condition_correctness": 0.5,
     "diagnostics": {
+      "canonical_contract": {
+        "business_edge_count": 6,
+        "business_node_count": 6,
+        "canonical": false,
+        "existing_evaluator_shortcut_policy": "shortcut edges are currently ordinary Agent business edges; provenance is diagnostic and no score credit is granted",
+        "explicit_sink_node_id": "__tau2_structural_sink__",
+        "explicit_source_node_id": "__tau2_structural_source__",
+        "invariant_errors": [],
+        "scoring_excludes_structural_elements": true,
+        "stakeholder_shortcut_edges": [],
+        "structural_edge_count": 0,
+        "structural_edge_ids": [],
+        "structural_node_count": 0,
+        "structural_node_ids": [],
+        "topology_derived_end_inference_used": false,
+        "truth_shortcut_edges": []
+      },
       "concepts": {
         "agent_to_truth": {
           "act_approve_high_value": "tc_activity_approve_quotation",
@@ -3795,7 +3812,7 @@
           "truth_node_id": "sq"
         }
       ],
-      "schema_version": "business_interview.evaluation_diagnostics.v3",
+      "schema_version": "business_interview.evaluation_diagnostics.v4",
       "score_fields_unchanged": true,
       "unmatched_agent_edges": [
         "edge_receive_to_send",
@@ -8039,6 +8056,137 @@
     "read_correctness": 0.25,
     "reconstruction_pass": false,
     "ref_evidence_coverage": 0.2916666666666667,
+    "stakeholder_truth_reference": [
+      {
+        "diagnostics": {
+          "canonical_contract": {
+            "business_edge_count": 6,
+            "business_node_count": 6,
+            "canonical": false,
+            "existing_evaluator_shortcut_policy": "shortcut edges are currently ordinary Agent business edges; provenance is diagnostic and no score credit is granted",
+            "explicit_sink_node_id": "__tau2_structural_sink__",
+            "explicit_source_node_id": "__tau2_structural_source__",
+            "invariant_errors": [],
+            "reference_business_projection": true,
+            "reference_only": true,
+            "scoring_excludes_structural_elements": true,
+            "shortcut_edges_receive_direct_business_edge_credit": false,
+            "stakeholder_shortcut_edges": [],
+            "stakeholder_shortcut_provenance": [],
+            "structural_edge_count": 0,
+            "structural_edge_ids": [],
+            "structural_node_count": 0,
+            "structural_node_ids": [],
+            "topology_derived_end_inference_used": false,
+            "truth_shortcut_edges": []
+          },
+          "concept_alignment": {
+            "skc_001": "tc_activity_approve_quotation",
+            "skc_002": "tc_activity_check_customer",
+            "skc_003": "tc_activity_create_quotation",
+            "skc_004": "tc_activity_receive_request",
+            "skc_005": "tc_activity_send_month_end_summary",
+            "skc_006": "tc_activity_send_quotation",
+            "skc_007": "tc_actor_manager",
+            "skc_008": "tc_actor_sales",
+            "skc_009": "tc_cond_at_or_below_1m",
+            "skc_010": "tc_cond_month_end",
+            "skc_011": "tc_cond_over_1m",
+            "skc_012": "tc_customer",
+            "skc_013": "tc_excel_summary",
+            "skc_014": "tc_pricing",
+            "skc_015": "tc_quote",
+            "skc_016": "tc_rationale_credit_risk",
+            "skc_017": "tc_request",
+            "skc_018": "tc_system_crm",
+            "skc_019": "tc_system_email",
+            "skc_020": "tc_system_excel",
+            "skc_021": "tc_system_quoting"
+          },
+          "contracted_node_count": 0,
+          "edge_alignment": {
+            "ske_001": "e1",
+            "ske_002": "e2",
+            "ske_003": "e3",
+            "ske_004": "e4",
+            "ske_005": "e5",
+            "ske_006": "e6"
+          },
+          "forgetting_configuration": {},
+          "missing_truth_concept_ids": [],
+          "missing_truth_edge_ids": [],
+          "missing_truth_node_ids": [],
+          "node_alignment": {
+            "skn_001": "ap",
+            "skn_002": "cc",
+            "skn_003": "cq",
+            "skn_004": "me",
+            "skn_005": "r",
+            "skn_006": "sq"
+          },
+          "primary_score_untouched": true,
+          "reference_only": true,
+          "schema_version": "business_interview.stakeholder_truth_reference.v1",
+          "scoring_excludes_structural_elements": true,
+          "shortcut_edge_count": 0,
+          "shortcut_provenance": [],
+          "unmatched_stakeholder_edge_ids": [],
+          "unmatched_stakeholder_node_ids": [],
+          "validation_errors": [
+            "expected exactly one structural SOURCE '__tau2_structural_source__'; found role nodes []",
+            "expected exactly one structural SINK '__tau2_structural_sink__'; found role nodes []",
+            "structural SOURCE node not found: __tau2_structural_source__",
+            "structural SINK node not found: __tau2_structural_sink__",
+            "topology sources must be exactly [SOURCE]; found ['skn_005']",
+            "topology sinks must be exactly [SINK]; found ['skn_004', 'skn_006']",
+            "business nodes not SOURCE-reachable: ['skn_001', 'skn_002', 'skn_003', 'skn_004', 'skn_005', 'skn_006']",
+            "business nodes cannot reach SINK: ['skn_001', 'skn_002', 'skn_003', 'skn_004', 'skn_005', 'skn_006']"
+          ]
+        },
+        "stakeholder_id": "quotation",
+        "stakeholder_name": "Quotation creation",
+        "stakeholder_role": null,
+        "truth_reconstruction": {
+          "activity_correctness": 1.0,
+          "actor_correctness": 1.0,
+          "aggregate_score": 0.7958333333333334,
+          "concept_correctness": 1.0,
+          "concept_precision": 1.0,
+          "concept_recall": 1.0,
+          "condition_correctness": 0.5,
+          "edge_precision": 1.0,
+          "edge_recall": 1.0,
+          "end_precision": 1.0,
+          "end_recall": 1.0,
+          "fabricated_edge_count": 0,
+          "fabricated_node_count": 0,
+          "glossary_complete": true,
+          "graph_created": true,
+          "graph_valid": false,
+          "knowledge_coverage": 0.7166666666666667,
+          "node_precision": 1.0,
+          "node_recall": 1.0,
+          "quality_component_score": 0.7166666666666667,
+          "quality_pass": false,
+          "rationale_correctness": 0.16666666666666666,
+          "read_correctness": 0.3333333333333333,
+          "reconstruction_pass": false,
+          "start_correct": true,
+          "structural_component_score": 0.875,
+          "structural_pass": false,
+          "system_correctness": 0.6666666666666666,
+          "unsupported_ref_count": 0,
+          "write_correctness": 0.5
+        }
+      }
+    ],
+    "stakeholder_truth_reference_aggregate": {
+      "max_stakeholder_truth_score": 0.7958333333333334,
+      "mean_stakeholder_truth_score": 0.7958333333333334,
+      "min_stakeholder_truth_score": 0.7958333333333334,
+      "reference_only": true,
+      "stakeholder_count": 1
+    },
     "start_correct": true,
     "structural_pass": false,
     "system_correctness": 0.6666666666666666,
@@ -8582,13 +8730,15 @@
                   "declared_end": true,
                   "declared_start": false,
                   "in_degree": 3,
-                  "out_degree": 1
+                  "out_degree": 1,
+                  "structural": false
                 },
                 "to": {
                   "declared_end": true,
                   "declared_start": false,
                   "in_degree": 1,
-                  "out_degree": 0
+                  "out_degree": 0,
+                  "structural": false
                 }
               },
               "topology_shape": [
@@ -8629,13 +8779,15 @@
                   "declared_end": true,
                   "declared_start": false,
                   "in_degree": 3,
-                  "out_degree": 1
+                  "out_degree": 1,
+                  "structural": false
                 },
                 "to": {
                   "declared_end": true,
                   "declared_start": false,
                   "in_degree": 1,
-                  "out_degree": 0
+                  "out_degree": 0,
+                  "structural": false
                 }
               }
             }
@@ -9475,13 +9627,15 @@
                   "declared_end": false,
                   "declared_start": false,
                   "in_degree": 1,
-                  "out_degree": 3
+                  "out_degree": 3,
+                  "structural": false
                 },
                 "to": {
                   "declared_end": true,
                   "declared_start": false,
                   "in_degree": 1,
-                  "out_degree": 0
+                  "out_degree": 0,
+                  "structural": false
                 }
               },
               "topology_shape": [
@@ -9529,7 +9683,8 @@
                 "declared_end": true,
                 "declared_start": false,
                 "in_degree": 3,
-                "out_degree": 1
+                "out_degree": 1,
+                "structural": false
               },
               "topology_shape": [
                 "node_slot",
@@ -9555,7 +9710,8 @@
                 "declared_end": true,
                 "declared_start": false,
                 "in_degree": 2,
-                "out_degree": 0
+                "out_degree": 0,
+                "structural": false
               },
               "relation": "writes",
               "source_id": "node_send_quotation",
@@ -9563,7 +9719,8 @@
                 "declared_end": true,
                 "declared_start": false,
                 "in_degree": 3,
-                "out_degree": 1
+                "out_degree": 1,
+                "structural": false
               }
             }
           ],
@@ -10214,7 +10371,8 @@
                 "declared_end": true,
                 "declared_start": false,
                 "in_degree": 2,
-                "out_degree": 0
+                "out_degree": 0,
+                "structural": false
               },
               "relation": "writes",
               "source_location": "node:node_send_quotation:writes"
@@ -10359,7 +10517,8 @@
                 "declared_end": true,
                 "declared_start": false,
                 "in_degree": 2,
-                "out_degree": 0
+                "out_degree": 0,
+                "structural": false
               },
               "relation": "writes",
               "source_location": "node:node_send_quotation:writes"
@@ -10449,7 +10608,8 @@
                 "declared_end": false,
                 "declared_start": false,
                 "in_degree": 1,
-                "out_degree": 3
+                "out_degree": 3,
+                "structural": false
               },
               "topology_shape": [
                 "node_slot",
@@ -10486,7 +10646,8 @@
                 "declared_end": false,
                 "declared_start": false,
                 "in_degree": 1,
-                "out_degree": 1
+                "out_degree": 1,
+                "structural": false
               },
               "topology_shape": [
                 "node_slot",
@@ -10504,7 +10665,8 @@
                 "declared_end": false,
                 "declared_start": false,
                 "in_degree": 1,
-                "out_degree": 2
+                "out_degree": 2,
+                "structural": false
               },
               "topology_shape": [
                 "node_slot",
@@ -10531,7 +10693,8 @@
                 "declared_end": false,
                 "declared_start": false,
                 "in_degree": 1,
-                "out_degree": 1
+                "out_degree": 1,
+                "structural": false
               },
               "relation": "reads",
               "source_id": "node_approve_high_value",
@@ -10539,7 +10702,8 @@
                 "declared_end": false,
                 "declared_start": false,
                 "in_degree": 1,
-                "out_degree": 1
+                "out_degree": 1,
+                "structural": false
               }
             },
             {
@@ -10551,7 +10715,8 @@
                 "declared_end": false,
                 "declared_start": false,
                 "in_degree": 1,
-                "out_degree": 3
+                "out_degree": 3,
+                "structural": false
               },
               "relation": "writes",
               "source_id": "node_create_quotation_doc",
@@ -10559,7 +10724,8 @@
                 "declared_end": false,
                 "declared_start": false,
                 "in_degree": 1,
-                "out_degree": 2
+                "out_degree": 2,
+                "structural": false
               }
             }
           ],
@@ -11231,7 +11397,8 @@
                 "declared_end": false,
                 "declared_start": false,
                 "in_degree": 1,
-                "out_degree": 1
+                "out_degree": 1,
+                "structural": false
               },
               "relation": "reads",
               "source_location": "node:node_approve_high_value:reads"
@@ -11243,7 +11410,8 @@
                 "declared_end": false,
                 "declared_start": false,
                 "in_degree": 1,
-                "out_degree": 3
+                "out_degree": 3,
+                "structural": false
               },
               "relation": "writes",
               "source_location": "node:node_create_quotation_doc:writes"
@@ -11348,7 +11516,8 @@
                 "declared_end": false,
                 "declared_start": false,
                 "in_degree": 1,
-                "out_degree": 3
+                "out_degree": 3,
+                "structural": false
               },
               "topology_shape": [
                 "node_slot",
@@ -11451,7 +11620,8 @@
                 "declared_end": false,
                 "declared_start": false,
                 "in_degree": 1,
-                "out_degree": 1
+                "out_degree": 1,
+                "structural": false
               },
               "relation": "reads",
               "source_location": "node:node_approve_high_value:reads"
@@ -11463,7 +11633,8 @@
                 "declared_end": false,
                 "declared_start": false,
                 "in_degree": 1,
-                "out_degree": 3
+                "out_degree": 3,
+                "structural": false
               },
               "relation": "writes",
               "source_location": "node:node_create_quotation_doc:writes"
@@ -11560,7 +11731,8 @@
                 "declared_end": false,
                 "declared_start": true,
                 "in_degree": 0,
-                "out_degree": 2
+                "out_degree": 2,
+                "structural": false
               },
               "topology_shape": [
                 "node_slot",
@@ -11586,7 +11758,8 @@
                 "declared_end": false,
                 "declared_start": true,
                 "in_degree": 0,
-                "out_degree": 1
+                "out_degree": 1,
+                "structural": false
               },
               "relation": "reads",
               "source_id": "node_receive_request",
@@ -11594,7 +11767,8 @@
                 "declared_end": false,
                 "declared_start": true,
                 "in_degree": 0,
-                "out_degree": 2
+                "out_degree": 2,
+                "structural": false
               }
             }
           ],
@@ -12246,7 +12420,8 @@
                 "declared_end": false,
                 "declared_start": true,
                 "in_degree": 0,
-                "out_degree": 1
+                "out_degree": 1,
+                "structural": false
               },
               "relation": "reads",
               "source_location": "node:node_receive_request:reads"
@@ -12391,7 +12566,8 @@
                 "declared_end": false,
                 "declared_start": true,
                 "in_degree": 0,
-                "out_degree": 1
+                "out_degree": 1,
+                "structural": false
               },
               "relation": "reads",
               "source_location": "node:node_receive_request:reads"
@@ -12477,7 +12653,8 @@
                 "declared_end": false,
                 "declared_start": true,
                 "in_degree": 0,
-                "out_degree": 1
+                "out_degree": 1,
+                "structural": false
               },
               "topology_shape": [
                 "node_slot",
@@ -12592,6 +12769,137 @@
     "read_correctness": 0.25,
     "reconstruction_pass": false,
     "ref_evidence_coverage": 0.2916666666666667,
+    "stakeholder_truth_reference": [
+      {
+        "diagnostics": {
+          "canonical_contract": {
+            "business_edge_count": 6,
+            "business_node_count": 6,
+            "canonical": false,
+            "existing_evaluator_shortcut_policy": "shortcut edges are currently ordinary Agent business edges; provenance is diagnostic and no score credit is granted",
+            "explicit_sink_node_id": "__tau2_structural_sink__",
+            "explicit_source_node_id": "__tau2_structural_source__",
+            "invariant_errors": [],
+            "reference_business_projection": true,
+            "reference_only": true,
+            "scoring_excludes_structural_elements": true,
+            "shortcut_edges_receive_direct_business_edge_credit": false,
+            "stakeholder_shortcut_edges": [],
+            "stakeholder_shortcut_provenance": [],
+            "structural_edge_count": 0,
+            "structural_edge_ids": [],
+            "structural_node_count": 0,
+            "structural_node_ids": [],
+            "topology_derived_end_inference_used": false,
+            "truth_shortcut_edges": []
+          },
+          "concept_alignment": {
+            "skc_001": "tc_activity_approve_quotation",
+            "skc_002": "tc_activity_check_customer",
+            "skc_003": "tc_activity_create_quotation",
+            "skc_004": "tc_activity_receive_request",
+            "skc_005": "tc_activity_send_month_end_summary",
+            "skc_006": "tc_activity_send_quotation",
+            "skc_007": "tc_actor_manager",
+            "skc_008": "tc_actor_sales",
+            "skc_009": "tc_cond_at_or_below_1m",
+            "skc_010": "tc_cond_month_end",
+            "skc_011": "tc_cond_over_1m",
+            "skc_012": "tc_customer",
+            "skc_013": "tc_excel_summary",
+            "skc_014": "tc_pricing",
+            "skc_015": "tc_quote",
+            "skc_016": "tc_rationale_credit_risk",
+            "skc_017": "tc_request",
+            "skc_018": "tc_system_crm",
+            "skc_019": "tc_system_email",
+            "skc_020": "tc_system_excel",
+            "skc_021": "tc_system_quoting"
+          },
+          "contracted_node_count": 0,
+          "edge_alignment": {
+            "ske_001": "e1",
+            "ske_002": "e2",
+            "ske_003": "e3",
+            "ske_004": "e4",
+            "ske_005": "e5",
+            "ske_006": "e6"
+          },
+          "forgetting_configuration": {},
+          "missing_truth_concept_ids": [],
+          "missing_truth_edge_ids": [],
+          "missing_truth_node_ids": [],
+          "node_alignment": {
+            "skn_001": "ap",
+            "skn_002": "cc",
+            "skn_003": "cq",
+            "skn_004": "me",
+            "skn_005": "r",
+            "skn_006": "sq"
+          },
+          "primary_score_untouched": true,
+          "reference_only": true,
+          "schema_version": "business_interview.stakeholder_truth_reference.v1",
+          "scoring_excludes_structural_elements": true,
+          "shortcut_edge_count": 0,
+          "shortcut_provenance": [],
+          "unmatched_stakeholder_edge_ids": [],
+          "unmatched_stakeholder_node_ids": [],
+          "validation_errors": [
+            "expected exactly one structural SOURCE '__tau2_structural_source__'; found role nodes []",
+            "expected exactly one structural SINK '__tau2_structural_sink__'; found role nodes []",
+            "structural SOURCE node not found: __tau2_structural_source__",
+            "structural SINK node not found: __tau2_structural_sink__",
+            "topology sources must be exactly [SOURCE]; found ['skn_005']",
+            "topology sinks must be exactly [SINK]; found ['skn_004', 'skn_006']",
+            "business nodes not SOURCE-reachable: ['skn_001', 'skn_002', 'skn_003', 'skn_004', 'skn_005', 'skn_006']",
+            "business nodes cannot reach SINK: ['skn_001', 'skn_002', 'skn_003', 'skn_004', 'skn_005', 'skn_006']"
+          ]
+        },
+        "stakeholder_id": "quotation",
+        "stakeholder_name": "Quotation creation",
+        "stakeholder_role": null,
+        "truth_reconstruction": {
+          "activity_correctness": 1.0,
+          "actor_correctness": 1.0,
+          "aggregate_score": 0.7958333333333334,
+          "concept_correctness": 1.0,
+          "concept_precision": 1.0,
+          "concept_recall": 1.0,
+          "condition_correctness": 0.5,
+          "edge_precision": 1.0,
+          "edge_recall": 1.0,
+          "end_precision": 1.0,
+          "end_recall": 1.0,
+          "fabricated_edge_count": 0,
+          "fabricated_node_count": 0,
+          "glossary_complete": true,
+          "graph_created": true,
+          "graph_valid": false,
+          "knowledge_coverage": 0.7166666666666667,
+          "node_precision": 1.0,
+          "node_recall": 1.0,
+          "quality_component_score": 0.7166666666666667,
+          "quality_pass": false,
+          "rationale_correctness": 0.16666666666666666,
+          "read_correctness": 0.3333333333333333,
+          "reconstruction_pass": false,
+          "start_correct": true,
+          "structural_component_score": 0.875,
+          "structural_pass": false,
+          "system_correctness": 0.6666666666666666,
+          "unsupported_ref_count": 0,
+          "write_correctness": 0.5
+        }
+      }
+    ],
+    "stakeholder_truth_reference_aggregate": {
+      "max_stakeholder_truth_score": 0.7958333333333334,
+      "mean_stakeholder_truth_score": 0.7958333333333334,
+      "min_stakeholder_truth_score": 0.7958333333333334,
+      "reference_only": true,
+      "stakeholder_count": 1
+    },
     "start_correct": true,
     "structural_pass": false,
     "system_correctness": 0.6666666666666666,
@@ -12828,7 +13136,7 @@
       "target_id": "edge:e6:condition"
     }
   ],
-  "schema_version": "business_interview.evaluation_diagnostics.v3",
+  "schema_version": "business_interview.evaluation_diagnostics.v4",
   "seed": 9002,
   "source_artifact": "artifacts/business_interview_real_llm/run_00_seed9002.json",
   "source_private_artifact": "artifacts/business_interview_real_llm/run_00_seed9002.private.json"
