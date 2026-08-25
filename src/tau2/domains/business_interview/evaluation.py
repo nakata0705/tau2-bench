@@ -1741,6 +1741,25 @@ def _aggregate_stakeholder_truth_references(
     )
 
 
+def evaluate_stakeholder_truth_reference(
+    truth,
+    reference: StakeholderReferenceInput,
+) -> StakeholderTruthReferenceEvaluation:
+    """Public wrapper for one offline StakeholderKnowledge reference evaluation.
+
+    This keeps artifact re-evaluation on the same implementation used by
+    ``evaluate`` without exposing the private helper as the artifact API.
+    """
+    return _evaluate_stakeholder_truth_reference(truth, reference)
+
+
+def aggregate_stakeholder_truth_references(
+    references: list[StakeholderTruthReferenceEvaluation],
+) -> StakeholderTruthReferenceAggregate:
+    """Public wrapper for the descriptive reference-only aggregate."""
+    return _aggregate_stakeholder_truth_references(references)
+
+
 def _prop_value(node, prop):
     if prop in ("reads", "writes"):
         return getattr(node, prop)

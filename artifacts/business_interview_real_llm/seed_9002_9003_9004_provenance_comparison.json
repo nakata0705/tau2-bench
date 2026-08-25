@@ -1,0 +1,32 @@
+{
+  "schema_version": "business_interview.legacy_seed_provenance_comparison.v1",
+  "kind": "legacy_saved_artifact_comparison",
+  "source_artifacts": [
+    "run_00_seed9002.json + run_00_seed9002.private.json",
+    "run_00_seed9003.json + run_00_seed9003.private.json",
+    "run_00_seed9004.json + run_00_seed9004.private.json"
+  ],
+  "seeds": [9002, 9003, 9004],
+  "capture_mode": "legacy_split_artifact_without_evaluation_inputs",
+  "seed_provenance": {
+    "simulation_seeds": [9002, 9003, 9004],
+    "stakeholder_generation_seed": null,
+    "forgetting_seed": null,
+    "simulation_seed_drove_forgetting": false,
+    "note": "The legacy artifacts did not record a stakeholder-generation or forgetting seed."
+  },
+  "truth_graph_fingerprint": "1f25228069fa6bc09b731765cdf1c1187e7ee54548740f1820a8fbbf2b418b30",
+  "stakeholder_knowledge_fingerprint": "dab4110cb75861ffcaf883e8643d46f4aec0f09033183175a7889197515f4554",
+  "all_truth_payloads_equal": true,
+  "all_stakeholder_knowledge_payloads_equal": true,
+  "stakeholder_identifier_in_legacy_reference": "quotation",
+  "legacy_reference_score": 0.7958333333333334,
+  "legacy_reference_components": {
+    "structural_component_score": 0.875,
+    "quality_component_score": 0.7166666666666667,
+    "graph_valid": false,
+    "knowledge_coverage": 0.7166666666666667
+  },
+  "conclusion": "The three equal legacy reference scores are explained by byte-identical saved StakeholderKnowledge payloads and identical saved Truth payloads. They are not evidence of three independently seeded forgetting samples. The legacy graph payloads omit canonical SOURCE/SINK metadata, which accounts for graph_valid=false and the 0.875 structural component.",
+  "new_artifact_policy": "New artifacts store evaluation_inputs with the complete canonical TruthGraph, exact post-forgetting StakeholderKnowledge, stable stakeholder IDs, fingerprints, and explicit seed provenance."
+}

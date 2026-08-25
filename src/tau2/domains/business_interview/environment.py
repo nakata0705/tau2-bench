@@ -95,11 +95,53 @@ class BusinessInterviewEnvironment(Environment):
         self,
         *args,
         assertion_ledger: Optional[SemanticLedger] = None,
+        scenario_id: Optional[str] = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
+        self.scenario_id = scenario_id
         self.assertion_ledger: SemanticLedger = (
             assertion_ledger if assertion_ledger is not None else SemanticLedger()
+        )
+
+    def get_evaluation_inputs(self, *, simulation_seed: Optional[int], user=None):
+        """Return evaluator-private primary inputs for an offline run artifact.
+
+        The first profile is replaced with the catalog object held by the
+        actual stakeholder simulator when available.  This deliberately
+        serializes the object used by the run rather than re-projecting Truth
+        from a seed after the run has completed.
+        """
+        from tau2.domains.business_interview.artifact_provenance import (
+            build_evaluation_inputs,
+        )
+
+        scenario = getattr(user, "_scenario", None)
+        if scenario is None:
+            scenario = get_scenario(self.scenario_id)
+        if scenario is None:
+            return None
+        actual_knowledge = getattr(getattr(user, "_catalog", None), "knowledge", None)
+        profiles = []
+        for index, profile in enumerate(scenario.stakeholder_references):
+            knowledge = (
+                actual_knowledge
+                if index == 0 and actual_knowledge is not None
+                else profile.knowledge
+            )
+            profiles.append(
+                {
+                    "stakeholder_id": profile.stakeholder_id,
+                    "stakeholder_name": profile.name,
+                    "stakeholder_role": profile.role,
+                    "stakeholder": profile.stakeholder,
+                    "knowledge": knowledge,
+                }
+            )
+        return build_evaluation_inputs(
+            scenario.truth,
+            profiles,
+            simulation_seed=simulation_seed,
         )
 
     def episode_complete(self) -> bool:
@@ -199,6 +241,7 @@ def get_environment(
         tools=tools,
         user_tools=None,  # The stakeholder is a plain conversational user.
         assertion_ledger=ledger,
+        scenario_id=scenario_id,
     )
     if solo_mode:
         env.set_solo_mode(True)

@@ -7659,6 +7659,7 @@
     "unsupported_ref_count": 3,
     "write_correctness": 0.3333333333333333
   },
+  "evaluation_inputs": null,
   "joint_concept_disagreement_audit": {
     "classification_counts": {
       "possible_objective_failure": 1
@@ -9137,6 +9138,17 @@
     "seed": 9004,
     "seed_9003_start_end_investigation": null,
     "status": "ok"
+  },
+  "legacy_input_provenance": {
+    "canonical_stakeholder_knowledge_saved": false,
+    "canonical_truth_graph_saved": false,
+    "capture_mode": "legacy_split_artifact_without_evaluation_inputs",
+    "forgetting_seed": null,
+    "score_recomputation_note": "The stored legacy score is re-evaluated from the legacy Truth and Knowledge payloads. New artifacts use evaluation_inputs and persist canonical boundary metadata explicitly.",
+    "simulation_seed": 9004,
+    "stakeholder_generation_seed": null,
+    "stakeholder_knowledge_fingerprint": "dab4110cb75861ffcaf883e8643d46f4aec0f09033183175a7889197515f4554",
+    "truth_graph_fingerprint": "1f25228069fa6bc09b731765cdf1c1187e7ee54548740f1820a8fbbf2b418b30"
   },
   "metric_parity": {
     "checked_fields": [

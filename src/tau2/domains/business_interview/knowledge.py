@@ -361,9 +361,22 @@ class StakeholderKnowledge(BaseModel):
     Contains ONLY what the stakeholder knows: the masked world graph and the
     local concepts it references. Hidden Truth concepts/relations never
     enter this structure (and therefore never reach the simulator prompt).
+
+    The two provenance fields record how this concrete object was materialized
+    when the projection API was given seed information.  They are evaluator
+    metadata only: the stakeholder prompt renders only ``graph`` and never
+    exposes either field.
     """
 
     graph: StakeholderKnowledgeGraph = Field(default_factory=StakeholderKnowledgeGraph)
+    generation_seed: Optional[int] = Field(
+        default=None,
+        description="Seed passed to project_knowledge, if one was supplied.",
+    )
+    generation_rng_source: str = Field(
+        default="not_recorded",
+        description="How the projection RNG was obtained; evaluator metadata.",
+    )
 
     @property
     def concepts(self) -> dict[str, StakeholderKnowledgeConcept]:
@@ -917,13 +930,21 @@ def project_knowledge(
         )
     generator = rng if rng is not None else random.Random(seed)
     config = stakeholder.forgetting
+    rng_source = (
+        "caller-provided random.Random"
+        if rng is not None
+        else ("random.Random(seed)" if seed is not None else "random.Random(None)")
+    )
     attempts_limit = max_retries if max_retries is not None else config.max_retries
     if attempts_limit < 1:
         raise ValueError("max_retries must be positive")
     reasons: list[str] = []
     for _attempt in range(1, attempts_limit + 1):
         try:
-            return _project_knowledge_once(truth, stakeholder, generator)
+            knowledge = _project_knowledge_once(truth, stakeholder, generator)
+            knowledge.generation_seed = seed
+            knowledge.generation_rng_source = rng_source
+            return knowledge
         except _ProjectionRejected as exc:
             reasons.append(str(exc))
     reason_summary = "; ".join(dict.fromkeys(reasons[-8:]))

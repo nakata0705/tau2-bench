@@ -58,6 +58,29 @@ def run_simulation(
     # Run the orchestrator
     simulation = orchestrator.run()
 
+    # Business-interview exposes its concrete post-forgetting evaluator inputs
+    # only after the run has been built.  Store them in the offline simulation
+    # artifact; this never enters an Agent/User prompt or tool surface.
+    input_builder = getattr(orchestrator.environment, "get_evaluation_inputs", None)
+    if callable(input_builder):
+        try:
+            evaluation_inputs = input_builder(
+                simulation_seed=simulation.seed,
+                user=orchestrator.user,
+            )
+            dump_inputs = getattr(evaluation_inputs, "model_dump", None)
+            if not callable(dump_inputs):
+                raise TypeError(
+                    "business_interview evaluation inputs must be a Pydantic model"
+                )
+            info = dict(simulation.info or {})
+            info["evaluation_inputs"] = dump_inputs(mode="json")
+            simulation.info = info
+        except Exception as exc:  # noqa: BLE001 - fail closed on missing inputs
+            raise RuntimeError(
+                "Could not capture business_interview evaluation inputs"
+            ) from exc
+
     # Save the actual policy used for this simulation
     simulation.policy = orchestrator.environment.get_policy()
 
@@ -80,7 +103,7 @@ def run_simulation(
         solo_mode=solo_mode,
         domain=domain,
         mode=mode,
-        env_kwargs=env_kwargs,
+        env_kwargs=env_kwargs or {},
     )
     simulation.reward_info = reward_info
 

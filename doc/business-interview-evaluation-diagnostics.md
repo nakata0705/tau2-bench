@@ -2,6 +2,14 @@
 
 This is an evaluator-private, deterministic re-evaluation of stored quotation artifacts. No LLM was called. The Truth labels, private StakeholderKnowledge mappings, and sidecar annotations in this report must not be copied into Agent or Stakeholder runtime surfaces.
 
+For new runs, `evaluation_inputs` is the primary-data envelope: complete
+canonical TruthGraph + the exact final per-stakeholder StakeholderKnowledge +
+seed provenance. `stakeholder_truth_reference` and its aggregate are derived
+diagnostic values only. The offline helper
+`recompute_stakeholder_truth_reference(...)` reruns the evaluator from those
+inputs rather than reading a saved score. Private Truth mappings and shortcut
+provenance remain offline-only and never enter simulator-visible surfaces.
+
 ## Method and score contract
 
 Each seed was loaded from its saved `final_graph`, `truth_graph`, accepted `observations`, and evaluator-private `.private.json` knowledge/annotation sidecar. The smoke artifacts use a custom JSON marker encoding, so offline restoration explicitly decodes UNSET, ABSENT, DONT_KNOW, and ConceptRef values instead of passing the graph through the undiscriminated Pydantic union. Stored scalar evaluator metrics are compared with a floating-point representation tolerance before any attribution; a mismatch fails closed and no report is generated. The current evaluator was run twice per artifact during verification; a direct comparison with the pre-change `business-interview` HEAD evaluator matched every scalar score/pass field on full and partial deterministic graphs. Diagnostics are metadata only and do not alter score fields, thresholds, or matcher selection; the table below is the current-HEAD re-evaluation after stored-metric parity, not a copy of historical metrics. All diagnostic output remains evaluator-private/offline.
@@ -37,6 +45,42 @@ The Agent Truth reconstruction above remains the only primary score. The followi
 | 9004 | 1 | 0.796 | 0.796 | 0.796 |
 
 Per-stakeholder shortcut provenance is retained in each JSON `diagnostics.shortcut_provenance` entry, including contracted Truth nodes and derived Truth edges. A shortcut receives no automatic direct-edge credit.
+
+## Primary-input provenance and the 9002/9003/9004 equality
+
+The checked-in 9002/9003/9004 files are **legacy artifacts** created before the
+canonical SOURCE/SINK logging contract. Their new diagnostic JSON entries
+therefore explicitly say `capture_mode=legacy_split_artifact_without_evaluation_inputs`
+and record that generation and forgetting seeds were not saved. The legacy
+payloads are still retained and re-evaluated exactly as stored; no seed-only
+regeneration was used.
+
+The comparison is based on the actual JSON payloads, not on the scores. The
+machine-readable comparison is also saved as
+`artifacts/business_interview_real_llm/seed_9002_9003_9004_provenance_comparison.json`:
+
+| seed | simulation seed | saved Truth fingerprint | saved Knowledge fingerprint | Knowledge payload equal to other seeds | graph valid | structural component | quality component | aggregate |
+| ---: | ---: | --- | --- | --- | --- | ---: | ---: | ---: |
+| 9002 | 9002 | `1f25228069fa6bc09b731765cdf1c1187e7ee54548740f1820a8fbbf2b418b30` | `dab4110cb75861ffcaf883e8643d46f4aec0f09033183175a7889197515f4554` | yes | false | 0.875 | 0.716666666667 | 0.7958333333333334 |
+| 9003 | 9003 | `1f25228069fa6bc09b731765cdf1c1187e7ee54548740f1820a8fbbf2b418b30` | `dab4110cb75861ffcaf883e8643d46f4aec0f09033183175a7889197515f4554` | yes | false | 0.875 | 0.716666666667 | 0.7958333333333334 |
+| 9004 | 9004 | `1f25228069fa6bc09b731765cdf1c1187e7ee54548740f1820a8fbbf2b418b30` | `dab4110cb75861ffcaf883e8643d46f4aec0f09033183175a7889197515f4554` | yes | false | 0.875 | 0.716666666667 | 0.7958333333333334 |
+
+The Knowledge payloads are byte-for-byte equal after canonical JSON
+normalization. They contain the same six business nodes, six business edges,
+21 local concepts, and identical evaluator-private Truth mappings. Thus the
+three equal scores are caused by the same actual StakeholderKnowledge being
+used in all three runs, not by three independently sampled forgetting runs
+happening to have equal coverage. The score decomposition is also identical:
+
+`(structural_component_score 0.875 + quality_component_score
+0.716666666667) / 2 = 0.7958333333333334`.
+
+The `graph_valid=false` contribution is a legacy serialization limitation:
+the saved Knowledge and Truth business payloads omitted explicit SOURCE/SINK
+nodes and protected boundary edges even though the current canonical model
+requires them. New artifacts persist those elements in full, and save
+`evaluation_inputs` with explicit null/known seed provenance. The legacy score
+is not silently rewritten; it remains the historical derived diagnostic.
 
 ## Usage-based concept alignment (diagnostic only)
 
@@ -104,6 +148,7 @@ The three stored seeds completed an exact bounded-space search in `3/3` reports;
 **Identifiability:** directed topology plus start/end roles makes the small seed Node skeletons identifiable. Concepts with repeated or slot-specific usage are usually identifiable; concepts whose usage is missing, extra, or structurally unsupported remain unmatched rather than being guessed. Symmetric duplicate subgraphs/concept usages remain valid ambiguity classes.
 
 **Viability:** this is viable as an evaluator-private diagnostic and as a candidate for further experiments, not a production migration. Before production use, validate objective weighting and edge cases on larger adversarial graphs, retain explicit optimality bounds, and measure whether the structural mapping is stable under realistic missing/extra structure. Existing production scoring and mappings are unchanged.
+
 ## Production-vs-joint Concept disagreement audit
 
 This section audits the seven Concept mapping differences from the saved
@@ -341,7 +386,6 @@ Among classifiable failures, `stakeholder_disclosure` is largest (7). The highes
 
 - structural ambiguity classes: none
 
-
 #### Concrete disagreements with the current lexical/content matcher
 
 | Agent concept | label | current Truth | usage Truth | classification | lexical score | usage F1 | exact usage |
@@ -482,7 +526,6 @@ Among classifiable failures, `stakeholder_disclosure` is largest (7). The highes
 
 - structural ambiguity classes: none
 
-
 #### Concrete disagreements with the current lexical/content matcher
 
 | Agent concept | label | current Truth | usage Truth | classification | lexical score | usage F1 | exact usage |
@@ -608,7 +651,6 @@ Among classifiable failures, `stakeholder_disclosure` is largest (7). The highes
 - disagreements with current mapping: `1` (substantially stronger usage evidence: `0`)
 
 - structural ambiguity classes: none
-
 
 #### Concrete disagreements with the current lexical/content matcher
 

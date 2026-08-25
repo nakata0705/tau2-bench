@@ -471,6 +471,7 @@ class StakeholderUserSimulator(UserSimulator):
         )
         self.task = task
         self.environment = environment
+        self.simulation_seed: Optional[int] = None
         self._scenario = None
         self._catalog: Optional[StakeholderKnowledgeCatalog] = None
         self._ledger: Optional[SemanticLedger] = None
@@ -483,6 +484,11 @@ class StakeholderUserSimulator(UserSimulator):
                 if isinstance(ledger, SemanticLedger):
                     self._ledger = ledger
                     ledger.install_catalog(self._catalog)
+
+    def set_seed(self, seed: int) -> None:
+        """Record the run seed while preserving the normal LLM seed wiring."""
+        super().set_seed(seed)
+        self.simulation_seed = seed
 
     # ------------------------------------------------------------- prompt
 

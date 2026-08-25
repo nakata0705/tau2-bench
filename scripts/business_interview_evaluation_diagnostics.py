@@ -25,6 +25,11 @@ from typing import cast
 from scripts.business_interview_joint_alignment_audit import (  # pyright: ignore[reportMissingImports]
     build_joint_concept_disagreement_audit,
 )
+from tau2.domains.business_interview.artifact_provenance import (
+    deserialize_evaluation_inputs,
+    fingerprint,
+    serialize_evaluation_inputs,
+)
 from tau2.domains.business_interview.evaluation import (
     EvaluationResult,
     EvaluationSpec,
@@ -100,11 +105,19 @@ def load_artifact(
         ) from exc
     if not public.get("final_graph") or not public.get("truth_graph"):
         raise ValueError(f"{public_path}: missing saved final_graph/truth_graph")
-    if not private.get("knowledge"):
+    if not private.get("knowledge") and not private.get("evaluation_inputs"):
         raise ValueError(f"{private_path}: missing evaluator-private knowledge")
     agent_graph = decode_agent_graph(public["final_graph"])
-    truth = BusinessProcessGraph.model_validate(public["truth_graph"])
-    knowledge = StakeholderKnowledge.model_validate(private["knowledge"])
+    saved_inputs = private.get("evaluation_inputs")
+    if saved_inputs:
+        inputs = deserialize_evaluation_inputs(saved_inputs)
+        truth = inputs.truth_graph
+        if not inputs.stakeholders:
+            raise ValueError(f"{private_path}: evaluation_inputs has no stakeholders")
+        knowledge = inputs.stakeholders[0].knowledge
+    else:
+        truth = BusinessProcessGraph.model_validate(public["truth_graph"])
+        knowledge = StakeholderKnowledge.model_validate(private["knowledge"])
     observations = [
         Observation.model_validate(item) for item in public.get("observations", [])
     ]
@@ -199,6 +212,22 @@ def evaluate_artifact(public_path: Path, private_path: Path) -> dict:
     public, private, db, truth, knowledge = load_artifact(
         _safe_repo_path(public_path), _safe_repo_path(private_path)
     )
+    saved_inputs = private.get("evaluation_inputs")
+    evaluation_inputs = (
+        deserialize_evaluation_inputs(saved_inputs) if saved_inputs else None
+    )
+    stakeholder_references = None
+    if evaluation_inputs is not None:
+        stakeholder_references = [
+            {
+                "stakeholder_id": profile.stakeholder_id,
+                "stakeholder_name": profile.stakeholder_name,
+                "stakeholder_role": profile.stakeholder_role,
+                "forgetting_configuration": profile.forgetting_configuration,
+                "knowledge": profile.knowledge,
+            }
+            for profile in evaluation_inputs.stakeholders
+        ]
     annotations = cast(Mapping[int | str, Iterable[object]], _annotations(private))
     result = evaluate(
         db,
@@ -207,8 +236,26 @@ def evaluate_artifact(public_path: Path, private_path: Path) -> dict:
         None,
         truth=truth,
         annotations=annotations,
+        stakeholder_references=stakeholder_references,
     )
     metric_parity = _check_metric_parity(result, public.get("evaluator_metrics"))
+    legacy_input_provenance = None
+    if evaluation_inputs is None:
+        legacy_input_provenance = {
+            "capture_mode": "legacy_split_artifact_without_evaluation_inputs",
+            "simulation_seed": public.get("seed"),
+            "stakeholder_generation_seed": None,
+            "forgetting_seed": None,
+            "truth_graph_fingerprint": fingerprint(public["truth_graph"]),
+            "stakeholder_knowledge_fingerprint": fingerprint(private["knowledge"]),
+            "canonical_truth_graph_saved": False,
+            "canonical_stakeholder_knowledge_saved": False,
+            "score_recomputation_note": (
+                "The stored legacy score is re-evaluated from the legacy Truth "
+                "and Knowledge payloads. New artifacts use evaluation_inputs "
+                "and persist canonical boundary metadata explicitly."
+            ),
+        }
     attributions = classify_failed_slots(
         result,
         truth=truth,
@@ -226,6 +273,12 @@ def evaluate_artifact(public_path: Path, private_path: Path) -> dict:
     return {
         "schema_version": result.diagnostics.schema_version,
         "seed": public.get("seed"),
+        "evaluation_inputs": (
+            serialize_evaluation_inputs(evaluation_inputs)
+            if evaluation_inputs is not None
+            else None
+        ),
+        "legacy_input_provenance": legacy_input_provenance,
         "source_artifact": str(public_path.relative_to(REPO_ROOT)),
         "source_private_artifact": str(private_path.relative_to(REPO_ROOT)),
         "evaluation": result.model_dump(mode="json"),

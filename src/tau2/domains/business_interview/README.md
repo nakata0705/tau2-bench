@@ -286,6 +286,58 @@ scenario-provided locale terms. It can miss genuine paraphrases that share no
 canonical/local tokens; it does not claim language-independent semantic
  equivalence and never calls an LLM, embedding model or web service.
 
+### Evaluation artifact primary data
+
+For offline reproducibility, the primary data is **not** a saved reference
+score. A business-interview execution artifact stores an
+`evaluation_inputs` envelope (also under `SimulationRun.info["evaluation_inputs"]`
+and in the evaluator-private smoke sidecar) containing:
+
+- the simulation `seed` and explicit generation/forgetting seed provenance;
+- the complete canonical TruthGraph, including SOURCE/SINK nodes, protected
+  boundary edges, concepts, conditions, structural roles and all metadata;
+- every stable-ID-tagged stakeholder profile and the exact final
+  `StakeholderKnowledge` object used after projection/forgetting/contraction.
+
+The Knowledge serialization retains `DONT_KNOW`, known absence, structural and
+protected metadata, opaque local IDs, `node_truth_ids`, `edge_truth_ids`,
+`contracted_nodes`, `derived_from_edges`, and `shortcut_provenance`. It is the
+object used by the simulator, not a later re-generated estimate. The
+`stakeholder_truth_reference` values and their aggregate are **derived
+diagnostic data**. They can be recomputed with
+`recompute_stakeholder_truth_reference(...)` from the saved TruthGraph and
+Knowledge, even if scoring semantics change later. For example:
+
+```python
+from tau2.domains.business_interview.artifact_provenance import (
+    recompute_stakeholder_truth_reference,
+)
+
+new_reference = recompute_stakeholder_truth_reference(
+    "run.json", "run.private.json"
+)
+```
+
+Seeds are provenance and
+reproducibility aids, never the sole guarantee: changing the forgetting
+algorithm, schema, RNG consumption order, dependency versions or contraction
+policy must not invalidate the artifact's primary data.
+
+Truth mappings and shortcut provenance are evaluator-private. They are stored
+only in offline evaluator artifacts and are never rendered in the stakeholder
+prompt, Agent-visible messages, observations or business tools. Artifact
+logging does not alter the primary Agent-to-Truth score or the reference score
+calculation itself. Structural SOURCE/SINK elements are retained for replay but
+remain excluded from business scoring denominators.
+
+`truth_graph_fingerprint` and
+`stakeholder_knowledge_fingerprint` are SHA-256 diagnostic fingerprints over
+canonical JSON. Dictionary insertion order and unordered semantic collection
+order do not affect them. The Knowledge fingerprint intentionally includes
+private mappings/provenance and opaque local IDs, so it identifies the saved
+representation; equality of evaluation meaning is established by re-running
+the evaluator and comparing component metrics, not by trusting a hash alone.
+
 `start_inference` resets the AgentGraph/glossary/completion state but
 preserves Observations and the conversation ledger.
 
@@ -346,6 +398,7 @@ Observation id + public text.
 | `grounding.py` | shared global-span provenance (evidence refs -> semantic ids) |
 | `scenario.py` | Truth graphs + filters + named stakeholder reference views (quotation / lab / JA) |
 | `evaluation.py` | content/Truth-reconstruction evaluator (AgentGraph + AgentConcepts vs TruthGraph + TruthConcepts), plus per-stakeholder Truth reference diagnostics; provenance reported as diagnostics |
+| `artifact_provenance.py` | canonical JSON primary-input envelope, seed provenance, fingerprints, round-trip loaders and offline reference re-evaluation |
 | `tools.py` | glossary + graph tools (optional diagnostic evidence; mentions and terminology bookkeeping plus belief markers; no concept-grounding lifecycle and NO observation tools) |
 | `user_simulator.py` | semantic stakeholder: chooses the Semantic Response Plan, validates it, realizes it (graph-native sidecar) |
 | `environment.py` | conversation ledger + private sidecar validation/binding + environment-owned Observation creation + `episode_complete` |

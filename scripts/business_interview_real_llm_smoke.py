@@ -11,7 +11,9 @@ environment stores privately per turn (never in Agent-visible state).
 
 The script captures the natural language conversation, the tool calls, the
 final inferred graph + glossary, the private semantic ledger (in a separate
-``*.private.json`` artifact), the domain evaluator metrics
+``*.private.json`` artifact), and an ``evaluation_inputs`` envelope containing
+canonical TruthGraph plus the exact stakeholder Knowledge used by the simulator.
+The domain evaluator metrics
 (structural/glossary/evidence/quality_pass), the standard tau2 reward, a
 private-ID leakage scan, provider/tool error accounting, and bounded explicit
 model-refusal diagnostics for every LLM generation attempt. A secondary public
@@ -265,6 +267,10 @@ def _leakage_scan(dump: dict, private_ids: set[str]) -> list[str]:
     for i, m in enumerate(dump.get("db_messages_ledger") or []):
         check(f"db_messages_ledger[{i}]", json.dumps(m))
     check("summary", str(dump.get("summary") or ""))
+    check(
+        "evaluation_inputs_summary",
+        json.dumps(dump.get("evaluation_inputs_summary") or {}),
+    )
     check("evaluator_metrics", json.dumps(dump.get("evaluator_metrics") or {}))
     check("reward_info", json.dumps(dump.get("reward_info") or {}))
     return leaks
@@ -278,6 +284,11 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
     """
     # Importing inside the function keeps the script import-light and explicit.
     from tau2.data_model.simulation import TextRunConfig
+    from tau2.domains.business_interview.artifact_provenance import (
+        build_evaluation_inputs,
+        serialize_evaluation_inputs,
+        serialize_truth_graph,
+    )
     from tau2.domains.business_interview.evaluation import EvaluationSpec, evaluate
     from tau2.domains.business_interview.scenario import get_scenario
     from tau2.evaluator.evaluator import EvaluationType
@@ -358,21 +369,57 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
     eval_result = None
     truth_graph = None
     scenario = None
+    evaluation_inputs = None
+    reference_inputs = None
     try:
         scenario = get_scenario(TASK_ID)
         if scenario is None:
             raise ValueError(f"unknown scenario: {TASK_ID}")
         truth_graph = scenario.truth
+        actual_knowledge = getattr(
+            getattr(orchestrator.user, "_catalog", None), "knowledge", None
+        )
+        profiles = []
+        for index, profile in enumerate(scenario.stakeholder_references):
+            profiles.append(
+                {
+                    "stakeholder_id": profile.stakeholder_id,
+                    "stakeholder_name": profile.name,
+                    "stakeholder_role": profile.role,
+                    "stakeholder": profile.stakeholder,
+                    "knowledge": (
+                        actual_knowledge
+                        if index == 0 and actual_knowledge is not None
+                        else profile.knowledge
+                    ),
+                }
+            )
+        evaluation_inputs = build_evaluation_inputs(
+            truth_graph,
+            profiles,
+            simulation_seed=seed,
+        )
+        reference_inputs = [
+            {
+                "stakeholder_id": profile.stakeholder_id,
+                "stakeholder_name": profile.stakeholder_name,
+                "stakeholder_role": profile.stakeholder_role,
+                "forgetting_configuration": profile.forgetting_configuration,
+                "knowledge": profile.knowledge,
+            }
+            for profile in evaluation_inputs.stakeholders
+        ]
         eval_result = (
             evaluate(
                 db,
-                scenario.knowledge,
+                evaluation_inputs.stakeholders[0].knowledge,
                 EvaluationSpec(),
                 scenario.stakeholder,
-                truth=scenario.truth,
+                truth=truth_graph,
                 annotations=annotations,
                 alignments=alignments,
                 terminology=terminology,
+                stakeholder_references=reference_inputs,
             ).model_dump(mode="json")
             if db is not None
             else None
@@ -500,7 +547,27 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
         ),
         "final_graph": graph_to_dict(db.graph) if db is not None else {},
         "evaluator_metrics": eval_result,
-        "truth_graph": graph_to_dict(truth_graph) if truth_graph is not None else {},
+        "truth_graph": (
+            serialize_truth_graph(truth_graph) if truth_graph is not None else {}
+        ),
+        "evaluation_inputs_summary": (
+            {
+                "schema_version": evaluation_inputs.schema_version,
+                "seed": evaluation_inputs.seed,
+                "truth_graph_fingerprint": evaluation_inputs.truth_graph_fingerprint,
+                "stakeholders": [
+                    {
+                        "stakeholder_id": profile.stakeholder_id,
+                        "stakeholder_name": profile.stakeholder_name,
+                        "stakeholder_role": profile.stakeholder_role,
+                        "stakeholder_knowledge_fingerprint": profile.stakeholder_knowledge_fingerprint,
+                    }
+                    for profile in evaluation_inputs.stakeholders
+                ],
+            }
+            if evaluation_inputs is not None
+            else None
+        ),
         "db_messages_ledger": (db.messages if db is not None else []),
         "interview_complete": bool(db.interview_complete) if db is not None else None,
     }
@@ -559,8 +626,10 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
             str(turn): [e.model_dump() for e in evs]
             for turn, evs in terminology.items()
         },
-        "knowledge": (
-            scenario.knowledge.model_dump(mode="json") if scenario is not None else {}
+        "evaluation_inputs": (
+            serialize_evaluation_inputs(evaluation_inputs)
+            if evaluation_inputs is not None
+            else None
         ),
     }
     dump["private_assertions_artifact"] = f"run_{run_index:02d}_seed{seed}.private.json"
@@ -608,11 +677,31 @@ def main() -> int:
         logger.info("Wrote {} (+ private ledger {})", out_path, private_path)
 
         metrics = dump.get("evaluator_metrics") or {}
+        evaluation_summary = dump.get("evaluation_inputs_summary") or {}
+        reference_rows = metrics.get("stakeholder_truth_reference") or []
         summaries.append(
             {
                 "run_index": i,
                 "run_id": dump["run_id"],
                 "seed": seed,
+                "truth_graph_fingerprint": evaluation_summary.get(
+                    "truth_graph_fingerprint"
+                ),
+                "stakeholders": [
+                    {
+                        "stakeholder_id": row.get("stakeholder_id"),
+                        "stakeholder_knowledge_fingerprint": row.get(
+                            "stakeholder_knowledge_fingerprint"
+                        ),
+                    }
+                    for row in evaluation_summary.get("stakeholders", [])
+                ],
+                "stakeholder_truth_reference_scores": {
+                    row.get("stakeholder_id"): (
+                        row.get("truth_reconstruction") or {}
+                    ).get("aggregate_score")
+                    for row in reference_rows
+                },
                 "termination_reason": dump["termination_reason"],
                 "loop_guard": dump.get("loop_guard"),
                 "episode_complete": dump.get("episode_complete"),
