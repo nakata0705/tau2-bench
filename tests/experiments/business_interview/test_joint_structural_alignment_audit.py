@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import json
 
+from experiments.business_interview.joint_structural_alignment import (
+    build_joint_structural_alignment_diagnostics,
+    evaluate_joint_structural_mapping_objective,
+)
 from scripts.business_interview_joint_alignment_audit import (  # pyright: ignore[reportMissingImports]
     build_joint_concept_disagreement_audit,
 )
@@ -15,10 +19,6 @@ from tau2.domains.business_interview.graph import (
     TruthConcept,
     TruthEdge,
     TruthNode,
-)
-from tau2.domains.business_interview.joint_structural_alignment import (
-    build_joint_structural_alignment_diagnostics,
-    evaluate_joint_structural_mapping_objective,
 )
 
 

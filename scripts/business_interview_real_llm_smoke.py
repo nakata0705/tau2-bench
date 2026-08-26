@@ -416,9 +416,6 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
                 EvaluationSpec(),
                 scenario.stakeholder,
                 truth=truth_graph,
-                annotations=annotations,
-                alignments=alignments,
-                terminology=terminology,
                 stakeholder_references=reference_inputs,
             ).model_dump(mode="json")
             if db is not None
@@ -428,7 +425,7 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
         errors.append(f"evaluate failed: {exc}")
 
     # --- conversation / messages ---------------------------------------------
-    from scripts.business_interview_run_metrics import (
+    from scripts.business_interview_run_metrics import (  # pyright: ignore[reportMissingImports]
         account_model_refusals,
         account_tool_errors,
         provider_error_count,

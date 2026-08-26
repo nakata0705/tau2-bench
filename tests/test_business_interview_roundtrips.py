@@ -757,7 +757,9 @@ def test_internal_stakeholder_refusal_retry_is_recorded_at_generate_layer(
     yields a valid plan and the accepted public answer is ordinary uncertainty."""
     import json as _json
 
-    from scripts.business_interview_run_metrics import account_model_refusals
+    from scripts.business_interview_run_metrics import (  # pyright: ignore[reportMissingImports]
+        account_model_refusals,
+    )
     from tau2.data_model.message import AssistantMessage, UserMessage
     from tau2.utils.llm_call_metrics import (
         LLMCallMetricsCollector,

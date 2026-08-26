@@ -30,6 +30,8 @@ completion state, but preserves already captured Observations and the
 conversation ledger.
 """
 
+import hashlib
+import json
 from typing import Optional
 
 from pydantic import ValidationError
@@ -101,6 +103,10 @@ class InterviewTools(ToolKitBase):
         self.assertion_ledger = (
             assertion_ledger if assertion_ledger is not None else SemanticLedger()
         )
+        # One entry is enough for the evaluator lifecycle: all assertions and
+        # the diagnostics hook run on the same toolkit instance after replay.
+        self._evaluation_cache_key: Optional[str] = None
+        self._evaluation_cache_result: Optional[EvaluationResult] = None
 
     # ------------------------------------------------------------- helpers
 
@@ -1169,34 +1175,68 @@ class InterviewTools(ToolKitBase):
 
     # ------------------------------------------------------------- assertions
 
-    def _evaluate(self, sc) -> EvaluationResult:
-        """Evaluate AgentGraph reconstruction against Truth.
+    @staticmethod
+    def _stakeholder_reference_inputs(sc) -> list[dict]:
+        return [
+            {
+                "stakeholder_id": profile.stakeholder_id,
+                "stakeholder_name": profile.name,
+                "stakeholder_role": profile.role,
+                "forgetting_configuration": profile.stakeholder.forgetting.model_dump(
+                    mode="json"
+                ),
+                "knowledge": profile.knowledge,
+            }
+            for profile in sc.stakeholder_references
+        ]
 
-        The private sidecar ledger is passed only for diagnostic metrics and
-        simulator-integrity reporting; it never gates Truth reconstruction.
-        """
-        return evaluate(
+    def _evaluation_state_key(self, sc, stakeholder_references: list[dict]) -> str:
+        """Fingerprint every input that can affect the full evaluation result."""
+        payload = {
+            "db": self.db.model_dump(mode="json"),
+            "truth": sc.truth.model_dump(mode="json"),
+            "knowledge": sc.knowledge.model_dump(mode="json"),
+            "stakeholder": sc.stakeholder.model_dump(mode="json"),
+            "stakeholder_references": [
+                {
+                    **{key: value for key, value in item.items() if key != "knowledge"},
+                    "knowledge": item["knowledge"].model_dump(mode="json"),
+                }
+                for item in stakeholder_references
+            ],
+        }
+        encoded = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    def _evaluate(self, sc) -> EvaluationResult:
+        """Evaluate once for an exact DB/scenario state and share the result."""
+        stakeholder_references = self._stakeholder_reference_inputs(sc)
+        state_key = self._evaluation_state_key(sc, stakeholder_references)
+        if (
+            state_key == self._evaluation_cache_key
+            and self._evaluation_cache_result is not None
+        ):
+            return self._evaluation_cache_result
+
+        result = evaluate(
             self.db,
             sc.knowledge,
             EvaluationSpec(),
             sc.stakeholder,
             truth=sc.truth,
-            annotations=self.assertion_ledger.annotations(),
-            alignments=self.assertion_ledger.alignments(),
-            terminology=self.assertion_ledger.terminology(),
-            stakeholder_references=[
-                {
-                    "stakeholder_id": profile.stakeholder_id,
-                    "stakeholder_name": profile.name,
-                    "stakeholder_role": profile.role,
-                    "forgetting_configuration": profile.stakeholder.forgetting.model_dump(
-                        mode="json"
-                    ),
-                    "knowledge": profile.knowledge,
-                }
-                for profile in sc.stakeholder_references
-            ],
+            stakeholder_references=stakeholder_references,
         )
+        # Cache only a successfully completed evaluation. The content-derived
+        # key makes any graph, protocol, evidence, observation, terminology,
+        # Truth, filter, or reference-view change a cache miss.
+        self._evaluation_cache_key = state_key
+        self._evaluation_cache_result = result
+        return result
 
     def assert_finish_interview(self) -> bool:
         return self.db.interview_complete

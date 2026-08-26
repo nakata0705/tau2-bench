@@ -538,8 +538,7 @@ def _evr(obs_id: str, quote: str, occurrence: int = 0) -> EvidenceRef:
 
 
 def _eval(tools: InterviewTools, scenario: str = SCENARIO):
-    """Evaluate AgentGraph reconstruction against Truth; pass sidecar data
-    only so diagnostic evidence metrics can still be reported."""
+    """Evaluate AgentGraph reconstruction against explicit Truth."""
     sc = get_scenario(scenario)
     assert sc is not None
     return evaluate(
@@ -548,9 +547,6 @@ def _eval(tools: InterviewTools, scenario: str = SCENARIO):
         EvaluationSpec(),
         sc.stakeholder,
         truth=sc.truth,
-        annotations=tools.assertion_ledger.annotations(),
-        alignments=tools.assertion_ledger.alignments(),
-        terminology=tools.assertion_ledger.terminology(),
     )
 
 
@@ -1939,6 +1935,11 @@ def test_evaluation_spec_is_empty():
     assert EvaluationSpec().model_dump() == {}
 
 
+def test_evaluate_requires_explicit_truth():
+    with pytest.raises(ValueError, match="explicit Truth graph"):
+        evaluate(InterviewDB(), None, EvaluationSpec(), truth=None)
+
+
 # ---------------------------------------------------------------------------
 # Episode termination
 # ---------------------------------------------------------------------------
@@ -2417,6 +2418,35 @@ def test_evaluator_rewards_full_reconstruction():
     assert diag["structural_pass"] is True
     assert diag["quality_pass"] is True
     assert diag["glossary_complete"] is True
+
+
+def test_standard_assertion_flow_evaluates_one_exact_state(monkeypatch):
+    import tau2.domains.business_interview.tools as tools_module
+
+    tools = _tools()
+    _build(tools)
+    task = next(task for task in get_tasks() if task.id == SCENARIO)
+    calls = 0
+    original = tools_module.evaluate
+
+    def counted_evaluate(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(tools_module, "evaluate", counted_evaluate)
+    assert tools.assert_graph_reconstructed(SCENARIO)
+    assert tools.assert_necessity_handled(SCENARIO)
+    assert tools.assert_evidence_backed(SCENARIO)
+    assert tools.get_eval_diagnostics(task) is not None
+    assert calls == 1
+
+    # A result-affecting DB mutation changes the content-derived key. No
+    # explicit invalidation hook is required, and the stale result is not used.
+    tools.db.interview_complete = False
+    assert tools.assert_graph_reconstructed(SCENARIO)
+    assert calls == 2
+    assert tools._evaluate(_sc(SCENARIO)).protocol_completed is False  # noqa: SLF001
 
 
 # ---------------------------------------------------------------------------

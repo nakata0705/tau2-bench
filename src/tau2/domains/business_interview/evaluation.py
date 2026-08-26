@@ -385,34 +385,24 @@ def evaluate(
     spec: EvaluationSpec,
     stakeholder: Any = None,
     *,
-    truth: Any = None,
-    annotations: Any = None,
-    alignments: Any = None,
-    terminology: Any = None,
+    truth: Any,
     stakeholder_references: Optional[list[Any]] = None,
 ) -> EvaluationResult:
-    """Public backward-compat entry point.
+    """Evaluate one Agent graph against an explicit Truth graph.
 
-    Builds the primary evaluation, then appends diagnostics and reference
-    evaluations.  This is the function called by tools assertions, scripts,
-    and tests.
+    Builds the primary evaluation, then appends ordinary production diagnostics
+    and Stakeholder-to-Truth reference evaluations. Usage and joint structural
+    experiments run only in the offline tooling lane.
     """
     from .evaluation_diagnostics import (
         build_evaluation_diagnostics,
         canonical_contract_diagnostic,
     )
 
-    # Determine knowledge source (backward compat for truth=None fallback)
-    raw_target = truth if truth is not None else knowledge.graph if knowledge else None
-    effective_knowledge = knowledge
-    effective_stakeholder = stakeholder
+    if truth is None:
+        raise ValueError("evaluate(): truth must be an explicit Truth graph")
 
-    if raw_target is None:
-        raise ValueError("evaluate(): truth is required")
-
-    primary = _build_primary_result(
-        db, raw_target if truth is not None else truth, effective_knowledge
-    )
+    primary = _build_primary_result(db, truth, knowledge)
 
     # Reference evaluations
     from .reference_evaluation import (
@@ -422,32 +412,31 @@ def evaluate(
     )
 
     reference_evaluations: list[StakeholderTruthReferenceEvaluation] = []
-    if truth is not None:
-        if stakeholder_references is not None:
-            ref_inputs = normalize_stakeholder_references(stakeholder_references)
-        elif knowledge is not None:
-            # Legacy single-stakeholder fallback
-            fallback_id, fallback_name = _knowledge_fallback_identity(knowledge)
-            name = getattr(stakeholder, "name", "") or fallback_name
-            stakeholder_id = getattr(stakeholder, "stakeholder_id", None) or fallback_id
-            ref_inputs = [
-                StakeholderReferenceInput(
-                    stakeholder_id=str(stakeholder_id),
-                    stakeholder_name=str(name),
-                    stakeholder_role=getattr(stakeholder, "role", None),
-                    forgetting_configuration=_forgetting_configuration(stakeholder),
-                    knowledge=knowledge,
-                )
-            ]
-        else:
-            ref_inputs = []
-        reference_evaluations = [
-            evaluate_stakeholder_truth_reference(truth, ref) for ref in ref_inputs
+    if stakeholder_references is not None:
+        ref_inputs = normalize_stakeholder_references(stakeholder_references)
+    elif knowledge is not None:
+        # Current single-stakeholder input shape.
+        fallback_id, fallback_name = _knowledge_fallback_identity(knowledge)
+        name = getattr(stakeholder, "name", "") or fallback_name
+        stakeholder_id = getattr(stakeholder, "stakeholder_id", None) or fallback_id
+        ref_inputs = [
+            StakeholderReferenceInput(
+                stakeholder_id=str(stakeholder_id),
+                stakeholder_name=str(name),
+                stakeholder_role=getattr(stakeholder, "role", None),
+                forgetting_configuration=_forgetting_configuration(stakeholder),
+                knowledge=knowledge,
+            )
         ]
+    else:
+        ref_inputs = []
+    reference_evaluations = [
+        evaluate_stakeholder_truth_reference(truth, ref) for ref in ref_inputs
+    ]
     reference_aggregate = aggregate_stakeholder_truth_references(reference_evaluations)
 
     # Diagnostics (detailed trace, canonical contract only)
-    canonical = canonical_contract_diagnostic(raw_target, effective_knowledge)
+    canonical = canonical_contract_diagnostic(truth, knowledge)
     diagnostics = build_evaluation_diagnostics(
         primary.agent,
         primary.target,

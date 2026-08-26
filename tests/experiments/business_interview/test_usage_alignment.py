@@ -6,7 +6,11 @@ from pathlib import Path
 
 import pytest
 
-import tau2.domains.business_interview.evaluation as evaluation_module
+from experiments.business_interview import usage_alignment as usage_alignment_module
+from experiments.business_interview.usage_alignment import (
+    UsageAlignmentDiagnostics,
+    build_usage_alignment_diagnostics,
+)
 from scripts.business_interview_evaluation_diagnostics import evaluate_artifact
 from tau2.domains.business_interview.evaluation import EvaluationSpec, evaluate
 from tau2.domains.business_interview.graph import (
@@ -20,10 +24,6 @@ from tau2.domains.business_interview.graph import (
     TruthConcept,
     TruthEdge,
     TruthNode,
-)
-from tau2.domains.business_interview.usage_alignment import (  # pyright: ignore[reportMissingImports]
-    UsageAlignmentDiagnostics,
-    build_usage_alignment_diagnostics,
 )
 
 
@@ -545,23 +545,28 @@ def test_usage_diagnostics_do_not_change_score_fields_or_current_mapping(
         },
     )
     first = evaluate(InterviewDB(graph=agent), None, EvaluationSpec(), truth=truth)
+    usage = build_usage_alignment_diagnostics(
+        agent,
+        truth,
+        node_mapping={"a": "n"},
+        edge_mapping={},
+        current_agent_to_truth=first.diagnostics.concepts.agent_to_truth,
+        lexical_pairs=first.diagnostics.concepts.candidate_pairs,
+    )
+
+    def broken_experiment(*args, **kwargs):
+        raise RuntimeError("offline usage experiment failure")
+
     monkeypatch.setattr(
-        evaluation_module,
+        usage_alignment_module,
         "build_usage_alignment_diagnostics",
-        lambda *args, **kwargs: UsageAlignmentDiagnostics(),
+        broken_experiment,
     )
     second = evaluate(InterviewDB(graph=agent), None, EvaluationSpec(), truth=truth)
-    assert first.model_dump(mode="json", exclude={"diagnostics"}) == second.model_dump(
-        mode="json", exclude={"diagnostics"}
-    )
-    assert (
-        first.diagnostics.concepts.agent_to_truth
-        == second.diagnostics.concepts.agent_to_truth
-    )
-    assert first.diagnostics.usage_alignment.assignment_uses_labels is False
-    assert first.diagnostics.usage_alignment.method == (
-        "usage_alignment_conditioned_on_current_node_mapping"
-    )
+    assert first.model_dump(mode="json") == second.model_dump(mode="json")
+    assert not hasattr(first.diagnostics, "usage_alignment")
+    assert usage.assignment_uses_labels is False
+    assert usage.method == "usage_alignment_conditioned_on_current_node_mapping"
 
 
 @pytest.mark.parametrize("seed", [9002, 9003, 9004])
@@ -573,7 +578,4 @@ def test_stored_metric_parity_survives_usage_diagnostics(seed: int):
     )
     assert trace["metric_parity"]["status"] == "matched"
     assert trace["metric_parity"]["differences"] == []
-    assert (
-        trace["evaluation"]["diagnostics"]["usage_alignment"]["assignment_uses_labels"]
-        is False
-    )
+    assert trace["experiments"]["usage_alignment"]["assignment_uses_labels"] is False

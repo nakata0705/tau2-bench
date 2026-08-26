@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-import tau2.domains.business_interview.evaluation as evaluation_module
+from experiments.business_interview import (
+    joint_structural_alignment as joint_alignment_module,
+)
+from experiments.business_interview.joint_structural_alignment import (
+    build_joint_structural_alignment_diagnostics,
+)
 from scripts.business_interview_evaluation_diagnostics import evaluate_artifact
 from tau2.domains.business_interview.evaluation import EvaluationSpec, evaluate
 from tau2.domains.business_interview.graph import (
@@ -23,10 +28,6 @@ from tau2.domains.business_interview.graph import (
     TruthConcept,
     TruthEdge,
     TruthNode,
-)
-from tau2.domains.business_interview.joint_structural_alignment import (  # pyright: ignore[reportMissingImports]
-    JointStructuralAlignmentDiagnostics,
-    build_joint_structural_alignment_diagnostics,
 )
 
 
@@ -572,22 +573,19 @@ def test_disabling_joint_diagnostics_preserves_scores_and_production_mapping(
 ):
     truth, agent = _synthetic_graphs()
     first = evaluate(InterviewDB(graph=agent), None, EvaluationSpec(), truth=truth)
+
+    def broken_experiment(*args, **kwargs):
+        raise RuntimeError("offline joint experiment failure")
+
     monkeypatch.setattr(
-        evaluation_module,
+        joint_alignment_module,
         "build_joint_structural_alignment_diagnostics",
-        lambda *args, **kwargs: JointStructuralAlignmentDiagnostics(),
+        broken_experiment,
     )
     second = evaluate(InterviewDB(graph=agent), None, EvaluationSpec(), truth=truth)
 
-    assert first.model_dump(mode="json", exclude={"diagnostics"}) == second.model_dump(
-        mode="json", exclude={"diagnostics"}
-    )
-    assert (
-        first.diagnostics.concepts.agent_to_truth
-        == second.diagnostics.concepts.agent_to_truth
-    )
-    assert first.diagnostics.node_diagnostics == second.diagnostics.node_diagnostics
-    assert first.diagnostics.edge_diagnostics == second.diagnostics.edge_diagnostics
+    assert first.model_dump(mode="json") == second.model_dump(mode="json")
+    assert not hasattr(first.diagnostics, "joint_structural_alignment")
 
 
 def test_joint_diagnostics_are_deterministic_when_rebuilt():
@@ -598,40 +596,19 @@ def test_joint_diagnostics_are_deterministic_when_rebuilt():
 
 
 @pytest.mark.parametrize("seed", [9002, 9003, 9004])
-def test_disabling_joint_diagnostics_preserves_stored_metrics_and_mappings(
-    monkeypatch, seed: int
+def test_offline_joint_diagnostics_preserve_stored_metrics_and_are_separate(
+    seed: int,
 ):
     root = Path(__file__).resolve().parents[3]
     stem = root / "artifacts" / "business_interview_real_llm" / f"run_00_seed{seed}"
-    baseline = evaluate_artifact(
-        stem.with_suffix(".json"), stem.with_suffix(".private.json")
-    )
-    monkeypatch.setattr(
-        evaluation_module,
-        "build_joint_structural_alignment_diagnostics",
-        lambda *args, **kwargs: JointStructuralAlignmentDiagnostics(),
-    )
-    disabled = evaluate_artifact(
+    trace = evaluate_artifact(
         stem.with_suffix(".json"), stem.with_suffix(".private.json")
     )
 
-    assert baseline["metric_parity"]["status"] == "matched"
-    assert disabled["metric_parity"]["status"] == "matched"
-    assert baseline["metrics"] == disabled["metrics"]
-    baseline_diagnostics = baseline["evaluation"]["diagnostics"]
-    disabled_diagnostics = disabled["evaluation"]["diagnostics"]
-    assert (
-        baseline_diagnostics["concepts"]["agent_to_truth"]
-        == disabled_diagnostics["concepts"]["agent_to_truth"]
-    )
-    assert (
-        baseline_diagnostics["node_diagnostics"]
-        == disabled_diagnostics["node_diagnostics"]
-    )
-    assert (
-        baseline_diagnostics["edge_diagnostics"]
-        == disabled_diagnostics["edge_diagnostics"]
-    )
+    assert trace["metric_parity"]["status"] == "matched"
+    assert trace["metric_parity"]["differences"] == []
+    assert trace["experiments"]["joint_structural_alignment"]["status"] == "ok"
+    assert "joint_structural_alignment" not in trace["evaluation"]["diagnostics"]
 
 
 def test_search_bound_is_reported_without_claiming_uniqueness():

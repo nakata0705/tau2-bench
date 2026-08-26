@@ -22,6 +22,9 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import cast
 
+from scripts.business_interview_diagnostics.experiment_diagnostics import (  # pyright: ignore[reportMissingImports]
+    build_offline_experiment_diagnostics,
+)
 from scripts.business_interview_diagnostics.offline_diagnostics import (
     classify_failed_slots,
     decode_agent_graph,
@@ -212,6 +215,8 @@ def evaluate_artifact(public_path: Path, private_path: Path) -> dict:
     public, private, db, truth, knowledge = load_artifact(
         _safe_repo_path(public_path), _safe_repo_path(private_path)
     )
+    if db.graph is None:
+        raise ValueError("artifact does not contain a final AgentGraph")
     saved_inputs = private.get("evaluation_inputs")
     evaluation_inputs = (
         deserialize_evaluation_inputs(saved_inputs) if saved_inputs else None
@@ -235,7 +240,6 @@ def evaluate_artifact(public_path: Path, private_path: Path) -> dict:
         EvaluationSpec(),
         None,
         truth=truth,
-        annotations=annotations,
         stakeholder_references=stakeholder_references,
     )
     metric_parity = _check_metric_parity(result, public.get("evaluator_metrics"))
@@ -263,10 +267,15 @@ def evaluate_artifact(public_path: Path, private_path: Path) -> dict:
         db=db,
         annotations=annotations,
     )
+    experiments = build_offline_experiment_diagnostics(
+        db.graph,
+        truth,
+        result.diagnostics,
+    )
     joint_concept_disagreement_audit = build_joint_concept_disagreement_audit(
         db.graph,
         truth,
-        result.diagnostics.joint_structural_alignment,
+        experiments.joint_structural_alignment,
         observations=db.observations,
         seed=public.get("seed"),
     )
@@ -282,6 +291,7 @@ def evaluate_artifact(public_path: Path, private_path: Path) -> dict:
         "source_artifact": str(public_path.relative_to(REPO_ROOT)),
         "source_private_artifact": str(private_path.relative_to(REPO_ROOT)),
         "evaluation": result.model_dump(mode="json"),
+        "experiments": experiments.model_dump(mode="json"),
         "metrics": _metric_snapshot(result),
         "metric_parity": metric_parity,
         "joint_concept_disagreement_audit": joint_concept_disagreement_audit,
@@ -336,7 +346,7 @@ def _usage_pair_lookup(usage: dict) -> dict[tuple[str, str], dict]:
 
 def _usage_detail_lines(trace: dict) -> list[str]:
     """Render per-seed usage evidence and lexical/usage disagreements."""
-    usage = trace["evaluation"]["diagnostics"]["usage_alignment"]
+    usage = trace["experiments"]["usage_alignment"]
     pair_by_ids = _usage_pair_lookup(usage)
     lines = [
         "",
@@ -462,7 +472,7 @@ def _usage_detail_lines(trace: dict) -> list[str]:
 
 def _joint_detail_lines(trace: dict) -> list[str]:
     """Render the label-independent joint alignment for one stored seed."""
-    joint = trace["evaluation"]["diagnostics"]["joint_structural_alignment"]
+    joint = trace["experiments"]["joint_structural_alignment"]
     lines = [
         "",
         "### Joint structural alignment",
@@ -836,10 +846,11 @@ def render_report(traces: list[dict], output_path: Path) -> None:
         "node with `slots` for `activity`, `actor`, `system`, `reads`, `writes`, "
         "and `necessity_rationale`), `edge_diagnostics` (endpoint structural "
         "match plus `condition`), and `concepts` (candidate pair scores, exact "
-        "label path, selected mapping, and unmatched concepts). The separate "
-        "`usage_alignment` section contains usage candidate sets, per-kind "
-        "assignments, ambiguity classes, and current-vs-usage comparisons. The "
-        "`joint_structural_alignment` section is a separate label-independent "
+        "label path, selected mapping, and unmatched concepts). The sibling "
+        "offline `experiments.usage_alignment` section contains usage candidate "
+        "sets, per-kind assignments, ambiguity classes, and current-vs-usage "
+        "comparisons. `experiments.joint_structural_alignment` is a separate "
+        "label-independent "
         "joint Node/Concept search with typed incidence, process-edge, start, "
         "and end objective components; it is not a production matcher. Each "
         "slot has "
@@ -999,7 +1010,7 @@ def render_report(traces: list[dict], output_path: Path) -> None:
         ]
     )
     for trace in traces:
-        usage = trace["evaluation"]["diagnostics"]["usage_alignment"]
+        usage = trace["experiments"]["usage_alignment"]
         lines.append(
             "| {seed} | {truth_referenced_concept_count} | "
             "{agent_referenced_concept_count} | {exact_usage_match_count} | "
@@ -1018,7 +1029,7 @@ def render_report(traces: list[dict], output_path: Path) -> None:
         ]
     )
     for trace in traces:
-        usage = trace["evaluation"]["diagnostics"]["usage_alignment"]
+        usage = trace["experiments"]["usage_alignment"]
         for summary in usage["kind_summaries"]:
             lines.append(
                 "| {seed} | {kind} | {truth_referenced_concept_count} | "
@@ -1029,9 +1040,7 @@ def render_report(traces: list[dict], output_path: Path) -> None:
                 "{insufficient_usage} |".format(seed=trace["seed"], **summary)
             )
 
-    usage_totals = [
-        trace["evaluation"]["diagnostics"]["usage_alignment"] for trace in traces
-    ]
+    usage_totals = [trace["experiments"]["usage_alignment"] for trace in traces]
     exact_total = sum(item["exact_usage_match_count"] for item in usage_totals)
     partial_total = sum(item["partial_usage_match_count"] for item in usage_totals)
     ambiguity_total = sum(
@@ -1096,7 +1105,7 @@ def render_report(traces: list[dict], output_path: Path) -> None:
         ]
     )
     for trace in traces:
-        joint = trace["evaluation"]["diagnostics"]["joint_structural_alignment"]
+        joint = trace["experiments"]["joint_structural_alignment"]
         components = joint["objective"].get("components", {})
         node_component = components.get("nodes", {})
         concept_component = components.get("concepts", {})
@@ -1132,8 +1141,7 @@ def render_report(traces: list[dict], output_path: Path) -> None:
             )
         )
     joint_scores = [
-        trace["evaluation"]["diagnostics"]["joint_structural_alignment"]
-        for trace in traces
+        trace["experiments"]["joint_structural_alignment"] for trace in traces
     ]
     joint_exact_count = sum(item["search"]["exact_search"] for item in joint_scores)
     joint_node_ambiguity_count = sum(

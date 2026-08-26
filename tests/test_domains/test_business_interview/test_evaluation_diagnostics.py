@@ -20,6 +20,7 @@ from scripts.business_interview_evaluation_diagnostics import (
     _check_metric_parity,
     evaluate_artifact,
     load_artifact,
+    render_report,
 )
 from tau2.domains.business_interview.evaluation import EvaluationSpec, evaluate
 from tau2.domains.business_interview.graph import (
@@ -617,6 +618,12 @@ def test_offline_artifact_metrics_match_stored_metrics(seed):
     stored = json.loads(public_path.read_text(encoding="utf-8"))["evaluator_metrics"]
     assert trace["metric_parity"]["status"] == "matched"
     assert trace["metric_parity"]["differences"] == []
+    assert trace["experiments"]["usage_alignment"]["method"] == (
+        "usage_alignment_conditioned_on_current_node_mapping"
+    )
+    assert trace["experiments"]["joint_structural_alignment"]["status"] == "ok"
+    assert "usage_alignment" not in trace["evaluation"]["diagnostics"]
+    assert "joint_structural_alignment" not in trace["evaluation"]["diagnostics"]
     for field in trace["metric_parity"]["checked_fields"]:
         if isinstance(stored[field], float):
             assert trace["metrics"][field] == pytest.approx(stored[field])
@@ -624,6 +631,20 @@ def test_offline_artifact_metrics_match_stored_metrics(seed):
             assert trace["metrics"][field] == stored[field]
     if seed == 9004:
         assert trace["metrics"]["rationale_correctness"] == pytest.approx(1 / 6)
+
+
+def test_offline_artifact_report_generation(tmp_path, monkeypatch):
+    public_path, private_path = _artifact_paths(9002)
+    trace = evaluate_artifact(public_path, private_path)
+    monkeypatch.setattr(
+        "scripts.business_interview_evaluation_diagnostics.REPO_ROOT", tmp_path
+    )
+    output_path = tmp_path / "business-interview-diagnostics.md"
+    render_report([trace], output_path)
+    report = output_path.read_text(encoding="utf-8")
+    assert "# Business-interview evaluation diagnostics" in report
+    assert "## Usage-based concept alignment" in report
+    assert "## Joint structural alignment" in report
 
 
 def test_seed_9004_dont_know_rationale_is_not_restored_as_absent():
@@ -634,13 +655,7 @@ def test_seed_9004_dont_know_rationale_is_not_restored_as_absent():
     rationale = agent_graph.nodes["node_receive_request"].necessity_rationale
     assert is_dont_know(rationale)
     assert not is_absent(rationale)
-    result = evaluate(
-        db,
-        knowledge,
-        EvaluationSpec(),
-        truth=truth,
-        annotations=private.get("annotations_by_turn", {}),
-    )
+    result = evaluate(db, knowledge, EvaluationSpec(), truth=truth)
     assert result.rationale_correctness == pytest.approx(1 / 6)
     assert public["evaluator_metrics"]["rationale_correctness"] == pytest.approx(1 / 6)
 
@@ -648,13 +663,7 @@ def test_seed_9004_dont_know_rationale_is_not_restored_as_absent():
 def test_metric_parity_fails_closed_on_semantic_drift():
     public_path, private_path = _artifact_paths(9004)
     public, private, db, truth, knowledge = load_artifact(public_path, private_path)
-    result = evaluate(
-        db,
-        knowledge,
-        EvaluationSpec(),
-        truth=truth,
-        annotations=private.get("annotations_by_turn", {}),
-    )
+    result = evaluate(db, knowledge, EvaluationSpec(), truth=truth)
     stored = dict(public["evaluator_metrics"])
     stored["rationale_correctness"] = 1.0
     with pytest.raises(MetricParityError, match="rationale_correctness"):

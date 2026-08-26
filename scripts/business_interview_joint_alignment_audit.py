@@ -14,7 +14,7 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from src.experiments.business_interview.joint_structural_alignment import (
+from experiments.business_interview.joint_structural_alignment import (
     evaluate_joint_structural_mapping_objective,
 )
 from tau2.domains.business_interview.graph import (

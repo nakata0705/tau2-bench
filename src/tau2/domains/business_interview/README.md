@@ -212,7 +212,8 @@ independently records an agreed term.`
 ## Evaluation
 
 Primary target: **AgentConcepts / AgentGraph vs TruthConcepts / TruthGraph**.
-`evaluate(db, knowledge, spec, *, truth=..., ...)`:
+`evaluate(db, knowledge, spec, *, truth=..., ...)` requires an explicit Truth graph;
+StakeholderKnowledge is never used as a Truth fallback.
 
 - concept identity is content-based (deterministic signatures over the agent
   glossary labels/descriptions vs the Truth concept canonical terms/
@@ -237,8 +238,15 @@ Primary target: **AgentConcepts / AgentGraph vs TruthConcepts / TruthGraph**.
 
 `quality_pass` / `structural_pass` require full reconstruction correctness:
 all structural/property/concept metrics == 1.0, valid endpoints, valid graph.
-Provenance (evidence hygiene, sidecar annotations and dialogue events) is
-reported as diagnostic only and never gates `quality_pass`.
+Evidence hygiene never gates `quality_pass`, but the standard task's
+`assert_evidence_backed` environment assertion remains a scalar reward gate.
+Private sidecar annotations and dialogue events remain evaluator-only inputs.
+
+Usage-based and joint structural alignment are research experiments, not
+production evaluator dependencies or `EvaluationDiagnostics v5` fields. Offline
+tooling runs them explicitly through
+`scripts/business_interview_diagnostics/experiment_diagnostics.py` and stores
+their results under a separate `experiments` trace section.
 
 ### Stakeholder Truth reference scores (reference only)
 
@@ -308,15 +316,13 @@ diagnostic data**. They can be recomputed with
 `recompute_stakeholder_truth_reference(...)` from the saved TruthGraph and
 Knowledge, even if scoring semantics change later. For example:
 
-```python
-from tau2.domains.business_interview.artifact_provenance import (
-    recompute_stakeholder_truth_reference,
-)
+    from tau2.domains.business_interview.artifact_provenance import (
+        recompute_stakeholder_truth_reference,
+    )
 
-new_reference = recompute_stakeholder_truth_reference(
-    "run.json", "run.private.json"
-)
-```
+    new_reference = recompute_stakeholder_truth_reference(
+        "run.json", "run.private.json"
+    )
 
 Seeds are provenance and
 reproducibility aids, never the sole guarantee: changing the forgetting
