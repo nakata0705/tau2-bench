@@ -13,8 +13,12 @@ import re
 from collections.abc import Iterable, Mapping
 from typing import Optional, cast
 
-from .evaluation import ConceptDiagnostics, FailureAttribution, SlotDiagnostic
-from .graph import (
+from tau2.domains.business_interview.evaluation_diagnostics import (
+    ConceptDiagnostics,
+    FailureAttribution,
+    SlotDiagnostic,
+)
+from tau2.domains.business_interview.graph import (
     UNSET,
     AbsentType,
     AgentConcept,

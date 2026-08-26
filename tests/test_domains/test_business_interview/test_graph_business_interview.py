@@ -25,6 +25,7 @@ from typing import Optional
 
 import pytest  # type: ignore[reportMissingImports]
 
+from scripts.business_interview_diagnostics.grounding import grounded_semantic_ids
 from tau2.data_model.message import (
     AssistantMessage,
     ToolCall,
@@ -39,7 +40,6 @@ from tau2.domains.business_interview.environment import (
 from tau2.domains.business_interview.evaluation import (
     EvaluationSpec,
     evaluate,
-    grounded_semantic_ids,
 )
 from tau2.domains.business_interview.facts import (
     ConceptAlignmentAssertion,
@@ -3846,7 +3846,7 @@ def test_generic_words_do_not_cause_false_concept_matches():
     """A fabricated concept whose label shares ONLY generic/stop words with
     a real Truth concept must not be aligned (below threshold), and an
     unrelated fabricated concept lowers precision instead of scoring."""
-    from tau2.domains.business_interview.evaluation import _concept_similarity
+    from tau2.domains.business_interview.comparison import _concept_similarity
 
     sc = _sc(SCENARIO)
     truth = sc.truth
@@ -3886,7 +3886,7 @@ def test_generic_same_kind_labels_need_more_than_broad_word_overlap():
     The rule is general lexical filtering plus exact-label handling; it does
     not encode quotation-scenario-specific aliases.
     """
-    from tau2.domains.business_interview.evaluation import (
+    from tau2.domains.business_interview.comparison import (
         _CONCEPT_MATCH_THRESHOLD,
         _concept_similarity,
     )
@@ -3962,7 +3962,7 @@ def test_generic_same_kind_labels_need_more_than_broad_word_overlap():
 def test_japanese_concept_matching():
     """Japanese labels are matched deterministically (character-bigram
     signatures), and clearly different Japanese concepts do not match."""
-    from tau2.domains.business_interview.evaluation import _similarity, _tokens
+    from tau2.domains.business_interview.comparison import _similarity, _tokens
 
     # Japanese: no ASCII, but signatures are non-empty (bigrams)
     ja_a = _tokens("顧客情報の確認")
@@ -4117,7 +4117,7 @@ def test_tool_error_accounting_classifies_and_groups():
     """account_tool_errors walks the trajectory and produces normalized,
     grouped error metrics (tool_error_count / categories / by_tool) even when
     top-level errors == []."""
-    from tau2.domains.business_interview.run_metrics import (
+    from scripts.business_interview_run_metrics import (
         account_tool_errors,
         classify_tool_error,
     )
@@ -4139,7 +4139,7 @@ def test_tool_error_accounting_classifies_and_groups():
 
 
 def test_tool_error_accounting_empty_trajectory():
-    from tau2.domains.business_interview.run_metrics import account_tool_errors
+    from scripts.business_interview_run_metrics import account_tool_errors
 
     acc = account_tool_errors([])
     assert acc["tool_error_count"] == 0
@@ -4151,7 +4151,7 @@ def test_model_refusal_accounting_is_explicit_and_narrow():
     """Normal DONT_KNOW speech, empty/tool-error messages and provider errors
     are not safety refusals; explicit refusal text is recorded with context
     and moderation metadata, including whether a later retry recovered."""
-    from tau2.domains.business_interview.run_metrics import account_model_refusals
+    from scripts.business_interview_run_metrics import account_model_refusals
 
     messages = [
         UserMessage(role="user", content="I don't know which system it uses."),

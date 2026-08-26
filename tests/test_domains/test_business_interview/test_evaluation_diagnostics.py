@@ -9,6 +9,12 @@ from typing import cast
 
 import pytest
 
+from scripts.business_interview_diagnostics.offline_diagnostics import (
+    ArtifactDecodeError,
+    classify_failed_slots,
+    decode_agent_graph,
+    decode_agent_slot,
+)
 from scripts.business_interview_evaluation_diagnostics import (
     MetricParityError,
     _check_metric_parity,
@@ -42,12 +48,6 @@ from tau2.domains.business_interview.knowledge import (
     StakeholderKnowledgeConcept,
     StakeholderKnowledgeGraph,
     StakeholderNode,
-)
-from tau2.domains.business_interview.offline_diagnostics import (
-    ArtifactDecodeError,
-    classify_failed_slots,
-    decode_agent_graph,
-    decode_agent_slot,
 )
 from tau2.domains.business_interview.tools import InterviewTools
 from tau2.environment.toolkit import get_tool_signatures

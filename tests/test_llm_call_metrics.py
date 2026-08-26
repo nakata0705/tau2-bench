@@ -380,7 +380,7 @@ def test_internal_stakeholder_refusal_retry_is_kept_once_and_public_uncertainty_
     assert records[1].attempt_index == 1
     assert records[2].call_name == "stakeholder_realization"
 
-    from tau2.domains.business_interview.run_metrics import account_model_refusals
+    from scripts.business_interview_run_metrics import account_model_refusals
 
     accepted_public_trajectory = [UserMessage(role="user", content="I don't know.")]
     assert account_model_refusals(accepted_public_trajectory) == []

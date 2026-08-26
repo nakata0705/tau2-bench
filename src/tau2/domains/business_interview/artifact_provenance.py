@@ -506,7 +506,7 @@ def recompute_stakeholder_truth_reference(
     serialization helpers independent of the large primary evaluator module.
     """
     inputs = load_evaluation_inputs(artifact, private_artifact)
-    from tau2.domains.business_interview.evaluation import (
+    from tau2.domains.business_interview.reference_evaluation import (
         StakeholderReferenceInput,
         aggregate_stakeholder_truth_references,
         evaluate_stakeholder_truth_reference,

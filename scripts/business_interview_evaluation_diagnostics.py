@@ -22,6 +22,10 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import cast
 
+from scripts.business_interview_diagnostics.offline_diagnostics import (
+    classify_failed_slots,
+    decode_agent_graph,
+)
 from scripts.business_interview_joint_alignment_audit import (  # pyright: ignore[reportMissingImports]
     build_joint_concept_disagreement_audit,
 )
@@ -41,10 +45,6 @@ from tau2.domains.business_interview.graph import (
     Observation,
 )
 from tau2.domains.business_interview.knowledge import StakeholderKnowledge
-from tau2.domains.business_interview.offline_diagnostics import (
-    classify_failed_slots,
-    decode_agent_graph,
-)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SEEDS = (9002, 9003, 9004)

@@ -117,6 +117,9 @@ def grounded_ids(
     return grounded, invalid, ambiguous
 
 
+grounded_semantic_ids = grounded_ids
+
+
 def grounded_refs(
     db: InterviewDB,
     annotations: dict[int, list[SemanticAnnotation]],

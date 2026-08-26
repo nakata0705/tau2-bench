@@ -428,7 +428,7 @@ def run_once(run_index: int, seed: int) -> tuple[dict, dict]:
         errors.append(f"evaluate failed: {exc}")
 
     # --- conversation / messages ---------------------------------------------
-    from tau2.domains.business_interview.run_metrics import (
+    from scripts.business_interview_run_metrics import (
         account_model_refusals,
         account_tool_errors,
         provider_error_count,

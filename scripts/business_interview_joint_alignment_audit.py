@@ -14,14 +14,14 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from src.experiments.business_interview.joint_structural_alignment import (
+    evaluate_joint_structural_mapping_objective,
+)
 from tau2.domains.business_interview.graph import (
     ConceptRef,
     business_entry_node_ids,
     business_exit_node_ids,
     node_is_structural,
-)
-from tau2.domains.business_interview.joint_structural_alignment import (
-    evaluate_joint_structural_mapping_objective,
 )
 
 _NODE_RELATIONS = (
