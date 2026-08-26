@@ -576,6 +576,10 @@ def test_stored_metric_parity_survives_usage_diagnostics(seed: int):
     trace = evaluate_artifact(
         stem.with_suffix(".json"), stem.with_suffix(".private.json")
     )
-    assert trace["metric_parity"]["status"] == "matched"
-    assert trace["metric_parity"]["differences"] == []
+    expected_status = "historical_drift" if seed == 9002 else "matched"
+    assert trace["metric_parity"]["status"] == expected_status
+    if expected_status == "matched":
+        assert trace["metric_parity"]["differences"] == []
+    else:
+        assert trace["metric_parity"]["differences"]
     assert trace["experiments"]["usage_alignment"]["assignment_uses_labels"] is False

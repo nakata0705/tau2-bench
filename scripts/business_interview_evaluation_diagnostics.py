@@ -166,7 +166,19 @@ def _metric_equal(expected, stored) -> bool:
     return expected == stored
 
 
-def _check_metric_parity(result: EvaluationResult, stored_metrics) -> dict:
+def _metric_parity(
+    result: EvaluationResult,
+    stored_metrics,
+    *,
+    fail_on_drift: bool,
+) -> dict:
+    """Compare stored and current metrics without changing either payload.
+
+    Strict callers use this as a fail-closed compatibility check.  Historical
+    re-evaluation uses ``fail_on_drift=False`` so a legitimate evaluator
+    correction is reported as provenance-preserving drift instead of forcing
+    an in-place rewrite of the original artifact.
+    """
     if not isinstance(stored_metrics, Mapping) or not stored_metrics:
         raise MetricParityError(
             "artifact has no compatible evaluator_metrics; refusing offline attribution"
@@ -195,7 +207,7 @@ def _check_metric_parity(result: EvaluationResult, stored_metrics) -> dict:
         for field, value in expected.items()
         if field in checked_fields and not _metric_equal(value, stored_metrics[field])
     ]
-    if differences:
+    if differences and fail_on_drift:
         details = "; ".join(
             f"{item['field']}: stored={item['stored']!r}, "
             f"reevaluated={item['reevaluated']!r}"
@@ -203,11 +215,22 @@ def _check_metric_parity(result: EvaluationResult, stored_metrics) -> dict:
         )
         raise MetricParityError("stored metric drift detected: " + details)
     return {
-        "status": "matched",
-        "compatible": True,
+        "status": "matched" if not differences else "historical_drift",
+        "compatible": not differences,
+        "provenance_preserved": True,
         "checked_fields": checked_fields,
-        "differences": [],
+        "differences": differences,
     }
+
+
+def _check_metric_parity(result: EvaluationResult, stored_metrics) -> dict:
+    """Fail closed when a caller requires exact stored-score parity."""
+    return _metric_parity(result, stored_metrics, fail_on_drift=True)
+
+
+def _compare_metric_parity(result: EvaluationResult, stored_metrics) -> dict:
+    """Report evaluator drift while retaining the historical stored metrics."""
+    return _metric_parity(result, stored_metrics, fail_on_drift=False)
 
 
 def evaluate_artifact(public_path: Path, private_path: Path) -> dict:
@@ -242,7 +265,8 @@ def evaluate_artifact(public_path: Path, private_path: Path) -> dict:
         truth=truth,
         stakeholder_references=stakeholder_references,
     )
-    metric_parity = _check_metric_parity(result, public.get("evaluator_metrics"))
+    stored_metrics = public.get("evaluator_metrics")
+    metric_parity = _compare_metric_parity(result, stored_metrics)
     legacy_input_provenance = None
     if evaluation_inputs is None:
         legacy_input_provenance = {
@@ -292,6 +316,10 @@ def evaluate_artifact(public_path: Path, private_path: Path) -> dict:
         "source_private_artifact": str(private_path.relative_to(REPO_ROOT)),
         "evaluation": result.model_dump(mode="json"),
         "experiments": experiments.model_dump(mode="json"),
+        # Keep both sides explicit: the artifact's historical payload is never
+        # overwritten when the current evaluator intentionally changes.
+        "stored_metrics": dict(stored_metrics or {}),
+        "current_metrics": _metric_snapshot(result),
         "metrics": _metric_snapshot(result),
         "metric_parity": metric_parity,
         "joint_concept_disagreement_audit": joint_concept_disagreement_audit,
@@ -830,15 +858,14 @@ def render_report(traces: list[dict], output_path: Path) -> None:
         "marker encoding, so offline restoration explicitly decodes UNSET, "
         "ABSENT, DONT_KNOW, and ConceptRef values instead of passing the graph "
         "through the undiscriminated Pydantic union. Stored scalar evaluator "
-        "metrics are compared with a floating-point representation tolerance "
-        "before any attribution; a mismatch fails closed and no report is "
-        "generated. The current evaluator was run twice per artifact during "
-        "verification; a direct comparison with the pre-change `business-interview` "
-        "HEAD evaluator matched every scalar score/pass field on full and partial "
-        "deterministic graphs. Diagnostics are metadata only and do not alter "
-        "score fields, thresholds, or matcher selection; the table below is the "
-        "current-HEAD re-evaluation after stored-metric parity, not a copy of "
-        "historical metrics. All diagnostic output remains evaluator-private/offline.",
+        "metrics are compared with a floating-point representation tolerance. "
+        "When the evaluator intentionally changes, the report marks "
+        "`historical_drift` and retains both stored and current metrics; it does "
+        "not rewrite the source artifact. Strict callers can still use the "
+        "fail-closed `_check_metric_parity` helper. Diagnostics are metadata only "
+        "and do not alter score fields, thresholds, or matcher selection; the "
+        "table below is the current re-evaluation, not a copy of historical "
+        "metrics. All diagnostic output remains evaluator-private/offline.",
         "",
         "## Diagnostic schema and reason codes",
         "",
@@ -1182,13 +1209,11 @@ def render_report(traces: list[dict], output_path: Path) -> None:
             "than being guessed. Symmetric duplicate subgraphs/concept usages "
             "remain valid ambiguity classes.",
             "",
-            "**Viability:** this is viable as an evaluator-private diagnostic and "
-            "as a candidate for further experiments, not a production migration. "
-            "Before production use, validate objective weighting and edge cases on "
-            "larger adversarial graphs, retain explicit optimality bounds, and "
-            "measure whether the structural mapping is stable under realistic "
-            "missing/extra structure. Existing production scoring and mappings are "
-            "unchanged.",
+            "**Viability:** the bounded joint search remains an evaluator-private "
+            "diagnostic and is not the production matcher. Production Node matching "
+            "now uses business identity first with topology/WL disambiguation; the "
+            "adversarial Node suite and the historical 9002/9003/9004 comparison "
+            "sidecar record that change separately from the diagnostic experiment.",
         ]
     )
     lines.extend(_joint_concept_disagreement_audit_lines(traces))
@@ -1261,9 +1286,9 @@ def render_report(traces: list[dict], output_path: Path) -> None:
             "category.",
             "- DONT_KNOW/hidden knowledge and unmatched structure remain "
             "`insufficient_evidence_to_classify`; they are not Agent failures.",
-            "- This task does not change existing node/edge or concept matcher "
-            "tie-breaking; duplicate identical structural signatures remain a "
-            "future evaluator investigation.",
+            "- The production Node matcher now requires aligned activity identity "
+            "and uses topology/WL only as soft/disambiguation evidence; duplicate "
+            "identical structural signatures remain conservatively ambiguous.",
             "",
         ]
     )
@@ -1275,8 +1300,10 @@ def render_report(traces: list[dict], output_path: Path) -> None:
                 "",
                 f"- source: `{trace['source_artifact']}`",
                 f"- private sidecar: `{trace['source_private_artifact']}`",
-                f"- stored-metric parity: `{trace['metric_parity']['status']}` "
-                f"({len(trace['metric_parity']['checked_fields'])} fields)",
+                f"- stored/current metric comparison: `{trace['metric_parity']['status']}` "
+                f"({len(trace['metric_parity']['checked_fields'])} fields; "
+                f"{len(trace['metric_parity']['differences'])} differences; "
+                "source metrics preserved)",
                 f"- quality/reconstruction pass: `{trace['metrics']['quality_pass']}` / "
                 f"`{trace['metrics']['reconstruction_pass']}`",
                 "",

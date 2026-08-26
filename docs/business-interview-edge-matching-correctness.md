@@ -252,16 +252,18 @@ the real artifacts were byte/value-equal for the measured primary and
 reference fields, and the corrected synthetic duplicate-edge scores were
 encoded as regression expectations rather than compatibility hacks.  A later,
 independent Node-matching change legitimately migrated the primary
-`evaluator_metrics` values for seeds 9002 and 9003; its impact is recorded in
-`docs/business-interview-node-matching-correctness.md`.
+`evaluator_metrics` values.  The current Node-matching comparison is stored
+separately (without overwriting those legacy fields) and its impact is recorded
+in `docs/business-interview-node-matching-correctness.md`.
 
 `tools.py`, `graph.py`, `artifact_provenance.py`, and simulator code were not
 modified.  The existing 21-tool schema tests and artifact round-trip/fingerprint
-tests pass.  The new edge test also verifies that evaluating a graph does not
-change its serialized Truth fingerprint.  The later Node-matching migration
-changed only the stored primary metric fields for seeds 9002 and 9003; Truth,
-Knowledge, private provenance, and historical diagnostics payloads were not
-rewritten.
+tests pass.  The edge tests also verify that evaluating a graph does not
+change its serialized Truth fingerprint.  The current Node-matching change
+leaves the legacy public `evaluator_metrics` fields untouched and records
+stored/current Node and Edge comparisons in
+`artifacts/business_interview_real_llm/seed_9002_9003_9004_node_matching_comparison.json`.
+Truth, Knowledge, private provenance, and source artifacts are not rewritten.
 
 ## Validation and remaining risks
 
@@ -291,8 +293,8 @@ LSP diagnostics are clean for changed files; only the repository's existing
 `audioop` deprecation and unknown pytest config warnings remain.
 
 The upstream Node-alignment risk described in the original edge-fix audit is
-now addressed by the separate topology-first matcher documented in
-`docs/business-interview-node-matching-correctness.md`.  This edge fix still
+now addressed by the separate business-identity-first matcher documented
+in `docs/business-interview-node-matching-correctness.md`.  This edge fix still
 consumes the finalized Node mapping and guarantees finite Truth-edge usage
 without using Edge conditions to choose Node identity.  Parallel edges with
 genuinely identical endpoints and identical condition score remain

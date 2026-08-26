@@ -1,126 +1,76 @@
-# Business Interview primary Node-matching correctness
+# Business Interview Node-matching correctness
 
 ## Scope
 
-This document records the deterministic AgentGraph → TruthGraph Node-matching
-hardening that follows the primary edge reservation fix.  The goal is to avoid
-crediting a Truth Node merely because an Agent Node shares a weak lexical or
-property overlap when its structural role is incompatible.
+This document records the current AgentGraph → TruthGraph Node matcher.  The
+contract is:
+
+```text
+business identity first → topology/WL disambiguation → one-to-one Node mapping
+                         → one-to-one Edge mapping → Edge condition scoring
+```
 
 The implementation is in:
 
 - `src/tau2/domains/business_interview/comparison.py`
 
-The adversarial contract tests are in:
+The deterministic contracts are in:
 
 - `tests/test_domains/test_business_interview/test_node_matching_correctness.py`
+- `tests/test_domains/test_business_interview/test_edge_matching_correctness.py`
 
-The implementation does not change concept lexical-alignment semantics, slot
-scoring, epistemic states, canonical SOURCE/SINK scoring, forgetting,
-contraction, Stakeholder reference semantics, tool APIs, simulator behavior,
-or evidence reward logic.  Edge matching still runs only after Node matching
-has completed and remains the existing one-to-one matcher.
+The matcher does not change Concept lexical alignment, epistemic states,
+canonical SOURCE/SINK handling, Stakeholder forgetting/reference semantics,
+tool APIs, simulator behavior, evidence reward, or the one-to-one Edge
+matcher.
 
-## Reproduced false positives in the previous matcher
+## Minimal hard-topology regression
 
-Before the production change, the new adversarial suite reproduced these
-current-HEAD failures:
-
-- two Nodes with the same `activity` mapped by lexical overlap even when one
-  was a branch Node and the other was serial;
-- an Agent Node with a different/unmapped activity but shared `actor` and
-  `system` mapped to a Truth Node;
-- a serial Agent Node mapped to a Truth branch or merge Node;
-- symmetric branch Nodes were resolved by sorted local IDs instead of being
-  treated as ambiguous;
-- an isolated partial-graph Node was mapped to an internal Truth Node solely
-  because its activity label matched.
-
-The old matcher built a set of aligned `(property, Truth-concept-id)` pairs and
-then ran a global assignment over any non-empty overlap.  It had no structural
-candidate constraint, and a two-property actor/system overlap could therefore
-be enough to create identity.  It also did not distinguish equal-optimum
-symmetric assignments from unique business identity.
-
-The pre-fix run showed the expected failures in these valid fixtures; the
-merge fixture itself was corrected to include a canonical entry before it was
-used as a regression test.
-
-## Topology-first structural fingerprint
-
-Only `business_node_ids()` and `business_edge_ids()` participate.  Explicit
-canonical SOURCE/SINK nodes and boundary edges are therefore excluded from the
-Node matching denominator and cannot become business candidates.
-
-For every business Node, the deterministic base profile contains:
-
-- business entry and exit role;
-- unique predecessor and successor degree;
-- `branch` / `merge` role derived from those neighbor sets;
-- explicit self-loop presence;
-- shortest distance from an inferred/declared business entry;
-- shortest distance to an inferred/declared business exit.
-
-Distances are computed with sorted adjacency traversal.  Parallel conditioned
-edges to the same neighbor are collapsed for the Node topology profile: they
-are distinct Edge evidence, not a new Node branch or merge role.  Node IDs and
-dictionary insertion order are never included in the profile.
-
-A graph with no business edges and no explicit Agent boundary is treated as
-structurally unspecified rather than as proof of an isolated business Node.
-That compatibility fallback still requires a matched activity and is subject
-to the same one-to-one and ambiguity rules.  An explicit isolated Agent
-boundary remains a meaningful topology claim and cannot map to an internal
-Truth Node.
-
-## WL-style iterative refinement
-
-The base profile is round zero.  Each subsequent round canonicalizes:
+The former matcher rejected a candidate whenever the Agent and Truth base
+profiles differed.  The smallest useful reproduction is:
 
 ```text
-(previous own color,
- sorted predecessor colors,
- sorted successor colors)
+Truth: A(receive request) → B(create quotation) → C(send quotation)
+Agent: same three activity identities plus
+       A → B, B → C, and an extra A → C edge
 ```
 
-Colors are assigned from the union of Agent and Truth payloads in sorted
-serialized order, so corresponding structural payloads receive the same
-color without relying on local IDs.  Refinement runs for up to
-`min(12, max(agent_node_count, truth_node_count))` rounds and stops early when
-both color maps stabilize.  The complete color history is retained as the
-refinement component of the fingerprint.
+The extra edge changes A's branch profile and C's entry distance.  Before this
+change, the current `HEAD` implementation mapped only B.  The regression was
+added before the production fix and failed with:
 
-Base-profile equality is the hard candidate constraint for a topology-known
-Agent graph.  WL history agreement is a deterministic topology-similarity
-term inside that candidate set.  This lets local topology reject branch/
-serial and merge/serial mismatches while still allowing a partial graph whose
-known local role agrees but whose farther context is incomplete.
+```text
+expected: a_receive → A, a_create → B, a_send → C
+observed: a_create → B
+```
 
-## Unique anchors and constraint propagation
+After the fix, all three Nodes map, while the Edge metrics are
+`recall=1.0`, `precision=2/3`, `fabricated_edge_count=1`.
 
-A candidate pair is an anchor only when:
+The corresponding missing-edge and wrong-downstream-target fixtures verify
+that Node identity survives both Edge recall and endpoint errors.
 
-1. both graphs have known topology;
-2. the complete base-plus-WL fingerprint is unique in each graph; and
-3. the already-aligned activity slot agrees.
+## Business-identity-first candidate generation
 
-Anchors are fixed one-to-one.  Candidate pairs are then filtered by mapped
-predecessor/successor relations in both directions.  If a mapped Agent
-neighbor is not a corresponding Truth neighbor, or a mapped Truth neighbor is
-not a corresponding Agent neighbor, that candidate is removed.  Newly unique
-fingerprints are propagated until no new anchor is available.
+1. Concept alignment is computed by the existing content-based bijective
+   alignment.  Its semantics are unchanged.
+2. A Node candidate requires an **asserted, aligned activity ConceptRef on both
+   sides**.  An unaligned/mismatched activity, explicit absence, or
+   `DONT_KNOW` cannot create a candidate.
+3. Actor, system, reads, writes, and necessity-rationale scores are supporting
+   evidence only.  Actor/system overlap without activity identity cannot map a
+   Node.
+4. Every activity-compatible pair is retained initially, even if its local
+   topology differs.
+5. The existing maximum-weight one-to-one assignment is then applied to the
+   candidate bipartite graph.  Cardinality is primary; business attributes
+   and topology are secondary weights.
 
-A structural fingerprint alone never establishes business identity; the
-activity agreement remains required.
-
-## Business-attribute assignment
-
-Only topology-compatible candidates are weighted using existing aligned slot
-scoring.  The weight is:
+The current weight is:
 
 ```text
 100.0                         cardinality priority
-+ 3.0 * WL topology similarity
++ 3.0 * topology/WL similarity
 + 8.0 * activity agreement
 + 2.0 * actor agreement
 + 2.0 * system agreement
@@ -129,115 +79,141 @@ scoring.  The weight is:
 + 0.5 * necessity-rationale agreement
 ```
 
-An activity mismatch or absent activity agreement produces no candidate.  This
-makes actor/system-only overlap insufficient while keeping activity the most
-important business attribute.
+The `100.0` term preserves the cardinality-first behavior of the existing
+assignment primitive.  No Edge is inspected while selecting a Node mapping.
 
-The existing `_max_weight_assignment()` primitive is reused.  Candidate
-bipartite graphs are decomposed into disconnected components, then each
-component is solved one-to-one with cardinality-first maximum weight.  A
-component larger than the bounded ambiguity limit of eight Nodes is left
-unmatched rather than allowing ID order to decide a potentially symmetric
-class.
+## Topology and WL disambiguation
 
-## Ambiguity policy
+The existing topology data is retained:
 
-For every selected pair in a bounded component, the exact pair is forbidden
-and the assignment is solved again.  If the alternative has the same optimum,
-the selected pair is not forced by the evidence and is discarded.  Therefore:
+- entry/exit role;
+- predecessor/successor degree and neighbor structure;
+- branch/merge role;
+- self-loop presence;
+- entry and exit distance;
+- deterministic WL-style predecessor/successor color refinement.
 
-- a unique optimum is retained;
-- an equal optimum is conservatively unmatched;
-- symmetric assignments cannot acquire meaning from sorted local IDs;
-- assignment cardinality remains one-to-one.
+The base profile and WL history now produce a **soft topology bonus**, not a
+universal candidate gate.  A local mismatch therefore lowers the bonus but
+cannot erase a unique business identity.
 
-This is a bounded alternative check, not an unbounded graph-isomorphism
-search.
+There is no topology-based Node candidate rejection in the current matcher.
+Even in an ambiguous same-activity class, all activity-compatible pairs remain
+available to the one-to-one assignment; topology/WL scores can select a unique
+optimum, while equal optima remain unmatched.  This avoids reducing Node
+cardinality merely because several Agent Nodes share an activity and one of
+their local profiles is wrong.  The only hard identity gate is the asserted,
+aligned activity requirement (plus one-to-one and the bounded ambiguity
+policy).
 
-## Edge evaluation boundary
+This supports, for example, `review (branch)` versus `review (serial)` through
+topology/WL bonus while still matching a unique `create quotation` Node whose
+Agent graph has one wrong Edge.
 
-Node mapping is finalized before `_map_edges_one_to_one()` is called.  Edge
-conditions are not inspected while choosing Node identity.  The existing Edge
-matcher then applies mapped endpoint eligibility, one-to-one Truth-edge
-reservation, and condition scoring.  This preserves the intended hierarchy:
+## Assignment and ambiguity policy
 
-```text
-Node identity → Edge identity → Edge condition
-```
+- Node assignment is one-to-one.
+- Candidate components are solved independently using the existing deterministic
+  maximum-weight assignment.
+- Every selected pair is checked by forbidding that pair and solving again.
+- Equal optimum alternatives are not given meaning by sorted local IDs; the
+  pair is discarded as ambiguous.
+- Symmetric same-activity branches remain unmatched.
+- A component larger than the existing ambiguity bound is conservatively left
+  unmatched.
+- Insertion order and Agent-local Node-ID renaming do not change aggregate
+  metrics or create semantic meaning for a tie.
 
-## Adversarial coverage
+The final Edge mapping is still performed only by `_map_edges_one_to_one()`
+after Node mapping is complete.  It remains endpoint-compatible,
+one-to-one, and condition-aware.  It is not part of the Node objective, so
+Edge correctness is not counted once in Node identity and again in Edge
+matching through a joint objective.
 
-The new Node suite covers:
+## Required deterministic coverage
 
-- same activity with wrong topology;
-- same actor/system without activity agreement;
-- branch versus serial;
-- merge versus serial;
-- WL disambiguation of same local-role Nodes;
-- symmetric branch ambiguity;
-- partial-graph false-positive prevention;
-- normal unique-topology mapping and Edge preservation;
-- insertion-order and Agent local-Node-ID invariance.
+The Node/Edge suites cover:
 
-The existing primary Edge correctness suite, Stakeholder reference tests,
-artifact provenance tests, and 21-tool schema tests remain separate and are
-run alongside this suite.
+1. unique activity + extra Edge;
+2. unique activity + missing Edge;
+3. unique activity + wrong downstream target;
+4. same-activity branch versus serial disambiguation;
+5. symmetric same-activity branches → unmatched;
+6. actor/system-only overlap with activity mismatch → unmatched;
+7. insertion-order invariance;
+8. Agent local-ID rename invariance;
+9. duplicate/parallel/conditioned Edge one-to-one correctness;
+10. Stakeholder reference parity;
+11. 21-tool schema and artifact Truth-fingerprint/provenance parity.
 
-## Real-artifact impact
+## Real-LLM artifacts
 
-The stored pre-change metrics were compared with a fresh evaluation after the
-Node matcher change.  The public legacy artifact `evaluator_metrics` sections
-were migrated only where values changed (seeds 9002 and 9003); seed 9004 was
-already identical.  This keeps the offline parity verifier fail-closed and
-green.  Truth/Knowledge payloads, private payloads, provenance metadata, and
-the stored historical diagnostics files were not rewritten.
+The original public `evaluator_metrics` fields in the legacy artifacts are
+not overwritten.  Current reevaluation and mapping decisions are stored in:
 
-| seed | Node recall | Node precision | fabricated Nodes | Edge recall | Edge precision | condition | structural | quality |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
-| 9002 | `1.0 → 0.3333333333` | `1.0 → 0.3333333333` | `0 → 4` | `0.8333333333 → 0.0` | `0.7142857143 → 0.0` | `0.5 → 0.0` | `False → False` | `False → False` |
-| 9003 | `1.0 → 0.8333333333` | `1.0 → 0.8333333333` | `0 → 1` | `1.0 → 0.6666666667` | `1.0 → 0.6666666667` | `0.5 → 0.3333333333` | `False → False` | `False → False` |
-| 9004 | `1.0 → 1.0` | `1.0 → 1.0` | `0 → 0` | `1.0 → 1.0` | `1.0 → 1.0` | `1.0 → 1.0` | `False → False` | `False → False` |
+`artifacts/business_interview_real_llm/seed_9002_9003_9004_node_matching_comparison.json`
 
-The changed Node mappings were:
+The sidecar contains both `original_stored_metrics` and
+`current_reevaluated_metrics`, per-Agent-Node business/topology evidence, old
+and new mappings, and a provenance policy stating that the source artifacts
+are unmodified.
 
-- seed 9002: the old mappings for `node_create_quotation_doc`,
-  `node_send_month_end_summary`, `node_receive_request`, and
-  `node_send_quotation` were rejected because their local structural roles
-  were incompatible with the mapped Truth Nodes.  `node_approve_high_value →
-  ap` and `node_check_customer_info → cc` remained.
-- seed 9003: `node_manager_approve → ap` was rejected because the activity
-  did not have an aligned activity identity; the five topology-and-activity
-  supported mappings remained.
-- seed 9004: no Node mapping changed.
+### Metric impact
 
-These are conservative false-positive/unsupported-identity corrections, not
-local-ID or insertion-order drift.  The reference aggregate remained
-`0.7958333333333334` for all three seeds.  Scalar reward remained `0.0` in the
-saved artifact replay; the Node matcher changes only the graph-comparison
-inputs to the existing reward pipeline.
+| seed | Node recall | Node precision | fabricated Nodes | Edge recall | Edge precision | Condition | structural / quality |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 9002 | `1/3 → 1` | `1/3 → 1` | `4 → 0` | `0 → 5/6` | `0 → 5/7` | `0 → 0.5` | `False → False` |
+| 9003 | `5/6 → 5/6` | `5/6 → 5/6` | `1 → 1` | `2/3 → 2/3` | `2/3 → 2/3` | `1/3 → 1/3` | `False → False` |
+| 9004 | `1 → 1` | `1 → 1` | `0 → 0` | `1 → 1` | `1 → 1` | `1 → 1` | `False → False` |
 
-## Validation
+The 9002 Node property scores are intentionally still separate from Node
+identity: activity and actor remain `1.0`; system, reads, writes, rationale,
+and condition retain their own scores and expose the Agent's attribute/Edge
+errors rather than hiding them behind a Node miss.
 
-The complete related suite passed:
+### Seed 9002 per-Node decisions
 
-```text
-247 passed
-0 failed
-0 unexpected xfail
-0 collection errors
-```
+| Agent Node | business identity evidence | topology evidence | old mapping | new mapping | decision |
+| --- | --- | --- | --- | --- | --- |
+| `node_approve_high_value` | aligned unique `approve quotation` activity | compatible base profile | `ap` | `ap` | retained |
+| `node_check_customer_info` | aligned unique `check customer information` activity | compatible base profile | `cc` | `cc` | retained |
+| `node_create_quotation_doc` | aligned unique `create quotation` activity | base mismatch; soft similarity retained | — | `cq` | restored |
+| `node_receive_request` | aligned unique `receive request` activity | branch/distance mismatch; soft similarity retained | — | `r` | restored |
+| `node_send_month_end_summary` | aligned unique `send month-end summary` activity | entry-distance mismatch; soft similarity retained | — | `me` | restored |
+| `node_send_quotation` | aligned unique `send quotation` activity | exit/degree mismatch; soft similarity retained | — | `sq` | restored |
 
-This includes the business-interview domain suite, artifact provenance tests,
-experiment tests, and the affected generic LLM-metrics tests.  `make
-check-all` passed, Ruff reports no issues, and primary LSP diagnostics for the
-changed Python files are clean.  Only the repository's existing `audioop`
-deprecation and unknown pytest configuration warnings remain.
+Seed 9003's `node_manager_approve` remains unmatched because its activity
+concept is not aligned.  Matching its manager/rationale or topology would
+violate the activity-identity rule.  Seed 9004 has no mapping change.
 
-## Remaining risk
+The Stakeholder reference aggregate remains
+`0.7958333333333334` for all three seeds.  The reference lane uses its private
+Truth IDs and the shared comparison arithmetic; it is not fed the Agent Node
+assignment.  Tool count/schema checks and Truth/Knowledge fingerprint checks
+remain unchanged and pass.
 
-The matcher deliberately does not claim full graph isomorphism.  A wrong
-activity concept alignment can still prevent a correct Node candidate, and a
-large topology ambiguity class is conservatively discarded.  The next
-correctness priority is improving diagnostics for distinguishing a genuinely
-missing Node from a Node whose activity concept was not aligned, without
-weakening the false-positive policy.
+## Historical artifact handling
+
+`evaluate_artifact()` now reports `historical_drift` with explicit stored/current
+metrics instead of requiring a direct rewrite of a legacy artifact.  Strict
+parity checking remains available through `_check_metric_parity()` and still
+fails closed for arbitrary drift.  This separates:
+
+- the original/stored score captured by the simulation;
+- the current reevaluated score under the current evaluator;
+- the comparison evidence explaining intentional evaluator changes.
+
+## Validation snapshot
+
+The targeted correctness and artifact suites pass after this change.  The
+repository-wide `make check-all` and the core `make test` are the final gates
+for the completed implementation.  Known unrelated warnings are the existing
+`audioop` deprecation and the repository's unknown pytest configuration option.
+
+## Remaining risk and next priority
+
+The matcher is not full graph isomorphism.  Wrong or missing activity concept
+alignment still prevents a Node candidate, and large/symmetric ambiguity is
+conservatively unmatched.  The next priority is richer evaluator-private
+diagnostics that distinguish a missing business Node from an activity concept
+that failed lexical alignment, without weakening the false-positive policy.

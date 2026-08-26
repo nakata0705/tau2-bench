@@ -11,11 +11,13 @@ import pytest
 from tau2.domains.business_interview.comparison import align_agent_to_truth
 from tau2.domains.business_interview.evaluation import EvaluationSpec, evaluate
 from tau2.domains.business_interview.graph import (
+    AbsentType,
     AgentConcept,
     AgentGraph,
     BusinessProcessGraph,
     ConceptKind,
     ConceptRef,
+    DontKnowType,
     Edge,
     InterviewDB,
     Node,
@@ -294,7 +296,40 @@ def test_shared_actor_and_system_without_activity_do_not_create_identity():
     assert "unknown" not in alignment.node_to_truth
 
 
-def test_branch_node_does_not_map_to_serial_node():
+def test_activity_absence_or_dont_know_never_creates_identity():
+    truth = _truth_graph(
+        {
+            "approve": {
+                "activity": "approve",
+                "actor": "manager",
+                "system": "crm",
+            }
+        },
+        [],
+        entry="approve",
+        exit="approve",
+    )
+    for marker in (AbsentType(), DontKnowType()):
+        agent = _agent_graph(
+            {
+                "unknown": {
+                    "activity": "approve",
+                    "actor": "manager",
+                    "system": "crm",
+                }
+            },
+            [],
+            entry="unknown",
+            exits=["unknown"],
+        )
+        agent.nodes["unknown"].activity = marker
+
+        alignment = _alignment(truth, agent)
+
+        assert "unknown" not in alignment.node_to_truth
+
+
+def test_unique_activity_maps_despite_branch_serial_mismatch():
     truth = _truth_graph(
         {
             "before": {"activity": "before"},
@@ -326,10 +361,10 @@ def test_branch_node_does_not_map_to_serial_node():
 
     alignment = _alignment(truth, agent)
 
-    assert "a_serial" not in alignment.node_to_truth
+    assert alignment.node_to_truth["a_serial"] == "branch"
 
 
-def test_merge_node_does_not_map_to_serial_node():
+def test_unique_activity_maps_despite_merge_serial_mismatch():
     truth = _truth_graph(
         {
             "entry": {"activity": "entry"},
@@ -361,7 +396,7 @@ def test_merge_node_does_not_map_to_serial_node():
 
     alignment = _alignment(truth, agent)
 
-    assert "a_serial" not in alignment.node_to_truth
+    assert alignment.node_to_truth["a_serial"] == "merge"
 
 
 def test_symmetric_branch_nodes_are_conservatively_unmatched():
@@ -427,10 +462,10 @@ def test_partial_graph_does_not_map_isolated_activity_to_internal_truth_node():
     alignment = _alignment(truth, agent)
     result = _evaluate(truth, agent)
 
-    assert alignment.node_to_truth == {}
-    assert result.node_recall == pytest.approx(0.0)
-    assert result.node_precision == pytest.approx(0.0)
-    assert result.fabricated_node_count == 1
+    assert alignment.node_to_truth == {"a_review": "review"}
+    assert result.node_recall == pytest.approx(1 / 3)
+    assert result.node_precision == pytest.approx(1.0)
+    assert result.fabricated_node_count == 0
 
 
 def test_partial_graph_ambiguous_activity_stays_unmatched_without_topology():
@@ -491,6 +526,118 @@ def test_unique_topology_maps_normally_and_preserves_edges():
     assert result.node_precision == pytest.approx(1.0)
     assert result.edge_recall == pytest.approx(1.0)
     assert result.edge_precision == pytest.approx(1.0)
+
+
+def test_unique_activity_survives_extra_edge_topology_mismatch():
+    """An edge-only reconstruction error must not erase Node identity."""
+    truth = _truth_graph(
+        {
+            "receive": {"activity": "receive request"},
+            "create": {"activity": "create quotation"},
+            "send": {"activity": "send quotation"},
+        },
+        [("receive", "create"), ("create", "send")],
+        entry="receive",
+        exit="send",
+    )
+    agent = _agent_graph(
+        {
+            "a_receive": {"activity": "receive request"},
+            "a_create": {"activity": "create quotation"},
+            "a_send": {"activity": "send quotation"},
+        },
+        [
+            ("a_receive", "a_create"),
+            ("a_create", "a_send"),
+            ("a_receive", "a_send"),
+        ],
+        entry="a_receive",
+        exits=["a_send"],
+    )
+
+    alignment = _alignment(truth, agent)
+    result = _evaluate(truth, agent)
+
+    assert alignment.node_to_truth == {
+        "a_receive": "receive",
+        "a_create": "create",
+        "a_send": "send",
+    }
+    assert result.node_recall == pytest.approx(1.0)
+    assert result.node_precision == pytest.approx(1.0)
+    assert result.edge_recall == pytest.approx(1.0)
+    assert result.edge_precision == pytest.approx(2 / 3)
+    assert result.fabricated_edge_count == 1
+
+
+def test_unique_activity_survives_missing_edge_topology_mismatch():
+    truth = _truth_graph(
+        {
+            "receive": {"activity": "receive request"},
+            "create": {"activity": "create quotation"},
+            "send": {"activity": "send quotation"},
+        },
+        [("receive", "create"), ("create", "send")],
+        entry="receive",
+        exit="send",
+    )
+    agent = _agent_graph(
+        {
+            "a_receive": {"activity": "receive request"},
+            "a_create": {"activity": "create quotation"},
+            "a_send": {"activity": "send quotation"},
+        },
+        [("a_receive", "a_create")],
+        entry="a_receive",
+        exits=["a_send"],
+    )
+
+    alignment = _alignment(truth, agent)
+    result = _evaluate(truth, agent)
+
+    assert len(alignment.node_to_truth) == 3
+    assert result.node_recall == pytest.approx(1.0)
+    assert result.node_precision == pytest.approx(1.0)
+    assert result.edge_recall == pytest.approx(0.5)
+    assert result.edge_precision == pytest.approx(1.0)
+    assert result.fabricated_edge_count == 0
+
+
+def test_unique_activity_survives_wrong_downstream_target():
+    truth = _truth_graph(
+        {
+            "receive": {"activity": "receive request"},
+            "create": {"activity": "create quotation"},
+            "send": {"activity": "send quotation"},
+        },
+        [("receive", "create"), ("create", "send")],
+        entry="receive",
+        exit="send",
+    )
+    agent = _agent_graph(
+        {
+            "a_receive": {"activity": "receive request"},
+            "a_create": {"activity": "create quotation"},
+            "a_send": {"activity": "send quotation"},
+        },
+        [("a_receive", "a_send"), ("a_create", "a_send")],
+        entry="a_receive",
+        exits=["a_send"],
+    )
+
+    alignment = _alignment(truth, agent)
+    result = _evaluate(truth, agent)
+
+    assert alignment.node_to_truth == {
+        "a_receive": "receive",
+        "a_create": "create",
+        "a_send": "send",
+    }
+    assert result.node_recall == pytest.approx(1.0)
+    assert result.node_precision == pytest.approx(1.0)
+    assert result.edge_recall == pytest.approx(0.5)
+    assert result.edge_precision == pytest.approx(0.5)
+    assert result.fabricated_edge_count == 1
 
 
 def test_node_metrics_are_insertion_order_and_local_id_invariant():

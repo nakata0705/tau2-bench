@@ -605,8 +605,12 @@ def test_offline_joint_diagnostics_preserve_stored_metrics_and_are_separate(
         stem.with_suffix(".json"), stem.with_suffix(".private.json")
     )
 
-    assert trace["metric_parity"]["status"] == "matched"
-    assert trace["metric_parity"]["differences"] == []
+    expected_status = "historical_drift" if seed == 9002 else "matched"
+    assert trace["metric_parity"]["status"] == expected_status
+    if expected_status == "matched":
+        assert trace["metric_parity"]["differences"] == []
+    else:
+        assert trace["metric_parity"]["differences"]
     assert trace["experiments"]["joint_structural_alignment"]["status"] == "ok"
     assert "joint_structural_alignment" not in trace["evaluation"]["diagnostics"]
 

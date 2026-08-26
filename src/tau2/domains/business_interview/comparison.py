@@ -657,24 +657,45 @@ def _topology_similarity(
     agent_fingerprint: _TopologyFingerprint,
     truth_fingerprint: _TopologyFingerprint,
 ) -> float:
-    if not agent_fingerprint.topology_known:
-        # An isolated Agent graph without explicit boundaries is structurally
-        # unspecified, not evidence of an isolated business node.  Keep the
-        # historical unique-activity fallback while still applying ambiguity
-        # handling to competing Truth nodes.
-        return 0.5
-    if agent_fingerprint.base_profile != truth_fingerprint.base_profile:
+    """Return a topology bonus without rejecting a business identity.
+
+    Topology-known graphs receive a soft score composed of local profile and
+    WL-history agreement.  A topology mismatch therefore contributes less
+    bonus but never removes an otherwise valid activity candidate.  If either
+    graph has no reliable topology, no topology evidence is claimed.
+    """
+    if not agent_fingerprint.topology_known or not truth_fingerprint.topology_known:
         return 0.0
+
+    profile_values = zip(
+        agent_fingerprint.base_profile,
+        truth_fingerprint.base_profile,
+    )
+    profile_total = max(
+        len(agent_fingerprint.base_profile),
+        len(truth_fingerprint.base_profile),
+    )
+    profile_similarity = (
+        sum(agent_value == truth_value for agent_value, truth_value in profile_values)
+        / profile_total
+        if profile_total
+        else 1.0
+    )
     colors = zip(
         agent_fingerprint.refinement_colors,
         truth_fingerprint.refinement_colors,
     )
-    matches = sum(agent_color == truth_color for agent_color, truth_color in colors)
-    total = max(
+    color_total = max(
         len(agent_fingerprint.refinement_colors),
         len(truth_fingerprint.refinement_colors),
     )
-    return matches / total if total else 1.0
+    wl_similarity = (
+        sum(agent_color == truth_color for agent_color, truth_color in colors)
+        / color_total
+        if color_total
+        else 1.0
+    )
+    return (profile_similarity + wl_similarity) / 2.0
 
 
 def _node_attribute_weight(
@@ -684,9 +705,21 @@ def _node_attribute_weight(
     topology_similarity: float,
 ) -> Optional[float]:
     """Score already-aligned business attributes for a topology candidate."""
+    agent_activity = slot_value(agent_node, "activity")
+    truth_activity = slot_value(truth_node, "activity")
+    # Activity is the identity anchor, not merely another epistemic slot.
+    # Explicit absence, DONT_KNOW, or an unaligned ConceptRef therefore cannot
+    # create a Node candidate from actor/system overlap.
+    if not (
+        isinstance(agent_activity, ConceptRef)
+        and agent_activity.asserted
+        and isinstance(truth_activity, ConceptRef)
+        and truth_activity.asserted
+    ):
+        return None
     activity_score = _score_scalar_slot(
-        slot_value(agent_node, "activity"),
-        slot_value(truth_node, "activity"),
+        agent_activity,
+        truth_activity,
         agent_to_truth,
     )
     if activity_score <= 0:
@@ -749,108 +782,20 @@ def _assignment_score(
     return sum(weights[(left, right)] for left, right in assignment.items())
 
 
-def _fingerprint_key(fingerprint: _TopologyFingerprint) -> tuple[Any, ...]:
-    return (fingerprint.base_profile, fingerprint.refinement_colors)
-
-
-def _relations_compatible(
-    agent_node_id: str,
-    truth_node_id: str,
-    fixed: dict[str, str],
-    agent_data: _TopologyData,
-    truth_data: _TopologyData,
-) -> bool:
-    inverse_fixed = {truth_id: agent_id for agent_id, truth_id in fixed.items()}
-    agent_predecessors = set(agent_data.predecessors[agent_node_id])
-    agent_successors = set(agent_data.successors[agent_node_id])
-    truth_predecessors = set(truth_data.predecessors[truth_node_id])
-    truth_successors = set(truth_data.successors[truth_node_id])
-    for neighbor in agent_predecessors:
-        if neighbor in fixed and fixed[neighbor] not in truth_predecessors:
-            return False
-    for neighbor in agent_successors:
-        if neighbor in fixed and fixed[neighbor] not in truth_successors:
-            return False
-    for neighbor in truth_predecessors:
-        mapped = inverse_fixed.get(neighbor)
-        if mapped is not None and mapped not in agent_predecessors:
-            return False
-    for neighbor in truth_successors:
-        mapped = inverse_fixed.get(neighbor)
-        if mapped is not None and mapped not in agent_successors:
-            return False
-    return True
-
-
-def _anchor_and_propagate_node_candidates(
-    weights: dict[tuple[str, str], float],
-    agent_fingerprints: dict[str, _TopologyFingerprint],
-    truth_fingerprints: dict[str, _TopologyFingerprint],
-    agent_data: _TopologyData,
-    truth_data: _TopologyData,
-) -> tuple[dict[str, str], dict[tuple[str, str], float]]:
-    """Seed unique structural anchors and propagate mapped neighbor constraints."""
-    agent_key_counts: dict[tuple[Any, ...], int] = {}
-    truth_key_counts: dict[tuple[Any, ...], int] = {}
-    for fingerprint in agent_fingerprints.values():
-        key = _fingerprint_key(fingerprint)
-        agent_key_counts[key] = agent_key_counts.get(key, 0) + 1
-    for fingerprint in truth_fingerprints.values():
-        key = _fingerprint_key(fingerprint)
-        truth_key_counts[key] = truth_key_counts.get(key, 0) + 1
-
-    fixed: dict[str, str] = {}
-    remaining = dict(weights)
-    while True:
-        compatible = {
-            pair: weight
-            for pair, weight in remaining.items()
-            if _relations_compatible(pair[0], pair[1], fixed, agent_data, truth_data)
-        }
-        new_anchors: dict[str, str] = {}
-        for (agent_node_id, truth_node_id), _ in sorted(compatible.items()):
-            agent_fingerprint = agent_fingerprints[agent_node_id]
-            truth_fingerprint = truth_fingerprints[truth_node_id]
-            agent_key = _fingerprint_key(agent_fingerprint)
-            if (
-                not agent_fingerprint.topology_known
-                or not truth_fingerprint.topology_known
-                or agent_key != _fingerprint_key(truth_fingerprint)
-                or agent_key_counts.get(agent_key) != 1
-                or truth_key_counts.get(agent_key) != 1
-            ):
-                continue
-            new_anchors[agent_node_id] = truth_node_id
-        if not new_anchors:
-            break
-        for agent_node_id, truth_node_id in new_anchors.items():
-            if agent_node_id not in fixed and truth_node_id not in fixed.values():
-                fixed[agent_node_id] = truth_node_id
-        remaining = {
-            pair: weight
-            for pair, weight in compatible.items()
-            if pair[0] not in fixed and pair[1] not in fixed.values()
-        }
-
-    remaining = {
-        pair: weight
-        for pair, weight in remaining.items()
-        if pair[0] not in fixed
-        and pair[1] not in fixed.values()
-        and _relations_compatible(pair[0], pair[1], fixed, agent_data, truth_data)
-    }
-    return fixed, remaining
-
-
 def _map_nodes_one_to_one(
     agent: AgentGraph,
     truth: Any,
     agent_to_truth: dict[str, str],
 ) -> dict[str, str]:
-    """Map only topology-compatible nodes with conservative ambiguity handling."""
+    """Match business Nodes by identity first, then topology disambiguation.
+
+    Aligned activity is a required identity signal.  Actor/system/data slots
+    reinforce that identity and topology/WL agreement contributes only a
+    bonus.  Local topology is allowed to prune a candidate only when the same
+    activity leaves multiple Truth candidates and an exact local-topology
+    alternative exists.  Node assignment is completed before edge matching.
+    """
     agent_fingerprints, truth_fingerprints = _topology_fingerprints(agent, truth)
-    agent_data = _topology_data(agent)
-    truth_data = _topology_data(truth)
     weights: dict[tuple[str, str], float] = {}
     for agent_node_id, agent_fingerprint in agent_fingerprints.items():
         for truth_node_id, truth_fingerprint in truth_fingerprints.items():
@@ -858,8 +803,6 @@ def _map_nodes_one_to_one(
                 agent_fingerprint,
                 truth_fingerprint,
             )
-            if topology_similarity <= 0.0:
-                continue
             weight = _node_attribute_weight(
                 agent.nodes[agent_node_id],
                 truth.nodes[truth_node_id],
@@ -869,13 +812,9 @@ def _map_nodes_one_to_one(
             if weight is not None:
                 weights[(agent_node_id, truth_node_id)] = weight
 
-    mapping, weights = _anchor_and_propagate_node_candidates(
-        weights,
-        agent_fingerprints,
-        truth_fingerprints,
-        agent_data,
-        truth_data,
-    )
+    # Keep every activity-compatible pair.  Topology/WL is a bonus inside the
+    # assignment, never a Node candidate rejection rule.
+    mapping: dict[str, str] = {}
     for left, right in _node_candidate_components(weights):
         if max(len(left), len(right)) > _NODE_AMBIGUITY_CLASS_LIMIT:
             # Never turn a large symmetric class into an ID-ordered claim.
@@ -916,12 +855,11 @@ def _map_nodes_and_edges(
     truth,
     agent_to_truth: dict[str, str],
 ) -> tuple[dict[str, str], dict[str, str]]:
-    """Map topology-compatible business nodes, then one-to-one business edges.
+    """Map business Nodes by identity, then one-to-one business Edges.
 
-    Node topology is a hard candidate constraint.  Already-aligned business
-    attributes determine the maximum-weight one-to-one assignment inside each
-    candidate component; equal optima are left unmatched rather than being
-    resolved by local ids.  Edges are mapped only after node identity is fixed.
+    Topology/WL evidence is local disambiguation support only.  The edge
+    matcher runs after Node identity is finalized and never participates in
+    selecting that identity.
     """
     node_mapping = _map_nodes_one_to_one(agent, truth, agent_to_truth)
     return node_mapping, _map_edges_one_to_one(

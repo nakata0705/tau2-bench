@@ -2,28 +2,20 @@
 
 This is an evaluator-private, deterministic re-evaluation of stored quotation artifacts. No LLM was called. The Truth labels, private StakeholderKnowledge mappings, and sidecar annotations in this report must not be copied into Agent or Stakeholder runtime surfaces.
 
-For new runs, `evaluation_inputs` is the primary-data envelope: complete
-canonical TruthGraph + the exact final per-stakeholder StakeholderKnowledge +
-seed provenance. `stakeholder_truth_reference` and its aggregate are derived
-diagnostic values only. The offline helper
-`recompute_stakeholder_truth_reference(...)` reruns the evaluator from those
-inputs rather than reading a saved score. Private Truth mappings and shortcut
-provenance remain offline-only and never enter simulator-visible surfaces.
-
 ## Method and score contract
 
-Each seed was loaded from its saved `final_graph`, `truth_graph`, accepted `observations`, and evaluator-private `.private.json` knowledge/annotation sidecar. The smoke artifacts use a custom JSON marker encoding, so offline restoration explicitly decodes UNSET, ABSENT, DONT_KNOW, and ConceptRef values instead of passing the graph through the undiscriminated Pydantic union. Stored scalar evaluator metrics are compared with a floating-point representation tolerance before any attribution; a mismatch fails closed and no report is generated. The current evaluator was run twice per artifact during verification; a direct comparison with the pre-change `business-interview` HEAD evaluator matched every scalar score/pass field on full and partial deterministic graphs. Diagnostics are metadata only and do not alter score fields, thresholds, or matcher selection; the table below is the current-HEAD re-evaluation after stored-metric parity, not a copy of historical metrics. All diagnostic output remains evaluator-private/offline.
+Each seed was loaded from its saved `final_graph`, `truth_graph`, accepted `observations`, and evaluator-private `.private.json` knowledge/annotation sidecar. The smoke artifacts use a custom JSON marker encoding, so offline restoration explicitly decodes UNSET, ABSENT, DONT_KNOW, and ConceptRef values instead of passing the graph through the undiscriminated Pydantic union. Stored scalar evaluator metrics are compared with a floating-point representation tolerance. When the evaluator intentionally changes, the report marks `historical_drift` and retains both stored and current metrics; it does not rewrite the source artifact. Strict callers can still use the fail-closed `_check_metric_parity` helper. Diagnostics are metadata only and do not alter score fields, thresholds, or matcher selection; the table below is the current re-evaluation, not a copy of historical metrics. All diagnostic output remains evaluator-private/offline.
 
 ## Diagnostic schema and reason codes
 
-`EvaluationResult.diagnostics` contains `node_diagnostics` (one Truth node with `slots` for `activity`, `actor`, `system`, `reads`, `writes`, and `necessity_rationale`), `edge_diagnostics` (endpoint structural match plus `condition`), and `concepts` (candidate pair scores, exact label path, selected mapping, and unmatched concepts). The separate `usage_alignment` section contains usage candidate sets, per-kind assignments, ambiguity classes, and current-vs-usage comparisons. The `joint_structural_alignment` section is a separate label-independent joint Node/Concept search with typed incidence, process-edge, start, and end objective components; it is not a production matcher. Each slot has Truth/Agent state, concept ids/labels, matched flag, score contribution, and reason codes. The deterministic codes used here include: `correct_value`, `truth_value_agent_unset`, `truth_value_agent_dont_know`, `truth_value_agent_absent`, `truth_absent_agent_absent`, `truth_absent_agent_unset`, `truth_absent_agent_dont_know`, `truth_absent_agent_value`, `truth_value_agent_unasserted`, `wrong_concept`, `missing_list_item`, `extra_list_item`, `missing_and_extra_list_items`, `unmatched_node`, and `unmatched_edge`.
+`EvaluationResult.diagnostics` contains `node_diagnostics` (one Truth node with `slots` for `activity`, `actor`, `system`, `reads`, `writes`, and `necessity_rationale`), `edge_diagnostics` (endpoint structural match plus `condition`), and `concepts` (candidate pair scores, exact label path, selected mapping, and unmatched concepts). The sibling offline `experiments.usage_alignment` section contains usage candidate sets, per-kind assignments, ambiguity classes, and current-vs-usage comparisons. `experiments.joint_structural_alignment` is a separate label-independent joint Node/Concept search with typed incidence, process-edge, start, and end objective components; it is not a production matcher. Each slot has Truth/Agent state, concept ids/labels, matched flag, score contribution, and reason codes. The deterministic codes used here include: `correct_value`, `truth_value_agent_unset`, `truth_value_agent_dont_know`, `truth_value_agent_absent`, `truth_absent_agent_absent`, `truth_absent_agent_unset`, `truth_absent_agent_dont_know`, `truth_absent_agent_value`, `truth_value_agent_unasserted`, `wrong_concept`, `missing_list_item`, `extra_list_item`, `missing_and_extra_list_items`, `unmatched_node`, and `unmatched_edge`.
 
 ## Per-seed metrics
 
 | seed | nodes (R/P) | edges (R/P) | concepts (R/P) | activity | actor | system | reads | writes | rationale | condition | knowledge |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 9002 | 1.000/1.000 | 0.833/0.714 | 1.000/0.955 | 1.000 | 1.000 | 0.667 | 0.250 | 0.167 | 0.167 | 0.500 | 0.717 |
-| 9003 | 1.000/1.000 | 1.000/1.000 | 0.762/0.941 | 0.833 | 1.000 | 0.167 | 0.167 | 0.333 | 0.167 | 0.500 | 0.717 |
+| 9003 | 0.833/0.833 | 0.667/0.667 | 0.762/0.941 | 1.000 | 1.000 | 0.200 | 0.200 | 0.400 | 0.000 | 0.333 | 0.717 |
 | 9004 | 1.000/1.000 | 1.000/1.000 | 0.952/1.000 | 1.000 | 1.000 | 0.500 | 0.333 | 0.333 | 0.167 | 1.000 | 0.717 |
 
 ## Stakeholder knowledge coverage (reference only)
@@ -46,42 +38,6 @@ The Agent Truth reconstruction above remains the only primary score. The followi
 
 Per-stakeholder shortcut provenance is retained in each JSON `diagnostics.shortcut_provenance` entry, including contracted Truth nodes and derived Truth edges. A shortcut receives no automatic direct-edge credit.
 
-## Primary-input provenance and the 9002/9003/9004 equality
-
-The checked-in 9002/9003/9004 files are **legacy artifacts** created before the
-canonical SOURCE/SINK logging contract. Their new diagnostic JSON entries
-therefore explicitly say `capture_mode=legacy_split_artifact_without_evaluation_inputs`
-and record that generation and forgetting seeds were not saved. The legacy
-payloads are still retained and re-evaluated exactly as stored; no seed-only
-regeneration was used.
-
-The comparison is based on the actual JSON payloads, not on the scores. The
-machine-readable comparison is also saved as
-`artifacts/business_interview_real_llm/seed_9002_9003_9004_provenance_comparison.json`:
-
-| seed | simulation seed | saved Truth fingerprint | saved Knowledge fingerprint | Knowledge payload equal to other seeds | graph valid | structural component | quality component | aggregate |
-| ---: | ---: | --- | --- | --- | --- | ---: | ---: | ---: |
-| 9002 | 9002 | `1f25228069fa6bc09b731765cdf1c1187e7ee54548740f1820a8fbbf2b418b30` | `dab4110cb75861ffcaf883e8643d46f4aec0f09033183175a7889197515f4554` | yes | false | 0.875 | 0.716666666667 | 0.7958333333333334 |
-| 9003 | 9003 | `1f25228069fa6bc09b731765cdf1c1187e7ee54548740f1820a8fbbf2b418b30` | `dab4110cb75861ffcaf883e8643d46f4aec0f09033183175a7889197515f4554` | yes | false | 0.875 | 0.716666666667 | 0.7958333333333334 |
-| 9004 | 9004 | `1f25228069fa6bc09b731765cdf1c1187e7ee54548740f1820a8fbbf2b418b30` | `dab4110cb75861ffcaf883e8643d46f4aec0f09033183175a7889197515f4554` | yes | false | 0.875 | 0.716666666667 | 0.7958333333333334 |
-
-The Knowledge payloads are byte-for-byte equal after canonical JSON
-normalization. They contain the same six business nodes, six business edges,
-21 local concepts, and identical evaluator-private Truth mappings. Thus the
-three equal scores are caused by the same actual StakeholderKnowledge being
-used in all three runs, not by three independently sampled forgetting runs
-happening to have equal coverage. The score decomposition is also identical:
-
-`(structural_component_score 0.875 + quality_component_score
-0.716666666667) / 2 = 0.7958333333333334`.
-
-The `graph_valid=false` contribution is a legacy serialization limitation:
-the saved Knowledge and Truth business payloads omitted explicit SOURCE/SINK
-nodes and protected boundary edges even though the current canonical model
-requires them. New artifacts persist those elements in full, and save
-`evaluation_inputs` with explicit null/known seed provenance. The legacy score
-is not silently rewritten; it remains the historical derived diagnostic.
-
 ## Usage-based concept alignment (diagnostic only)
 
 The usage experiment is explicitly named `usage_alignment_conditioned_on_current_node_mapping`. It translates Agent node/edge addresses through the existing production node/edge correspondence, then compares deterministic sets of `node:<id>:<property>` and `edge:<id>:condition` addresses. Empty mapped signatures are insufficient evidence, not exact matches. Concept kind is a hard constraint. Per-pair precision, recall, F1, Jaccard, exact equality, set differences, and strict broader/narrower relations are retained in the JSON traces.
@@ -93,7 +49,7 @@ The one-to-one assignment is per kind and uses only usage F1, with a determinist
 | seed | Truth concepts | Agent concepts | exact usage | partial usage | ambiguous concepts | mapping disagreements | substantially stronger | labels differ + usage agrees | labels agree + usage differs |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 9002 | 21 | 22 | 17 | 2 | 0 | 4 | 1 | 7 | 2 |
-| 9003 | 21 | 17 | 14 | 2 | 0 | 2 | 1 | 4 | 2 |
+| 9003 | 21 | 17 | 10 | 2 | 0 | 4 | 0 | 3 | 4 |
 | 9004 | 21 | 20 | 18 | 1 | 0 | 1 | 0 | 4 | 1 |
 
 ### Compact per-kind summary
@@ -106,11 +62,11 @@ The one-to-one assignment is per kind and uses only usage F1, with a determinist
 | 9002 | data | 5 | 6 | 2 | 2 | 0 | 3 | 1 | 2 |
 | 9002 | rationale | 1 | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
 | 9002 | system | 4 | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
-| 9003 | activity | 6 | 6 | 6 | 0 | 0 | 1 | 1 | 0 |
-| 9003 | actor | 2 | 2 | 2 | 0 | 0 | 0 | 0 | 0 |
-| 9003 | condition | 3 | 3 | 3 | 0 | 0 | 0 | 0 | 0 |
+| 9003 | activity | 6 | 6 | 5 | 0 | 0 | 0 | 0 | 1 |
+| 9003 | actor | 2 | 2 | 1 | 0 | 0 | 1 | 0 | 1 |
+| 9003 | condition | 3 | 3 | 2 | 0 | 0 | 1 | 0 | 1 |
 | 9003 | data | 5 | 4 | 1 | 2 | 0 | 1 | 0 | 1 |
-| 9003 | rationale | 1 | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
+| 9003 | rationale | 1 | 1 | 0 | 0 | 0 | 1 | 0 | 1 |
 | 9003 | system | 4 | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
 | 9004 | activity | 6 | 6 | 6 | 0 | 0 | 0 | 0 | 0 |
 | 9004 | actor | 2 | 2 | 2 | 0 | 0 | 0 | 0 | 0 |
@@ -121,7 +77,7 @@ The one-to-one assignment is per kind and uses only usage F1, with a determinist
 
 ## Usage experiment conclusion
 
-Across these stored seeds, the usage scaffold produced `49` exact and `5` partial assigned matches, with `0` structurally ambiguous concepts and `7` comparison disagreements (`2` where usage had exact or positive-vs-zero support substantially stronger than the current mapping).
+Across these stored seeds, the usage scaffold produced `45` exact and `5` partial assigned matches, with `0` structurally ambiguous concepts and `9` comparison disagreements (`1` where usage had exact or positive-vs-zero support substantially stronger than the current mapping).
 
 **Does usage appear strong enough to replace lexical matching? No, not as a production replacement from these artifacts.** Exact usage is a strong and useful conditional signal, including cases where labels are not exact, but partial/missing usage, unmapped Agent addresses, and ambiguous equivalence classes prevent usage from resolving every concept. A disagreement is evidence to inspect, not proof that the usage assignment is correct.
 
@@ -141,13 +97,13 @@ The joint experiment searches Node and asserted Concept mappings together. It us
 
 ### Joint experiment conclusion
 
-The three stored seeds completed an exact bounded-space search in `3/3` reports; production-vs-joint mapping differences numbered `7`. Node ambiguity classes appeared in `0` report(s), and concept ambiguity classes appeared in `0` report(s).
+The three stored seeds completed an exact bounded-space search in `3/3` reports; production-vs-joint mapping differences numbered `8`. Node ambiguity classes appeared in `0` report(s), and concept ambiguity classes appeared in `0` report(s).
 
 **Exact fixtures:** the deterministic synthetic suite shows that identical graphs align perfectly, arbitrary Agent labels/IDs and insertion order do not affect structural scores, reads and writes remain distinct, kind mismatches never map, topology can disambiguate similar nodes, repeated usage strengthens concept alignment, and symmetric structures are reported ambiguous. A deliberately misleading-label fixture is resolved by structure rather than text.
 
 **Identifiability:** directed topology plus start/end roles makes the small seed Node skeletons identifiable. Concepts with repeated or slot-specific usage are usually identifiable; concepts whose usage is missing, extra, or structurally unsupported remain unmatched rather than being guessed. Symmetric duplicate subgraphs/concept usages remain valid ambiguity classes.
 
-**Viability:** this is viable as an evaluator-private diagnostic and as a candidate for further experiments, not a production migration. Before production use, validate objective weighting and edge cases on larger adversarial graphs, retain explicit optimality bounds, and measure whether the structural mapping is stable under realistic missing/extra structure. Existing production scoring and mappings are unchanged.
+**Viability:** the bounded joint search remains an evaluator-private diagnostic and is not the production matcher. Production Node matching now uses business identity first with topology/WL disambiguation; the adversarial Node suite and the historical 9002/9003/9004 comparison sidecar record that change separately from the diagnostic experiment.
 
 ## Production-vs-joint Concept disagreement audit
 
@@ -321,17 +277,17 @@ Counts are failed scored slots, not token-level or LLM judgments. `unknown` incl
 
 | slot | failures | disclosure | elicitation | recording | evaluator | unknown |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| activity | 1 | 1 | 0 | 0 | 0 | 0 |
-| actor | 0 | 0 | 0 | 0 | 0 | 0 |
+| activity | 1 | 0 | 0 | 0 | 0 | 1 |
+| actor | 1 | 0 | 0 | 0 | 0 | 1 |
 | system | 10 | 3 | 0 | 0 | 0 | 7 |
 | reads | 14 | 2 | 0 | 0 | 0 | 12 |
 | writes | 13 | 1 | 0 | 3 | 0 | 9 |
-| rationale | 15 | 0 | 0 | 0 | 0 | 15 |
-| condition | 6 | 0 | 0 | 0 | 0 | 6 |
+| rationale | 16 | 0 | 0 | 0 | 0 | 16 |
+| condition | 7 | 0 | 0 | 0 | 0 | 7 |
 
 ## Supported next intervention
 
-Among classifiable failures, `stakeholder_disclosure` is largest (7). The highest-value next diagnostic intervention is to inspect accepted public disclosure/sidecar capture before changing Agent policy; this task does not implement it.
+Among classifiable failures, `stakeholder_disclosure` is largest (6). The highest-value next diagnostic intervention is to inspect accepted public disclosure/sidecar capture before changing Agent policy; this task does not implement it.
 
 ## Remaining attribution limitations
 
@@ -339,13 +295,13 @@ Among classifiable failures, `stakeholder_disclosure` is largest (7). The highes
 - `agent_elicitation` versus `stakeholder_disclosure` uses a lexical question/context check over stored Agent messages, not an LLM; ambiguous questions should be treated as unknown.
 - `evaluator_matching` requires the Agent evidence Observation to overlap the accepted semantic evidence and an unselected below-threshold matcher candidate. No seed had enough evidence for that category.
 - DONT_KNOW/hidden knowledge and unmatched structure remain `insufficient_evidence_to_classify`; they are not Agent failures.
-- This task does not change existing node/edge or concept matcher tie-breaking; duplicate identical structural signatures remain a future evaluator investigation.
+- The production Node matcher now requires aligned activity identity and uses topology/WL only as soft/disambiguation evidence; duplicate identical structural signatures remain conservatively ambiguous.
 
 ## Seed 9002
 
 - source: `artifacts/business_interview_real_llm/run_00_seed9002.json`
 - private sidecar: `artifacts/business_interview_real_llm/run_00_seed9002.private.json`
-- stored-metric parity: `matched` (41 fields)
+- stored/current metric comparison: `historical_drift` (41 fields; 15 differences; source metrics preserved)
 - quality/reconstruction pass: `False` / `False`
 
 ### Failed slots
@@ -482,15 +438,17 @@ Among classifiable failures, `stakeholder_disclosure` is largest (7). The highes
 
 - source: `artifacts/business_interview_real_llm/run_00_seed9003.json`
 - private sidecar: `artifacts/business_interview_real_llm/run_00_seed9003.private.json`
-- stored-metric parity: `matched` (41 fields)
+- stored/current metric comparison: `matched` (41 fields; 0 differences; source metrics preserved)
 - quality/reconstruction pass: `False` / `False`
 
 ### Failed slots
 
-- `ap:activity` — reason `wrong_concept` — category `stakeholder_disclosure` — knowledge was available, but no accepted public annotation disclosed the needed value (score_reason:wrong_concept; knowledge:known; clear_agent_question:True)
-- `ap:system` — reason `truth_absent_agent_unset` — category `insufficient_evidence_to_classify` — stored stakeholder knowledge cannot establish attainability (score_reason:truth_absent_agent_unset; knowledge:dont_know)
-- `ap:reads` — reason `extra_list_item` — category `insufficient_evidence_to_classify` — stored stakeholder knowledge cannot establish attainability (score_reason:extra_list_item; knowledge:dont_know)
-- `ap:writes` — reason `truth_absent_agent_unset` — category `insufficient_evidence_to_classify` — stored stakeholder knowledge cannot establish attainability (score_reason:truth_absent_agent_unset; knowledge:dont_know)
+- `ap:activity` — reason `unmatched_node` — category `insufficient_evidence_to_classify` — structural target was not aligned (score_reason:unmatched_node; knowledge:known; missing_truth_concepts:tc_activity_approve_quotation)
+- `ap:actor` — reason `unmatched_node` — category `insufficient_evidence_to_classify` — structural target was not aligned (score_reason:unmatched_node; knowledge:known; missing_truth_concepts:tc_actor_manager)
+- `ap:system` — reason `unmatched_node` — category `insufficient_evidence_to_classify` — structural target was not aligned (score_reason:unmatched_node; knowledge:dont_know)
+- `ap:reads` — reason `unmatched_node` — category `insufficient_evidence_to_classify` — structural target was not aligned (score_reason:unmatched_node; knowledge:dont_know)
+- `ap:writes` — reason `unmatched_node` — category `insufficient_evidence_to_classify` — structural target was not aligned (score_reason:unmatched_node; knowledge:dont_know)
+- `ap:necessity_rationale` — reason `unmatched_node` — category `insufficient_evidence_to_classify` — structural target was not aligned (score_reason:unmatched_node; knowledge:known; missing_truth_concepts:tc_rationale_credit_risk)
 - `cc:system` — reason `truth_value_agent_unset` — category `stakeholder_disclosure` — knowledge was available, but no accepted public annotation disclosed the needed value (score_reason:truth_value_agent_unset; knowledge:known; clear_agent_question:True)
 - `cc:writes` — reason `truth_absent_agent_unset` — category `insufficient_evidence_to_classify` — stored stakeholder knowledge cannot establish attainability (score_reason:truth_absent_agent_unset; knowledge:dont_know)
 - `cc:necessity_rationale` — reason `truth_absent_agent_dont_know` — category `insufficient_evidence_to_classify` — stored stakeholder knowledge cannot establish attainability (score_reason:truth_absent_agent_dont_know; knowledge:dont_know)
@@ -509,7 +467,8 @@ Among classifiable failures, `stakeholder_disclosure` is largest (7). The highes
 - `sq:necessity_rationale` — reason `truth_absent_agent_unset` — category `insufficient_evidence_to_classify` — stored stakeholder knowledge cannot establish attainability (score_reason:truth_absent_agent_unset; knowledge:dont_know)
 - `edge:e1:condition` — reason `truth_absent_agent_unset` — category `insufficient_evidence_to_classify` — stored stakeholder knowledge cannot establish attainability (score_reason:truth_absent_agent_unset; knowledge:dont_know)
 - `edge:e2:condition` — reason `truth_absent_agent_unset` — category `insufficient_evidence_to_classify` — stored stakeholder knowledge cannot establish attainability (score_reason:truth_absent_agent_unset; knowledge:dont_know)
-- `edge:e5:condition` — reason `truth_absent_agent_unset` — category `insufficient_evidence_to_classify` — stored stakeholder knowledge cannot establish attainability (score_reason:truth_absent_agent_unset; knowledge:dont_know)
+- `edge:e3:condition` — reason `unmatched_edge` — category `insufficient_evidence_to_classify` — structural target was not aligned (score_reason:unmatched_edge; knowledge:known; missing_truth_concepts:tc_cond_over_1m)
+- `edge:e5:condition` — reason `unmatched_edge` — category `insufficient_evidence_to_classify` — structural target was not aligned (score_reason:unmatched_edge; knowledge:dont_know)
 
 ### Notable concept matching
 
@@ -520,9 +479,9 @@ Among classifiable failures, `stakeholder_disclosure` is largest (7). The highes
 ### Usage alignment comparison
 
 - referenced concepts: Truth `21`, Agent `17`
-- exact/partial assigned usage matches: `14` / `2`
+- exact/partial assigned usage matches: `10` / `2`
 - structurally ambiguous concepts: `0`
-- disagreements with current mapping: `2` (substantially stronger usage evidence: `1`)
+- disagreements with current mapping: `4` (substantially stronger usage evidence: `0`)
 
 - structural ambiguity classes: none
 
@@ -530,25 +489,29 @@ Among classifiable failures, `stakeholder_disclosure` is largest (7). The highes
 
 | Agent concept | label | current Truth | usage Truth | classification | lexical score | usage F1 | exact usage |
 | --- | --- | --- | --- | --- | ---: | ---: | --- |
-| `act_manager_approve` | `manager approves the quotation` | `—` | `tc_activity_approve_quotation` | `usage_exact_but_current_different` | 0.000 | 1.000 | True |
+| `act_manager_approve` | `manager approves the quotation` | `—` | `—` | `insufficient_usage` | 0.000 | 0.000 | False |
+| `actor_manager` | `manager` | `tc_actor_manager` | `—` | `current_mapping_has_no_usage_support` | 1.000 | 0.000 | False |
+| `cond_over_1m` | `amount over 1,000,000 yen` | `tc_cond_over_1m` | `—` | `current_mapping_has_no_usage_support` | 1.000 | 0.000 | False |
 | `data_quotation_request` | `customer's quotation request` | `tc_request` | `—` | `current_mapping_has_no_usage_support` | 1.000 | 0.000 | False |
+| `rat_credit_risk` | `credit risk management` | `tc_rationale_credit_risk` | `—` | `current_mapping_has_no_usage_support` | 1.000 | 0.000 | False |
 
 #### Examples where labels differ but usage agrees
 
 - Agent `act_receive_request` (receive the customer's quotation request) -> Truth `tc_activity_receive_request` with exact usage; the current lexical path was not an exact label match.
 - Agent `act_send_summary` (send the summary of the quotation information to Accounting) -> Truth `tc_activity_send_month_end_summary` with exact usage; the current lexical path was not an exact label match.
 - Agent `cond_at_or_below_1m` (amount at or below 1,000,000 yen) -> Truth `tc_cond_at_or_below_1m` with exact usage; the current lexical path was not an exact label match.
-- Agent `cond_over_1m` (amount over 1,000,000 yen) -> Truth `tc_cond_over_1m` with exact usage; the current lexical path was not an exact label match.
 
 #### Examples where labels agree but usage does not
 
+- Agent `actor_manager` -> Truth `tc_actor_manager`: exact label match, but usage exact=`False`, usage F1=`0.000`.
 - Agent `data_customer_information` -> Truth `tc_customer`: exact label match, but usage exact=`False`, usage F1=`0.667`.
-- Agent `data_quotation` -> Truth `tc_quote`: exact label match, but usage exact=`False`, usage F1=`0.500`.
+- Agent `data_quotation` -> Truth `tc_quote`: exact label match, but usage exact=`False`, usage F1=`0.667`.
+- Agent `rat_credit_risk` -> Truth `tc_rationale_credit_risk`: exact label match, but usage exact=`False`, usage F1=`0.000`.
 
 #### Usage-only differences and broader/narrower evidence
 
 - Agent `data_customer_information` -> Truth `tc_customer`: only Truth `['node:cq:reads']`, only Agent `none`; relation `truth_broader_agent_narrower`.
-- Agent `data_quotation` -> Truth `tc_quote`: only Truth `none`, only Agent `['node:ap:reads', 'node:sq:writes']`; relation `agent_broader_truth_narrower`.
+- Agent `data_quotation` -> Truth `tc_quote`: only Truth `none`, only Agent `['node:sq:writes']`; relation `agent_broader_truth_narrower`.
 
 ### Joint structural alignment
 
@@ -602,6 +565,7 @@ Among classifiable failures, `stakeholder_disclosure` is largest (7). The highes
 
 | Agent entity | production Truth | joint Truth |
 | --- | --- | --- |
+| `node_manager_approve` | `—` | `ap` |
 | `act_manager_approve` | `—` | `tc_activity_approve_quotation` |
 | `data_quotation_request` | `tc_request` | `—` |
 
@@ -609,13 +573,16 @@ Among classifiable failures, `stakeholder_disclosure` is largest (7). The highes
 
 | Agent Concept | usage Truth | joint Truth |
 | --- | --- | --- |
-| none | — | — |
+| `act_manager_approve` | `—` | `tc_activity_approve_quotation` |
+| `actor_manager` | `—` | `tc_actor_manager` |
+| `cond_over_1m` | `—` | `tc_cond_over_1m` |
+| `rat_credit_risk` | `—` | `tc_rationale_credit_risk` |
 
 ## Seed 9004
 
 - source: `artifacts/business_interview_real_llm/run_00_seed9004.json`
 - private sidecar: `artifacts/business_interview_real_llm/run_00_seed9004.private.json`
-- stored-metric parity: `matched` (41 fields)
+- stored/current metric comparison: `matched` (41 fields; 0 differences; source metrics preserved)
 - quality/reconstruction pass: `False` / `False`
 
 ### Failed slots

@@ -616,21 +616,55 @@ def test_offline_artifact_metrics_match_stored_metrics(seed):
     public_path, private_path = _artifact_paths(seed)
     trace = evaluate_artifact(public_path, private_path)
     stored = json.loads(public_path.read_text(encoding="utf-8"))["evaluator_metrics"]
-    assert trace["metric_parity"]["status"] == "matched"
-    assert trace["metric_parity"]["differences"] == []
+    expected_status = "historical_drift" if seed == 9002 else "matched"
+    assert trace["metric_parity"]["status"] == expected_status
+    if expected_status == "matched":
+        assert trace["metric_parity"]["differences"] == []
+    else:
+        assert "node_recall" in {
+            item["field"] for item in trace["metric_parity"]["differences"]
+        }
+        assert trace["stored_metrics"] == stored
     assert trace["experiments"]["usage_alignment"]["method"] == (
         "usage_alignment_conditioned_on_current_node_mapping"
     )
     assert trace["experiments"]["joint_structural_alignment"]["status"] == "ok"
     assert "usage_alignment" not in trace["evaluation"]["diagnostics"]
     assert "joint_structural_alignment" not in trace["evaluation"]["diagnostics"]
-    for field in trace["metric_parity"]["checked_fields"]:
-        if isinstance(stored[field], float):
-            assert trace["metrics"][field] == pytest.approx(stored[field])
-        else:
-            assert trace["metrics"][field] == stored[field]
+    if expected_status == "matched":
+        for field in trace["metric_parity"]["checked_fields"]:
+            if isinstance(stored[field], float):
+                assert trace["current_metrics"][field] == pytest.approx(stored[field])
+            else:
+                assert trace["current_metrics"][field] == stored[field]
     if seed == 9004:
         assert trace["metrics"]["rationale_correctness"] == pytest.approx(1 / 6)
+
+
+def test_node_matching_reevaluation_sidecar_preserves_original_metrics():
+    root = Path(__file__).resolve().parents[3]
+    sidecar = root / (
+        "artifacts/business_interview_real_llm/"
+        "seed_9002_9003_9004_node_matching_comparison.json"
+    )
+    payload = json.loads(sidecar.read_text(encoding="utf-8"))
+
+    assert payload["historical_metric_policy"]["source_artifacts_are_unmodified"]
+    rows = {row["seed"]: row for row in payload["seeds"]}
+    assert rows[9002]["original_stored_metrics"]["node_recall"] == pytest.approx(1 / 3)
+    assert rows[9002]["current_reevaluated_metrics"]["node_recall"] == pytest.approx(
+        1.0
+    )
+    assert rows[9002]["old_node_mapping"] != rows[9002]["new_node_mapping"]
+    assert rows[9003]["new_node_mapping"] == rows[9003]["old_node_mapping"]
+    assert rows[9004]["new_node_mapping"] == rows[9004]["old_node_mapping"]
+    manager = next(
+        node
+        for node in rows[9003]["nodes"]
+        if node["agent_node_id"] == "node_manager_approve"
+    )
+    assert manager["new_mapping"] is None
+    assert manager["business_identity_evidence"]["activity_aligned"] is False
 
 
 def test_offline_artifact_report_generation(tmp_path, monkeypatch):
