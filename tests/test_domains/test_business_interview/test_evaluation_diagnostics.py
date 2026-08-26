@@ -641,17 +641,24 @@ def test_offline_artifact_metrics_match_stored_metrics(seed):
         assert trace["metrics"]["rationale_correctness"] == pytest.approx(1 / 6)
 
 
-def test_node_matching_reevaluation_sidecar_preserves_original_metrics():
+def test_node_matching_reevaluation_sidecar_preserves_baseline_metrics():
     root = Path(__file__).resolve().parents[3]
-    sidecar = root / (
-        "artifacts/business_interview_real_llm/"
-        "seed_9002_9003_9004_node_matching_comparison.json"
+    payload = json.loads(
+        (
+            root
+            / "artifacts/business_interview_real_llm/"
+            / "seed_9002_9003_9004_node_matching_comparison.json"
+        ).read_text(encoding="utf-8")
     )
-    payload = json.loads(sidecar.read_text(encoding="utf-8"))
 
+    assert payload["schema_version"].endswith(".v2")
+    assert payload["baseline_head"]
     assert payload["historical_metric_policy"]["source_artifacts_are_unmodified"]
+    assert payload["historical_metric_policy"]["baseline_field"] == "evaluator_metrics"
     rows = {row["seed"]: row for row in payload["seeds"]}
-    assert rows[9002]["original_stored_metrics"]["node_recall"] == pytest.approx(1 / 3)
+    assert rows[9002]["baseline_evaluator_metrics"]["node_recall"] == pytest.approx(
+        1 / 3
+    )
     assert rows[9002]["current_reevaluated_metrics"]["node_recall"] == pytest.approx(
         1.0
     )

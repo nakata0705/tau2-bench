@@ -148,15 +148,34 @@ The Node/Edge suites cover:
 
 ## Real-LLM artifacts
 
-The original public `evaluator_metrics` fields in the legacy artifacts are
+The archived public `evaluator_metrics` fields in the legacy artifacts are
 not overwritten.  Current reevaluation and mapping decisions are stored in:
 
 `artifacts/business_interview_real_llm/seed_9002_9003_9004_node_matching_comparison.json`
 
-The sidecar contains both `original_stored_metrics` and
+The sidecar is versioned `...v2`.  Each seed row carries
+`baseline_evaluator_metrics` (the value archived in the legacy artifact's
+`evaluator_metrics` field at the recorded `baseline_head` commit) alongside
 `current_reevaluated_metrics`, per-Agent-Node business/topology evidence, old
 and new mappings, and a provenance policy stating that the source artifacts
 are unmodified.
+
+### Baseline metrics are not necessarily run-time original
+
+The legacy `run_00_seed9002.json` / `run_00_seed9003.json`
+`evaluator_metrics` fields are **stored metrics at the baseline commit**, not
+necessarily the original run-time scores.  For seed 9002 in particular, the
+`92120c1` hard-topology commit rewrote the stored metrics once, so:
+
+```text
+pre-hard-topology evaluator (run-time)     Node R/P = 1.0 / 1.0
+92120c1 hard-topology evaluator            Node R/P = 1/3 / 1/3  <- archived
+8398c6d business-identity-first evaluator  Node R/P = 1.0 / 1.0   <- current
+```
+
+Readers should treat the archived `baseline_evaluator_metrics` as “the
+metrics stored in the legacy artifact at `baseline_head`”, not as the
+original run-time score.  No run-time score is reconstructed here.
 
 ### Metric impact
 
@@ -199,8 +218,10 @@ metrics instead of requiring a direct rewrite of a legacy artifact.  Strict
 parity checking remains available through `_check_metric_parity()` and still
 fails closed for arbitrary drift.  This separates:
 
-- the original/stored score captured by the simulation;
-- the current reevaluated score under the current evaluator;
+- the metrics **stored in the artifact** (`baseline_evaluator_metrics`; the
+  archived `evaluator_metrics` field at the recorded `baseline_head`, not
+  necessarily the original run-time score);
+- the current reevaluated metrics under the current evaluator;
 - the comparison evidence explaining intentional evaluator changes.
 
 ## Validation snapshot

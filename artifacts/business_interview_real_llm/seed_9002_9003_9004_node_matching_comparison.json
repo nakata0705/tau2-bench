@@ -9,13 +9,14 @@
     "topology_role": "soft bonus and ambiguity disambiguation"
   },
   "historical_metric_policy": {
-    "action": "preserve original artifact metrics; compare in this sidecar",
+    "action": "preserve the archived baseline evaluator metrics (as stored at baseline_head) and compare current reevaluated metrics in this sidecar",
+    "baseline_field": "evaluator_metrics",
     "current_field": "current_reevaluated_metrics",
-    "original_field": "evaluator_metrics",
+    "note": "The legacy run_00_seed9002/9003/9004.json evaluator_metrics fields are the metrics stored at baseline_head 92120c10, not necessarily the original run-time scores: the hard-topology commit rewrote them once. They are kept unmodified here.",
     "source_artifacts_are_unmodified": true
   },
   "kind": "historical_node_matching_reevaluation",
-  "schema_version": "business_interview.node_matching_comparison.v1",
+  "schema_version": "business_interview.node_matching_comparison.v2",
   "seeds": [
     {
       "current_reevaluated_metrics": {
@@ -510,7 +511,7 @@
         "node_approve_high_value": "ap",
         "node_check_customer_info": "cc"
       },
-      "original_stored_metrics": {
+      "baseline_evaluator_metrics": {
         "activity_correctness": 1.0,
         "actor_correctness": 1.0,
         "condition_correctness": 0.0,
@@ -939,7 +940,7 @@
         "node_send_quotation": "sq",
         "node_send_summary": "me"
       },
-      "original_stored_metrics": {
+      "baseline_evaluator_metrics": {
         "activity_correctness": 1.0,
         "actor_correctness": 1.0,
         "condition_correctness": 0.3333333333333333,
@@ -1405,7 +1406,7 @@
         "node_send_month_end_summary": "me",
         "node_send_quotation_customer": "sq"
       },
-      "original_stored_metrics": {
+      "baseline_evaluator_metrics": {
         "activity_correctness": 1.0,
         "actor_correctness": 1.0,
         "condition_correctness": 1.0,

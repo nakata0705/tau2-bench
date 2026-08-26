@@ -789,11 +789,14 @@ def _map_nodes_one_to_one(
 ) -> dict[str, str]:
     """Match business Nodes by identity first, then topology disambiguation.
 
-    Aligned activity is a required identity signal.  Actor/system/data slots
-    reinforce that identity and topology/WL agreement contributes only a
-    bonus.  Local topology is allowed to prune a candidate only when the same
-    activity leaves multiple Truth candidates and an exact local-topology
-    alternative exists.  Node assignment is completed before edge matching.
+    An asserted and aligned activity is the hard identity gate for a Node
+    candidate: actor/system/data slots reinforce that identity, and
+    topology/WL agreement contributes only a soft assignment bonus.  A
+    topology mismatch never removes an already activity-eligible candidate;
+    instead it only lowers the bonus.  Assignment stays one-to-one, and an
+    equal optimum is conservatively unmatched rather than forced.  Node
+    assignment is completed before edge matching, so Edge correctness is
+    never used as a Node-identity objective.
     """
     agent_fingerprints, truth_fingerprints = _topology_fingerprints(agent, truth)
     weights: dict[tuple[str, str], float] = {}
