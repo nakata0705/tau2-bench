@@ -283,6 +283,10 @@ The following correctness/hardening changes were intentionally not mixed into th
 - non-atomic sidecar ingestion
 - fingerprint/schema mismatch hardening
 
-最優先の次候補は **duplicate Agent edges が同じ Truth edgeを重複利用できる primary edge
-reservation issue**。これは scoreを変え得るため、golden migrationを伴う独立 correctness goal
-として扱うべきである。
+旧い deferred note の **duplicate Agent edges が同じ Truth edgeを重複利用できる primary edge
+reservation issue** は、`docs/business-interview-edge-matching-correctness.md` に記録した
+one-to-one Edge fixで解決済みである。
+
+Node identityのfalse-positive hardeningは、topology-first / WL-style refinementと保守的な
+ambiguity policyを持つ独立実装として `docs/business-interview-node-matching-correctness.md`
+に記録している。

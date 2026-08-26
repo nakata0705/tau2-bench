@@ -247,18 +247,25 @@ There was no unintended mapping drift.
 
 ## Golden migration and provenance
 
-No existing golden score was updated.  The real artifacts did not change and
-fresh fixed-matcher scores were byte/value-equal for all measured primary and
-reference fields.  The corrected synthetic duplicate-edge scores are encoded
-as new regression expectations rather than compatibility hacks.
+For the edge-only fix recorded here, no existing golden score was updated:
+the real artifacts were byte/value-equal for the measured primary and
+reference fields, and the corrected synthetic duplicate-edge scores were
+encoded as regression expectations rather than compatibility hacks.  A later,
+independent Node-matching change legitimately migrated the primary
+`evaluator_metrics` values for seeds 9002 and 9003; its impact is recorded in
+`docs/business-interview-node-matching-correctness.md`.
 
 `tools.py`, `graph.py`, `artifact_provenance.py`, and simulator code were not
 modified.  The existing 21-tool schema tests and artifact round-trip/fingerprint
 tests pass.  The new edge test also verifies that evaluating a graph does not
-change its serialized Truth fingerprint.  Artifact source files and their
-legacy provenance metadata were not rewritten.
+change its serialized Truth fingerprint.  The later Node-matching migration
+changed only the stored primary metric fields for seeds 9002 and 9003; Truth,
+Knowledge, private provenance, and historical diagnostics payloads were not
+rewritten.
 
 ## Validation and remaining risks
+
+The following is the validation snapshot for the edge-only fix:
 
 Targeted business-interview and experiment suites after the fix:
 
@@ -283,12 +290,11 @@ The pre-fix duplicate-Agent regression intentionally failed with the old
 LSP diagnostics are clean for changed files; only the repository's existing
 `audioop` deprecation and unknown pytest config warnings remain.
 
-The largest remaining edge-related correctness risk is upstream node
-alignment: a wrong fuzzy Agent-node→Truth-node mapping can still make an
-otherwise unrelated Agent edge endpoint-compatible.  This fix guarantees
-finite Truth-edge usage after node alignment, but it does not change node or
-concept semantics by design.  The next correctness priority should therefore
-be adversarial hardening of node alignment/false-positive recall, not another
-edge reservation layer.  Parallel edges with genuinely identical endpoints
-and identical condition score remain structurally ambiguous, but their
-aggregate metrics are intentionally symmetric and invariant.
+The upstream Node-alignment risk described in the original edge-fix audit is
+now addressed by the separate topology-first matcher documented in
+`docs/business-interview-node-matching-correctness.md`.  This edge fix still
+consumes the finalized Node mapping and guarantees finite Truth-edge usage
+without using Edge conditions to choose Node identity.  Parallel edges with
+genuinely identical endpoints and identical condition score remain
+structurally ambiguous, but their aggregate metrics are intentionally
+symmetric and invariant.

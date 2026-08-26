@@ -7,6 +7,7 @@ mapping can share score arithmetic without sharing epistemic models.
 
 from __future__ import annotations
 
+import math
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -17,11 +18,24 @@ from .graph import (
     AgentGraph,
     ConceptRef,
     business_edge_ids,
+    business_entry_node_ids,
+    business_exit_node_ids,
     business_node_ids,
     is_dont_know,
 )
 
 _NODE_PROPS = ("activity", "actor", "system", "reads", "writes", "rationale")
+_NODE_WL_ROUND_LIMIT = 12
+_NODE_AMBIGUITY_CLASS_LIMIT = 8
+_NODE_MATCH_CARDINALITY_BONUS = 100.0
+_NODE_MATCH_ACTIVITY_WEIGHT = 8.0
+_NODE_MATCH_ATTRIBUTE_WEIGHTS = {
+    "actor": 2.0,
+    "system": 2.0,
+    "reads": 1.0,
+    "writes": 1.0,
+    "rationale": 0.5,
+}
 
 
 def slot_value(node: Any, prop: str) -> Any:
@@ -425,29 +439,476 @@ def _max_weight_assignment(
     return assignment
 
 
-def _node_signature(
-    node, concepts, is_truth: bool, agent_to_truth: Optional[dict[str, str]] = None
-) -> set[tuple[str, str]]:
-    """Node signature from its (prop, truth_concept_id) references.
+@dataclass(frozen=True)
+class _TopologyData:
+    node_ids: tuple[str, ...]
+    predecessors: dict[str, tuple[str, ...]]
+    successors: dict[str, tuple[str, ...]]
+    base_profiles: dict[str, tuple[Any, ...]]
+    topology_known: bool
 
-    For a Truth node this is derived straight from its concept refs; for an
-    Agent node each ref's Agent-local concept is first mapped to its aligned
-    Truth concept (unmapped/fabricated refs contribute nothing, so they
-    cannot help a fabricated node get matched). This makes node identity
-    depend on the aligned concept content, never on Agent-local ids.
+
+@dataclass(frozen=True)
+class _TopologyFingerprint:
+    base_profile: tuple[Any, ...]
+    refinement_colors: tuple[str, ...]
+    topology_known: bool
+
+
+def _topology_distances(
+    starts: set[str], adjacency: dict[str, tuple[str, ...]]
+) -> dict[str, int]:
+    distances = {node_id: 0 for node_id in sorted(starts)}
+    queue = sorted(starts)
+    index = 0
+    while index < len(queue):
+        node_id = queue[index]
+        index += 1
+        for neighbor in sorted(adjacency.get(node_id, ())):
+            if neighbor not in distances:
+                distances[neighbor] = distances[node_id] + 1
+                queue.append(neighbor)
+    return distances
+
+
+def _topology_data(graph: Any) -> _TopologyData:
+    """Build an ID-free local structural profile for each business node."""
+    node_ids = tuple(business_node_ids(graph))
+    node_set = set(node_ids)
+    predecessors = {node_id: [] for node_id in node_ids}
+    successors = {node_id: [] for node_id in node_ids}
+    for edge_id in business_edge_ids(graph):
+        edge = graph.edges[edge_id]
+        if edge.from_node not in node_set or edge.to_node not in node_set:
+            continue
+        successors[edge.from_node].append(edge.to_node)
+        predecessors[edge.to_node].append(edge.from_node)
+
+    predecessor_tuples = {
+        node_id: tuple(sorted(values)) for node_id, values in predecessors.items()
+    }
+    successor_tuples = {
+        node_id: tuple(sorted(values)) for node_id, values in successors.items()
+    }
+    entries = set(business_entry_node_ids(graph)) & node_set
+    entries.update(getattr(graph, "start_node_ids", ()))
+    if getattr(graph, "start_node_id", None) is not None:
+        entries.add(graph.start_node_id)
+    entries &= node_set
+    entries.update(node_id for node_id in node_ids if not predecessor_tuples[node_id])
+    exits = set(business_exit_node_ids(graph)) & node_set
+    exits.update(getattr(graph, "end_node_ids", ()))
+    exits &= node_set
+    exits.update(node_id for node_id in node_ids if not successor_tuples[node_id])
+
+    from_entry = _topology_distances(entries, successor_tuples)
+    to_exit = _topology_distances(exits, predecessor_tuples)
+    base_profiles: dict[str, tuple[Any, ...]] = {}
+    for node_id in node_ids:
+        predecessors_for_node = predecessor_tuples[node_id]
+        successors_for_node = successor_tuples[node_id]
+        predecessor_count = len(set(predecessors_for_node))
+        successor_count = len(set(successors_for_node))
+        self_loop_count = sum(neighbor == node_id for neighbor in successors_for_node)
+        # Degree is over unique business neighbors.  Parallel conditioned
+        # edges are edge-level evidence, not a new Node branch/merge role.
+        base_profiles[node_id] = (
+            "entry" if node_id in entries else "non_entry",
+            "exit" if node_id in exits else "non_exit",
+            "merge" if predecessor_count > 1 else "non_merge",
+            "branch" if successor_count > 1 else "non_branch",
+            predecessor_count,
+            successor_count,
+            bool(self_loop_count),
+            from_entry.get(node_id, -1),
+            to_exit.get(node_id, -1),
+        )
+    explicit_boundary = bool(
+        getattr(graph, "start_node_id", None)
+        or getattr(graph, "start_node_ids", ())
+        or getattr(graph, "end_node_ids", ())
+    )
+    return _TopologyData(
+        node_ids=node_ids,
+        predecessors=predecessor_tuples,
+        successors=successor_tuples,
+        base_profiles=base_profiles,
+        topology_known=bool(business_edge_ids(graph)) or explicit_boundary,
+    )
+
+
+def _canonical_color_map(payloads: list[Any]) -> dict[Any, str]:
+    return {
+        payload: f"color_{index}"
+        for index, payload in enumerate(sorted(set(payloads), key=repr))
+    }
+
+
+def _topology_fingerprints(
+    agent: AgentGraph, truth: Any
+) -> tuple[dict[str, _TopologyFingerprint], dict[str, _TopologyFingerprint]]:
+    """Return shared-round WL-style fingerprints for both business graphs.
+
+    Base profiles contain only structural facts.  Each refinement round adds
+    sorted predecessor and successor colors.  Color classes are canonicalized
+    over both graphs together, so local node ids and dictionary order never
+    participate in a fingerprint.
     """
-    sig: set[tuple[str, str]] = set()
-    for prop in _NODE_PROPS:
-        for ref in node.refs(prop):
-            cid = ref.concept_id
-            if is_truth:
-                if cid in concepts:
-                    sig.add((prop, cid))
+    agent_data = _topology_data(agent)
+    truth_data = _topology_data(truth)
+    all_node_count = max(len(agent_data.node_ids), len(truth_data.node_ids))
+    rounds = min(_NODE_WL_ROUND_LIMIT, max(1, all_node_count))
+    base_payloads = [
+        ("base", profile)
+        for data in (agent_data, truth_data)
+        for profile in data.base_profiles.values()
+    ]
+    colors = _canonical_color_map(base_payloads)
+    agent_colors = {
+        node_id: colors[("base", agent_data.base_profiles[node_id])]
+        for node_id in agent_data.node_ids
+    }
+    truth_colors = {
+        node_id: colors[("base", truth_data.base_profiles[node_id])]
+        for node_id in truth_data.node_ids
+    }
+    agent_color_history = {
+        node_id: [agent_colors[node_id]] for node_id in agent_data.node_ids
+    }
+    truth_color_history = {
+        node_id: [truth_colors[node_id]] for node_id in truth_data.node_ids
+    }
+    for _ in range(rounds):
+        agent_payloads = {
+            node_id: (
+                agent_colors[node_id],
+                tuple(
+                    sorted(
+                        agent_colors[neighbor]
+                        for neighbor in agent_data.predecessors[node_id]
+                    )
+                ),
+                tuple(
+                    sorted(
+                        agent_colors[neighbor]
+                        for neighbor in agent_data.successors[node_id]
+                    )
+                ),
+            )
+            for node_id in agent_data.node_ids
+        }
+        truth_payloads = {
+            node_id: (
+                truth_colors[node_id],
+                tuple(
+                    sorted(
+                        truth_colors[neighbor]
+                        for neighbor in truth_data.predecessors[node_id]
+                    )
+                ),
+                tuple(
+                    sorted(
+                        truth_colors[neighbor]
+                        for neighbor in truth_data.successors[node_id]
+                    )
+                ),
+            )
+            for node_id in truth_data.node_ids
+        }
+        color_map = _canonical_color_map(
+            list(agent_payloads.values()) + list(truth_payloads.values())
+        )
+        next_agent_colors = {
+            node_id: color_map[payload] for node_id, payload in agent_payloads.items()
+        }
+        next_truth_colors = {
+            node_id: color_map[payload] for node_id, payload in truth_payloads.items()
+        }
+        stable = next_agent_colors == agent_colors and next_truth_colors == truth_colors
+        agent_colors = next_agent_colors
+        truth_colors = next_truth_colors
+        for node_id in agent_data.node_ids:
+            agent_color_history[node_id].append(agent_colors[node_id])
+        for node_id in truth_data.node_ids:
+            truth_color_history[node_id].append(truth_colors[node_id])
+        if stable:
+            break
+
+    agent_fingerprints = {
+        node_id: _TopologyFingerprint(
+            base_profile=agent_data.base_profiles[node_id],
+            refinement_colors=tuple(agent_color_history[node_id]),
+            topology_known=agent_data.topology_known,
+        )
+        for node_id in agent_data.node_ids
+    }
+    truth_fingerprints = {
+        node_id: _TopologyFingerprint(
+            base_profile=truth_data.base_profiles[node_id],
+            refinement_colors=tuple(truth_color_history[node_id]),
+            topology_known=truth_data.topology_known,
+        )
+        for node_id in truth_data.node_ids
+    }
+    return agent_fingerprints, truth_fingerprints
+
+
+def _topology_similarity(
+    agent_fingerprint: _TopologyFingerprint,
+    truth_fingerprint: _TopologyFingerprint,
+) -> float:
+    if not agent_fingerprint.topology_known:
+        # An isolated Agent graph without explicit boundaries is structurally
+        # unspecified, not evidence of an isolated business node.  Keep the
+        # historical unique-activity fallback while still applying ambiguity
+        # handling to competing Truth nodes.
+        return 0.5
+    if agent_fingerprint.base_profile != truth_fingerprint.base_profile:
+        return 0.0
+    colors = zip(
+        agent_fingerprint.refinement_colors,
+        truth_fingerprint.refinement_colors,
+    )
+    matches = sum(agent_color == truth_color for agent_color, truth_color in colors)
+    total = max(
+        len(agent_fingerprint.refinement_colors),
+        len(truth_fingerprint.refinement_colors),
+    )
+    return matches / total if total else 1.0
+
+
+def _node_attribute_weight(
+    agent_node: Any,
+    truth_node: Any,
+    agent_to_truth: dict[str, str],
+    topology_similarity: float,
+) -> Optional[float]:
+    """Score already-aligned business attributes for a topology candidate."""
+    activity_score = _score_scalar_slot(
+        slot_value(agent_node, "activity"),
+        slot_value(truth_node, "activity"),
+        agent_to_truth,
+    )
+    if activity_score <= 0:
+        return None
+    weight = _NODE_MATCH_CARDINALITY_BONUS
+    weight += 3.0 * topology_similarity
+    weight += _NODE_MATCH_ACTIVITY_WEIGHT * activity_score
+    for prop, prop_weight in _NODE_MATCH_ATTRIBUTE_WEIGHTS.items():
+        if prop in ("reads", "writes"):
+            score, _ = _score_list_slot(
+                slot_value(agent_node, prop),
+                slot_value(truth_node, prop),
+                agent_to_truth,
+            )
+        else:
+            score = _score_scalar_slot(
+                slot_value(agent_node, prop),
+                slot_value(truth_node, prop),
+                agent_to_truth,
+            )
+        weight += prop_weight * score
+    return weight
+
+
+def _node_candidate_components(
+    weights: dict[tuple[str, str], float],
+) -> list[tuple[list[str], list[str]]]:
+    """Split a bipartite candidate graph into independent ambiguity classes."""
+    left_neighbors: dict[str, set[str]] = {}
+    right_neighbors: dict[str, set[str]] = {}
+    for left, right in weights:
+        left_neighbors.setdefault(left, set()).add(right)
+        right_neighbors.setdefault(right, set()).add(left)
+
+    remaining = set(left_neighbors)
+    components: list[tuple[list[str], list[str]]] = []
+    while remaining:
+        start = min(remaining)
+        left_component = {start}
+        right_component: set[str] = set()
+        left_queue = [start]
+        while left_queue:
+            left = left_queue.pop()
+            for right in sorted(left_neighbors[left]):
+                if right in right_component:
+                    continue
+                right_component.add(right)
+                for neighbor in sorted(right_neighbors[right]):
+                    if neighbor not in left_component:
+                        left_component.add(neighbor)
+                        left_queue.append(neighbor)
+        remaining -= left_component
+        components.append((sorted(left_component), sorted(right_component)))
+    return components
+
+
+def _assignment_score(
+    assignment: dict[str, str], weights: dict[tuple[str, str], float]
+) -> float:
+    return sum(weights[(left, right)] for left, right in assignment.items())
+
+
+def _fingerprint_key(fingerprint: _TopologyFingerprint) -> tuple[Any, ...]:
+    return (fingerprint.base_profile, fingerprint.refinement_colors)
+
+
+def _relations_compatible(
+    agent_node_id: str,
+    truth_node_id: str,
+    fixed: dict[str, str],
+    agent_data: _TopologyData,
+    truth_data: _TopologyData,
+) -> bool:
+    inverse_fixed = {truth_id: agent_id for agent_id, truth_id in fixed.items()}
+    agent_predecessors = set(agent_data.predecessors[agent_node_id])
+    agent_successors = set(agent_data.successors[agent_node_id])
+    truth_predecessors = set(truth_data.predecessors[truth_node_id])
+    truth_successors = set(truth_data.successors[truth_node_id])
+    for neighbor in agent_predecessors:
+        if neighbor in fixed and fixed[neighbor] not in truth_predecessors:
+            return False
+    for neighbor in agent_successors:
+        if neighbor in fixed and fixed[neighbor] not in truth_successors:
+            return False
+    for neighbor in truth_predecessors:
+        mapped = inverse_fixed.get(neighbor)
+        if mapped is not None and mapped not in agent_predecessors:
+            return False
+    for neighbor in truth_successors:
+        mapped = inverse_fixed.get(neighbor)
+        if mapped is not None and mapped not in agent_successors:
+            return False
+    return True
+
+
+def _anchor_and_propagate_node_candidates(
+    weights: dict[tuple[str, str], float],
+    agent_fingerprints: dict[str, _TopologyFingerprint],
+    truth_fingerprints: dict[str, _TopologyFingerprint],
+    agent_data: _TopologyData,
+    truth_data: _TopologyData,
+) -> tuple[dict[str, str], dict[tuple[str, str], float]]:
+    """Seed unique structural anchors and propagate mapped neighbor constraints."""
+    agent_key_counts: dict[tuple[Any, ...], int] = {}
+    truth_key_counts: dict[tuple[Any, ...], int] = {}
+    for fingerprint in agent_fingerprints.values():
+        key = _fingerprint_key(fingerprint)
+        agent_key_counts[key] = agent_key_counts.get(key, 0) + 1
+    for fingerprint in truth_fingerprints.values():
+        key = _fingerprint_key(fingerprint)
+        truth_key_counts[key] = truth_key_counts.get(key, 0) + 1
+
+    fixed: dict[str, str] = {}
+    remaining = dict(weights)
+    while True:
+        compatible = {
+            pair: weight
+            for pair, weight in remaining.items()
+            if _relations_compatible(pair[0], pair[1], fixed, agent_data, truth_data)
+        }
+        new_anchors: dict[str, str] = {}
+        for (agent_node_id, truth_node_id), _ in sorted(compatible.items()):
+            agent_fingerprint = agent_fingerprints[agent_node_id]
+            truth_fingerprint = truth_fingerprints[truth_node_id]
+            agent_key = _fingerprint_key(agent_fingerprint)
+            if (
+                not agent_fingerprint.topology_known
+                or not truth_fingerprint.topology_known
+                or agent_key != _fingerprint_key(truth_fingerprint)
+                or agent_key_counts.get(agent_key) != 1
+                or truth_key_counts.get(agent_key) != 1
+            ):
                 continue
-            mapped = agent_to_truth.get(cid) if agent_to_truth is not None else None
-            if mapped is not None:
-                sig.add((prop, mapped))
-    return sig
+            new_anchors[agent_node_id] = truth_node_id
+        if not new_anchors:
+            break
+        for agent_node_id, truth_node_id in new_anchors.items():
+            if agent_node_id not in fixed and truth_node_id not in fixed.values():
+                fixed[agent_node_id] = truth_node_id
+        remaining = {
+            pair: weight
+            for pair, weight in compatible.items()
+            if pair[0] not in fixed and pair[1] not in fixed.values()
+        }
+
+    remaining = {
+        pair: weight
+        for pair, weight in remaining.items()
+        if pair[0] not in fixed
+        and pair[1] not in fixed.values()
+        and _relations_compatible(pair[0], pair[1], fixed, agent_data, truth_data)
+    }
+    return fixed, remaining
+
+
+def _map_nodes_one_to_one(
+    agent: AgentGraph,
+    truth: Any,
+    agent_to_truth: dict[str, str],
+) -> dict[str, str]:
+    """Map only topology-compatible nodes with conservative ambiguity handling."""
+    agent_fingerprints, truth_fingerprints = _topology_fingerprints(agent, truth)
+    agent_data = _topology_data(agent)
+    truth_data = _topology_data(truth)
+    weights: dict[tuple[str, str], float] = {}
+    for agent_node_id, agent_fingerprint in agent_fingerprints.items():
+        for truth_node_id, truth_fingerprint in truth_fingerprints.items():
+            topology_similarity = _topology_similarity(
+                agent_fingerprint,
+                truth_fingerprint,
+            )
+            if topology_similarity <= 0.0:
+                continue
+            weight = _node_attribute_weight(
+                agent.nodes[agent_node_id],
+                truth.nodes[truth_node_id],
+                agent_to_truth,
+                topology_similarity,
+            )
+            if weight is not None:
+                weights[(agent_node_id, truth_node_id)] = weight
+
+    mapping, weights = _anchor_and_propagate_node_candidates(
+        weights,
+        agent_fingerprints,
+        truth_fingerprints,
+        agent_data,
+        truth_data,
+    )
+    for left, right in _node_candidate_components(weights):
+        if max(len(left), len(right)) > _NODE_AMBIGUITY_CLASS_LIMIT:
+            # Never turn a large symmetric class into an ID-ordered claim.
+            continue
+        component_weights = {
+            pair: weight
+            for pair, weight in weights.items()
+            if pair[0] in left and pair[1] in right
+        }
+        assignment = _max_weight_assignment(
+            component_weights, left, right, threshold=0.0
+        )
+        if not assignment:
+            continue
+        optimum = _assignment_score(assignment, component_weights)
+        for agent_node_id, truth_node_id in assignment.items():
+            alternative_weights = {
+                pair: weight
+                for pair, weight in component_weights.items()
+                if pair != (agent_node_id, truth_node_id)
+            }
+            alternative = _max_weight_assignment(
+                alternative_weights, left, right, threshold=0.0
+            )
+            if math.isclose(
+                _assignment_score(alternative, component_weights),
+                optimum,
+                rel_tol=1e-12,
+                abs_tol=1e-9,
+            ):
+                continue
+            mapping[agent_node_id] = truth_node_id
+    return mapping
 
 
 def _map_nodes_and_edges(
@@ -455,53 +916,17 @@ def _map_nodes_and_edges(
     truth,
     agent_to_truth: dict[str, str],
 ) -> tuple[dict[str, str], dict[str, str]]:
-    """Map business nodes globally and business edges one-to-one.
+    """Map topology-compatible business nodes, then one-to-one business edges.
 
-    Node matching is a maximum-weight bipartite assignment (not greedy by
-    Agent-local id order), so the mapping is invariant to arbitrary
-    Agent-node-id reorderings.  Edge candidates are restricted to equal
-    mapped endpoint pairs and are assigned by the same deterministic
-    maximum-weight primitive; condition compatibility is only a secondary
-    weight after edge cardinality.  In particular, this function never lets
-    two Agent edges consume the same Truth edge.
+    Node topology is a hard candidate constraint.  Already-aligned business
+    attributes determine the maximum-weight one-to-one assignment inside each
+    candidate component; equal optima are left unmatched rather than being
+    resolved by local ids.  Edges are mapped only after node identity is fixed.
     """
-    agent_sigs = {
-        agent_node_id: _node_signature(
-            agent.nodes[agent_node_id],
-            agent.concepts,
-            is_truth=False,
-            agent_to_truth=agent_to_truth,
-        )
-        for agent_node_id in business_node_ids(agent)
-    }
-    truth_sigs = {
-        tnid: _node_signature(truth.nodes[tnid], truth.concepts, is_truth=True)
-        for tnid in business_node_ids(truth)
-    }
-    weights: dict[tuple[str, str], float] = {}
-    for agent_node_id in agent_sigs:
-        a = agent_sigs[agent_node_id]
-        if not a:
-            continue
-        for tnid in truth_sigs:
-            t = truth_sigs[tnid]
-            inter = a & t
-            if not inter:
-                continue
-            # A shared activity pair is the node's primary identity; sharing
-            # only a minor property (e.g. one actor) is NOT identity. This
-            # keeps the mapping stable and content-driven without accepting
-            # tiny incidental overlaps.
-            shares_activity = any(prop == "activity" for prop, _ in inter)
-            if not shares_activity and len(inter) < 2:
-                continue
-            s = _similarity(a, t)
-            if s > 0.0:
-                weights[(agent_node_id, tnid)] = s
-    mapping = _max_weight_assignment(
-        weights, sorted(agent_sigs), sorted(truth_sigs), threshold=0.0
+    node_mapping = _map_nodes_one_to_one(agent, truth, agent_to_truth)
+    return node_mapping, _map_edges_one_to_one(
+        agent, truth, node_mapping, agent_to_truth
     )
-    return mapping, _map_edges_one_to_one(agent, truth, mapping, agent_to_truth)
 
 
 _NO_VALUE = object()
