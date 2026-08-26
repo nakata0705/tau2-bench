@@ -455,22 +455,28 @@ def _map_nodes_and_edges(
     truth,
     agent_to_truth: dict[str, str],
 ) -> tuple[dict[str, str], dict[str, str]]:
-    """Stable global node mapping by aligned (prop, truth_concept_id) pairs;
-    edge mapping by matching endpoint pair on the Truth graph.
+    """Map business nodes globally and business edges one-to-one.
 
     Node matching is a maximum-weight bipartite assignment (not greedy by
     Agent-local id order), so the mapping is invariant to arbitrary
-    Agent-node-id reorderings.
+    Agent-node-id reorderings.  Edge candidates are restricted to equal
+    mapped endpoint pairs and are assigned by the same deterministic
+    maximum-weight primitive; condition compatibility is only a secondary
+    weight after edge cardinality.  In particular, this function never lets
+    two Agent edges consume the same Truth edge.
     """
     agent_sigs = {
         agent_node_id: _node_signature(
-            node, agent.concepts, is_truth=False, agent_to_truth=agent_to_truth
+            agent.nodes[agent_node_id],
+            agent.concepts,
+            is_truth=False,
+            agent_to_truth=agent_to_truth,
         )
-        for agent_node_id, node in agent.nodes.items()
+        for agent_node_id in business_node_ids(agent)
     }
     truth_sigs = {
-        tnid: _node_signature(node, truth.concepts, is_truth=True)
-        for tnid, node in truth.nodes.items()
+        tnid: _node_signature(truth.nodes[tnid], truth.concepts, is_truth=True)
+        for tnid in business_node_ids(truth)
     }
     weights: dict[tuple[str, str], float] = {}
     for agent_node_id in agent_sigs:
@@ -495,21 +501,7 @@ def _map_nodes_and_edges(
     mapping = _max_weight_assignment(
         weights, sorted(agent_sigs), sorted(truth_sigs), threshold=0.0
     )
-
-    edge_map: dict[str, str] = {}
-    for eid, edge in agent.edges.items():
-        a = mapping.get(edge.from_node)
-        b = mapping.get(edge.to_node)
-        if a is None or b is None:
-            continue
-        cands = [
-            tid
-            for tid, te in truth.edges.items()
-            if te.from_node == a and te.to_node == b
-        ]
-        if cands:
-            edge_map[eid] = sorted(cands)[0]
-    return mapping, edge_map
+    return mapping, _map_edges_one_to_one(agent, truth, mapping, agent_to_truth)
 
 
 _NO_VALUE = object()
@@ -550,6 +542,73 @@ def _score_scalar_slot(
     if known_absent is not None and known_absent(agent_value):
         return 1
     return 0
+
+
+_EDGE_CARDINALITY_WEIGHT = 2.0
+
+
+def _map_edges_one_to_one(
+    agent: AgentGraph,
+    truth: Any,
+    node_mapping: dict[str, str],
+    agent_to_truth: dict[str, str],
+) -> dict[str, str]:
+    """Assign endpoint-compatible business edges without reuse.
+
+    Candidate generation is deliberately narrow: an Agent edge is eligible
+    only when both mapped endpoints equal a Truth edge's endpoints.  Eligible
+    edges are grouped by that endpoint pair, so each group can be solved
+    independently.  The weight is ``2 + condition_score``: the cardinality
+    term makes structural edge matching primary, while the existing condition
+    slot scorer breaks parallel-edge ties.  There is no weight for edge ids,
+    labels, descriptions, or any other Truth-derived information.
+
+    The sorted ids are traversal/tie serialization only.  Since all complete
+    ties have the same cardinality and condition total, renaming or
+    reordering local ids cannot change aggregate business metrics.
+    """
+    agent_by_endpoints: dict[tuple[str, str], list[str]] = {}
+    for edge_id in business_edge_ids(agent):
+        edge = agent.edges[edge_id]
+        from_node = node_mapping.get(edge.from_node)
+        to_node = node_mapping.get(edge.to_node)
+        if from_node is None or to_node is None:
+            continue
+        agent_by_endpoints.setdefault((from_node, to_node), []).append(edge_id)
+
+    truth_by_endpoints: dict[tuple[str, str], list[str]] = {}
+    for edge_id in business_edge_ids(truth):
+        edge = truth.edges[edge_id]
+        truth_by_endpoints.setdefault((edge.from_node, edge.to_node), []).append(
+            edge_id
+        )
+
+    edge_mapping: dict[str, str] = {}
+    for endpoint_pair in sorted(agent_by_endpoints):
+        agent_edge_ids = sorted(agent_by_endpoints[endpoint_pair])
+        truth_edge_ids = sorted(truth_by_endpoints.get(endpoint_pair, ()))
+        if not truth_edge_ids:
+            continue
+        weights: dict[tuple[str, str], float] = {}
+        for agent_edge_id in agent_edge_ids:
+            for truth_edge_id in truth_edge_ids:
+                condition_score = _score_scalar_slot(
+                    agent.edges[agent_edge_id].condition,
+                    truth.edges[truth_edge_id].condition,
+                    agent_to_truth,
+                )
+                weights[(agent_edge_id, truth_edge_id)] = (
+                    _EDGE_CARDINALITY_WEIGHT + condition_score
+                )
+        edge_mapping.update(
+            _max_weight_assignment(
+                weights,
+                agent_edge_ids,
+                truth_edge_ids,
+                threshold=0.0,
+            )
+        )
+    return edge_mapping
 
 
 def _score_list_slot(
@@ -757,12 +816,15 @@ def compare_aligned_graphs(
     """Compare explicitly aligned business graphs using the current contract.
 
     Candidate identity and epistemic interpretation are supplied by the caller.
-    This function intentionally preserves the historical denominator and first
-    mapped-edge condition semantics used by the benchmark.
+    This function preserves the historical denominators and condition-slot
+    scoring.  Edge identity is supplied by a one-to-one alignment, so each
+    Truth business edge has at most one candidate condition to score.
     """
     node_mapping = alignment.node_to_truth
     edge_mapping = alignment.edge_to_truth
     concept_mapping = alignment.concept_to_truth
+    if len(edge_mapping) != len(set(edge_mapping.values())):
+        raise ValueError("compare_aligned_graphs(): edge alignment must be one-to-one")
 
     target_node_ids = list(truth.nodes)
     matched_nodes = set(node_mapping.values())
@@ -826,15 +888,12 @@ def compare_aligned_graphs(
     denominator = len(node_mapping) or 1
 
     condition_hits = 0
+    candidate_edge_by_truth = {
+        truth_edge_id: candidate.edges[agent_edge_id]
+        for agent_edge_id, truth_edge_id in edge_mapping.items()
+    }
     for truth_edge_id, truth_edge in truth.edges.items():
-        candidate_edge = next(
-            (
-                edge
-                for edge_id, edge in candidate.edges.items()
-                if edge_mapping.get(edge_id) == truth_edge_id
-            ),
-            None,
-        )
+        candidate_edge = candidate_edge_by_truth.get(truth_edge_id)
         if candidate_edge is None:
             continue
         if _score_scalar_slot(

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .comparison import (
     AlignedGraphComparison,
@@ -30,8 +30,10 @@ from .graph import (
     DontKnowType,
     EvidenceRef,
     InterviewDB,
+    business_edge_ids,
     business_entry_node_ids,
     business_graph_projection,
+    business_node_ids,
 )
 from .reference_evaluation import (
     StakeholderTruthReferenceAggregate,
@@ -177,7 +179,7 @@ class EvaluationResult(BaseModel):
         default_factory=StakeholderTruthReferenceAggregate
     )
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 def _terminology_terms(knowledge: Any) -> dict[str, list[str]]:
@@ -289,8 +291,8 @@ def _build_primary_result(
         candidate=agent,
         truth=target,
         alignment=alignment,
-        candidate_node_ids=list(agent.nodes),
-        candidate_edge_ids=list(agent.edges),
+        candidate_node_ids=business_node_ids(agent),
+        candidate_edge_ids=business_edge_ids(agent),
         candidate_start_node_ids=agent_start_ids,
         candidate_end_node_ids=set(agent.end_node_ids),
         truth_entry_node_ids=set(business_entry_node_ids(truth)),

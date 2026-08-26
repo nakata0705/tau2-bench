@@ -587,12 +587,12 @@ def build_evaluation_diagnostics(
         )
 
     edges: list[EdgeDiagnostic] = []
+    truth_to_agent_edge = {
+        truth_id: agent_id for agent_id, truth_id in edge_mapping.items()
+    }
     for tid in sorted(target.edges):
         truth_edge = target.edges[tid]
-        aid = next(
-            (eid for eid in agent.edges if edge_mapping.get(eid) == tid),
-            None,
-        )
+        aid = truth_to_agent_edge.get(tid)
         if aid is not None:
             agent_edge = agent.edges[aid]
             from_match = node_mapping.get(agent_edge.from_node) == truth_edge.from_node
@@ -638,11 +638,11 @@ def build_evaluation_diagnostics(
     return EvaluationDiagnostics(
         node_diagnostics=nodes,
         unmatched_agent_nodes=sorted(
-            aid for aid in agent.nodes if aid not in node_mapping
+            aid for aid in business_node_ids(agent) if aid not in node_mapping
         ),
         edge_diagnostics=edges,
         unmatched_agent_edges=sorted(
-            eid for eid in agent.edges if eid not in edge_mapping
+            eid for eid in business_edge_ids(agent) if eid not in edge_mapping
         ),
         concepts=concept_trace,
     )
